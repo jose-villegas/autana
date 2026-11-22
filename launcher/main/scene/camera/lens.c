@@ -1,5 +1,6 @@
 #include "scene/camera/lens.h"
 
+#include <math.h>
 #include <stddef.h>
 
 render_view_t
@@ -22,3 +23,8 @@ const anim_component_fields_t LENS_FIELDS = {
     LENS_FIELD_LIST,
     sizeof LENS_FIELD_LIST / sizeof LENS_FIELD_LIST[0],
 };
+
+bool
+lens_value_fits(float value) {
+    return isfinite(value) && value > 0.0F;
+}

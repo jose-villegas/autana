@@ -106,6 +106,29 @@ def authored_entries(root):
     return [(name, kind, to_engine(kind, data)) for name, kind, data in entries]
 
 
+def motion_entry(root):
+    timeline = '[timeline]\nclip = "probe.anim.toml"\nwrap = "loop"\n'
+    fields = '''[objects.constraint]
+follow = "red"
+look_at = "green"
+bind = "target_yaw"
+offset = [1, 2, 3]
+look_offset = [4, 5, 6]
+lag_ms = 7
+handoff_ms = 8
+weight = 0.5
+[objects.hinge]
+axis = [0, 1, 0]
+min = -0.75
+max = 0.75
+angle = 0.25
+
+'''
+    path = root / "motion.scene.toml"
+    path.write_text(timeline + SCENE.replace('[[objects]]\nname = "green"', fields + '[[objects]]\nname = "green"'))
+    return "motion", scene_asset.TYPE, scene_asset.bake(path)
+
+
 def probe_pack():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
@@ -118,7 +141,8 @@ def probe_pack():
         entry = scene_asset.bake(scene)
         scene_id = scene_name.scene_id(scene)
         authored = authored_entries(root)
-    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry()), *authored])
+        motion = motion_entry(root)
+    return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry()), motion, *authored])
 
 
 def main(argv=None):

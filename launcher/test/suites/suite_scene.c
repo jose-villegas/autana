@@ -724,7 +724,7 @@ scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, co
     for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
         end += (uint32_t)(counts[part] * sizes[part]);
     }
-    *pack = test_pack_begin(bytes, capacity, RIG_ENTRIES + 4);
+    *pack = test_pack_begin(bytes, capacity, RIG_ENTRIES + 5);
     make_rig_entries(pack, &options);
     make_quad_entry(test_pack_add(pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0, 1);
     make_clip_entry(test_pack_add(pack, "flight", ANIM_TRACKS_ASSET, FLIGHT_BYTES), ANIM_VALUE_VEC3, 2);
@@ -736,6 +736,9 @@ scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, co
         test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + part * sizeof(uint32_t), offset);
         offset += (uint32_t)(counts[part] * sizes[part]);
     }
+    const uint32_t static_bytes = scene_entry_size(&spec);
+    uint8_t* still = test_pack_add(pack, SCENE_TEST_STATIC_ID, SCENE_ASSET, static_bytes);
+    make_scene_entry_with_skin(still, &spec, &options);
     return entry;
 }
 

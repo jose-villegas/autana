@@ -29,7 +29,7 @@ title Header, 104 bytes at 0, one cell a byte
 24-25: "chunks"
 26-27: "places"
 28-29: "turns"
-30-31: "timeline count"
+30-31: "timeline"
 32-33: "constraints"
 34-35: "hinges"
 36-39: "names_off"
@@ -262,45 +262,6 @@ title Content: turn, 8 bytes a copy from turns_off
 6-7: "largest"
 ```
 
-| Part | At | Size |
-|---|---|---|
-| Header | 0 | 88 bytes: fourteen u16 counts from `SCENE_ASSET_AT_COUNTS`, then fourteen u32 offsets from `SCENE_ASSET_AT_OFFSETS`, both in `scene_asset_part_t` order |
-| Name registry | `names_off` | 36 bytes an entity |
-| Content: transforms | `transforms_off` | 48 bytes an entity; the count equals the names' |
-| Content: renderers | `renderers_off` | 36 bytes each |
-| Content: cameras | `cameras_off` | 16 bytes each |
-| Content: lights | `lights_off` | 20 bytes each |
-| Content: skinned renderers | `skins_off` | 100 bytes each |
-| Content: animators | `animators_off` | 12 bytes each |
-| Clip registry | `clips_off` | 32 bytes a clip id, indexed by `first_clip` and `clip_count` |
-| Content: settings | `settings_off` | 20 bytes, one row |
-| Content: parents | `parents_off` | 2 bytes an entity; the count equals the names'; written for every scene, all roots included |
-| Content: batches | `batches_off` | 12 bytes each, one for each renderer that draws copies |
-| Content: chunks | `chunks_off` | 16 bytes each, each batch's chunks in turn |
-| Content: places | `places_off` | 8 bytes a copy, each batch's copies in turn |
-| Content: turns | `turns_off` | 8 bytes a copy, in the places' order; the count equals the places' |
-
-| Rule | Detail |
-|---|---|
-| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (88), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1), `SCENE_ASSET_NAME_SIZE` (36), `_NAME_AT_HASH` (0), `_NAME_AT_TEXT` (4) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
-| Layout | every part offset is a multiple of 4, at least 88, and the part ends inside the entry; the writer lays parts out in header order, each padded to 4 bytes |
-| Counts | each at most 65535, entities at most 65534; names equals transforms and parents; turns equals places; settings is exactly 1 |
-| Names | letters, digits and `_`, starting with a letter or `_`, at most 31 bytes; `name_hash` is `name_hash(name)` ([hash package](../../../launcher/packages/hash/README.md)) and never `NAME_HASH_NONE`, and finds compare it alone. The bake refuses a name that hashes to `NAME_HASH_NONE` and two names in one scene that share a hash, naming both |
-| Transforms | in the parent's frame; scale positive. `scene_load()` refuses a shear or a reflection (determinant −1) and names its entity |
-| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children. A camera, light or skinned renderer is a root. An entity with children has a uniform scale, the same on every axis, and `scene_load()` refuses one that does not, naming it; `scene_asset.encode()` folds a parent's uneven scale into its children, refusing a parent that draws or a turned child the fold would shear. A mesh bundle's copies of one shape are one batch, on a child of the renderer that carries them ([MCOP](MCOP.md)). Transform and enabled state carry to descendants ([Scene-Manager.md](../../render/scene/Scene-Manager.md#hierarchy)) |
-| Entities | the scene's objects in file order; every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
-| Colour sets | own colours (`SCENE_ASSET_COLOUR_SET_OWN`) need no LCOL, checked at pack time, and authored scenes write own colours; [Selection and ownership](LCOL.md) |
-| Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL |
-| Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` (0xRRGGBB) at most `0xFFFFFF`. A camera `path` becomes an animator on its entity with one clip, default index zero and loop wrap; its `node` selects the tracks at bake time, and they bind to that entity through `ANIM_TARGET_SELF` |
-| Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0. The light shines along `SCENE_LIGHT_AXIS` (+Y) turned by its entity's rotation; at run time it lights skinned renderers only, baked renderers carry their light. Sky and camera regions are bake inputs and are not stored |
-| Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
-| Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
-| Batches | see [Batches](#batches) |
-| Order | header, then parts in header order; every `0` above and every gap is zero |
-| Errors | `ASSET_ERR_VERSION` for any other version, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
-
-## Scene motion
-
 ```mermaid
 ---
 config:
@@ -310,7 +271,7 @@ config:
     bitWidth: 54
 ---
 packet-beta
-title Timeline, 36 bytes from timeline_off
+title Content: timeline, 36 bytes from timeline_off, at most one
 0-31: "char clip[32], NUL padded"
 32: "wrap"
 33-35: "0"
@@ -325,7 +286,7 @@ config:
     bitWidth: 54
 ---
 packet-beta
-title Constraint, 48 bytes from constraints_off
+title Content: constraints, 48 bytes each from constraints_off
 0-1: "entity"
 2: "bind"
 3: "0"
@@ -347,7 +308,7 @@ config:
     bitWidth: 54
 ---
 packet-beta
-title Hinge, 28 bytes from hinges_off
+title Content: hinges, 28 bytes each from hinges_off
 0-1: "entity"
 2-3: "0"
 4-15: "f32 axis[3]"
@@ -356,13 +317,49 @@ title Hinge, 28 bytes from hinges_off
 24-27: "f32 angle"
 ```
 
-| Part | Rules |
-|---|---|
-| Timeline | At most one row. The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
-| Constraints | One per entity at most. `bind` is world (0), target (1) or target yaw (2). Target hashes name scene entities or use `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
-| Hinges | One per entity at most. Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 104 bytes: seventeen u16 counts from `SCENE_ASSET_AT_COUNTS`, then seventeen u32 offsets from `SCENE_ASSET_AT_OFFSETS`, both in `scene_asset_part_t` order |
+| Name registry | `names_off` | 36 bytes an entity |
+| Content: transforms | `transforms_off` | 48 bytes an entity; the count equals the names' |
+| Content: renderers | `renderers_off` | 36 bytes each |
+| Content: cameras | `cameras_off` | 16 bytes each |
+| Content: lights | `lights_off` | 20 bytes each |
+| Content: skinned renderers | `skins_off` | 100 bytes each |
+| Content: animators | `animators_off` | 12 bytes each |
+| Clip registry | `clips_off` | 32 bytes a clip id, indexed by `first_clip` and `clip_count` |
+| Content: settings | `settings_off` | 20 bytes, one row |
+| Content: parents | `parents_off` | 2 bytes an entity; the count equals the names'; written for every scene, all roots included |
+| Content: batches | `batches_off` | 12 bytes each, one for each renderer that draws copies |
+| Content: chunks | `chunks_off` | 16 bytes each, each batch's chunks in turn |
+| Content: places | `places_off` | 8 bytes a copy, each batch's copies in turn |
+| Content: turns | `turns_off` | 8 bytes a copy, in the places' order; the count equals the places' |
+| Content: timeline | `timeline_off` | 36 bytes, at most one row |
+| Content: constraints | `constraints_off` | 48 bytes each |
+| Content: hinges | `hinges_off` | 28 bytes each |
 
-Scene load fails if the entry contains a constraint or hinge row until the runtime supports it.
+| Rule | Detail |
+|---|---|
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (104), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1), `SCENE_ASSET_NAME_SIZE` (36), `_NAME_AT_HASH` (0), `_NAME_AT_TEXT` (4) in `scene_format.h`; row structs in `scene_asset.h`, checked against the sizes above by `_Static_assert` |
+| Layout | every part offset is a multiple of 4, at least 104. Parts end inside the entry and occupy disjoint ranges; the writer lays parts out in header order, each padded to 4 bytes |
+| Counts | each at most 65535, entities at most 65534; names equals transforms and parents; turns equals places; settings is exactly 1; timeline is at most 1 |
+| Names | letters, digits and `_`, starting with a letter or `_`, at most 31 bytes; `name_hash` is `name_hash(name)` ([hash package](../../../launcher/packages/hash/README.md)) and never `NAME_HASH_NONE`, and finds compare it alone. The bake refuses a name that hashes to `NAME_HASH_NONE` and two names in one scene that share a hash, naming both |
+| Transforms | in the parent's frame; scale positive. `scene_load()` refuses a shear or a reflection (determinant −1) and names its entity |
+| Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children. A camera, light or skinned renderer is a root. An entity with children has a uniform scale, the same on every axis, and `scene_load()` refuses one that does not, naming it; `scene_asset.encode()` folds a parent's uneven scale into its children, refusing a parent that draws or a turned child the fold would shear. A mesh bundle's copies of one shape are one batch, on a child of the renderer that carries them ([MCOP](MCOP.md)). Transform and enabled state carry to descendants ([Scene-Manager.md](../../render/scene/Scene-Manager.md#hierarchy)) |
+| Entities | the scene's objects in file order; every `entity` is below the names' count; at most one light, one skinned renderer, one animator, one constraint and one hinge per entity |
+| Colour sets | own colours (`SCENE_ASSET_COLOUR_SET_OWN`) need no LCOL, checked at pack time, and authored scenes write own colours; [Selection and ownership](LCOL.md) |
+| Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL |
+| Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` (0xRRGGBB) at most `0xFFFFFF`. A camera `path` becomes an animator on its entity with one clip, default index zero and loop wrap; its `node` selects the tracks at bake time, and they bind to that entity through `ANIM_TARGET_SELF` |
+| Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0. The light shines along `SCENE_LIGHT_AXIS` (+Y) turned by its entity's rotation; at run time it lights skinned renderers only, baked renderers carry their light. Sky and camera regions are bake inputs and are not stored |
+| Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
+| Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
+| Constraints | `bind` is world (0), target (1) or target yaw (2). Target hashes name scene entities or use `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
+| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
+| Unsupported rows | Constraint and hinge rows are valid in the file, but `scene_load()` fails and names `constraint` or `hinge`. |
+| Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
+| Batches | see [Batches](#batches) |
+| Order | header, then parts in header order; every `0` above and every gap is zero |
+| Errors | `ASSET_ERR_VERSION` for any other version, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
 
 ## Batches
 

@@ -18,3 +18,6 @@ extern const anim_component_fields_t LENS_FIELDS;
 
 /* The view through `lens` from `pose` (its rotation, roll included; scale ignored), framed for `viewport`. */
 render_view_t lens_view(const lens_t* lens, const transformf_t* pose, viewport_t viewport);
+
+/* The scalar range shared by camera rows and lens animation keys. */
+bool lens_value_fits(float value);

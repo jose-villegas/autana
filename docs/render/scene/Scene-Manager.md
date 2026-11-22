@@ -95,13 +95,26 @@ on the camera's entity whose tracks bind to that entity through
 
 ## Timeline
 
-An authored timeline loads stopped with time zero applied. Each animation
-step advances its clock if playing, applies its bound fields, and then
-re-poses the scene. Timeline tracks can move a skinned entity's transform.
+An authored timeline loads paused at time zero. Playback applies fields when
+the millisecond changes. A seek applies immediately, including while paused.
+Seeks and loop wraps mark a cut when the timeline drives the active camera.
 
-`timeline_seek(root, t_ms)` samples the same integer millisecond as playback
-and re-poses immediately, including while paused. It marks a cut when the
-timeline drives the active camera. Free-running animators keep independent clocks.
+[`scene/timeline/timeline.h`](../../../launcher/main/scene/timeline/timeline.h) declares `timeline_play()`, `timeline_pause()`, `timeline_playing()`, `timeline_seek()`, `timeline_time_ms()` and `timeline_duration_ms()`.
+
+<!-- generated: scene-timeline-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Start playback and seek to the midpoint before pausing on that frame. */
+#include "scene/timeline/timeline.h"
+
+static uint32_t
+preview_timeline(entity_t scene) {
+    timeline_play(scene);
+    timeline_seek(scene, timeline_duration_ms(scene) / 2);
+    timeline_pause(scene);
+    return timeline_time_ms(scene);
+}
+```
+<!-- /generated: scene-timeline-example -->
 
 ## Hierarchy
 

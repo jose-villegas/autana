@@ -7,6 +7,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "core/memory.h"
 #include "scene/scene_asset.h"
 #include "scene/scene_internal.h"
 
@@ -17,8 +18,8 @@ enum {
 };
 
 _Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
-                   && offsetof(scene_asset_name_t, hash) == SCENE_ASSET_NAME_AT_HASH
-                   && offsetof(scene_asset_name_t, name) == SCENE_ASSET_NAME_AT_TEXT,
+                   && SCNE_FIELD_AT(scene_asset_name_t, hash, NAME_AT_HASH)
+                   && SCNE_FIELD_AT(scene_asset_name_t, name, NAME_AT_TEXT),
                "SCNE names row layout");
 _Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
@@ -104,8 +105,8 @@ renderer_fits(const scene_asset_t* scene, const void* row) {
 static bool
 camera_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_camera_t* c = row;
-    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0 && isfinite(c->half_fov_short_tan)
-           && c->half_fov_short_tan > 0.0F && isfinite(c->near_z) && c->near_z > 0.0F && c->clear_rgb <= 0xFFFFFFU;
+    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0
+           && lens_value_fits(c->half_fov_short_tan) && lens_value_fits(c->near_z) && c->clear_rgb <= 0xFFFFFFU;
 }
 
 static bool
@@ -206,11 +207,6 @@ batches_cover(const scene_asset_t* scene) {
         if (b->first_copy != copies || b->first_chunk != chunks) {
             return false;
         }
-        for (int j = 0; j < i; j++) {
-            if (scene->batches[j].renderer == b->renderer) {
-                return false;
-            }
-        }
         copies += b->copy_count;
         chunks += (uint32_t)r3d_batch_chunks(b->copy_count);
     }
@@ -268,17 +264,36 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
     }
 }
 
-static bool
-entities_unique(const uint8_t* rows, size_t stride, int count) {
-    for (int i = 0; i < count; i++) {
-        const uint16_t entity = asset_read_u16(rows + (i * stride));
-        for (int j = 0; j < i; j++) {
-            if (entity == asset_read_u16(rows + (j * stride))) {
-                return false;
-            }
-        }
+/* Row validation has already bounded each index. */
+static asset_status_t
+indices_unique(const uint8_t* rows, size_t stride, int count, uint16_t limit) {
+    enum { BITS_PER_BYTE = 8 };
+
+    if (count < 2) {
+        return ASSET_OK;
     }
-    return true;
+    if (count > limit) {
+        return ASSET_ERR_FORMAT;
+    }
+    const size_t bytes = ((size_t)limit + BITS_PER_BYTE - 1U) / BITS_PER_BYTE;
+    uint8_t* seen = memory_alloc(bytes, MEMORY_APP);
+    if (seen == NULL) {
+        return ASSET_ERR_FULL;
+    }
+    memset(seen, 0, bytes);
+    asset_status_t status = ASSET_OK;
+    for (int i = 0; i < count; i++) {
+        const uint16_t index = asset_read_u16(rows + (i * stride));
+        const uint8_t bit = 1U << (index % BITS_PER_BYTE);
+        uint8_t* byte = &seen[index / BITS_PER_BYTE];
+        if (*byte & bit) {
+            status = ASSET_ERR_FORMAT;
+            break;
+        }
+        *byte |= bit;
+    }
+    memory_free(seen);
+    return status;
 }
 
 static asset_status_t
@@ -291,14 +306,17 @@ check_rows(const scene_asset_t* scene) {
         }
         const uint8_t* rows;
         memcpy(&rows, (const uint8_t*)scene + layout->view, sizeof rows);
-        if ((part == SCENE_ASSET_LIGHTS || part == SCENE_ASSET_SKINS || part == SCENE_ASSET_ANIMATORS
-             || part == SCENE_ASSET_CONSTRAINTS || part == SCENE_ASSET_HINGES)
-            && !entities_unique(rows, layout->stride, count)) {
-            return ASSET_ERR_FORMAT;
-        }
         for (int i = 0; i < count; i++) {
             if (!row_fits(scene, part, rows + (i * layout->stride))) {
                 return ASSET_ERR_FORMAT;
+            }
+        }
+        if (part == SCENE_ASSET_LIGHTS || part == SCENE_ASSET_SKINS || part == SCENE_ASSET_ANIMATORS
+            || part == SCENE_ASSET_CONSTRAINTS || part == SCENE_ASSET_HINGES || part == SCENE_ASSET_BATCHES) {
+            const uint16_t limit = part == SCENE_ASSET_BATCHES ? scene->renderer_count : scene->entity_count;
+            const asset_status_t status = indices_unique(rows, layout->stride, count, limit);
+            if (status != ASSET_OK) {
+                return status;
             }
         }
     }
@@ -325,15 +343,34 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
         return ASSET_ERR_FORMAT;
     }
     scene_asset_t scene = {0};
+
+    struct {
+        uint32_t start;
+        uint64_t end;
+    } ranges[SCENE_ASSET_PART_COUNT];
+
+    int occupied = 0;
     for (int part = 0; part < SCENE_ASSET_PART_COUNT; part++) {
         const part_layout_t* layout = &LAYOUT[part];
         const void* rows = section(entry, part, layout->stride);
         if (rows == NULL) {
             return ASSET_ERR_BOUNDS;
         }
+        const uint16_t rows_count = count(entry, part);
+        if (rows_count != 0) {
+            const uint32_t start = (uint32_t)((const uint8_t*)rows - entry.data);
+            const uint64_t bytes = (uint64_t)rows_count * layout->stride;
+            const uint64_t end = start + ((bytes + ENTRY_ALIGNMENT - 1U) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT);
+            for (int i = 0; i < occupied; i++) {
+                if (start < ranges[i].end && ranges[i].start < end) {
+                    return ASSET_ERR_FORMAT;
+                }
+            }
+            ranges[occupied].start = start;
+            ranges[occupied++].end = end;
+        }
         memcpy((uint8_t*)&scene + layout->view, &rows, sizeof rows);
         if (layout->count != SIZE_MAX) {
-            const uint16_t rows_count = count(entry, part);
             memcpy((uint8_t*)&scene + layout->count, &rows_count, sizeof rows_count);
         }
     }

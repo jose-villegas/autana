@@ -63,6 +63,7 @@ typedef struct {
     uint8_t wrap, pad;
 } scene_asset_animator_t;
 
+/* Pin each mapped field's offset to scene_format.h. */
 #define SCNE_FIELD_AT(row, field, offset) (offsetof(row, field) == SCENE_ASSET_##offset)
 #define SCNE_CONSTRAINT_AT(field, offset) SCNE_FIELD_AT(scene_asset_constraint_t, field, CONSTRAINT_AT_##offset)
 #define SCNE_HINGE_AT(field, offset)      SCNE_FIELD_AT(scene_asset_hinge_t, field, HINGE_AT_##offset)

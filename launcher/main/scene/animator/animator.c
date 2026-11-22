@@ -50,9 +50,39 @@ allocate_animator(scene_animator_t* a, int clips, int curves) {
     return true;
 }
 
+static scene_failure_t
+claim_replacement(scene_t* claims, const scene_t* scene, const scene_animator_t* a, const char* const* ids, int count,
+                  scene_row_t owner, uint16_t* owned) {
+    const scene_animator_t* old = &scene->animators[owner];
+    if (old->storage != NULL && old->root == ANIM_ROOT_SCENE) {
+        for (int c = 0; c < old->layer.clip_count; c++) {
+            const scene_animator_clip_t* clip = &old->clips[c];
+            const scene_failure_t result = scene_animation_claim_clip(claims, &clip->tracks, clip->id, owner, owned);
+            if (result.status != SCENE_OK) {
+                return result;
+            }
+        }
+    }
+    for (int e = 0; e < scene->asset.entity_count; e++) {
+        claims->writes[e] = scene->writes[e] & (uint16_t)~owned[e];
+        owned[e] = 0;
+    }
+    if (a->root == ANIM_ROOT_SCENE) {
+        for (int c = 0; c < count; c++) {
+            anim_tracks_t tracks;
+            (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks);
+            const scene_failure_t result = scene_animation_claim_clip(claims, &tracks, ids[c], owner, owned);
+            if (result.status != SCENE_OK) {
+                return result;
+            }
+        }
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+}
+
 static asset_status_t
-bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curves, scene_row_t owner,
-           const char** failed) {
+bind_animator_storage(scene_t* scene, scene_animator_t* a, const char* const* ids, int curves, scene_row_t owner,
+                      const char** failed) {
     const animator_layout_t l = layout_for(a->layer.clip_count, curves, a->skeleton.joint_count);
     uint8_t* block = a->storage;
     scene_anim_targets_t targets = {0};
@@ -92,6 +122,40 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int curv
         first += a->counts[c];
     }
     memory_free(targets.block);
+    return result;
+}
+
+/* Keep the old writer claims until every replacement clip has bound. */
+static scene_failure_t
+bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int count, int curves, scene_row_t row,
+           const char* failed) {
+    const scene_animator_t* old = &scene->animators[row];
+    const bool needs_claims = a->root == ANIM_ROOT_SCENE || (old->storage != NULL && old->root == ANIM_ROOT_SCENE);
+    const size_t bytes = scene->asset.entity_count * sizeof *scene->writes;
+    uint16_t* writes = needs_claims ? memory_alloc(2 * bytes, MEMORY_APP) : NULL;
+    scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, failed);
+    if (needs_claims) {
+        if (writes == NULL) {
+            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
+        }
+        memset(writes, 0, 2 * bytes);
+        scene_t claims = {.asset = scene->asset, .writes = writes};
+        result = claim_replacement(&claims, scene, a, ids, count, row, writes + scene->asset.entity_count);
+    }
+    if (result.status == SCENE_OK) {
+        if (!allocate_animator(a, count, curves)) {
+            result = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
+        } else {
+            const asset_status_t status = bind_animator_storage(scene, a, ids, curves, row, &failed);
+            if (status != ASSET_OK) {
+                scene_free_kept(a->storage);
+                result = scene_failure_make(SCENE_ERR_ASSET, status, failed);
+            } else if (needs_claims) {
+                memcpy(scene->writes, writes, bytes);
+            }
+        }
+    }
+    memory_free(writes);
     return result;
 }
 
@@ -206,18 +270,17 @@ animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* 
     if (status != ASSET_OK) {
         return scene_report(why, SCENE_ERR_ASSET, status, failed);
     }
-    if (!allocate_animator(&a, count, curves)) {
-        return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, failed);
-    }
-    status = bind_clips(scene, &a, ids, curves, row, &failed);
-    if (status != ASSET_OK) {
-        scene_free_kept(a.storage);
-        return scene_report(why, SCENE_ERR_ASSET, status, failed);
+    const scene_animator_t* old = &scene->animators[row];
+    const scene_failure_t bound = bind_clips(scene, &a, ids, count, curves, row, failed);
+    if (bound.status != SCENE_OK) {
+        if (why != NULL) {
+            *why = bound;
+        }
+        return false;
     }
     if (a.root == ANIM_ROOT_SKELETON) {
         pose_at_rest(&a, skin);
     }
-    const scene_animator_t* old = &scene->animators[row];
     scene->skeleton_animator_count +=
         (a.root == ANIM_ROOT_SKELETON) - (old->storage != NULL && old->root == ANIM_ROOT_SKELETON);
     scene->animator_count += old->storage == NULL;
@@ -342,8 +405,7 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
     }
     scene_draw_camera_cut(scene, row);
     scene_animator_settle(a);
-    p->t_ms = t_ms;
-    p->fraction = 0;
+    scene_playhead_seek(p, t_ms);
     a->dirty = true;
     scene_animation_repose(scene, 0);
     return true;

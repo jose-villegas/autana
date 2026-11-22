@@ -401,12 +401,12 @@ wrap = "loop"
 
 The default wrap is `"clamp"`, which holds the clip's final frame.
 `"loop"` wraps to the first frame at the duration. A property animator
-and the timeline must write separate fields.
+and the timeline must write separate fields. Load fails naming
+`object.field` when both claim that field.
 
 ### Constraint and hinge
 
-Add these tables to an object. Scene load fails if either table contains
-a row until the runtime supports it.
+`scene_load()` refuses an entry with either table. The example gives the key spellings.
 
 ```toml
 [objects.constraint]

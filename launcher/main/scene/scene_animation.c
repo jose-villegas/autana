@@ -1,6 +1,7 @@
 /* Scene animation owns component bindings and buffers; entity and cluster jobs synchronize before bounds refit. */
 #include <assert.h>
 #include <stdalign.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks_format.h"
@@ -15,11 +16,14 @@
 
 scene_anim_targets_t
 scene_anim_targets(scene_t* scene, scene_row_t owner) {
+    enum { SCENE_ANIM_COMPONENTS_MAX = 2 };
+
     const int entities = scene->asset.entity_count;
     size_t end = 0;
     const size_t targets = mem_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
     const size_t components =
-        mem_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
+        mem_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * SCENE_ANIM_COMPONENTS_MAX,
+                  alignof(anim_component_ref_t));
     uint8_t* block = memory_alloc(end, MEMORY_APP);
     scene_anim_targets_t out = {.block = block, .count = entities};
     if (block == NULL) {
@@ -28,14 +32,17 @@ scene_anim_targets(scene_t* scene, scene_row_t owner) {
     out.targets = (anim_target_t*)(void*)(block + targets);
     anim_component_ref_t* refs = (anim_component_ref_t*)(void*)(block + components);
     for (int e = 0; e < entities; e++) {
-        anim_component_ref_t* fields = refs + (e * 2);
+        anim_component_ref_t* fields = refs + (e * SCENE_ANIM_COMPONENTS_MAX);
         fields[0] = (anim_component_ref_t){&ANIM_POSE_TRANSFORM_FIELDS, &scene->locals[e]};
         out.targets[e] = (anim_target_t){scene->asset.names[e].hash, fields, 1, &scene->flags[e], SCENE_FLAG_CHANGED};
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
-        refs[(e * 2) + 1] = (anim_component_ref_t){&LENS_FIELDS, &scene->cameras[c].lens};
-        out.targets[e].component_count = 2;
+        anim_target_t* target = &out.targets[e];
+        const int slot = SCENE_ANIM_COMPONENTS_MAX - 1;
+        assert(slot < SCENE_ANIM_COMPONENTS_MAX && slot <= target->component_count);
+        refs[(e * SCENE_ANIM_COMPONENTS_MAX) + slot] = (anim_component_ref_t){&LENS_FIELDS, &scene->cameras[c].lens};
+        target->component_count = slot + 1;
     }
     if (owner != SCENE_ROW_NONE) {
         const anim_target_t first = out.targets[0];
@@ -157,35 +164,111 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
 }
 
 bool
-scene_animation_field_has_writer(const scene_t* scene, const anim_bound_t* field) {
-    const scene_timeline_t* timeline = scene->timeline;
-    if (timeline != NULL) {
-        for (int i = 0; i < timeline->tracks.count; i++) {
-            if (&timeline->fields[i] != field && timeline->fields[i].target == field->target) {
-                return true;
-            }
+scene_field_claim(scene_t* scene, scene_row_t entity, scene_field_bit_t field) {
+    assert(entity < scene->asset.entity_count);
+    if (scene->writes[entity] & field) {
+        return false;
+    }
+    scene->writes[entity] |= (uint16_t)field;
+    return true;
+}
+
+static scene_row_t
+binding_entity(const scene_asset_t* asset, const anim_binding_t* binding, scene_row_t owner) {
+    if (strcmp(binding->path, ANIM_TARGET_SELF) == 0) {
+        return owner;
+    }
+    for (scene_row_t i = 0; i < asset->entity_count; i++) {
+        scene_row_t entity = i;
+        if (owner != SCENE_ROW_NONE) {
+            entity = i == 0 ? owner : i == owner ? 0 : i;
+        }
+        if (asset->names[entity].hash == binding->path_hash) {
+            return entity;
         }
     }
-    for (int i = 0; i < scene->staged_count; i++) {
-        const scene_animator_t* a = &scene->animators[scene->staged[i]];
-        if (a->storage == NULL || a->root != ANIM_ROOT_SCENE) {
-            continue;
-        }
-        for (int c = 0; c < a->layer.clip_count; c++) {
-            const scene_animator_clip_t* clip = &a->clips[c];
-            for (int f = 0; f < clip->tracks.count; f++) {
-                if (clip->fields[f].target == field->target) {
-                    return true;
-                }
-            }
+    return SCENE_ROW_NONE;
+}
+
+static scene_field_bit_t
+binding_bit(const scene_asset_t* asset, scene_row_t entity, const anim_binding_t* binding) {
+    transformf_t transform;
+    lens_t lens;
+    const anim_component_ref_t components[] = {{&ANIM_POSE_TRANSFORM_FIELDS, &transform}, {&LENS_FIELDS, &lens}};
+    int count = 1;
+    for (int c = 0; c < asset->camera_count; c++) {
+        if (asset->cameras[c].entity == entity) {
+            count = sizeof components / sizeof *components;
+            break;
         }
     }
-    return false;
+    anim_bound_t bound;
+    if (anim_bind_field(binding, components, count, NULL, 0, &bound) != ANIM_BIND_OK) {
+        return 0;
+    }
+
+    const struct {
+        void* target;
+        scene_field_bit_t bit;
+    } fields[] = {{&transform.position, SCENE_FIELD_POSITION},
+                  {&transform.rotation, SCENE_FIELD_ROTATION},
+                  {&transform.scale, SCENE_FIELD_SCALE},
+                  {&lens.half_fov_short_tan, SCENE_FIELD_HALF_FOV_SHORT_TAN},
+                  {&lens.near_z, SCENE_FIELD_NEAR_Z}};
+
+    for (size_t f = 0; f < sizeof fields / sizeof *fields; f++) {
+        if (fields[f].target == bound.target) {
+            return fields[f].bit;
+        }
+    }
+    return 0;
+}
+
+static bool
+lens_keys_fit(const anim_track_t* curve) {
+    for (int key = 0; key < curve->count; key++) {
+        float value[ANIM_WIDTH_MAX];
+        anim_track_sample(curve, curve->times[key], value);
+        if (!lens_value_fits(value[0])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+scene_failure_t
+scene_animation_claim_clip(scene_t* scene, const anim_tracks_t* tracks, const char* clip, scene_row_t owner,
+                           uint16_t* owned) {
+    for (int i = 0; i < tracks->count; i++) {
+        anim_binding_t binding;
+        (void)anim_tracks_binding_at(tracks, i, &binding);
+        const scene_row_t entity = binding_entity(&scene->asset, &binding, owner);
+        const scene_field_bit_t bit = entity == SCENE_ROW_NONE ? 0 : binding_bit(&scene->asset, entity, &binding);
+        if (bit == 0) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
+        }
+        if ((binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
+            || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(scene, entity, bit))) {
+            scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
+            (void)snprintf(failure.what, sizeof failure.what, "%s.%s", scene->asset.names[entity].name, binding.field);
+            return failure;
+        }
+        if (owned != NULL) {
+            owned[entity] |= (uint16_t)bit;
+        }
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, clip);
 }
 
 void
-scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, const anim_playhead_t* clock) {
-    anim_apply(fields, count, anim_playhead_seconds(clock));
+scene_playhead_seek(anim_playhead_t* playhead, uint32_t t_ms) {
+    playhead->t_ms = t_ms;
+    playhead->fraction = 0;
+}
+
+void
+scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, float seconds) {
+    anim_apply(fields, count, seconds);
     for (int i = 0; i < count; i++) {
         const ptrdiff_t entity = fields[i].dirty - scene->flags;
         scene->locals[entity].cached = false;
@@ -199,7 +282,7 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
-    scene_animation_apply_fields(scene, clip->fields, clip->tracks.count, &slot->playhead);
+    scene_animation_apply_fields(scene, clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead));
 }
 
 static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {

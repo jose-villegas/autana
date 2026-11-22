@@ -40,6 +40,7 @@ static const struct {
 } PARTS[] = {PART(renderers, PER_RENDERER),
              PART(cameras, PER_CAMERA),
              PART(flags, PER_ENTITY),
+             PART(writes, PER_ENTITY),
              PART(locals, PER_ENTITY),
              PART(world_slots, PER_ENTITY),
              PART(animators, PER_ENTITY),
@@ -53,7 +54,7 @@ static const struct {
  * points them into `scene`'s block; a NULL scene only measures. Returns the
  * block's size. */
 static size_t
-place(const scene_asset_t* asset, size_t timeline_fields, scene_t* scene) {
+place(const scene_asset_t* asset, scene_t* scene) {
     const size_t counts[PER_COUNT] = {[PER_RENDERER] = (size_t)asset->renderer_count + asset->skinned_renderer_count,
                                       [PER_CAMERA] = asset->camera_count,
                                       [PER_ENTITY] = asset->entity_count,
@@ -64,13 +65,6 @@ place(const scene_asset_t* asset, size_t timeline_fields, scene_t* scene) {
         if (scene != NULL) {
             void* array = (uint8_t*)scene + at;
             memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
-        }
-    }
-    if (asset->timeline_count != 0) {
-        const size_t at = mem_carve(&end, sizeof(scene_timeline_t) + timeline_fields * sizeof(anim_bound_t),
-                                    alignof(scene_timeline_t));
-        if (scene != NULL) {
-            scene->timeline = (scene_timeline_t*)(void*)((uint8_t*)scene + at);
         }
     }
     return end;
@@ -126,7 +120,12 @@ scene_set_take(memory_take_fn take) {
 
 static scene_t*
 instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline) {
-    const size_t total = place(asset, timeline->count, NULL);
+    size_t total = place(asset, NULL);
+    size_t timeline_at = 0;
+    if (asset->timeline_count != 0) {
+        timeline_at = mem_carve(&total, sizeof(scene_timeline_t) + timeline->count * sizeof(anim_bound_t),
+                                alignof(scene_timeline_t));
+    }
     uint8_t* block = scene_allocate_kept(total);
     if (block == NULL) {
         return NULL;
@@ -134,9 +133,11 @@ instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline) {
     memset(block, 0, total);
     scene_t* scene = (scene_t*)(void*)block;
     scene->asset = *asset;
+    scene->block_bytes = total;
     scene->renderer_count = asset->renderer_count + asset->skinned_renderer_count;
-    (void)place(asset, timeline->count, scene);
-    if (scene->timeline != NULL) {
+    (void)place(asset, scene);
+    if (asset->timeline_count != 0) {
+        scene->timeline = (scene_timeline_t*)(void*)(block + timeline_at);
         scene->timeline->tracks = *timeline;
         anim_playhead_init(&scene->timeline->clock, (anim_wrap_t)asset->timeline->wrap);
         scene->timeline->clock.paused = true;
@@ -323,10 +324,10 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
 }
 
 static const char*
-skeleton_for(const scene_t* scene, scene_row_t entity) {
-    for (int i = 0; i < scene->asset.skinned_renderer_count; i++) {
-        if (scene->asset.skinned_renderers[i].entity == entity) {
-            return scene->asset.skinned_renderers[i].skeleton;
+skeleton_for(const scene_asset_t* asset, scene_row_t entity) {
+    for (int i = 0; i < asset->skinned_renderer_count; i++) {
+        if (asset->skinned_renderers[i].entity == entity) {
+            return asset->skinned_renderers[i].skeleton;
         }
     }
     return NULL;
@@ -337,7 +338,7 @@ open_animator(scene_t* scene, const scene_asset_animator_t* row) {
     if (row->clip_count > ANIM_LAYER_CLIP_NONE) {
         return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->root->id);
     }
-    const char* skeleton = skeleton_for(scene, row->entity);
+    const char* skeleton = skeleton_for(&scene->asset, row->entity);
     if (row->clip_count == 0 && skeleton == NULL) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
@@ -445,7 +446,7 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
         status = scene_asset_open(entry, asset);
     }
     if (status == ASSET_OK && (asset->constraint_count != 0 || asset->hinge_count != 0)) {
-        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT,
+        return scene_failure_make(SCENE_ERR_UNSUPPORTED, ASSET_OK,
                                   asset->constraint_count != 0 ? "constraint" : "hinge");
     }
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
@@ -465,6 +466,45 @@ free_columns(scene_t* scene) {
     scene_free_kept(scene);
 }
 
+/* A lender cannot reclaim refused scene blocks, so check writers with scratch rows first. */
+static scene_failure_t
+check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_tracks_t* timeline, const char* id) {
+    scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, id);
+    const size_t bytes = asset->entity_count * sizeof(uint16_t);
+    if (bytes == 0 || (asset->animator_count == 0 && timeline->count == 0)) {
+        return result;
+    }
+    uint16_t* scratch = memory_alloc(2 * bytes, MEMORY_APP);
+    if (scratch == NULL) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
+    }
+    memset(scratch, 0, 2 * bytes);
+    scene_t claims = {.asset = *asset, .writes = scratch};
+    if (timeline->count != 0) {
+        result = scene_animation_claim_clip(&claims, timeline, asset->timeline->clip, SCENE_ROW_NONE, NULL);
+    }
+    uint16_t* owned = scratch + asset->entity_count;
+    for (int a = 0; result.status == SCENE_OK && a < asset->animator_count; a++) {
+        const scene_asset_animator_t* row = &asset->animators[a];
+        if (skeleton_for(asset, row->entity) != NULL) {
+            continue;
+        }
+        memset(owned, 0, bytes);
+        for (int c = 0; result.status == SCENE_OK && c < row->clip_count; c++) {
+            const char* clip = asset->clips[row->first_clip + c];
+            anim_tracks_t tracks;
+            const asset_status_t status = anim_tracks_from_pack(pack, clip, &tracks);
+            if (status != ASSET_OK || tracks.root != ANIM_ROOT_SCENE) {
+                result = scene_failure_make(SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_FORMAT : status, clip);
+            } else {
+                result = scene_animation_claim_clip(&claims, &tracks, clip, row->entity, owned);
+            }
+        }
+    }
+    memory_free(scratch);
+    return result;
+}
+
 /* The record's columns and rows from the scene entry in `pack`. Its own
  * frame: the entry's view is gone before the meshes open. */
 static __attribute__((noinline)) scene_failure_t
@@ -480,6 +520,12 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
         const asset_status_t status = anim_tracks_from_pack(pack, clip, &timeline);
         if (status != ASSET_OK || timeline.root != ANIM_ROOT_SCENE) {
             return scene_failure_make(SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_FORMAT : status, clip);
+        }
+    }
+    if (kept_take != NULL) {
+        const scene_failure_t writers = check_writers(&asset, pack, &timeline, record->id);
+        if (writers.status != SCENE_OK) {
+            return writers;
         }
     }
     if (!scene_world_issue_rows(record, asset.entity_count)) {
@@ -795,8 +841,7 @@ scene_transform_is_identity(const mat4f_t* transform) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
 scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
-    checkpoint_capture(saved, scene,
-                       place(&scene->asset, scene->timeline == NULL ? 0 : scene->timeline->tracks.count, NULL));
+    checkpoint_capture(saved, scene, scene->block_bytes);
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
     checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
