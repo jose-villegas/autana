@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Path trace a scene with a posed glTF skin, writing RGB, linear RGB and skin coverage."""
+"""Path trace a scene with posed glTF skins, writing RGB, linear RGB and skin coverage."""
 import argparse
 import json
 import pathlib
@@ -25,6 +25,7 @@ REFERENCE_PICTURE = "reference.png"
 REFERENCE_LINEAR = "reference.linear.npy"
 SKIN_COVERAGE = "skin.mask.npy"
 SKIN_COVERAGE_PICTURE = "skin.mask.png"
+PER_SKIN_COVERAGE = "skins.mask.npy"
 
 
 def posed_skin(asset, clip, time, at, heading_deg, scale, white=False, world=None):
@@ -55,18 +56,17 @@ def skin_shape(mi, world, colors, triangles):
 
 
 def pose_frame(frames, index=None, entity=None):
-    """Select an exported frame and one complete, unblended skin pose."""
+    """Select an exported frame and mirror all matching, fully blended skins."""
     frame = frames[-1] if index is None else next(item for item in frames if item["frame"] == index)
     skins = [skin for skin in frame["skins"] if entity is None or skin["name"] == entity]
-    if len(skins) != 1:
-        raise ValueError("pose JSON needs exactly one selected skin; use --entity")
-    skin = skins[0]
-    if skin["blend"] != 1 or skin.get("frozen_previous", False):
+    if not skins:
+        raise ValueError("pose JSON has no matching skin")
+    if any(skin["blend"] != 1 or skin.get("frozen_previous", False) for skin in skins):
         raise ValueError("reference requires a complete blend with no frozen previous pose")
     camera = frame["camera"]
     if camera is None:
         raise ValueError("pose JSON has no active camera")
-    return ({**skin, "world": source_frame(skin["world"])},
+    return ([{**skin, "world": source_frame(skin["world"])} for skin in skins],
             {**camera, "world": source_frame(camera["world"])})
 
 
@@ -98,22 +98,25 @@ def trace_camera(mi, scene, camera, size, spp, max_depth=mr.DEFAULT_DEPTH):
 
 
 def render(args):
-    """Render the placed skin with the scene, and its isolated coverage."""
+    """Render the placed skins with the scene, then trace their isolated coverage."""
     scene = load_scene(args.scene)
     source, job = source_for(scene, args.object, lit=False)
     mi = mr.import_mitsuba()
     if mi is None:
         raise RuntimeError("skin_reference requires Mitsuba")
     mi.set_variant(args.variant or mr.default_variant(mi))
-    skin = camera = None
+    camera = None
     if args.pose_json is not None:
-        skin, camera = pose_frame(json.loads(args.pose_json.read_text()), args.frame, args.entity)
-        args.clip, args.time = skin["clip"], skin["time"]
-    world, colors, triangles = posed_skin(SkinnedAsset(*load_asset(args.glb)), args.clip, args.time,
-                                          args.at, args.heading_deg, args.scale, args.white,
-                                          world=skin["world"] if skin is not None else None)
-    mesh = skin_shape(mi, world, colors, triangles)
-    full = {"type": "scene", "skin": mesh}
+        skins, camera = pose_frame(json.loads(args.pose_json.read_text()), args.frame, args.entity)
+    else:
+        skins = [{"clip": args.clip, "time": args.time, "world": None}]
+    asset = SkinnedAsset(*load_asset(args.glb))
+    meshes = {}
+    for index, skin in enumerate(skins, 1):
+        positions, colors, triangles = posed_skin(asset, skin["clip"], skin["time"], args.at,
+                                                  args.heading_deg, args.scale, args.white, world=skin["world"])
+        meshes[f"skin_{index}"] = skin_shape(mi, positions, colors, triangles)
+    full = {"type": "scene", **meshes}
     full.update(mr.source_meshes(mi, source, job.settings.double_sided))
     full.update(mr.emitters(mi, [light for light in scene.lights if light["type"] != "ambient"]))
     if camera is None:
@@ -128,8 +131,16 @@ def render(args):
     np.save(args.out / REFERENCE_LINEAR, linear)
     Image.fromarray(device_picture(linear, covered, scene.tonemap_white,
                                    scene.camera.component.background)).save(args.out / REFERENCE_PICTURE)
-    alone = mi.load_dict({"type": "scene", "skin": mesh})
-    _, coverage = trace_camera(mi, alone, camera, args.size, MASK_SPP, max_depth=MASK_DEPTH)
+    masks = []
+    for name, mesh in meshes.items():
+        alone = mi.load_dict({"type": "scene", name: mesh})
+        _, mask = trace_camera(mi, alone, camera, args.size, MASK_SPP, max_depth=MASK_DEPTH)
+        masks.append(mask)
+    coverage = masks[0]
+    if len(masks) > 1:
+        union = mi.load_dict({"type": "scene", **meshes})
+        _, coverage = trace_camera(mi, union, camera, args.size, MASK_SPP, max_depth=MASK_DEPTH)
+    np.save(args.out / PER_SKIN_COVERAGE, np.stack(masks))
     np.save(args.out / SKIN_COVERAGE, coverage)
     Image.fromarray(np.round(coverage * BYTE_MAX).astype(np.uint8)).save(args.out / SKIN_COVERAGE_PICTURE)
 

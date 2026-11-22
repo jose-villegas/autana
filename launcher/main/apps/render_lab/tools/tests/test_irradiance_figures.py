@@ -15,6 +15,8 @@ class IrradianceFiguresTests(unittest.TestCase):
     def test_stills_select_complete_exported_frames(self):
         frames = [{"frame": index, "camera": {"world": np.eye(4).tolist(), "lens": 1, "near": 0.1},
                    "skins": [{"name": "skin", "clip": "move", "time": index / 10,
+                              "blend": 1, "frozen_previous": False, "world": np.eye(4).tolist()},
+                             {"name": "skin", "clip": "move", "time": index / 10,
                               "blend": blend, "frozen_previous": False, "world": np.eye(4).tolist()}]}
                   for index, blend in enumerate((1, 0.5, 1, 1))]
         with tempfile.TemporaryDirectory() as directory:
@@ -23,8 +25,9 @@ class IrradianceFiguresTests(unittest.TestCase):
             poses.write_text(json.dumps(frames))
             pictures = [np.full((8, 8, 3), index, np.uint8) for index in range(len(frames))]
             with mock.patch.object(figures, "read_video", return_value=(10, iter(pictures))):
-                folders = figures.matched_stills(work / "clip.avi", poses, [100, 300], 100, "skin", work)
-            for folder, index in zip(folders, (0, 3)):
+                folders = figures.matched_stills(work / "clip.avi", poses, [100, 200, 300], 100, "skin", work)
+            self.assertEqual(len(folders), 3)
+            for folder, index in zip(folders, (0, 2, 3)):
                 self.assertEqual(json.loads((folder / "pose.json").read_text())[0], frames[index])
                 with figures.Image.open(folder / "ours.bmp") as image:
                     self.assertEqual(image.getpixel((0, 0)), (index,) * 3)
