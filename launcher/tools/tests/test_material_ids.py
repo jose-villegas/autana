@@ -123,16 +123,18 @@ class MaterialIdsTests(unittest.TestCase):
 
     def test_diff_classes_and_csv_cover_every_pixel(self):
         module = material_ids
-        ref = np.array([[-1, 0, 1, 1], [0, 0, -1, -1]])
-        drawn = np.array([[-1, 0, 1, -1], [0, 1, 1, -1]])
-        textured = np.array([[False, True, False, False], [False, False, False, False]])
-        classes = module.diff_classes(ref, drawn, textured, [True, False])
-        np.testing.assert_array_equal(classes, [[module.BOTH_EMPTY, module.AGREE_TEXTURED, module.AGREE_PLAIN, module.REFERENCE_ONLY],
-                                               [module.MISS, module.WRONG_MATERIAL, module.DRAWN_ONLY, module.BOTH_EMPTY]])
+        ref = np.array([[0, 0, 1, 0, 1, 0, -1, -1]])
+        drawn = np.array([[0, 0, 1, -1, 0, 0, 1, -1]])
+        textured = np.array([[True, False, False, False, False, False, False, False]])
+        empty = module.exclusion_ids(surfaces(), [ref], [ref], [])[0]
+        classes = module.diff_classes(ref, drawn, textured, [True, False], empty)
+        np.testing.assert_array_equal(classes, [[module.AGREE_TEXTURED, module.MISS, module.AGREE_PLAIN,
+                                                module.REFERENCE_ONLY, module.WRONG_MATERIAL, module.MISS,
+                                                module.DRAWN_ONLY, module.BOTH_EMPTY]])
         rows = module.material_table([ref], [drawn], [classes], ['pattern', 'plain'])
         self.assertEqual(rows[2]['drawn_only'], 1)
-        self.assertEqual(rows[0]['both_empty'], 2)
-        self.assertEqual(sum(sum(row[name] for name in module.CLASS_NAMES) for row in rows), ref.size)
+        self.assertEqual(rows[0]['both_empty'], 1)
+        self.assertEqual([sum(row[name] for row in rows) for name in module.CLASS_NAMES], [1, 1, 1, 2, 1, 1, 1, 0])
 
     @needs_llvm
     def test_placed_entry_and_reference_agree_through_an_asymmetric_rotation(self):
@@ -212,7 +214,7 @@ class MaterialIdsTests(unittest.TestCase):
                                               material_ids.BOTH_EMPTY]])
         self.assertEqual(material_ids.material_confusions([ref], drawn[:1], [after]), [])
 
-    def test_bundle_coverage_counts_uncaptured_rest_copies_and_cards(self):
+    def test_drawn_card_uses_embedded_luvs_and_bundle_coverage_counts_uncaptured_meshes(self):
         from r3d import lcol_asset
         from r3d.texture import texture_asset
         from test_texture_asset import fake_scene, SIZE
@@ -240,18 +242,21 @@ class MaterialIdsTests(unittest.TestCase):
         entries.extend([(uv_transfer.name_for_mesh('card'), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)),
                         (uv_transfer.texture_name('card', 0), texture_asset.TYPE, texture_asset.pack_ltex(texture))])
         bundle.write_bytes(mesh_bundle.encode(entries, copies))
-        metadata['entries'] = [dict(row, entry='copy', position=[2, 0, 0],
+        metadata['entries'] = [dict(row, entry='card', position=[4, 0, 0],
                                     bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest())
                                for row in metadata['entries'] if row['first_id'] == 1]
         (root / 'entries.json').write_text(json.dumps(metadata))
         for frame in range(2):
-            np.zeros(3, dtype='<u4').tofile(root / f'{frame:04d}.ids')
+            np.array([1, 0, 0], dtype='<u4').tofile(root / f'{frame:04d}.ids')
         owners = set()
         with mock.patch.object(uv_transfer, 'material_search', wraps=uv_transfer.material_search) as search, \
                 mock.patch.object(uv_transfer, 'nearest_materials', wraps=uv_transfer.nearest_materials) as mapping:
-            material_ids.drawn_ids(root, bundle, source, drawn_objects=owners)
+            drawn, textured = material_ids.drawn_ids(root, bundle, source, drawn_objects=owners)
         self.assertEqual((search.call_count, mapping.call_count), (1, 3))
         self.assertEqual(owners, {0, 1, 2})
+        self.assertEqual(luvs.codes[0], 1)
+        diff = material_ids.diff_classes(drawn[0], drawn[0], textured[0], [True, False])
+        self.assertEqual(diff[0, 0], material_ids.AGREE_TEXTURED)
 
     def test_excluding_material_preserves_classes_on_other_pixels(self):
         module = material_ids
@@ -264,19 +269,6 @@ class MaterialIdsTests(unittest.TestCase):
         after = module.diff_classes(ref, drawn, pattern, [False, True], excluded)
         np.testing.assert_array_equal(after[:, 1:], before[:, 1:])
         self.assertEqual(after[0, 0], module.EXCLUDED)
-
-    def test_no_selectors_preserve_classes_and_counts(self):
-        module = material_ids
-        frame = np.array([[-1, 0, 0, 0, 1, 1, -1]])
-        drawn = np.array([[-1, 0, 0, -1, 0, 1, 1]])
-        pattern = np.array([[False, True, False, False, False, False, False]])
-        selector_ids = module.exclusion_ids(surfaces(), [frame], [frame], [])[0]
-        actual = module.diff_classes(frame, drawn, pattern, [True, False], selector_ids)
-        expected = [module.BOTH_EMPTY, module.AGREE_TEXTURED, module.MISS, module.REFERENCE_ONLY,
-                    module.WRONG_MATERIAL, module.AGREE_PLAIN, module.DRAWN_ONLY]
-        np.testing.assert_array_equal(actual, [expected])
-        totals = module.material_table([frame], [drawn], [actual], ['pattern', 'plain'])
-        self.assertEqual([sum(row[name] for row in totals) for name in module.CLASS_NAMES], [1] * 7 + [0])
 
     @needs_llvm
     def test_sheet_and_csvs_record_ordered_selectors_and_first_match(self):
@@ -384,6 +376,23 @@ class MaterialIdsTests(unittest.TestCase):
         np.testing.assert_array_equal(ref[0], [[names.index('front')]])
         np.testing.assert_array_equal(ref[0], drawn[0])
 
+    def test_material_comparison_rejects_reference_lens_mismatch(self):
+        scene, poses, root = self.comparison_files()
+        poses.write_text(poses.read_text().replace('lens 0.5', 'lens 1.0'))
+        with (mock.patch('r3d.ray_query.RayQuery'), mock.patch.object(material_ids, 'source_ids', return_value=([], [])),
+              self.assertRaisesRegex(ValueError, r'lens.*0\.5.*1\.0')):
+            render_compare.material_id_inputs(scene, 'painted', poses, root)
+
+    def test_invalid_selector_fails_before_loading_material_inputs(self):
+        argv = ['render_compare.py', '--material-ids', 'scene', 'object', 'poses', 'ids',
+                '--out', 'sheet.png', '--exclude', 'thin=abc']
+        with (mock.patch.object(sys, 'argv', argv), mock.patch.object(render_compare, 'material_id_inputs') as load,
+              mock.patch('sys.stderr') as error, self.assertRaises(SystemExit) as raised):
+            render_compare.main()
+        load.assert_not_called()
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn('argument --exclude:', error.write.call_args.args[0])
+
     def test_drawn_ids_refuse_same_count_bundle_and_texture_mismatches(self):
         root, bundle, source, mesh, _metadata = self.capture()
         different = root / 'different.bundle'
@@ -421,45 +430,45 @@ class MaterialIdsTests(unittest.TestCase):
         root, bundle, source, _mesh, _metadata = self.capture(('copy', 'copy'))
         with mock.patch.object(uv_transfer, 'triangle_search', wraps=uv_transfer.triangle_search) as search, \
                 mock.patch.object(uv_transfer, 'nearest_materials', wraps=uv_transfer.nearest_materials) as mapping, \
-                mock.patch.object(material_ids, 'read_bundle_mesh', wraps=read_bundle_mesh) as read_mesh:
+                mock.patch('r3d.lit_mesh.read_bundle_mesh', wraps=read_bundle_mesh) as read_mesh:
             material_ids.drawn_ids(root, bundle, source)
         self.assertEqual((search.call_count, mapping.call_count, read_mesh.call_count), (1, 2, 1))
 
-    def test_material_crops_include_reference_only_pixels(self):
+    def test_material_crops_include_reference_only_pixels_and_disappear_when_excluded(self):
         ref = np.zeros((2, 4), dtype=np.int32)
         own = np.full_like(ref, material_ids.EMPTY)
-        with tempfile.TemporaryDirectory() as directory:
-            out = pathlib.Path(directory) / 'holes.png'
-            render_compare.material_id_sheet([ref], [own], [np.zeros_like(ref, bool)], ['plain'], [False],
-                                              out, crops=1)
-            self.assertTrue(out.with_suffix('.crops.png').is_file())
+        out = self.temporary_root() / 'holes.png'
+        args = ([ref], [own], [np.zeros_like(ref, bool)], ['plain'], [False], out)
+        render_compare.material_id_sheet(*args, crops=1)
+        self.assertTrue(out.with_suffix('.crops.png').is_file())
+        selectors = [(material_ids.EXCLUDE_MATERIAL, 'plain')]
+        excluded = material_ids.exclusion_ids(SimpleNamespace(names=['plain']), [ref], [ref], selectors)
+        render_compare.material_id_sheet(*args, crops=1, selectors=selectors, exclusions=(excluded, ()))
+        self.assertFalse(out.with_suffix('.crops.png').exists())
 
-    def test_material_comparison_rejects_missing_shown_reference(self):
+    def test_material_views_rank_reference_only_ahead_of_single_wrong_material(self):
+        ref = np.zeros((1, 2), dtype=np.int32)
         root = self.temporary_root()
-        reference = root / 'reference'
-        reference.mkdir()
-        Image.new('RGB', (1, 1)).save(reference / '0000.png')
+        Image.new('RGB', (2, 1)).save(root / '0001.png')
         out = root / 'sheet.png'
-        frame = np.zeros((1, 1), dtype=np.int32)
-        pattern = np.zeros_like(frame, bool)
-        inputs = ([frame, frame], [frame, frame], [pattern, pattern], ['plain'], [False], (None, []))
+        inputs = ([ref, ref], [np.array([[0, 1]]), np.full_like(ref, material_ids.EMPTY)],
+                  [np.zeros_like(ref, bool)] * 2, ['plain', 'other'], [False, False], (None, ()))
         argv = ['render_compare.py', '--material-ids', 'scene', 'object', 'poses', 'ids',
-                '--out', str(out), '--reference', str(reference), '--views', '2', '--crops', '1']
+                '--out', str(out), '--reference', str(root), '--views', '1']
         with (mock.patch.object(sys, 'argv', argv),
-              mock.patch.object(render_compare, 'material_id_inputs', return_value=inputs),
-              self.assertRaises(ValueError) as raised):
+              mock.patch.object(render_compare, 'material_id_inputs', return_value=inputs)):
             render_compare.main()
-        self.assertIn('frame 1', str(raised.exception))
-        self.assertIn(str(reference / '0001.png'), str(raised.exception))
-        self.assertEqual(list(root.iterdir()), [reference])
+            self.assertTrue(out.is_file())
+            before = list(root.iterdir())
+            argv[-1] = '2'
+            with self.assertRaisesRegex(ValueError, 'missing reference image for frame 0: .*0000.png'):
+                render_compare.main()
+            self.assertEqual(list(root.iterdir()), before)
 
     def test_drawn_ids_refuse_invalid_ranges_and_frames(self):
         root, bundle, source, _mesh, metadata = self.capture()
         entries = root / 'entries.json'
-        try:
-            drawn, _ = material_ids.drawn_ids(root, bundle, source)
-        except ValueError as error:
-            self.fail(f"valid contiguous ranges were rejected: {error}")
+        drawn, _ = material_ids.drawn_ids(root, bundle, source)
         self.assertEqual(len(drawn), 2)
         np.zeros(3, dtype='<u4').tofile(root / '0000.ids')
         for change, reason in ((dict(first_id=1), 'overlap'), (dict(first_id=3), 'gap'),

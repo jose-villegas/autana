@@ -1,13 +1,7 @@
-"""A render scored against reference frames must stand where they were traced.
+"""Check render harness camera logs against the corresponding reference poses.
 
-render_compare.sh keeps beside each traced reference set the poses its frames
-were traced at (REFERENCE_POSES, a tools/anim/track_host.py poses file, frame i
-at pose i). The render harness writes the pose of every frame it saves to a
-video beside that video (VIDEO + VIDEO_POSES_SUFFIX, render_host.c: the active
-camera's engine position and rotation). checker() refuses a scored frame that
-has no row or stands anywhere else than its reference frame, so a figure drawn
-from the wrong camera (#1597) fails rather than publishing its error as the
-bake's.
+Each render log row gives a camera position and rotation. The reference poses give a
+position and look direction per frame and the projection lens for the reference set.
 """
 import csv
 import json
@@ -96,10 +90,10 @@ def capture_views(path, size=None):
     return result
 
 
-def checker(video, reference_dir, poses_path=None):
+def checker(video, reference_dir, poses_path=None, *, lens=None):
     """A check(frame, index) that raises ValueError unless frame `frame` of
     `video` stands at the pose frame `index` of `reference_dir` was traced at,
-    or None when the reference set records no poses."""
+    or None when the reference set records no poses. If given, lens must match."""
     recorded = pathlib.Path(poses_path) if poses_path is not None else pathlib.Path(reference_dir) / REFERENCE_POSES
     if not recorded.is_file():
         return None
@@ -107,7 +101,9 @@ def checker(video, reference_dir, poses_path=None):
     if drawn is None:
         raise ValueError(f"{video}: no {VIDEO_POSES_SUFFIX} beside it, so it cannot be scored against "
                          f"{reference_dir}, whose frames record their poses: render it through the render harness")
-    traced = read_poses(recorded)[4]
+    _, _, reference_lens, _, traced = read_poses(recorded)
+    if lens is not None and not np.isclose(lens, reference_lens):
+        raise ValueError(f"{video}: capture lens {lens} differs from reference lens {reference_lens} in {recorded}")
 
     def check(frame, index):
         if frame not in drawn:

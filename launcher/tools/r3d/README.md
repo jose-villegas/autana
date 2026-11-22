@@ -187,12 +187,16 @@ It prints a table sorted by mean ΔE.
 
 ### Material ID differences
 
-From `launcher/`, compare a triangle ID capture against the full source.
-Use the capture's ID directory and the matching reference pose file.
+Compare a triangle ID capture against the full source from `launcher/`.
+`POSES` must match the capture's camera positions, directions and lens.
 
 ```sh
+render_host --scene ID --object OBJECT --view triangles --ids IDS_DIR -o frame.bmp
 $PY tools/render/render_compare.py --material-ids SCENE.scene.toml OBJECT POSES IDS_DIR --out sheet.png
 ```
+
+Capture a frame per pose with `--camera-poses POSES`. Add shaded PNGs with `--reference DIR`,
+select the worst N frames with `--views N`, or show up to N crop clusters per view with `--crops N`.
 
 Add any combination of these options. Each can be repeated, and the first
 match in argument order owns the pixel.
@@ -201,7 +205,7 @@ match in argument order owns the pixel.
 | --- | --- |
 | `--exclude-material GLOB` | Source material name matches the glob. |
 | `--exclude-object GLOB` | Source object name matches the glob. |
-| `--exclude alpha-tested` | Source material has an alpha mask. |
+| `--exclude alpha-tested` | Source material is alpha-tested (its texture cuts texels away). |
 | `--exclude thin=T` | Source object's total triangle area divided by its bounding-box diagonal is below `T` in source units. |
 | `--exclude not-drawn` | No triangle in a rest mesh, placed copy or card maps to the source object by nearest source triangle. |
 

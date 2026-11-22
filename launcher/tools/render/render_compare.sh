@@ -56,18 +56,8 @@
 # --reference-frames with --reference and --poses alone makes (or finds) that
 # cache and prints its directory, for a caller that scores the frames itself.
 #
-# Source material attribution is a capture followed by a sheet:
 #   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
-#   python launcher/tools/render/render_compare.py --material-ids SCENE OBJECT POSES DIR --out sheet.png
-# DIR/NNNN.ids is top-first little-endian u32 at attachment resolution,
-# always upright. entries.json records its size, viewport, entry ranges and bake digests.
-# The capture also writes DIR/capture.poses.csv. POSES is the reference set's
-# pose file; every captured frame must match its corresponding reference pose.
-# For probes, add --camera-poses POSES to the capture: each pose is one frame,
-# with the file's lens and the host's render size. --poses remains an output log.
-# --reference DIR adds shaded PNGs; --views N selects the worst frames and
-# --crops N writes their disagreement crops. sheet.csv counts every frame;
-# sheet.confusions.csv counts the wrong-material pairs.
+# See ../r3d/README.md#material-id-differences.
 #
 # POSIX sh, like the rest of this directory.
 
