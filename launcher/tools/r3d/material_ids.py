@@ -63,6 +63,7 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None):
         material = np.full(ids.shape, EMPTY, dtype=np.int32)
         pattern = np.zeros(ids.shape, dtype=bool)
         covered = ids == 0
+        next_id = 1
         for row in metadata['entries']:
             if row['frame'] != frame:
                 continue
@@ -73,9 +74,13 @@ def drawn_ids(ids_dir, bundle_path, source, placement=None, texture_pack=None):
             _near, source_material, _facing, *_geometry = uv_transfer.nearest_materials(points, mesh.tris, source)
             if row['triangle_count'] != len(source_material) or row['id_count'] != len(source_material):
                 raise ValueError('captured triangle count differs from bundle')
-            own = (ids >= row['first_id']) & (ids < row['first_id'] + row['id_count'])
-            if np.any(covered & own):
+            first_id = row['first_id']
+            if first_id < next_id:
                 raise ValueError('captured id ranges overlap')
+            if first_id > next_id:
+                raise ValueError('captured id ranges have a gap')
+            next_id += row['id_count']
+            own = (ids >= first_id) & (ids < next_id)
             local = ids[own].astype(np.int64) - row['first_id']
             material[own] = source_material[local]
             uv = textures.get(uv_transfer.name_for_mesh(row['entry']))
