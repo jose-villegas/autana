@@ -3,8 +3,7 @@ import functools
 import pathlib
 import re
 
-from build.c_enum import read_enum
-from build.c_header import read_define, tag_text
+from build.c_enum import read_define, read_enum, tag_text
 from build.math_constants import INTEGER_DEFINE, blank_comments
 
 MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
@@ -81,5 +80,5 @@ def fields():
 
 
 def bake_inputs():
-    """The field declarations that affect the baked track bindings."""
-    return sorted(fields().items())
+    """The component tags and field declarations used by baked track bindings."""
+    return CAMERA, TRANSFORM, sorted(fields().items())

@@ -1016,6 +1016,15 @@ class PosesTests(FittedBakeCase):
             data.write_text("second", encoding="utf-8")
             self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("second"))
 
+    def test_track_entry_tag_is_a_native_input(self):
+        from anim import tracks_asset
+
+        path = TOOLS / "anim/tracks_asset.py"
+        before = bake.native_inputs([path])
+        with mock.patch.object(tracks_asset, "TYPE", b"TEST"):
+            after = bake.native_inputs([path])
+        self.assertNotEqual(before.get(bake.relative(path)), after.get(bake.relative(path)))
+
     def test_bake_inputs_with_required_arguments_is_not_a_hook(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "other_binding.py"

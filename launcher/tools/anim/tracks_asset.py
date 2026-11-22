@@ -16,7 +16,7 @@ import pathlib
 import re
 import statistics
 import struct
-from build.c_header import ASSET_TAG_WIDTH, read_define, tag_text, tag_value
+from build.c_enum import ASSET_TAG_WIDTH, read_define, tag_text, tag_value
 from build.name_hash import name_hash, NONE
 import sys
 import tomllib
@@ -61,6 +61,11 @@ assert ROW.size == ROW_SIZE == ROW_INTERP + struct.calcsize("<B")
 INTERPOLATIONS = ("STEP", "LINEAR", "CUBICSPLINE")
 SOURCE_SUFFIXES = (*gltf_read.ASSET_SUFFIXES, gltf_read.KEYS_SUFFIX)
 SOURCE = re.compile(r"[^/\\:]+(?:%s)" % "|".join(re.escape(s) for s in SOURCE_SUFFIXES), re.I)  # a file name: no folder, drive or path separator of either system
+
+
+def bake_inputs():
+    """The entry tag adds to the literal format defines keyed by the bake."""
+    return TYPE.decode("ascii")
 
 
 class TracksError(ValueError):

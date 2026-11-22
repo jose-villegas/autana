@@ -8,7 +8,7 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import scene_fields
-from build.c_header import ASSET_TAG_WIDTH, tag_text, tag_value
+from build.c_enum import ASSET_TAG_WIDTH, tag_text, tag_value
 from geometry.vectors import qmul, qrot, unit
 from gltf.gltf_write import build_glb
 

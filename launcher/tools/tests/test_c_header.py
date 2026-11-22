@@ -6,8 +6,8 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from build.c_header import read_define, tag_text, tag_value  # noqa: E402
-from build.c_enum import read_enum  # noqa: E402
+from build.c_enum import read_define as read_tag_define, read_enum, tag_text, tag_value  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 
 
 class CHeaderTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class CHeaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             header = pathlib.Path(temp) / "values.h"
             header.write_text("#define ITEM_ASSET ASSET_TYPE('T', 'E', 'S', 'T')\n")
-            tag = read_define(header, "ITEM_ASSET")
+            tag = read_tag_define(header, "ITEM_ASSET")
             self.assertEqual(tag, int.from_bytes(b"TEST", "little"))
             self.assertEqual(tag_text(tag), "TEST")
             self.assertEqual(tag_value("TEST"), tag)
