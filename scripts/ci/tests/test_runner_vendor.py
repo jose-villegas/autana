@@ -449,12 +449,31 @@ class BakesWorkflowTests(unittest.TestCase):
         upload = next(step for step in job["steps"] if "upload-artifact" in step.get("uses", ""))
         for shard, other in ((1, 14), (14, 1)):
             with self.subTest(shard=shard):
-                def at(text, value):
-                    return (text.replace("${{ matrix.shard }}", str(value)).replace("${{ github.run_attempt }}", "1")
-                            .replace("${{ matrix.candidate }}", "2"))
-                pattern = at(start["with"]["done"], shard)
-                self.assertTrue(runner_vendor.done([(at(upload["with"]["name"], shard), "")], pattern))
-                self.assertFalse(runner_vendor.done([(at(upload["with"]["name"], other), "")], pattern))
+                pattern = self.at(start["with"]["done"], shard)
+                self.assertTrue(runner_vendor.done([(self.at(upload["with"]["name"], shard), "")], pattern))
+                self.assertFalse(runner_vendor.done([(self.at(upload["with"]["name"], other), "")], pattern))
+
+    @staticmethod
+    def at(text, shard, plan="reference-plan-1-0"):
+        """`text` with the reference matrix and plan filled in: attempt 1, candidate 2."""
+        return (text.replace("${{ matrix.shard }}", str(shard)).replace("${{ github.run_attempt }}", "1")
+                .replace("${{ matrix.candidate }}", "2").replace("${{ needs.reference-plan.outputs.artifact }}", plan))
+
+    def test_a_shard_counts_only_for_the_plan_it_traced(self):
+        # Probe selection may differ between two runners of the lock's vendor, so a re-run attempt that plans
+        # again traces every shard again; the join takes only the shards of the plan this attempt's shards read.
+        jobs = self.jobs()
+        start = next(step for step in jobs["reference-shard"]["steps"] if step.get("id") == "candidate")
+        upload = next(step for step in jobs["reference-shard"]["steps"] if "upload-artifact" in step.get("uses", ""))
+        fetch = next(step for step in jobs["reference"]["steps"] if "download-artifact" in step.get("uses", ""))
+        # Without the plan among its needs, the join's pattern names no plan and matches nothing.
+        self.assertIn("reference-plan", jobs["reference"]["needs"])
+        traced = self.at(upload["with"]["name"], 1, plan="reference-plan-4-3")
+        self.assertTrue(runner_vendor.done([(traced, "")], self.at(start["with"]["done"], 1, plan="reference-plan-4-3")))
+        self.assertFalse(runner_vendor.done([(traced, "")], self.at(start["with"]["done"], 1, plan="reference-plan-6-2")))
+        for plan, taken in (("reference-plan-4-3", True), ("reference-plan-6-2", False)):
+            with self.subTest(plan=plan):
+                self.assertEqual(runner_vendor.done([(traced, "")], self.at(fetch["with"]["pattern"], 1, plan)), taken)
 
     @staticmethod
     def kinds_of(run, files):
