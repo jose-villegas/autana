@@ -13,7 +13,6 @@
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/raster_internal.h"
-#include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/transform/transform.h"
 #include "ui/layout/ui_transform.h"
@@ -47,8 +46,6 @@ render_host_camera_input(const camera_pose_t* input, float lens, float near_z) {
     if (handle_is_none(camera)) {
         return false;
     }
-    (void)animator_set_paused(camera, ANIMATOR_CURRENT, true);
-    (void)animator_set_paused(camera, ANIMATOR_PREVIOUS, true);
     if (!camera_set_projection(camera, lens, near_z)) {
         return false;
     }

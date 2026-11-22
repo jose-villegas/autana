@@ -116,7 +116,7 @@ bool render_host_apply_settings(const render_settings_t* settings);
  * provider links no scene. */
 bool render_host_camera_pose(float position[3], float rotation[4]);
 
-/* Places the active camera from an engine-frame reference pose without advancing its path. */
+/* Places the active camera from an engine-frame reference pose. */
 bool render_host_camera_input(const camera_pose_t* pose, float lens, float near_z);
 
 /* Writes the active id attachment and entry metadata; false without an id view. */
