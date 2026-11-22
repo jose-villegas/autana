@@ -1,17 +1,18 @@
 """The figures in docs/render/frame/Light-Probes.md, drawn from light_probe_figures_probe.c, which calls the
-runtime's SH projection and convolution and its probe-grid sampler, and from Sponza's baked SHPR grid.
+runtime's SH projection and convolution and its probe-grid sampler, and from a scene's baked SHPR grid.
 
-    python launcher/tools/r3d/probes/light_probe_figures.py --cc CC --out DIR [--grid SHPR]
+    python launcher/tools/r3d/probes/light_probe_figures.py --cc CC --out DIR --scene SCENE.toml [--grid SHPR]
 
 light-probe-sphere.png: one probe projected from a sky with a sun, then a white diffuse sphere lit by the
 exact irradiance, by the probe's L1 evaluation and by its constant band alone, with a meridian below.
 light-probe-blend.png: an example grid's probes over a plane, the blended constant band between and past them,
 and the corner weights one point takes.
-light-probe-sponza.png: Sponza's grid, a plan of each layer of probes coloured by the light an upward face gets.
-light-probe-sponza-spheres.png: a white sphere at the brightest, median and darkest probe of Sponza's first layer
-above the floor, lit by the scene's flat ambient and by the grid.
+light-probe-<scene>.png: the scene's grid, a plan of each layer of probes coloured by the light an upward face
+gets.
+light-probe-<scene>-spheres.png: a white sphere at the brightest, median and darkest probe of the grid's second
+layer, lit by the scene's flat ambient and by the grid.
 
---grid reads an SHPR file in place of the locked bake (bake.py path sponza.shpr).
+--grid reads an SHPR file in place of the scene's locked bake (bake.py path <scene>.shpr).
 """
 import argparse
 import subprocess
@@ -27,17 +28,12 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
 from docs.figures import ROOT, build_probe, probe_json  # noqa: E402
 from docs.plot_style import INK, LABEL_SIZE, MUTED, SLOTS, figure, save, style_axes, subplots  # noqa: E402
-from docs.producer import Producer  # noqa: E402
-
-PRODUCER = Producer(area="render", needs=("host", "bakes"), run=("--cc", "{cc}", "--out", "{out}"),
-                    outputs=("light-probe-sphere.png", "light-probe-blend.png", "light-probe-sponza.png",
-                             "light-probe-sponza-spheres.png"))
+from r3d.scene_name import scene_id  # noqa: E402
+from r3d.sh_probe_asset import SUFFIX  # noqa: E402
 
 SOURCES = (HERE / "light_probe_figures_probe.c", ROOT / "launcher/packages/math/src/sh/sh1.c",
            ROOT / "launcher/main/render/probe/sh_probes.c", ROOT / "launcher/main/render/skin/r3d_skin_light.c")
 BAKE = ROOT / "launcher/tools/bake/bake.py"
-GRID = "sponza.shpr"
-SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 GAMMA = 1 / 2.2
 BACKGROUND = 1.0  # white behind each sphere
 EXACT, L1, FLAT = SLOTS[0], SLOTS[1], SLOTS[2]
@@ -50,7 +46,7 @@ LAYER_SIZE = (9, 3.4)
 LAYER_COLUMNS = 4
 SPHERES_SIZE = (9, 3.4)
 UP = 0  # AXIS_NORMALS' order in the probe: +y, -y, +x, -x, +z, -z
-FLOOR_LAYER = 1  # the first layer of probes above Sponza's floor
+FLOOR_LAYER = 1  # the second layer up: the first may sit at floor height
 
 
 def encode(linear, white):
@@ -141,18 +137,19 @@ def blend_plot(data, out):
     save(fig, out / "light-probe-blend.png")
 
 
-def grid_path(given):
-    """The SHPR file: `given`, or the locked bake's cached copy."""
+def grid_path(given, scene):
+    """The SHPR file: `given`, or the scene's locked bake's cached copy."""
     if given:
         return pathlib.Path(given)
-    out = subprocess.run([sys.executable, str(BAKE), "path", GRID], check=True, capture_output=True, text=True)
+    out = subprocess.run([sys.executable, str(BAKE), "path", scene_id(scene) + SUFFIX], check=True,
+                         capture_output=True, text=True)
     return pathlib.Path(out.stdout.strip().splitlines()[-1])
 
 
-def scene_settings():
+def scene_settings(path):
     """(the scene's flat ambient, colour times intensity, as the runtime lights a mover without a grid; the light
     the scene's tone map takes as its white, which the figures show at half)."""
-    scene = tomllib.loads(SCENE.read_text(encoding="utf-8"))
+    scene = tomllib.loads(path.read_text(encoding="utf-8"))
     return np.asarray(scene["ambient"]["color"], float) * scene["ambient"]["intensity"], scene["tonemap_white"]
 
 
@@ -164,7 +161,7 @@ def layers(data):
     return up.transpose(1, 0, 2, 3), axes
 
 
-def sponza_plot(data, middle, out):
+def grid_plot(data, middle, name, out):
     up, (xs, ys, zs) = layers(data)
     rows = -(-len(ys) // LAYER_COLUMNS)
     fig, axes = subplots(rows, LAYER_COLUMNS, LAYER_SIZE)
@@ -178,9 +175,9 @@ def sponza_plot(data, middle, out):
         axis.set_title(f"layer {index}: y = {ys[index]:.0f}", fontsize=LABEL_SIZE, color=INK)
         axis.tick_params(labelsize=LABEL_SIZE - 2, colors=MUTED)
     dims = data["dims"]
-    fig.suptitle(f"Sponza's {dims[0]}x{dims[1]}x{dims[2]} grid from above, layer by layer: the light an upward "
+    fig.suptitle(f"{name.title()}'s {dims[0]}x{dims[1]}x{dims[2]} grid from above, layer by layer: the light an upward "
                  "face gets (x across, z down; the scene's tone-map white at half grey)", fontsize=LABEL_SIZE + 1)
-    save(fig, out / "light-probe-sponza.png")
+    save(fig, out / f"light-probe-{name}.png")
 
 
 def floor_points(data):
@@ -191,7 +188,7 @@ def floor_points(data):
     return [(label, (xs[i % len(xs)], ys[FLOOR_LAYER], zs[i // len(xs)])) for label, i in picks]
 
 
-def spheres_plot(data, flat, middle, points, out):
+def spheres_plot(data, flat, middle, points, name, out):
     flat_rows = [[flat if p is not None else None for p in row] for row in data["spheres"][0]["lit"]]
     fig, axes = subplots(1, len(points) + 1, SPHERES_SIZE)
     axes[0].imshow(sphere_picture(flat_rows, middle, tone), interpolation="nearest")
@@ -202,29 +199,32 @@ def spheres_plot(data, flat, middle, points, out):
                        fontsize=LABEL_SIZE, color=INK)
     for axis in axes:
         axis.set_axis_off()
-    fig.suptitle("A white diffuse sphere in Sponza lit by the grid (sky, bounce and sun) and, before, by the flat ambient", fontsize=LABEL_SIZE + 1)
-    save(fig, out / "light-probe-sponza-spheres.png")
+    fig.suptitle(f"A white diffuse sphere in {name.title()} lit by the grid (sky, bounce and sun) and, before, by the "
+                 "flat ambient", fontsize=LABEL_SIZE + 1)
+    save(fig, out / f"light-probe-{name}-spheres.png")
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--cc", required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
-    parser.add_argument("--grid", help="an SHPR file in place of the locked sponza.shpr")
-    args = parser.parse_args()
+    parser.add_argument("--scene", type=pathlib.Path, required=True, help="the scene whose probe grid is drawn")
+    parser.add_argument("--grid", help="an SHPR file in place of the scene's locked bake")
+    args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
-    shpr = grid_path(args.grid)
+    name = scene_id(args.scene)
+    shpr = grid_path(args.grid, args.scene)
     with tempfile.TemporaryDirectory() as work:
         probe = build_probe(args.cc, SOURCES, work)
         example = probe_json(probe)
         sphere_plot(example, args.out)
         blend_plot(example, args.out)
         grid = probe_json(probe, shpr)
-        flat, middle = scene_settings()
-        sponza_plot(grid, middle, args.out)
+        flat, middle = scene_settings(args.scene)
+        grid_plot(grid, middle, name, args.out)
         points = floor_points(grid)
         spheres = probe_json(probe, shpr, *(",".join(f"{v:g}" for v in point) for _, point in points))
-        spheres_plot(spheres, flat, middle, points, args.out)
+        spheres_plot(spheres, flat, middle, points, name, args.out)
 
 
 if __name__ == "__main__":

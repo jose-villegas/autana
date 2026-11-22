@@ -231,4 +231,6 @@ over flat ambient is not measured.
 [`light_probe_figures.py`](../../../launcher/tools/r3d/probes/light_probe_figures.py)
 draws every figure here from
 [`light_probe_figures_probe.c`](../../../launcher/tools/r3d/probes/light_probe_figures_probe.c),
-which calls the runtime's SH and grid code, and from Sponza's baked grid.
+which calls the runtime's SH and grid code, and from a scene's baked grid;
+[`launcher/demo/light_probe_figures.py`](../../../launcher/demo/light_probe_figures.py)
+runs it on Sponza.
