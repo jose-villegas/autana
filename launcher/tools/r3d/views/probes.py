@@ -80,7 +80,8 @@ def probe_points(lo, hi, spacing, seed):
 def sphere_directions(count):
     """`count` near-even unit directions (Fibonacci sphere). The trigonometry is the C library's, one value at a
     time: NumPy's float64 sin and cos take AVX-512 kernels where the host has them, an ulp off the AVX2 ones, and
-    an ulp in a direction moves a probe across a threshold, so two runners would plan different faces."""
+    an ulp in a direction moves a probe across a threshold, so two runners would plan different faces. The C
+    library's are the same on every x86-64-v3 Linux host, the scope r3d/isa.py pins."""
     rows = []
     for index in range(count):
         height = 1 - 2 * (index + 0.5) / count

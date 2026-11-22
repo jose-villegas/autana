@@ -1,7 +1,9 @@
 """Checks the probe views (r3d/views/probes.py): placement, the inside test on a closed box, the greedy pick, and
 `select` with targets, a caller's cut-out query and its size arguments."""
 
+import hashlib
 import pathlib
+import platform
 import sys
 import tempfile
 import unittest
@@ -19,6 +21,9 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
+
+# sha256 of sphere_directions(RAYS) on Linux x86-64; a change to the directions changes it on purpose.
+PINNED_DIRECTIONS_SHA256 = "85acf027558ee8ad60a21aa0dd72c81e8bd48dafd475c0b3ea88f198284f109b"
 
 
 def closed_box(half):
@@ -64,6 +69,13 @@ class ProbePlacementTests(unittest.TestCase):
         np.testing.assert_allclose(np.linalg.norm(directions, axis=1), 1.0, atol=1e-12)
         # Fibonacci heights step evenly from pole to pole.
         np.testing.assert_allclose(directions[:, 1], 1 - 2 * (np.arange(probes.RAYS) + 0.5) / probes.RAYS)
+
+    @unittest.skipUnless(sys.platform == "linux" and platform.machine() == "x86_64",
+                         "the directions are pinned where r3d/isa.py pins: Linux on x86-64")
+    def test_the_ray_directions_are_the_same_bits_on_every_pinned_host(self):
+        # An AVX-512 host, the same host with NumPy held to AVX2, and an Intel AVX2 host made these bits.
+        digest = hashlib.sha256(probes.sphere_directions(probes.RAYS).tobytes()).hexdigest()
+        self.assertEqual(digest, PINNED_DIRECTIONS_SHA256)
 
     def test_greedy_faces_pick_the_largest_gain_first_and_stop_at_the_plateau(self):
         sets = [np.array([0, 1]), np.arange(10), np.array([9, 10, 11]), np.array([12])]

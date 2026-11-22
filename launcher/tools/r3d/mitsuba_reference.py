@@ -95,7 +95,9 @@ def material_bsdf(mi, kd, texture, two_sided, boost=1.0, alpha_test=None):
     decoding the bitmap a second time."""
     kd = np.array(kd, dtype=np.float64)
     if texture is None:
-        reflectance = {"type": "rgb", "value": boosted_albedo(kd**2.2, boost).tolist()}
+        # The C library's pow, one channel at a time: NumPy's takes AVX-512 kernels where the host has them.
+        decoded = np.array([math.pow(channel, 2.2) for channel in kd])
+        reflectance = {"type": "rgb", "value": boosted_albedo(decoded, boost).tolist()}
     else:
         pixels = boosted_albedo(texture.levels[0][..., :3] * kd, boost).astype(np.float32)
         reflectance = {"type": "bitmap", "bitmap": mi.Bitmap(pixels), "raw": True, "filter_type": "bilinear",
