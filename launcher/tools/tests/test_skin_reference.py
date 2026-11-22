@@ -17,25 +17,30 @@ class SkinReferenceTests(unittest.TestCase):
                  "skins": [{"name": "subject", "clip": "move", "time": 0.375,
                             "world": np.eye(4).tolist(), "blend": 1}]}
         with self.subTest("selection"):
-            skin, camera = pose_frame([frame], 3, "subject")
+            (skin,), camera = pose_frame([frame], 3, "subject")
             self.assertEqual(skin["time"], 0.375)
             self.assertEqual(camera["lens"], 0.7)
         frame["skins"][0]["blend"] = 0.5
         with self.assertRaisesRegex(ValueError, "blend"):
             pose_frame([frame], 3, "subject")
 
-    def test_pose_frame_mirrors_engine_frame_into_source_frame(self):
-        camera_world, skin_world = np.eye(4), np.eye(4)
-        camera_world[:3, 3], skin_world[:3, 3] = (1, 2, 3), (4, 5, 6)
+    def test_pose_frame_mirrors_both_matching_skins_into_source_frame(self):
+        camera_world, first_world, second_world = np.eye(4), np.eye(4), np.eye(4)
+        camera_world[:3, 3], first_world[:3, 3], second_world[:3, 3] = (1, 2, 3), (4, 5, 6), (7, 8, 9)
+        first = {"name": "subject", "clip": "move", "time": 0, "world": first_world.tolist(), "blend": 1}
+        second = {**first, "world": second_world.tolist()}
         frame = {"frame": 0, "camera": {"world": camera_world.tolist(), "lens": 0.7, "near": 0.1},
-                 "skins": [{"name": "subject", "clip": "move", "time": 0, "world": skin_world.tolist(), "blend": 1}]}
-        skin, camera = pose_frame([frame], 0, "subject")
-        camera_source, skin_source = np.asarray(camera["world"]), np.asarray(skin["world"])
+                 "skins": [first, second, {**first, "name": "other", "blend": 0}]}
+        skins, camera = pose_frame([frame], 0, "subject")
+        camera_source = np.asarray(camera["world"])
         np.testing.assert_allclose(camera_source[:3, 3], (1, 2, -3))
-        np.testing.assert_allclose(skin_source[:3, 3], (4, 5, -6))
+        np.testing.assert_allclose(np.asarray([skin["world"] for skin in skins])[:, :3, 3],
+                                   [(4, 5, -6), (7, 8, -9)])
         # The engine camera looks down its +z; mirrored, it looks down the source frame's -z, its local -z.
         np.testing.assert_allclose(-camera_source[:3, 2], (0, 0, -1))
         np.testing.assert_allclose(camera_source[:3, 1], (0, 1, 0))
+        with self.assertRaisesRegex(ValueError, "no.*skin"):
+            pose_frame([frame], 0, "missing")
 
     def test_triangle_placement(self):
         asset = SkinnedAsset(*rig())

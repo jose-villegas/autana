@@ -17,7 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[6]
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.skin_reference import posed_skin, source_frame, SKIN_COVERAGE
+from r3d.skin_reference import posed_skin, source_frame, PER_SKIN_COVERAGE, SKIN_COVERAGE
 from r3d.skin.skin_frame import EngineSkin
 from r3d import scene_asset
 from anim import tracks_asset
@@ -133,13 +133,15 @@ class IrradiancePipelineTests(unittest.TestCase):
             except subprocess.CalledProcessError:
                 self.fail((work / "reference.log").read_text())
             coverage = np.load(work / SKIN_COVERAGE)
+            np.testing.assert_array_equal(np.load(work / PER_SKIN_COVERAGE), coverage[None, ...])
             with Image.open(work / "ours.bmp") as picture:
                 host_mask = np.any(np.asarray(picture) > 0, axis=2)
             reference_mask = coverage > 0.5
             overlap = (host_mask & reference_mask).sum() / (host_mask | reference_mask).sum()
             print(f"Host/reference mask overlap: {overlap:.6f}")
             self.assertGreater(overlap, 0.6)
-            stats = compose([work], work / "sheet.png")[work.name]
+            stats, = compose([work], work / "sheet.png")[work.name]
+            self.assertEqual(stats["skin"], 1)
             self.assertGreater(stats["pixels"], 0)
             self.assertTrue(np.isfinite(stats["mean"]))
             self.assertTrue((work / "sheet.png").is_file())

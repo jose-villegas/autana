@@ -19,10 +19,12 @@ from docs.producer import Producer
 PRODUCER = Producer(
     area="render", needs=("host", "bakes"),
     outputs=("capybara-sponza-irradiance.gif", "capybara-sponza-irradiance-1.png",
-             "capybara-sponza-irradiance-2.png", "capybara-sponza-irradiance-sheet.png"),
+             "capybara-sponza-irradiance-2.png", "capybara-sponza-irradiance-3.png",
+             "capybara-sponza-irradiance-sheet.png"),
     run=("--scene", "capybara-sponza", "--duration-ms", "18500", "--stem", "capybara-sponza-irradiance",
          "--reference-scene", "launcher/demo/sponza/sponza.scene.toml",
-         "--glb-bake", "capybara.glb", "--entity", "capybara", "--out", "{out}"),
+         "--glb-bake", "capybara.glb", "--entity", "capybara", "--times-ms", "3000", "6200", "12000",
+         "--out", "{out}"),
     reads=("launcher/demo/capybara/*", "launcher/demo/sponza/*"),
 )
 BUILD_SCRIPT = ROOT / "launcher/main/apps/render_lab/tools/render_lab_render_host.sh"
@@ -115,7 +117,7 @@ def main():
     parser.add_argument("--variant")
     parser.add_argument("--duration-ms", required=True, type=int)
     parser.add_argument("--dt-ms", type=int, default=DEFAULT_DT_MS)
-    parser.add_argument("--times-ms", nargs=2, type=int)
+    parser.add_argument("--times-ms", nargs="+", type=int)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--work", type=pathlib.Path, default=ROOT / "launcher/tools/results/render/irradiance")
     args = parser.parse_args()
