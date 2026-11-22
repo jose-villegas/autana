@@ -178,7 +178,7 @@ baked colours.
 
 ### Baked and realtime lights
 
-A light is realtime or baked, as in Unity's light
+A light's [`mode`](../scene/Scene-Files.md#light) is `"realtime"` or `"baked"`, as in Unity's light
 modes<sup>[[139]](../../Citations.md#unity-light-modes)</sup>. A baked
 light goes into the probe bake, direct and bounced, and a probe-lit
 renderer skips it, so a mover takes it only through the probes. A realtime
