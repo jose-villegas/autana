@@ -33,12 +33,12 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
 #endif
 
 #ifdef ESP_PLATFORM
-/* IRAM keeps cold flash fetches off the send path.
- * The attribute also applies to compiler clones.
- * run_present stays out of line to keep it here.
- * Development builds include overlays
- * and send auditing in this path.
- * IRAM budget: release 2364 B, dev 2722 B, diag 2722 B */
+/* The send hot path runs from IRAM so a present after a cold instruction
+ * cache does not wait on flash fetches. An attribute, not a linker.lf entry,
+ * places it: clones inherit the attribute; a mapping names only the original.
+ * run_present is noinline so flash callers cannot inline its body out of IRAM.
+ * Development overlays and send auditing make dev and diag larger.
+ * IRAM budget: release 2345 B, dev 2722 B, diag 2722 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -846,11 +846,17 @@ dispatch_present(void) {
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
 
+/* gfx_present_waited_us(): every drain's wait, summed. */
+static int64_t waited_us;
+
+int64_t
+gfx_present_waited_us(void) {
+    return waited_us;
+}
+
 int32_t
 gfx_present_drain(void) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const int64_t wait_start = timing_now_us();
-#endif
 #ifdef ESP_PLATFORM
     if (present_pending) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
@@ -860,11 +866,9 @@ gfx_present_drain(void) {
 #endif
     }
 #endif
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    return (int32_t)(timing_now_us() - wait_start);
-#else
-    return 0;
-#endif
+    const int32_t waited = (int32_t)(timing_now_us() - wait_start);
+    waited_us += waited;
+    return waited;
 }
 
 static void
