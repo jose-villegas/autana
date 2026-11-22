@@ -43,19 +43,23 @@ unrefined_band(const render_settle_t* s, int band, int direction) {
     return band;
 }
 
+static int
+first_due_band(const render_settle_t* s, int height, int hold) {
+    for (int i = 0; i < RENDER_SETTLE_BANDS; i++) {
+        const int b = (RENDER_SETTLE_BANDS / 2) + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
+        if (due(s, b, hold) && band_row(b, height) < band_row(b + 1, height)) {
+            return b;
+        }
+    }
+    return -1;
+}
+
 render_rows_t
 render_settle_next(const render_settle_t* s, int height, render_settle_settings_t settings) {
     if (height <= 0 || settings.frame_us <= 0) {
         return (render_rows_t){0, 0};
     }
-    int first = -1;
-    for (int i = 0; i < RENDER_SETTLE_BANDS; i++) {
-        const int b = RENDER_SETTLE_BANDS / 2 + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
-        if (due(s, b, settings.hold_frames) && band_row(b, height) < band_row(b + 1, height)) {
-            first = b;
-            break;
-        }
-    }
+    int first = first_due_band(s, height, settings.hold_frames);
     if (first < 0) {
         return (render_rows_t){0, 0};
     }
@@ -95,7 +99,9 @@ render_settle_done(render_settle_t* s, int height, render_rows_t rows, int32_t c
     const int64_t one_us = INT64_C(1) << RENDER_SETTLE_COST_FRAC_BITS;
     const int64_t measured = (int64_t)mathi_max(cost_us, 0) * one_us / (rows.end - rows.first);
     const int64_t sample = measured < one_us ? one_us : measured;
-    s->row_us = s->row_us == 0 ? sample : s->row_us + (sample - s->row_us) / RENDER_SETTLE_COST_WEIGHT_DIVISOR;
+    const int64_t learned =
+        s->row_us == 0 ? sample : s->row_us + ((sample - s->row_us) / RENDER_SETTLE_COST_WEIGHT_DIVISOR);
+    s->row_us = learned > INT32_MAX ? INT32_MAX : (int32_t)learned;
 }
 
 #define SETTLE_QUALITY_FIELDS(X)                                                                                       \

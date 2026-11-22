@@ -268,8 +268,9 @@ render_context_debug_view_widest(void) {
 
 /* The scratch the raster needs as it stands, and in a build that can show a
  * debug view no less than with the widest view's pixels: showing a view, or
- * another after it, then needs no larger block. */
-static size_t
+ * another after it, then needs no larger block. Keep the attachment
+ * locals off the raster draw's stack chain. */
+static __attribute__((noinline)) size_t
 scratch_bytes_with_view(render_context_t* c) {
     size_t needed = raster_scratch_bytes(&c->raster);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -551,21 +552,6 @@ aim_still(render_context_t* c, const render_view_t* view, bool held) {
     return true;
 }
 
-/* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
- * False when the partial redraw found nothing to draw. */
-static bool
-draw_fixed(render_context_t* c, const render_view_t* view) {
-    raster_t* r = &c->raster;
-    const bool partial = raster_settings(r).partial_redraw;
-    if (partial && !draw_partial(c, view)) {
-        return false;
-    }
-    if (!partial) {
-        c->frame.stats = raster_draw(r, view);
-    }
-    return true;
-}
-
 /* The draw the resolution policy times, choosing the size first when it predicts. */
 static void
 draw_timed(render_context_t* c, const render_view_t* view) {
@@ -591,34 +577,36 @@ draw_timed(render_context_t* c, const render_view_t* view) {
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
 }
 
-/* Draws only bands left quiet by the live pass, keeping their cost out of dynres. */
+/* Keep the refined settings temporary off the raster draw's stack chain. */
 static __attribute__((noinline)) bool
-settle(render_context_t* c, const render_view_t* view, bool held, render_rows_t live) {
+settle_aim(render_context_t* c, bool held, render_rows_t live) {
     raster_t* r = &c->raster;
     if (!held || c->drawn_settings.settle.frame_us <= 0 || !render_settle_refines(&c->drawn_settings)) {
         render_settle_forget(&c->settle);
         return false;
     }
     render_settle_age(&c->settle, r->height, live);
-    render_rows_t rows = render_settle_next(&c->settle, r->height, c->drawn_settings.settle);
+    const render_rows_t rows = render_settle_next(&c->settle, r->height, c->drawn_settings.settle);
     if (rows.first == rows.end) {
         return false;
     }
     c->settle_settings = render_settle_quality(&c->drawn_settings);
-    const bool picks_levels = r->picks_levels;
     r->settings = &c->settle_settings;
     r->picks_levels = false;
     r->first_row = rows.first;
     r->end_row = rows.end;
-    const int64_t began_us = timing_now_us();
-    (void)raster_draw(r, view);
-    c->frame.settle_us = (int32_t)(timing_now_us() - began_us);
+    return true;
+}
+
+static __attribute__((noinline)) void
+settle_finish(render_context_t* c, render_rows_t live, bool picks_levels, int32_t cost_us) {
+    raster_t* r = &c->raster;
     r->settings = &c->drawn_settings;
     r->picks_levels = picks_levels;
-    if (raster_drew_every_row(r)) {
-        rows = (render_rows_t){0, r->height};
-    }
-    render_settle_done(&c->settle, r->height, rows, c->frame.settle_us);
+    render_rows_t rows =
+        raster_drew_every_row(r) ? (render_rows_t){0, r->height} : (render_rows_t){r->first_row, r->end_row};
+    render_settle_done(&c->settle, r->height, rows, cost_us);
+    c->frame.settle_us = cost_us;
     c->frame.settled_rows = rows.end - rows.first;
     if (live.first < live.end) {
         rows.first = mathi_min(rows.first, live.first);
@@ -627,20 +615,30 @@ settle(render_context_t* c, const render_view_t* view, bool held, render_rows_t 
     r->first_row = rows.first;
     r->end_row = rows.end;
     c->frame.unchanged = false;
-    return true;
 }
 
-static __attribute__((noinline)) bool
-draw_fixed_and_settle(render_context_t* c, const render_view_t* view, bool held) {
+/* Keep live and refinement costs separate, with both raster calls in the caller's frame. */
+static inline __attribute__((always_inline)) bool
+draw_fixed(render_context_t* c, const render_view_t* view, bool held) {
     raster_t* r = &c->raster;
     const int64_t began_us = timing_now_us();
-    const bool drawn = draw_fixed(c, view);
+    const bool partial = raster_settings(r).partial_redraw;
+    const bool drawn = !partial || draw_partial(c, view);
+    if (!partial) {
+        c->frame.stats = raster_draw(r, view);
+    }
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     const render_rows_t live = !drawn                     ? (render_rows_t){0, 0}
                                : raster_drew_every_row(r) ? (render_rows_t){0, r->height}
                                                           : (render_rows_t){r->first_row, r->end_row};
-    const bool settled = settle(c, view, held, live);
-    return drawn || settled;
+    const bool picks_levels = r->picks_levels;
+    if (!settle_aim(c, held, live)) {
+        return drawn;
+    }
+    const int64_t refine_began_us = timing_now_us();
+    (void)raster_draw(r, view);
+    settle_finish(c, live, picks_levels, (int32_t)(timing_now_us() - refine_began_us));
+    return true;
 }
 
 /* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
@@ -701,7 +699,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const bool fixed = c->policy == RENDER_FIXED && (!c->generating || held);
     c->fixed_drawn = fixed || still;
     if (c->fixed_drawn) {
-        if (!draw_fixed_and_settle(c, view, held)) {
+        if (!draw_fixed(c, view, held)) {
             return true;
         }
     } else {

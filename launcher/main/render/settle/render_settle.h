@@ -15,8 +15,8 @@
 typedef struct {
     uint8_t quiet[RENDER_SETTLE_BANDS]; /* consecutive held frames whose live rows missed this band */
     bool refined[RENDER_SETTLE_BANDS];
-    int64_t
-        row_us; /* microseconds per refined row with RENDER_SETTLE_COST_FRAC_BITS fractional bits, 0 until measured */
+    /* Microseconds per refined row with RENDER_SETTLE_COST_FRAC_BITS fractional bits, 0 until measured. */
+    int32_t row_us;
 } render_settle_t;
 
 void render_settle_forget(render_settle_t* settle);
