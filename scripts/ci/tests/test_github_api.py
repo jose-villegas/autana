@@ -9,11 +9,29 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.response
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import github_api
+
+SMALLEST_PAGE_SIZE = 25
+
+
+def paged_listing(fails):
+    items = list(range(230))
+
+    def request(method, path):
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+        size = int(query['per_page'][0])
+        page = int(query['page'][0])
+        if fails(size, page):
+            raise urllib.error.HTTPError(path, http.client.BAD_GATEWAY, 'bad gateway', {}, None)
+        offset = (page - 1) * size
+        return {'items': items[offset:offset + size]}
+
+    return items, mock.Mock(side_effect=request)
 
 
 class GithubApiTests(unittest.TestCase):
@@ -152,6 +170,35 @@ class GithubApiTests(unittest.TestCase):
         self.assertEqual(list(github_api.pages('/listing?branch=main', 'items', request)), first + ['last'])
         self.assertEqual(request.call_args_list, [mock.call('GET', f'/listing?branch=main&per_page=100&page={page}')
                                                  for page in (1, 2)])
+
+    def test_pages_shrink_when_default_size_fails(self):
+        items, request = paged_listing(lambda size, page: size == github_api.PER_PAGE)
+        self.assertEqual(list(github_api.pages('/listing', 'items', request)), items)
+
+    def test_pages_resume_at_offset_when_size_changes_mid_listing(self):
+        items, request = paged_listing(lambda size, page: size == github_api.PER_PAGE and page > 1)
+        self.assertEqual(list(github_api.pages('/listing', 'items', request)), items)
+
+    def test_pages_shrink_to_smallest_size(self):
+        items, request = paged_listing(lambda size, page: size > SMALLEST_PAGE_SIZE)
+        self.assertEqual(list(github_api.pages('/listing', 'items', request)), items)
+
+    def test_pages_propagate_404_after_one_request(self):
+        error = urllib.error.HTTPError('/listing', http.client.NOT_FOUND, 'not found', {}, None)
+        request = mock.Mock(side_effect=error)
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            list(github_api.pages('/listing', 'items', request))
+        self.assertIs(raised.exception, error)
+        request.assert_called_once()
+
+    def test_pages_propagate_502_after_all_sizes_fail(self):
+        _, request = paged_listing(lambda size, page: True)
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            list(github_api.pages('/listing', 'items', request))
+        self.assertEqual(raised.exception.code, http.client.BAD_GATEWAY)
+        self.assertEqual(request.call_args_list, [
+            mock.call('GET', f'/listing?per_page={size}&page=1')
+            for size in (github_api.PER_PAGE, 50, SMALLEST_PAGE_SIZE)])
 
     def test_ci_entry_points_show_usage_from_repository_root(self):
         root = Path(__file__).resolve().parents[3]
