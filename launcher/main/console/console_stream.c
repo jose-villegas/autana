@@ -42,6 +42,15 @@ stream_free(console_stream_t* stream) {
     memory_free(stream);
 }
 
+static bool
+stream_send(console_stream_t* stream, uint8_t* bytes, size_t count) {
+    const bool sent = console_emit_packet(stream->tag, bytes, count, stream->packet, stream->fill != NULL);
+    if (stream->ring != NULL) {
+        vRingbufferReturnItem(stream->ring, bytes);
+    }
+    return sent;
+}
+
 static void
 stream_task(void* arg) {
     console_stream_t* stream = arg;
@@ -60,14 +69,11 @@ stream_task(void* arg) {
                                            CONSOLE_PACKET_BYTES_MAX);
         }
         if (count != 0) {
-            if (console_emit_packet(stream->tag, bytes, count, stream->packet, source)) {
+            if (stream_send(stream, bytes, count)) {
                 sent += count;
                 packets++;
             } else if (source && closed) {
                 break;
-            }
-            if (stream->ring != NULL) {
-                vRingbufferReturnItem(stream->ring, bytes);
             }
         } else if (closed) {
             break;
