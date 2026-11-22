@@ -90,6 +90,30 @@ render_context_main(void) {
     return &main_context;
 }
 
+/* The last frame's choices, as frame_record reads them. */
+static frame_record_context_t
+recorded(const render_context_t* c) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_view_t* view = &c->frame_view;
+#else
+    const render_view_t* view = NULL;
+#endif
+    return (frame_record_context_t){view, &c->settings, &c->steer, &c->frame, c->scale_percent};
+}
+
+/* Out of line, so the draw's own stack frame does not hold the record context. */
+static __attribute__((noinline)) void
+record_before_draw(const render_context_t* c, const r3d_instance_t* instances, int count) {
+    const frame_record_context_t context = recorded(c);
+    frame_record_before_draw(&context, &c->raster, instances, count);
+}
+
+void
+render_context_record_frame(const render_context_t* context, uint32_t dt_ms) {
+    const frame_record_context_t recorded_context = recorded(context);
+    frame_record_frame(&recorded_context, &context->raster, dt_ms);
+}
+
 void
 render_context_drop_scratch(render_context_t* c) {
     if (c->take == NULL) {
@@ -382,10 +406,20 @@ generation_pays(const render_context_t* c) {
     return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
 }
 
+/* Whether this frame is drawn as a held one: a view partial redraw holds
+ * (render_partial_still()) and, under dynamic resolution, not handed back to
+ * the policy (still_over). Such a frame is never generated. Before
+ * aim_raster() it reads the raster as the last frame left it; a stale match
+ * only draws a frame that could have been warped. */
+static bool
+drawn_held(const render_context_t* c, const render_view_t* view) {
+    return render_partial_still(&c->partial, &c->raster, view) && (c->policy == RENDER_FIXED || !c->still_over);
+}
+
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, and the same viewport; and it pays
- * (the last verdict, kept in `paying`), has not been measured, or is due to
- * be measured again. */
+ * frame kept, no debug view, the same viewport, and not drawn held (a warp
+ * to a held view shows nothing new); and it pays (the last verdict, kept in
+ * `paying`), has not been measured, or is due to be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
@@ -397,7 +431,7 @@ can_generate(render_context_t* c, const render_view_t* view) {
         || a.quarter != b.quarter) {
         return false;
     }
-    return true;
+    return !drawn_held(c, view);
 }
 
 /* The kept frame warped to `view` into the framegen target, which compose shows. */
@@ -520,13 +554,12 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
  * the top step, until one such frame costs more than the budget; then the
  * policy draws until the view changes. True when this frame takes that path. */
 static bool
-aim_still(render_context_t* c, const render_view_t* view) {
+aim_still(render_context_t* c, const render_view_t* view, bool held) {
     raster_t* r = &c->raster;
-    if (c->policy == RENDER_FIXED || c->generating || !render_partial_still(&c->partial, r, view)) {
+    if (!render_partial_same_view(&c->partial, view)) {
         c->still_over = false;
-        return false;
     }
-    if (c->still_over) {
+    if (c->policy == RENDER_FIXED || !held) {
         return false;
     }
     const resolution_step_t top = c->ladder.steps[c->ladder.top];
@@ -617,10 +650,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    frame_record_before_draw(c, instances, count);
+    record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
-    const bool still = aim_still(c, view);
+    const bool held = drawn_held(c, view);
+    const bool still = aim_still(c, view, held);
     if (!fit_scratch(c)) {
         return false;
     }
@@ -629,7 +663,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
-    c->fixed_drawn = (c->policy == RENDER_FIXED && !c->generating) || still;
+    /* Generation times its drawn frames, but a held view is not generated. */
+    const bool fixed = c->policy == RENDER_FIXED && (!c->generating || held);
+    c->fixed_drawn = fixed || still;
     if (c->fixed_drawn) {
         const int64_t began_us = timing_now_us();
         const bool drawn = draw_fixed(c, view);

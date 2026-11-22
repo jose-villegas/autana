@@ -39,6 +39,8 @@ static framegen_target_t target;
 /* The pricing test's own, freed by the cleanup if an assertion stops it. */
 static render_context_t* context;
 static uint16_t* destination;
+/* Frames the pricing tests have panned through: a held view is never generated. */
+static int panned_frames;
 
 static void
 release_target(void) {
@@ -185,7 +187,17 @@ open_context(void) {
     const resolution_step_t size = {W, H};
     const resolution_config_t ladder = resolution_config(&size, 1, 1, BUDGET_US);
     framegen_example(context, &ladder);
+    panned_frames = 0;
     return context;
+}
+
+/* The next view of a camera panning back and forth by a rig unit, so no two
+ * frames in a row share a view. */
+static render_view_t
+panned(raster_rig_t* r) {
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += (float)(panned_frames++ % 2);
+    return render_view_fixture(&moved, &r->raster, 0);
 }
 
 /* One frame drawn or generated and composed, then given `cost_us` as its
@@ -207,12 +219,20 @@ typedef struct {
     bool generated;
 } shown_t;
 
-/* `steps` shown in turn, each generated or drawn as it says. */
+/* `steps` shown in turn under a panning camera, each generated or drawn as it says. */
 static void
-play(render_context_t* c, raster_rig_t* r, const render_view_t* view, const shown_t* steps, size_t count) {
+play(render_context_t* c, raster_rig_t* r, const shown_t* steps, size_t count) {
     for (size_t i = 0; i < count; i++) {
-        TEST_ASSERT_EQUAL(steps[i].generated, show(c, r, view, steps[i].cost_us));
+        const render_view_t view = panned(r);
+        TEST_ASSERT_EQUAL(steps[i].generated, show(c, r, &view, steps[i].cost_us));
     }
+}
+
+/* One frame under the panning camera, as show(). */
+static bool
+show_panned(render_context_t* c, raster_rig_t* r, int32_t cost_us) {
+    const render_view_t view = panned(r);
+    return show(c, r, &view, cost_us);
 }
 
 /* A generated frame composes from its own picture: the drawn frame the
@@ -275,14 +295,13 @@ static void
 test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_context();
-    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     const int32_t drawn_us = FRAMEGEN_SHOWN_PER_DRAWN * BUDGET_US; /* a drawn frame that spent a pair's budget */
     const int32_t generated[] = {BUDGET_US / 4, BUDGET_US + (BUDGET_US / 2)};
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+    TEST_ASSERT_FALSE(show_panned(c, r, drawn_us));
     for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
-        TEST_ASSERT_TRUE(show(c, r, &view, generated[i]));
+        TEST_ASSERT_TRUE(show_panned(c, r, generated[i]));
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
-        TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+        TEST_ASSERT_FALSE(show_panned(c, r, drawn_us));
         TEST_ASSERT_TRUE(c->paying);
         TEST_ASSERT_LESS_OR_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
     }
@@ -293,12 +312,11 @@ test_dynamic_resolution_prices_a_drawn_frame_at_one_shown_frame(void) {
  * (100 - FRAMEGEN_GAIN_PERCENT)% of a drawn one, and then while it costs less:
  * one that saves less stops it, and after
  * FRAMEGEN_RETRY_DRAWN drawn frames, or a forgotten view, one is generated to
- * measure it again. */
+ * measure it again. The camera pans: a held one is never generated. */
 static void
 test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_context();
-    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     const int32_t drawn_us = BUDGET_US;
     const int32_t saves_too_little = drawn_us * (100 - FRAMEGEN_GAIN_PERCENT) / 100;
     const int32_t saves_enough = saves_too_little - 1;
@@ -309,13 +327,13 @@ test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
             {drawn_us, false},    {drawn_us, true},         /* saves nothing */
             {drawn_us, false},    {drawn_us, false},
         };
-    play(c, r, &view, before, sizeof before / sizeof before[0]);
+    play(c, r, before, sizeof before / sizeof before[0]);
     for (int i = 0; i < FRAMEGEN_RETRY_DRAWN; i++) {
-        TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+        TEST_ASSERT_FALSE(show_panned(c, r, drawn_us));
     }
-    play(c, r, &view, after, sizeof after / sizeof after[0]);
+    play(c, r, after, sizeof after / sizeof after[0]);
     render_context_forget(c); /* measured again, as at the start */
-    play(c, r, &view, before, sizeof before / sizeof before[0]);
+    play(c, r, before, sizeof before / sizeof before[0]);
     release_target();
 }
 
