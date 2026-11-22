@@ -1,9 +1,11 @@
 """Repository REST requests and complete paged listings for CI jobs, over urllib so
 no runner needs the GitHub CLI. GETs and writes use http_get retries. Reads GH_TOKEN and GITHUB_REPOSITORY."""
+from http import HTTPStatus
 import json
 import os
 from pathlib import Path
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -12,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import http_get
 
 PER_PAGE = 100
+# Each smaller size must divide every larger size so a retry can resume at the same offset.
+PAGE_SIZES = (PER_PAGE, 50, 25)
 REQUEST_TIMEOUT_SECONDS = 30
 
 
@@ -38,12 +42,21 @@ def call(method, path, body=None, *, raw=False, token=None, repository=None):
 
 
 def pages(path, key, request=call):
-    page = 1
+    size_index = 0
+    offset = 0
     separator = '&' if '?' in path else '?'
     while True:
-        result = request('GET', f'{path}{separator}per_page={PER_PAGE}&page={page}')
+        per_page = PAGE_SIZES[size_index]
+        page = offset // per_page + 1
+        try:
+            result = request('GET', f'{path}{separator}per_page={per_page}&page={page}')
+        except urllib.error.HTTPError as error:
+            if error.code != HTTPStatus.BAD_GATEWAY or size_index == len(PAGE_SIZES) - 1:
+                raise
+            size_index += 1
+            continue
         items = result if key is None else result[key]
         yield from items
-        if len(items) < PER_PAGE:
+        if len(items) < per_page:
             return
-        page += 1
+        offset += per_page
