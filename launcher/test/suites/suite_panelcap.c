@@ -91,6 +91,16 @@ test_busy_sender_drops_whole_present(void) {
     TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
 }
 
+/* Indexed and framebuffer layouts resend a lost box from the picture they
+ * keep; only bands, which keep none, need the app to draw it again. */
+static void
+test_lost_box_redraws_without_the_app_where_a_picture_is_kept(void) {
+    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_FULL_FB));
+    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_DOUBLE_FB));
+    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_INDEXED));
+    TEST_ASSERT_TRUE(panelcap_redraw_needs_app(GFX_LAYOUT_BANDS));
+}
+
 static void
 test_window_after_sender_release_joins_current_present(void) {
     fixture();
@@ -399,6 +409,7 @@ suite_panelcap(void) {
     RUN_TEST(test_shared_packbits_wire);
     RUN_TEST(test_drop_saturation_and_reset);
     RUN_TEST(test_busy_sender_drops_whole_present);
+    RUN_TEST(test_lost_box_redraws_without_the_app_where_a_picture_is_kept);
     RUN_TEST(test_window_after_sender_release_joins_current_present);
     RUN_TEST(test_idle_present_does_not_consume_fps_slot);
     RUN_TEST(test_fps_gate_counts_dropped_presents);

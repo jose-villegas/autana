@@ -77,6 +77,11 @@ panelcap_begin(panelcap_t* capture, uint64_t us) {
     return true;
 }
 
+bool
+panelcap_redraw_needs_app(gfx_layout_t layout) {
+    return layout == GFX_LAYOUT_BANDS;
+}
+
 recti_t
 panelcap_redraw_requested(panelcap_t* capture) {
     const recti_t box = capture->owed;

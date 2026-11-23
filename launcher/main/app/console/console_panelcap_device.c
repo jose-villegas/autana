@@ -52,7 +52,7 @@ redraw(const void* payload) {
         if (recti_is_empty(box)) {
             return;
         }
-        if (redraw_full || !gfx_mode_has_framebuffer(gfx_mode_current())) {
+        if (redraw_full || panelcap_redraw_needs_app(gfx_mode_current()->layout)) {
             present.redraw_pixels += PANELCAP_WIDTH * PANELCAP_HEIGHT;
             gfx_request_full_redraw();
         } else {
