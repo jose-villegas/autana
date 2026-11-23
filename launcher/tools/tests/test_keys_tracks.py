@@ -163,15 +163,36 @@ def test_track_field_discovery():
     headers = "\n".join(path.read_text(encoding="utf-8") for path in main.rglob("*.h"))
     tags = {name: int.from_bytes("".join(re.findall(r"'(.)'", value)).encode(), "little")
             for name, value in re.findall(r"#define (ANIM_COMPONENT_\w+)\s+ASSET_TYPE\(([^)]+)\)", headers)}
+    field_pattern = r"ANIM_FIELD(_STEP)?\(\w+,\s*(\w+),\s*(ANIM_VALUE_\w+)\)"
+    field_lists = dict(re.findall(r"^#define[ \t]+(\w+)[ \t]+([^\n]+)", headers.replace("\\" + "\n", " "), re.M))
     expected = {}
     for path in main.rglob("*.c"):
-        text = path.read_text(encoding="utf-8")
-        entries = re.findall(r"^\s+ANIM_FIELD\(\w+, (\w+), (ANIM_VALUE_\w+)\),", text, re.M)
-        if entries:
-            tag, = re.findall(r"anim_component_fields_t\s+\w+\s*=\s*\{\s*(ANIM_COMPONENT_\w+),", text)
-            expected.update({(tags[tag], field): (names.index(kind), False) for field, kind in entries})
+        source = path.read_text(encoding="utf-8")
+        for tag, table in re.findall(r"anim_component_fields_t\s+\w+\s*=\s*\{\s*(ANIM_COMPONENT_\w+),\s*(\w+),", source):
+            body = re.search(rf"anim_field_t\s+{table}\[\]\s*=\s*\{{([^}}]+)\}}", source)[1].strip()
+            fields = field_lists.get(body, body)
+            entries = re.findall(field_pattern, fields)
+            assert entries, table
+            expected.update({(tags[tag], field): (names.index(kind), bool(step))
+                             for step, field, kind in entries})
     assert expected
     assert scene_fields.fields() == expected
+
+
+def test_discovery_reads_a_field_list_macro(tmp_path):
+    path = component(tmp_path, "TEST", "TEST_FIELD_LIST")
+    header = tmp_path / "TEST.h"
+    header.write_text(header.read_text() + "#define TEST_FIELD_LIST \\n"
+                      "    ANIM_FIELD(test_t, amount, ANIM_VALUE_VEC2), \\n"
+                      "    ANIM_FIELD_STEP(test_t, enabled, ANIM_VALUE_FLOAT)\n")
+    tag = int.from_bytes(b"TEST", "little")
+    assert scene_fields.discover(tmp_path) == {
+        (tag, "amount"): (scene_fields.VALUE_VEC2, False),
+        (tag, "enabled"): (scene_fields.VALUE_FLOAT, True),
+    }
+    path.write_text(path.read_text().replace("TEST_FIELD_LIST", "MISSING_FIELD_LIST"))
+    with pytest.raises(ValueError, match="unsupported animation field declaration"):
+        scene_fields.discover(tmp_path)
 
 
 def test_fields_resolve_by_component_and_pointer_node(tmp_path, monkeypatch):
