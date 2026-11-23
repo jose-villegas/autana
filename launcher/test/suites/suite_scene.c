@@ -718,20 +718,38 @@ uint8_t*
 scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, const uint16_t* counts,
                           const size_t* sizes, bool property) {
     const bool constrained = counts[SCENE_ASSET_CONSTRAINTS] != 0;
-    const scene_spec_t spec = {.id = SCENE_TEST_TIMELINE_ID,
-                               .skinned = !property,
-                               .entity_count = counts[SCENE_ASSET_HINGES] > 1 ? 4
-                                               : constrained                  ? 3
-                                                                              : 2,
-                               .renderer_count = !property,
-                               .camera_count = 1,
-                               .entities = {{constrained ? "capybara" : "red", IDENTITY},
-                                            {"camera", CAMERA_AT(0)},
-                                            {"butterfly", IDENTITY},
-                                            {"wing", IDENTITY}},
-                               .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
+    const bool visibility = counts[SCENE_ASSET_LIGHTS] != 0;
+    static const scene_spec_t VISIBILITY_SCENE = {.id = SCENE_TEST_TIMELINE_ID,
+                                                  .skinned = VIS_COPIES,
+                                                  .lit = true,
+                                                  .entity_count = VIS_ROWS,
+                                                  .renderer_count = VIS_COPIES,
+                                                  .camera_count = 1,
+                                                  .entities = {{"red", IDENTITY},
+                                                               {"green", IDENTITY},
+                                                               {"blue", IDENTITY},
+                                                               {"camera", CAMERA_AT(0)},
+                                                               {"lamp", IDENTITY},
+                                                               {"parent", IDENTITY},
+                                                               {"child", IDENTITY}},
+                                                  .cameras = {{VIS_CAMERA, CLEAR_RGB, ""}}};
+    scene_spec_t spec = {.id = SCENE_TEST_TIMELINE_ID,
+                         .skinned = !property,
+                         .entity_count = counts[SCENE_ASSET_HINGES] > 1 ? 4
+                                         : constrained                  ? 3
+                                                                        : 2,
+                         .renderer_count = !property,
+                         .camera_count = 1,
+                         .entities = {{constrained ? "capybara" : "red", IDENTITY},
+                                      {"camera", CAMERA_AT(0)},
+                                      {"butterfly", IDENTITY},
+                                      {"wing", IDENTITY}},
+                         .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
+    if (visibility) {
+        spec = VISIBILITY_SCENE;
+    }
     const skin_fixture_options_t options = {.default_clip = 0, .timeline_clips = !property};
-    const uint32_t base_size = scene_entry_size(&spec) + (property ? 0 : ASSET_NAME_MAX);
+    const uint32_t base_size = scene_entry_size(&spec) + (options.timeline_clips ? spec.skinned * ASSET_NAME_MAX : 0);
     uint32_t end = base_size;
     for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
         end += (uint32_t)(counts[part] * sizes[part]);

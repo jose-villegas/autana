@@ -137,12 +137,19 @@ enum {
 
 extern const anim_component_fields_t ANIMATOR_FIELDS;
 
+#define ANIM_COMPONENT_ENTITY ASSET_TYPE('E', 'N', 'T', 'Y')
+
+enum { ENTITY_FIELD_COUNT = 1 };
+
+extern const anim_component_fields_t ENTITY_FIELDS;
+
 #define SCENE_COMPONENT_LIST(X)                                                                                        \
     X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
     X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
     X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)                                                           \
     X(CNST, CONSTRAINT_FIELDS, CONSTRAINT_FIELD_COUNT, ANIMATOR)                                                       \
-    X(HNGE, HINGE_FIELDS, HINGE_FIELD_COUNT, CNST)
+    X(HNGE, HINGE_FIELDS, HINGE_FIELD_COUNT, CNST)                                                                     \
+    X(ENTY, ENTITY_FIELDS, ENTITY_FIELD_COUNT, HNGE)
 
 #define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
 
@@ -156,11 +163,11 @@ enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 typedef uint32_t scene_field_mask_t;
 
 enum {
-    SCENE_PROPERTY_TRANSFORM = 1U << SCENE_FIELD_END_HNGE,
+    SCENE_PROPERTY_TRANSFORM = 1U << SCENE_FIELD_END_ENTY,
     SCENE_PROTECTED_TRANSFORM = SCENE_PROPERTY_TRANSFORM << 1,
 };
 
-_Static_assert(SCENE_FIELD_END_HNGE + 2 <= sizeof(scene_field_mask_t) * CHAR_BIT,
+_Static_assert(SCENE_FIELD_END_ENTY + 2 <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 static inline scene_field_mask_t
@@ -192,12 +199,13 @@ typedef struct {
     anim_tracks_t tracks;
     anim_playhead_t clock;
     uint32_t applied_ms;
-    int field_count, driver_count;
+    int field_count, driver_count, enabled_count;
     scene_timeline_driver_t* drivers;
     const uint32_t* times_ms;
     const uint8_t* slots;
     const scene_row_t* target_keys;
     bool dirty;
+    /* Enabled tracks occupy the tail and apply through the hierarchy. */
     anim_bound_t fields[];
 } scene_timeline_t;
 

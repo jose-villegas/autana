@@ -37,6 +37,24 @@ timeline_apply_blocks(scene_t* scene) {
     }
 }
 
+static void
+timeline_apply_enabled(scene_t* scene) {
+    const scene_timeline_t* timeline = scene->timeline;
+    if (timeline->enabled_count == 0) {
+        return;
+    }
+    const float seconds = anim_playhead_sample_seconds(&timeline->clock, &timeline->tracks.clip);
+    for (int i = timeline->tracks.count - timeline->enabled_count; i < timeline->tracks.count; i++) {
+        const anim_bound_t* field = &timeline->fields[i];
+        const int key = anim_track_key_at(&field->curve, seconds);
+        const bool enabled = field->curve.values[key < 0 ? 0 : key] != 0.0F;
+        if (enabled != ((*field->dirty & SCENE_FLAG_ENABLED) != 0)) {
+            const scene_row_t row = (scene_row_t)(field->dirty - scene->flags);
+            scene_row_set_enabled(scene->root, row, enabled);
+        }
+    }
+}
+
 void
 scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     scene_timeline_t* timeline = scene->timeline;
@@ -49,6 +67,7 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     if (timeline->dirty || now != timeline->applied_ms) {
         scene_animation_apply_fields(scene, timeline->fields, timeline->field_count, clock, &timeline->tracks.clip);
         timeline_apply_blocks(scene);
+        timeline_apply_enabled(scene);
         timeline->dirty = false;
         timeline->applied_ms = now;
     }
@@ -351,6 +370,9 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets) {
                 target_keys += binding.curve.count;
             }
             times_ms += binding.curve.count;
+        } else if (binding.component == ANIM_COMPONENT_ENTITY) {
+            const int index = timeline->tracks.count - ++timeline->enabled_count;
+            timeline->fields[index] = (anim_bound_t){.curve = binding.curve, .dirty = target->dirty};
         } else if (anim_bind_field(&binding, &target->components[location.component], 1, target->dirty,
                                    target->dirty_bit, &timeline->fields[timeline->field_count++])
                    != ANIM_BIND_OK) {
@@ -417,6 +439,7 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }
+    /* A seek can activate skins without passing through scene_animation_step(). */
     scene_skins_settle(scene);
     scene_animation_repose(scene, 0);
     timeline_camera_cut(scene);

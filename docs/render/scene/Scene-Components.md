@@ -59,6 +59,16 @@ Each skinned renderer reads its lighting mode from SKIN, direct by default;
 `skin_set_light_mode()` changes it. See
 [Lighting modes](../animation/Skinned-Lighting.md#lighting-modes).
 
+## Enabled state
+
+A timeline can key any named object's enabled flag with `ENTY.enabled`.
+Use step interpolation and float values. Zero disables the entity and any
+other value enables it. A child is active only when every ancestor is enabled.
+
+The timeline reapplies its value the next time it samples the track, including
+on seek. Seeking to an active skinned copy takes its skin buffers and poses it
+for the frame.
+
 ## Hinge
 
 A hinge turns around a rest-frame axis using the object's authored local pose

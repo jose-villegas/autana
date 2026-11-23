@@ -74,6 +74,9 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
             attach_component(out.targets, refs, entity, columns[c].component, target);
         }
     }
+    for (int e = 0; e < entities; e++) {
+        attach_component(out.targets, refs, e, SCENE_COMPONENT_ENTY, NULL);
+    }
     return out;
 }
 
@@ -236,7 +239,7 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const scene_row_t entity = location.target;
         const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
         if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT
-              || binding.component == ANIM_COMPONENT_HINGE)
+              || binding.component == ANIM_COMPONENT_HINGE || binding.component == ANIM_COMPONENT_ENTITY)
              && owned != NULL)
             || (property_transform && (claims->writes[entity] & SCENE_PROTECTED_TRANSFORM))
             || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
@@ -361,10 +364,9 @@ skin_lights_changed(const scene_t* scene) {
 }
 
 static int
-skin_stage_prepare(scene_t* scene) {
+skin_stage_prepare(scene_t* scene, bool lights_dirty) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    const bool lights_dirty = skin_lights_changed(scene);
     scene->light_table_dirty |= lights_dirty;
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
@@ -410,8 +412,9 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     animate_entities(scene, dt_ms);
     FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
-    const int clusters = skin_stage_prepare(scene);
-    if (clusters > 0 && scene->light_transfer != NULL) {
+    const bool lights_dirty = skin_lights_changed(scene);
+    const int clusters = skin_stage_prepare(scene, lights_dirty);
+    if ((clusters > 0 || lights_dirty) && scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
     FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);
@@ -434,8 +437,8 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
-    scene_skins_settle(scene);
     scene_timeline_step(scene, dt_ms);
+    scene_skins_settle(scene);
     scene_constraint_step(scene);
     scene_hinge_step(scene);
     scene_animation_repose(scene, dt_ms);

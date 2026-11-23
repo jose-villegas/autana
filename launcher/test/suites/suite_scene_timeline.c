@@ -926,6 +926,129 @@ test_hinge_refuses_transform_writers(void) {
     }
 }
 
+enum {
+    VIS_FIRST = DURATION / 4,
+    VIS_DARK = 3 * DURATION / 8,
+    VIS_SECOND = DURATION / 2,
+    VIS_RELIT = 5 * DURATION / 8,
+    VIS_THIRD = 3 * DURATION / 4,
+};
+
+static void
+enabled_fixture(test_pack_t* pack, anim_interp_t interp) {
+    uint8_t* bytes = test_alloc_aligned(CAPACITY, ASSET_PACK_BASE_ALIGN, &allocation);
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(bytes);
+    const uint16_t counts[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_TIMELINE] = 1, [SCENE_ASSET_LIGHTS] = 1};
+    const size_t sizes[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_TIMELINE] = sizeof(scene_asset_timeline_t)};
+    uint8_t* entry = scene_test_timeline_entry(pack, bytes, CAPACITY, counts, sizes, false);
+    test_pack_put16(part_row(entry, SCENE_ASSET_LIGHTS) + offsetof(scene_asset_light_t, entity), VIS_LAMP);
+    test_pack_put16(part_row(entry, SCENE_ASSET_PARENTS) + VIS_CHILD * sizeof(uint16_t), VIS_PARENT);
+    const scene_asset_timeline_t timeline = {.clip = "timeline.clip", .wrap = ANIM_CLAMP};
+    memcpy(part_row(entry, SCENE_ASSET_TIMELINE), &timeline, sizeof timeline);
+    uint8_t* clip = test_pack_add(pack, CLIP, ANIM_TRACKS_ASSET, CLIP_BYTES);
+
+    enum { LIGHT_KEYS = 4, TRACK_STRIDE = 2 * LIGHT_KEYS * sizeof(float), VIS_TRACKS = VIS_ROWS - 1 };
+
+    test_tracks_header(clip, VIS_TRACKS, DURATION);
+    const uint32_t entity_component = ASSET_TYPE('E', 'N', 'T', 'Y');
+    const char* names[] = {"red", "green", "blue", "lamp", "parent", "child"};
+    const uint32_t starts[] = {VIS_FIRST, VIS_SECOND, VIS_THIRD, VIS_FIRST, DURATION, VIS_SECOND};
+    for (int i = 0; i < VIS_TRACKS; i++) {
+        const bool light = i == VIS_LAMP - 1;
+        const bool child = i == VIS_CHILD - 1;
+        const uint32_t times = TIMES + i * TRACK_STRIDE;
+        const uint32_t values = times + LIGHT_KEYS * sizeof(float);
+        const float seconds[] = {0, (float)starts[i] / MATH_MS_PER_S, (float)VIS_DARK / MATH_MS_PER_S,
+                                 (float)VIS_RELIT / MATH_MS_PER_S};
+        const float enabled[] = {0, child ? -1.0F : 1.0F, 0, 1.0F};
+        const int keys = light ? LIGHT_KEYS : i == VIS_PARENT - 1 ? 1 : KEYS;
+        test_track_row(
+            clip, i,
+            &(test_track_t){names[i], "enabled", entity_component, ANIM_VALUE_FLOAT, times, values, keys, interp});
+        test_pack_put_floats(clip + times, seconds, keys);
+        test_pack_put_floats(clip + values, enabled, keys);
+    }
+}
+
+static void
+assert_enabled_frame(scene_t* played, scene_t* sought, uint32_t now) {
+    const uint8_t state = SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE;
+    for (int e = 0; e < VIS_ROWS; e++) {
+        TEST_ASSERT_EQUAL_UINT8(played->flags[e] & state, sought->flags[e] & state);
+    }
+    const uint32_t starts[] = {VIS_FIRST, VIS_SECOND, VIS_THIRD};
+    int drawable = 0;
+    for (int e = 0; e < VIS_COPIES; e++) {
+        const scene_skinned_renderer_t* a = &played->skinned_renderers[e];
+        const scene_skinned_renderer_t* b = &sought->skinned_renderers[e];
+        if (now < starts[e]) {
+            TEST_ASSERT_EQUAL_UINT8(0, sought->flags[e] & state);
+            TEST_ASSERT_NULL(b->palette);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_UINT8(state, sought->flags[e] & state);
+        TEST_ASSERT_NOT_NULL(a->palette);
+        TEST_ASSERT_NOT_NULL(b->palette);
+        TEST_ASSERT_EQUAL_MEMORY(a->palette, b->palette, b->skin.joint_count * sizeof *b->palette);
+        const scene_renderer_t* r = &sought->renderers[scene_renderer_index(sought, e)];
+        TEST_ASSERT_EQUAL_PTR(b->output.positions, r->mesh.positions);
+        drawable++;
+    }
+    scene_resolve(sought);
+    TEST_ASSERT_EQUAL_INT(drawable, sought->active_renderer_count);
+    TEST_ASSERT_EQUAL_UINT8(0, sought->flags[VIS_PARENT] & state);
+    TEST_ASSERT_EQUAL_UINT8(now >= VIS_SECOND ? SCENE_FLAG_ENABLED : 0, sought->flags[VIS_CHILD] & state);
+    const bool lit = (now >= VIS_FIRST && now < VIS_DARK) || now >= VIS_RELIT;
+    TEST_ASSERT_EQUAL_UINT8(lit ? state : 0, sought->flags[VIS_LAMP] & state);
+    TEST_ASSERT_EQUAL_INT(lit, sought->world_lights.count);
+    TEST_ASSERT_EQUAL_INT(played->world_lights.count, sought->world_lights.count);
+    TEST_ASSERT_EQUAL_MEMORY(played->world_lights.direction, sought->world_lights.direction,
+                             sizeof sought->world_lights.direction);
+    TEST_ASSERT_EQUAL_MEMORY(played->world_lights.color, sought->world_lights.color, sizeof sought->world_lights.color);
+}
+
+static void
+test_enabled_seek_equals_play(void) {
+    test_pack_t writer;
+    enabled_fixture(&writer, ANIM_STEP);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t played = load(&pack), sought = load(&pack), initial = load(&pack);
+    entity_set_enabled(entity_find(sought, name_hash("blue")), true);
+    scene_t* a = columns(played);
+    scene_t* b = columns(sought);
+    timeline_play(played);
+    uint32_t previous = 0;
+    const uint32_t edges[] = {VIS_FIRST, VIS_DARK, VIS_SECOND, VIS_RELIT, VIS_THIRD};
+    for (size_t i = 0; i < sizeof edges / sizeof *edges; i++) {
+        const uint32_t now = edges[i];
+        scene_animation_step(a, now - previous);
+        timeline_seek(sought, now);
+        assert_enabled_frame(a, b, now);
+        previous = now;
+    }
+    timeline_seek(sought, 0);
+    assert_enabled_frame(columns(initial), b, 0);
+}
+
+static void
+test_enabled_refuses_nonstep_keys(void) {
+    test_pack_t writer;
+    enabled_fixture(&writer, ANIM_STEP);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    scene_failure_t failure;
+    TEST_ASSERT_FALSE(scene_failure(load(&pack), &failure));
+    release_fixture();
+    enabled_fixture(&writer, ANIM_LINEAR);
+    open_pack(&writer, &pack);
+    TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, failure.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+    TEST_ASSERT_EQUAL_STRING("red:ENTY.enabled", failure.what);
+}
+
 static void
 test_constraint_follows_lagged_transform(void) {
     enum { LAG_MS = 200, SAMPLE_MS = 700 };
@@ -1571,6 +1694,8 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_hinge_holds_default_angle);
     RUN_TEST(test_hinge_seek_equals_play);
     RUN_TEST(test_hinge_refuses_transform_writers);
+    RUN_TEST(test_enabled_seek_equals_play);
+    RUN_TEST(test_enabled_refuses_nonstep_keys);
     RUN_TEST(test_constraint_follows_lagged_transform);
     RUN_TEST(test_constraint_reports_unknown_row_target);
     RUN_TEST(test_constraint_seek_equals_play);

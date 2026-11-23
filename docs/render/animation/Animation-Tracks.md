@@ -212,6 +212,7 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 | `object`, `field` | One channel per object, component and field. Use a bare field name when it identifies one component. When multiple components declare it, use `field = "CCCC.field"` with the component's four-character tag. |
 | `t`, `v` | Seconds start at zero and increase strictly per track. Values are finite and match the declared type. Rotations are unit xyzw quaternions aligned to the preceding key's sign. |
 | `interp` | `step`, `linear` or `cubic`. For cubic, supply both `in` and `out` tangents in units per second on every key, or let the tool derive time-scaled Catmull-Rom tangents. |
+| `ENTY.enabled` | Step float. Zero disables the entity and any nonzero value enables it. A disabled ancestor still hides the entity. |
 | `offset` on `position` | Rotate values and tangents by the offset rotation, then add the offset position to values. |
 | `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
 
