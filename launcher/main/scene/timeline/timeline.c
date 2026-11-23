@@ -413,6 +413,7 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     timeline->dirty = true;
     scene_timeline_step(scene, 0);
     scene_constraint_step(scene);
+    scene_hinge_step(scene);
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }

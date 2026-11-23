@@ -28,6 +28,7 @@
 #include "scene/camera/camera.h"
 #include "scene/constraint/constraint.h"
 #include "scene/entity/entity.h"
+#include "scene/hinge/hinge.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
 
@@ -140,7 +141,8 @@ extern const anim_component_fields_t ANIMATOR_FIELDS;
     X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
     X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
     X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)                                                           \
-    X(CNST, CONSTRAINT_FIELDS, CONSTRAINT_FIELD_COUNT, ANIMATOR)
+    X(CNST, CONSTRAINT_FIELDS, CONSTRAINT_FIELD_COUNT, ANIMATOR)                                                       \
+    X(HNGE, HINGE_FIELDS, HINGE_FIELD_COUNT, CNST)
 
 #define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
 
@@ -154,11 +156,11 @@ enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 typedef uint32_t scene_field_mask_t;
 
 enum {
-    SCENE_PROPERTY_TRANSFORM = 1U << SCENE_FIELD_END_CNST,
+    SCENE_PROPERTY_TRANSFORM = 1U << SCENE_FIELD_END_HNGE,
     SCENE_PROTECTED_TRANSFORM = SCENE_PROPERTY_TRANSFORM << 1,
 };
 
-_Static_assert(SCENE_FIELD_END_CNST + 2 <= sizeof(scene_field_mask_t) * CHAR_BIT,
+_Static_assert(SCENE_FIELD_END_HNGE + 2 <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 static inline scene_field_mask_t
@@ -329,6 +331,7 @@ struct scene {
     scene_animator_t* animators;
     scene_timeline_t* timeline;
     scene_constraint_t* constraints;
+    scene_hinge_t* hinges;
     size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
@@ -470,6 +473,8 @@ scene_failure_t scene_constraint_resolve(const scene_asset_t* asset, scene_field
 scene_constraint_t* scene_constraint_find(const scene_t* scene, scene_row_t row);
 void scene_constraint_open(scene_t* scene);
 void scene_constraint_step(scene_t* scene);
+void scene_hinge_open(scene_t* scene);
+void scene_hinge_step(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

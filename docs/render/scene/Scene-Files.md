@@ -421,8 +421,7 @@ and the timeline must write separate fields. Load fails naming
 
 ### Constraint and hinge
 
-A [constraint](Constraint.md) can follow one object and face another. The hinge table
-is valid SCNE syntax. `scene_load()` reports hinge rows as unsupported.
+A [constraint](Constraint.md) can follow one object and face another.
 
 ```toml
 [objects.constraint]
@@ -434,12 +433,6 @@ bind = "target_yaw"
 lag_ms = 400
 handoff_ms = 600
 weight = 1.0
-
-[objects.hinge]
-axis = [0, 0, 1]
-min = -1.2
-max = 1.2
-angle = 0.0
 ```
 
 Omit either target to leave it unset. A named target must match an object.
@@ -468,8 +461,28 @@ keys = [{ t = 0.0, v = "butterfly_blue" }, { t = 2.0, v = "" }, { t = 4.0, v = "
 | `weight` | Float curve. Zero uses the input pose and one uses the constrained pose. |
 | `bind` | Scene row only. |
 
-A hinge takes a unit axis and ordered bounds in radians.
-Its starting angle defaults to zero.
+A [hinge](Scene-Components.md#hinge) turns an object about a unit axis in its
+authored local frame. Bounds are in radians, and the default angle is zero.
+
+```toml
+[objects.hinge]
+axis = [0, 0, 1]
+min = -1.2
+max = 1.2
+angle = 0.0
+```
+
+A timeline can drive the angle with a float curve.
+
+```toml
+animation = "flight"
+
+[[tracks]]
+object = "wing"
+field = "HNGE.angle"
+interp = "linear"
+keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.2 }, { t = 1.0, v = 0.0 }]
+```
 
 ### Light options
 

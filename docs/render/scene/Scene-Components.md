@@ -58,3 +58,16 @@ camera changes what is seen.
 Each skinned renderer reads its lighting mode from SKIN, direct by default;
 `skin_set_light_mode()` changes it. See
 [Lighting modes](../animation/Skinned-Lighting.md#lighting-modes).
+
+## Hinge
+
+A hinge turns around a rest-frame axis using the object's authored local pose
+as its rest pose. The SCNE angle applies unless the timeline keys
+`HNGE.angle`. Both use radians and clamp to the authored bounds.
+
+The hinge applies after constraints. Its position and rotation are reserved
+for the hinge, so timeline and property animator tracks cannot write them.
+An object with a hinge cannot own a constraint or be on its target path.
+
+See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
+[Scene Files](Scene-Files.md#constraint-and-hinge) for authoring.

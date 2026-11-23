@@ -5,6 +5,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_file.h"
+#include "kinematics/hinge/hinge.h"
 #include "kinematics/rig/rig.h"
 #include "math/scalar/rng.h"
 #include "math/scalar/units.h"
@@ -550,20 +551,20 @@ test_load_names_the_failing_clip_field_or_table(void) {
         const char* path;
         const char* field;
         const char* what;
-        bool missing, property, constraint, hinge;
+        bool missing, property, hinge;
     } cases[] = {
         {CAMERA_NAME, POSITION, "missing", .missing = true},
         {.path = "missing", .field = POSITION, .what = "missing:TRNS.position"},
         {.path = CAMERA_NAME, .field = "missing", .what = "camera:TRNS.missing"},
         {.path = ANIM_TARGET_SELF, .field = POSITION, .what = ANIM_TARGET_SELF ":TRNS.position"},
         {CAMERA_NAME, POSITION, ANIM_TARGET_SELF ":TRNS.position", .property = true},
-        {CAMERA_NAME, POSITION, "hinge", .hinge = true},
+        {CAMERA_NAME, POSITION, "camera:TRNS.position", .hinge = true},
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         test_pack_t writer;
-        uint8_t* entry = fixture(&writer, 1, cases[i].constraint, cases[i].hinge, cases[i].property, cases[i].path,
-                                 cases[i].field, DURATION);
+        uint8_t* entry =
+            fixture(&writer, 1, 0, cases[i].hinge, cases[i].property, cases[i].path, cases[i].field, DURATION);
         if (cases[i].missing) {
             memset(part_row(entry, SCENE_ASSET_TIMELINE), 0, ASSET_NAME_MAX);
             memcpy(part_row(entry, SCENE_ASSET_TIMELINE), cases[i].what, strlen(cases[i].what));
@@ -572,12 +573,8 @@ test_load_names_the_failing_clip_field_or_table(void) {
         open_pack(&writer, &pack);
         scene_failure_t failure;
         TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
-        const bool unsupported = cases[i].constraint || cases[i].hinge;
-        TEST_ASSERT_EQUAL_INT(unsupported ? SCENE_ERR_UNSUPPORTED : SCENE_ERR_ASSET, failure.status);
-        TEST_ASSERT_EQUAL_INT(unsupported        ? ASSET_OK
-                              : cases[i].missing ? ASSET_ERR_NOT_FOUND
-                                                 : ASSET_ERR_FORMAT,
-                              failure.asset);
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, failure.status);
+        TEST_ASSERT_EQUAL_INT(cases[i].missing ? ASSET_ERR_NOT_FOUND : ASSET_ERR_FORMAT, failure.asset);
         TEST_ASSERT_EQUAL_STRING(cases[i].what, failure.what);
         release_fixture();
     }
@@ -825,16 +822,108 @@ test_scene_writers_refuse_bad_lens_keys(void) {
 }
 
 static void
-test_unsupported_rows_without_timeline(void) {
+test_hinge_holds_default_angle(void) {
     test_pack_t writer;
-    fixture(&writer, 0, 0, 1, false, CAMERA_NAME, POSITION, DURATION);
+    uint8_t* entry = fixture(&writer, 0, 0, 1, false, CAMERA_NAME, POSITION, DURATION);
+    const float angle = 0.5F;
+    test_pack_put_floats(part_row(entry, SCENE_ASSET_HINGES) + SCENE_ASSET_HINGE_AT_ANGLE, &angle, 1);
     asset_pack_t pack;
     open_pack(&writer, &pack);
-    scene_failure_t failure;
-    TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
-    TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNSUPPORTED, failure.status);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, failure.asset);
-    TEST_ASSERT_EQUAL_STRING("hinge", failure.what);
+    const entity_t root = load(&pack);
+    const quatf_t expected = quatf_from_axis_angle(vec3f_unit_z(), angle);
+    for (int i = 0; i < 2; i++) {
+        const quatf_t actual = columns(root)->locals[CAMERA].rotation;
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+        scene_animation_step(columns(root), STEP_MAX);
+    }
+}
+
+static void
+test_hinge_seek_equals_play(void) {
+    enum { WING = BUTTERFLY + 1, FLAP_TRACKS = 3, FLAP_VALUE_BYTES = KEYS * sizeof(float), FLAP_SAMPLE = DURATION / 2 };
+
+    const uint32_t hinge_component = ASSET_TYPE('H', 'N', 'G', 'E');
+    test_pack_t writer;
+    uint8_t* entry = fixture(&writer, 1, 0, 2, false, CAMERA_NAME, POSITION, DURATION);
+    const scene_asset_hinge_t wings[] = {
+        {.entity = WING, .axis = {0, 0, 1}, .min = -0.5F, .max = 0.5F},
+        {.entity = BUTTERFLY, .axis = {0, 0, 1}, .min = -0.5F, .max = 0.5F},
+    };
+    memcpy(part_row(entry, SCENE_ASSET_HINGES), wings, sizeof wings);
+    for (int row = BUTTERFLY; row <= WING; row++) {
+        test_pack_put16(part_row(entry, SCENE_ASSET_PARENTS) + row * sizeof(uint16_t), SUBJECT);
+    }
+    part_row(entry, SCENE_ASSET_TIMELINE)[SCENE_ASSET_TIMELINE_AT_WRAP] = ANIM_LOOP;
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+    test_tracks_header(clip, FLAP_TRACKS, DURATION);
+    const test_track_t tracks[] = {
+        {"red", POSITION, ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SUBJECT_VALUES, KEYS, ANIM_LINEAR},
+        {"wing", "angle", hinge_component, ANIM_VALUE_FLOAT, TIMES, CNST_WEIGHT_TIMES, KEYS, ANIM_LINEAR},
+        {BUTTERFLY_NAME, "angle", hinge_component, ANIM_VALUE_FLOAT, TIMES, CNST_WEIGHT_TIMES + FLAP_VALUE_BYTES, KEYS,
+         ANIM_LINEAR},
+    };
+    for (int i = 0; i < FLAP_TRACKS; i++) {
+        test_track_row(clip, i, &tracks[i]);
+    }
+    const float angles[] = {0, 2.0F, 0, -2.0F};
+    test_pack_put_floats(clip + CNST_WEIGHT_TIMES, angles, sizeof angles / sizeof *angles);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t played = load(&pack);
+    const entity_t sought = load(&pack);
+    timeline_play(played);
+    for (uint32_t elapsed = 0; elapsed < DURATION + FLAP_SAMPLE; elapsed += FLAP_SAMPLE) {
+        scene_animation_step(columns(played), FLAP_SAMPLE);
+    }
+    timeline_seek(sought, FLAP_SAMPLE);
+    TEST_ASSERT_EQUAL_UINT32(FLAP_SAMPLE, timeline_time_ms(played));
+    for (int row = SUBJECT; row <= WING; row++) {
+        if (row == CAMERA) {
+            continue;
+        }
+        const transformf_t a = scene_row_world(columns(played)->root, row);
+        const transformf_t b = scene_row_world(columns(sought)->root, row);
+        TEST_ASSERT_EQUAL_MEMORY(&a.position, &b.position, sizeof a.position);
+        TEST_ASSERT_EQUAL_MEMORY(&a.rotation, &b.rotation, sizeof a.rotation);
+        if (row != SUBJECT) {
+            const float limit = row == WING ? wings[0].max : wings[1].min;
+            const quatf_t expected = quatf_from_axis_angle(vec3f_unit_z(), limit);
+            const quatf_t actual = columns(sought)->locals[row].rotation;
+            TEST_ASSERT_EQUAL_FLOAT(expected.x, actual.x);
+            TEST_ASSERT_EQUAL_FLOAT(expected.y, actual.y);
+            TEST_ASSERT_EQUAL_FLOAT(expected.z, actual.z);
+            TEST_ASSERT_EQUAL_FLOAT(expected.w, actual.w);
+        }
+    }
+}
+
+static void
+test_hinge_refuses_transform_writers(void) {
+    for (int property = 0; property <= 1; property++) {
+        for (int rotation = 0; rotation <= !property; rotation++) {
+            test_pack_t writer;
+            fixture(&writer, !property, 0, 1, property, CAMERA_NAME, POSITION, DURATION);
+            if (rotation) {
+                uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+                test_tracks_header(clip, 1, DURATION);
+                const test_track_t track = {
+                    CAMERA_NAME, "rotation", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_QUAT, TIMES, ROTATION_VALUES,
+                    KEYS,        ANIM_LINEAR};
+                test_track_row(clip, 0, &track);
+            }
+            asset_pack_t pack;
+            open_pack(&writer, &pack);
+            scene_failure_t failure;
+            TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+            TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, failure.status);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+            TEST_ASSERT_EQUAL_STRING(property   ? ".:TRNS.position"
+                                     : rotation ? "camera:TRNS.rotation"
+                                                : "camera:TRNS.position",
+                                     failure.what);
+            release_fixture();
+        }
+    }
 }
 
 static void
@@ -1479,7 +1568,9 @@ run_scene_timeline_suite(void) {
 #endif
     RUN_TEST(test_timeline_refuses_duplicate_tracks);
     RUN_TEST(test_scene_writers_refuse_bad_lens_keys);
-    RUN_TEST(test_unsupported_rows_without_timeline);
+    RUN_TEST(test_hinge_holds_default_angle);
+    RUN_TEST(test_hinge_seek_equals_play);
+    RUN_TEST(test_hinge_refuses_transform_writers);
     RUN_TEST(test_constraint_follows_lagged_transform);
     RUN_TEST(test_constraint_reports_unknown_row_target);
     RUN_TEST(test_constraint_seek_equals_play);

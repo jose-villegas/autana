@@ -718,14 +718,18 @@ uint8_t*
 scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, const uint16_t* counts,
                           const size_t* sizes, bool property) {
     const bool constrained = counts[SCENE_ASSET_CONSTRAINTS] != 0;
-    const scene_spec_t spec = {
-        .id = SCENE_TEST_TIMELINE_ID,
-        .skinned = !property,
-        .entity_count = constrained ? 3 : 2,
-        .renderer_count = !property,
-        .camera_count = 1,
-        .entities = {{constrained ? "capybara" : "red", IDENTITY}, {"camera", CAMERA_AT(0)}, {"butterfly", IDENTITY}},
-        .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
+    const scene_spec_t spec = {.id = SCENE_TEST_TIMELINE_ID,
+                               .skinned = !property,
+                               .entity_count = counts[SCENE_ASSET_HINGES] > 1 ? 4
+                                               : constrained                  ? 3
+                                                                              : 2,
+                               .renderer_count = !property,
+                               .camera_count = 1,
+                               .entities = {{constrained ? "capybara" : "red", IDENTITY},
+                                            {"camera", CAMERA_AT(0)},
+                                            {"butterfly", IDENTITY},
+                                            {"wing", IDENTITY}},
+                               .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
     const skin_fixture_options_t options = {.default_clip = 0, .timeline_clips = !property};
     const uint32_t base_size = scene_entry_size(&spec) + (property ? 0 : ASSET_NAME_MAX);
     uint32_t end = base_size;

@@ -354,8 +354,7 @@ title Content: hinges, 28 bytes each from hinges_off
 | Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
 | Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
 | Constraints | `bind` is world (0), target (1) or target yaw (2). The scene loader resolves target hashes to scene entities or accepts `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
-| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
-| Unsupported rows | `scene_load()` reports hinge rows as unsupported. |
+| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. The loader uses the entity transform as the hinge rest pose and clamps the angle to its bounds. |
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |

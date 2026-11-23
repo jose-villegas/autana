@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks_format.h"
+#include "asset/asset_bytes.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "math/scalar/mathi.h"
@@ -46,17 +47,32 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
         out.targets[e] = (anim_target_t){asset->names[e].hash, fields, SCENE_COMPONENT_TRANSFORM + 1,
                                          scene ? &scene->flags[e] : NULL, SCENE_FLAG_CHANGED};
     }
-    for (int c = 0; c < asset->camera_count; c++) {
-        const int e = asset->cameras[c].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_LENS, scene ? &scene->cameras[c].lens : NULL);
-    }
-    for (int s = 0; s < asset->skinned_renderer_count; s++) {
-        const int e = asset->skinned_renderers[s].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_ANIMATOR, NULL);
-    }
-    for (int c = 0; c < asset->constraint_count; c++) {
-        const int e = asset->constraints[c].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_CNST, scene ? &scene->constraints[c].values : NULL);
+
+    /* The component rows start with their entity index. */
+    const struct {
+        const void* rows;
+        void* values;
+        size_t row_size, value_size, value_offset;
+        int count, component;
+    } columns[] = {
+        {asset->cameras, scene ? scene->cameras : NULL, sizeof *asset->cameras, sizeof *scene->cameras,
+         offsetof(scene_camera_t, lens), asset->camera_count, SCENE_COMPONENT_LENS},
+        {asset->skinned_renderers, NULL, sizeof *asset->skinned_renderers, 0, 0, asset->skinned_renderer_count,
+         SCENE_COMPONENT_ANIMATOR},
+        {asset->constraints, scene ? scene->constraints : NULL, sizeof *asset->constraints, sizeof *scene->constraints,
+         offsetof(scene_constraint_t, values), asset->constraint_count, SCENE_COMPONENT_CNST},
+        {asset->hinges, scene ? scene->hinges : NULL, sizeof *asset->hinges, sizeof *scene->hinges, 0,
+         asset->hinge_count, SCENE_COMPONENT_HNGE},
+    };
+
+    for (size_t c = 0; c < sizeof columns / sizeof *columns; c++) {
+        for (int i = 0; i < columns[c].count; i++) {
+            const uint8_t* row = (const uint8_t*)columns[c].rows + i * columns[c].row_size;
+            const scene_row_t entity = asset_read_u16(row);
+            uint8_t* values = (uint8_t*)columns[c].values;
+            void* target = values == NULL ? NULL : values + i * columns[c].value_size + columns[c].value_offset;
+            attach_component(out.targets, refs, entity, columns[c].component, target);
+        }
     }
     return out;
 }
@@ -219,7 +235,8 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
         const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
-        if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT)
+        if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT
+              || binding.component == ANIM_COMPONENT_HINGE)
              && owned != NULL)
             || (property_transform && (claims->writes[entity] & SCENE_PROTECTED_TRANSFORM))
             || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
@@ -420,6 +437,7 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
     scene_timeline_step(scene, dt_ms);
     scene_constraint_step(scene);
+    scene_hinge_step(scene);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

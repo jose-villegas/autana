@@ -29,7 +29,7 @@ static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
 
 /* What one of the scene's arrays is counted in. */
-enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_CONSTRAINT, PER_COUNT };
+enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_CONSTRAINT, PER_HINGE, PER_COUNT };
 
 #define PART(member, per)                                                                                              \
     {offsetof(scene_t, member), sizeof *((scene_t*)0)->member, _Alignof(__typeof__(*((scene_t*)0)->member)), per}
@@ -50,7 +50,8 @@ static const struct {
              PART(staged, PER_ENTITY),
              PART(active_renderers, PER_RENDERER),
              PART(batches, PER_BATCH),
-             PART(constraints, PER_CONSTRAINT)};
+             PART(constraints, PER_CONSTRAINT),
+             PART(hinges, PER_HINGE)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
@@ -61,7 +62,8 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_CAMERA] = asset->camera_count,
                                       [PER_ENTITY] = asset->entity_count,
                                       [PER_BATCH] = asset->batch_count,
-                                      [PER_CONSTRAINT] = asset->constraint_count};
+                                      [PER_CONSTRAINT] = asset->constraint_count,
+                                      [PER_HINGE] = asset->hinge_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
         const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
@@ -520,7 +522,8 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, id);
     *out = NULL;
     const int first = next_property_animator(asset, 0);
-    if (first == asset->animator_count && timeline->count == 0 && asset->constraint_count == 0) {
+    if (first == asset->animator_count && timeline->count == 0 && asset->constraint_count == 0
+        && asset->hinge_count == 0) {
         return result;
     }
     if (asset->entity_count == 0) {
@@ -536,6 +539,14 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     }
     memset(scratch, 0, bytes);
     scene_claims_t claims = {.asset = asset, .writes = scratch};
+    for (int h = 0; h < asset->hinge_count; h++) {
+        for (int f = 0; f < ANIM_POSE_TRANSFORM_FIELD_COUNT; f++) {
+            const uint16_t offset = ANIM_POSE_TRANSFORM_FIELDS.fields[f].offset;
+            if (offset == offsetof(transformf_t, position) || offset == offsetof(transformf_t, rotation)) {
+                scratch[asset->hinges[h].entity] |= scene_field_bit(SCENE_COMPONENT_TRANSFORM, f);
+            }
+        }
+    }
     if (timeline->count != 0) {
         result =
             scene_animation_claim_clip(&claims, &targets, timeline, asset->timeline->clip, ANIM_BIND_NO_SELF, NULL);
@@ -594,11 +605,11 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
     scene_field_mask_t* writes;
     scene_timeline_blocks_t blocks = {0};
     const scene_failure_t writers = check_writers(&asset, pack, &timeline, record->id, &writes, &blocks);
-    if (writers.status != SCENE_OK || asset.hinge_count != 0) {
+    if (writers.status != SCENE_OK) {
         memory_free(blocks.times_ms);
         memory_free(blocks.targets);
         memory_free(writes);
-        return writers.status != SCENE_OK ? writers : scene_failure_make(SCENE_ERR_UNSUPPORTED, ASSET_OK, "hinge");
+        return writers;
     }
     if (!scene_world_issue_rows(record, asset.entity_count)) {
         memory_free(blocks.times_ms);
@@ -647,12 +658,14 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     if (done.status == SCENE_OK) {
         scene_constraint_open(scene);
+        scene_hinge_open(scene);
         if (scene->timeline != NULL) {
             done = scene_timeline_bind(scene);
         }
     }
     if (done.status == SCENE_OK) {
         scene_constraint_step(scene);
+        scene_hinge_step(scene);
     }
     if (done.status != SCENE_OK) {
         record->scene = NULL;
