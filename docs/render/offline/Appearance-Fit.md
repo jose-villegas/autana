@@ -13,7 +13,7 @@ mesh, and costs nothing at run time. A renderer asks for one with a `fit` table
 in its GPU environment. A `fit` table records the budget, the training,
 held-out and coverage poses, the optimiser settings and the output hashes.
 Measured results are in
-[Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
+[Bake-Quality.md](Bake-Quality.md#appearance-fit).
 
 ![Simplifier against the reference](../../images/render/appearance-lite-reference.png)
 ![Fitted mesh against the reference](../../images/render/appearance-chosen-heat.png)
@@ -267,9 +267,6 @@ flowchart LR
     E --> F
     F --> W[write_lit_mesh<br/>face colours]
 ```
-
-[Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
-with its flat fit.
 
 ## Against the paper
 
