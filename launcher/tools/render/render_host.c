@@ -627,7 +627,7 @@ open_host(const frame_provider_t* provider, int argc, char** argv, int* exit_cod
         if (host.frame.count > fits) {
             const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
             fprintf(stderr,
-                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
+                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 4 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
                     host.provider->name, host.frame.count, host.out_w, host.out_h, (long long)(total / (1024 * 1024)),
                     host.frame.dt_ms, (long long)fits);
