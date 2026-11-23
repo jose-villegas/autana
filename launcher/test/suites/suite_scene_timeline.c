@@ -1063,6 +1063,33 @@ test_constrained_camera_cuts_history(void) {
 enum { START = 100, INTERRUPT = 300, REPEAT = 350, HANDOFF = 400, RESET = 700 };
 
 static __attribute__((noinline)) void
+assert_handoff_sample(const scene_t* scene, uint32_t t, bool look, uint32_t first_duration, uint32_t duration) {
+    const transformf_t own = scene_timeline_local_at(scene, CAMERA, &scene->timeline->clock, transformf_identity());
+    const vec3f_t a = scene_timeline_world_at(scene, BUTTERFLY, t).position;
+    const vec3f_t b = scene_timeline_world_at(scene, SUBJECT, t).position;
+    const transformf_t* actual = &scene->locals[CAMERA];
+    const float out = t < START ? 0 : ease_smooth(t - START, first_duration);
+    const float in = t < INTERRUPT ? 0 : ease_smooth(t - INTERRUPT, duration);
+    if (out == 1.0F && in == 0.0F) {
+        TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &actual->rotation, sizeof own.rotation);
+        TEST_ASSERT_EQUAL_MEMORY(&own.position, &actual->position, sizeof own.position);
+    } else if (look) {
+        const quatf_t from = rig_look_rotation(own.position, a, vec3f_unit_y());
+        const quatf_t to = rig_look_rotation(own.position, b, vec3f_unit_y());
+        const quatf_t first = quatf_nlerp(from, own.rotation, out);
+        const quatf_t expected = quatf_nlerp(first, to, in);
+        TEST_ASSERT_EQUAL_FLOAT(1.0F, fabsf(quatf_mul(quatf_conjugate(expected), actual->rotation).w));
+        TEST_ASSERT_EQUAL_MEMORY(&own.position, &actual->position, sizeof own.position);
+    } else {
+        const vec3f_t expected = vec3f_lerp(vec3f_lerp(a, own.position, out), b, in);
+        TEST_ASSERT_EQUAL_FLOAT(expected.x, actual->position.x);
+        TEST_ASSERT_EQUAL_FLOAT(expected.y, actual->position.y);
+        TEST_ASSERT_EQUAL_FLOAT(expected.z, actual->position.z);
+        TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &actual->rotation, sizeof own.rotation);
+    }
+}
+
+static void
 assert_interrupted_handoff(entity_t root, bool look, uint32_t first_duration, uint32_t duration) {
     scene_t* scene = columns(root);
     const uint32_t samples[] = {0, START + 150, INTERRUPT, REPEAT, RESET};
@@ -1073,29 +1100,7 @@ assert_interrupted_handoff(entity_t root, bool look, uint32_t first_duration, ui
         for (; played < t; played++) {
             scene_animation_step(scene, 1);
         }
-        const transformf_t own = scene_timeline_local_at(scene, CAMERA, &scene->timeline->clock, transformf_identity());
-        const vec3f_t a = scene_timeline_world_at(scene, BUTTERFLY, t).position;
-        const vec3f_t b = scene_timeline_world_at(scene, SUBJECT, t).position;
-        const transformf_t* actual = &scene->locals[CAMERA];
-        const float out = t < START ? 0 : ease_smooth(t - START, first_duration);
-        const float in = t < INTERRUPT ? 0 : ease_smooth(t - INTERRUPT, duration);
-        if (out == 1.0F && in == 0.0F) {
-            TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &actual->rotation, sizeof own.rotation);
-            TEST_ASSERT_EQUAL_MEMORY(&own.position, &actual->position, sizeof own.position);
-        } else if (look) {
-            const quatf_t from = rig_look_rotation(own.position, a, vec3f_unit_y());
-            const quatf_t to = rig_look_rotation(own.position, b, vec3f_unit_y());
-            const quatf_t first = quatf_nlerp(from, own.rotation, out);
-            const quatf_t expected = quatf_nlerp(first, to, in);
-            TEST_ASSERT_EQUAL_FLOAT(1.0F, fabsf(quatf_mul(quatf_conjugate(expected), actual->rotation).w));
-            TEST_ASSERT_EQUAL_MEMORY(&own.position, &actual->position, sizeof own.position);
-        } else {
-            const vec3f_t expected = vec3f_lerp(vec3f_lerp(a, own.position, out), b, in);
-            TEST_ASSERT_EQUAL_FLOAT(expected.x, actual->position.x);
-            TEST_ASSERT_EQUAL_FLOAT(expected.y, actual->position.y);
-            TEST_ASSERT_EQUAL_FLOAT(expected.z, actual->position.z);
-            TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &actual->rotation, sizeof own.rotation);
-        }
+        assert_handoff_sample(scene, t, look, first_duration, duration);
     }
 }
 
@@ -1326,6 +1331,17 @@ test_constraint_seek_equals_play(void) {
     }
 }
 
+static __attribute__((noinline)) void
+assert_follow_sample(const scene_t* scene, uint32_t t, scene_row_t target_row, float weight) {
+    const vec3f_t own = {3.0F + 3.0F * t / DURATION, 0.0F, -10.0F};
+    const vec3f_t target = scene_timeline_world_at(scene, target_row, t).position;
+    const vec3f_t expected = vec3f_lerp(own, target, weight);
+    const vec3f_t actual = scene_row_world(scene->root, CAMERA).position;
+    TEST_ASSERT_EQUAL_FLOAT(expected.x, actual.x);
+    TEST_ASSERT_EQUAL_FLOAT(expected.y, actual.y);
+    TEST_ASSERT_EQUAL_FLOAT(expected.z, actual.z);
+}
+
 static void
 test_constraint_hands_off_follow_through_owner(void) {
     enum { HANDOFF = 150 };
@@ -1374,14 +1390,13 @@ test_constraint_hands_off_follow_through_owner(void) {
         for (; played < t; played++) {
             scene_animation_step(scene, 1);
         }
-        const vec3f_t own = {3.0F + 3.0F * t / DURATION, 0.0F, -10.0F};
-        const vec3f_t target = scene_timeline_world_at(scene, samples[i].target, t).position;
-        const vec3f_t expected = vec3f_lerp(own, target, samples[i].weight);
-        const vec3f_t actual = scene_row_world(scene->root, CAMERA).position;
-        TEST_ASSERT_EQUAL_FLOAT(expected.x, actual.x);
-        TEST_ASSERT_EQUAL_FLOAT(expected.y, actual.y);
-        TEST_ASSERT_EQUAL_FLOAT(expected.z, actual.z);
+        assert_follow_sample(scene, t, samples[i].target, samples[i].weight);
     }
+}
+
+static __attribute__((noinline)) float
+sample_world_x(const scene_t* scene, scene_row_t row, uint32_t ms) {
+    return scene_timeline_world_at(scene, row, ms).position.x;
 }
 
 static void
@@ -1407,19 +1422,33 @@ test_timeline_samples_target_ancestors_at_requested_time(void) {
     const float fraction = (float)SAMPLE / DURATION;
     const float target = -4.0F + 12.0F * fraction;
     const float expected = 1.0F + 1.0F + 3.0F * fraction + (1.0F + fraction) * target;
-    TEST_ASSERT_EQUAL_FLOAT(expected, scene_timeline_world_at(scene, BUTTERFLY, SAMPLE).position.x);
+    TEST_ASSERT_EQUAL_FLOAT(expected, sample_world_x(scene, BUTTERFLY, SAMPLE));
     TEST_ASSERT_EQUAL_FLOAT(expected, scene_row_world(scene->root, CAMERA).position.x);
     const vec3f_t child = scene->locals[BUTTERFLY].position;
     const vec3f_t parent = scene->locals[SUBJECT].position;
     const uint8_t child_flags = scene->flags[BUTTERFLY];
     const uint8_t parent_flags = scene->flags[SUBJECT];
     const float end = 1.0F + 4.0F + 2.0F * 8.0F;
-    TEST_ASSERT_EQUAL_FLOAT(end, scene_timeline_world_at(scene, BUTTERFLY, PAST_END).position.x);
+    TEST_ASSERT_EQUAL_FLOAT(end, sample_world_x(scene, BUTTERFLY, PAST_END));
     TEST_ASSERT_EQUAL_MEMORY(&child, &scene->locals[BUTTERFLY].position, sizeof child);
     TEST_ASSERT_EQUAL_MEMORY(&parent, &scene->locals[SUBJECT].position, sizeof parent);
     TEST_ASSERT_EQUAL_UINT8(child_flags, scene->flags[BUTTERFLY]);
     TEST_ASSERT_EQUAL_UINT8(parent_flags, scene->flags[SUBJECT]);
     TEST_ASSERT_EQUAL_UINT32(CURRENT, timeline_time_ms(root));
+}
+
+static __attribute__((noinline)) void
+assert_bind_pose(entity_t root, vec3f_t offset, rig_bind_t bind) {
+    const scene_t* scene = columns(root);
+    const transformf_t owner = scene_row_world(scene->root, CAMERA);
+    const transformf_t target = scene_row_world(scene->root, BUTTERFLY);
+    const vec3f_t expected = rig_follow_position(&target, offset, bind);
+    TEST_ASSERT_EQUAL_FLOAT(expected.x, owner.position.x);
+    TEST_ASSERT_EQUAL_FLOAT(expected.y, owner.position.y);
+    TEST_ASSERT_EQUAL_FLOAT(expected.z, owner.position.z);
+    const transformf_t local = scene_row_local(scene->root, CAMERA);
+    const transformf_t own = scene_timeline_local_at(scene, CAMERA, &scene->timeline->clock, transformf_identity());
+    TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &local.rotation, sizeof own.rotation);
 }
 
 static void
@@ -1439,16 +1468,7 @@ test_constraint_bind_modes_and_unset_look(void) {
         open_pack(&writer, &pack);
         const entity_t root = load(&pack);
         timeline_seek(root, DURATION / 2);
-        const scene_t* scene = columns(root);
-        const transformf_t owner = scene_row_world(scene->root, CAMERA);
-        const transformf_t target = scene_row_world(scene->root, BUTTERFLY);
-        const vec3f_t expected = rig_follow_position(&target, constraint.offset, binds[i]);
-        TEST_ASSERT_EQUAL_FLOAT(expected.x, owner.position.x);
-        TEST_ASSERT_EQUAL_FLOAT(expected.y, owner.position.y);
-        TEST_ASSERT_EQUAL_FLOAT(expected.z, owner.position.z);
-        const transformf_t local = scene_row_local(scene->root, CAMERA);
-        const transformf_t own = scene_timeline_local_at(scene, CAMERA, &scene->timeline->clock, transformf_identity());
-        TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &local.rotation, sizeof own.rotation);
+        assert_bind_pose(root, constraint.offset, binds[i]);
         release_fixture();
     }
 }
@@ -1750,12 +1770,16 @@ test_timeline_ignores_nonroot_and_released_handles(void) {
     TEST_ASSERT_EQUAL_UINT32(0, timeline_time_ms(root));
     TEST_ASSERT_FALSE(timeline_playing(root));
     scene_release(root);
+    scene_row_t released;
+    TEST_ASSERT_NULL(scene_entity_peek(root, &released));
+#if !defined(DEVICE_BUILD)
     timeline_play(root);
     timeline_seek(root, DURATION);
     timeline_pause(root);
     TEST_ASSERT_FALSE(timeline_playing(root));
     TEST_ASSERT_EQUAL_UINT32(0, timeline_time_ms(root));
     TEST_ASSERT_EQUAL_UINT32(0, timeline_duration_ms(root));
+#endif
 }
 
 #if !defined(DEVICE_BUILD)
@@ -1840,6 +1864,8 @@ test_python_baked_v7_motion_row_layout(void) {
 
 static void
 run_scene_timeline_suite(void) {
+    scene_unload_all();
+    const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_animator_and_timeline_can_write_different_camera_fields);
     RUN_TEST(test_nondriven_active_camera_keeps_history);
     RUN_TEST(test_timeline_clip_type_root_and_empty_tracks);
@@ -1886,6 +1912,8 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_scene_without_a_timeline_ignores_controls);
     RUN_TEST(test_load_names_the_failing_clip_field_or_table);
     RUN_TEST(test_scne_validates_every_new_table);
+    scene_unload_all();
+    (void)scene_set_take(lender);
 }
 
 SUITE_REGISTER(run_scene_timeline_suite);

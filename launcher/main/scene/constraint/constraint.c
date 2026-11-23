@@ -158,9 +158,14 @@ look_rotation(const scene_t* scene, const scene_asset_constraint_t* c, scene_row
     return rig_look_rotation(from, mat4f_apply(&frame, c->look_offset), vec3f_up());
 }
 
+typedef struct {
+    vec3f_t position;
+    quatf_t rotation;
+} scene_constraint_pose_t;
+
 static bool
 sample_handoff(const scene_t* scene, const scene_constraint_t* c, int field, uint32_t now, uint32_t sample,
-               const transformf_t* own, transformf_t* result) {
+               const transformf_t* own, scene_constraint_pose_t* result) {
     const scene_constraint_curve_t* curve = &c->curves[field];
     const scene_row_t initial = c->targets[field];
     const int last = anim_track_key_at_ms(curve->times, curve->count, now);
@@ -232,36 +237,44 @@ constraint_inputs_placed(const scene_t* scene, const scene_constraint_t* c) {
     return false;
 }
 
+/* Keep the blend's transform temporaries off the target sampling call chain. */
+static __attribute__((noinline)) void
+blend_local(transformf_t* local, const transformf_t* frame, const transformf_t* own,
+            const scene_constraint_pose_t* pose, bool follows, bool looks, float weight) {
+    const transformf_t world = {.position = pose->position, .rotation = pose->rotation, .scale = own->scale};
+    const transformf_t blended = transformf_blend(own, &world, weight);
+    const transformf_t relative = transformf_relative(frame, &blended);
+    if (follows) {
+        local->position = relative.position;
+    }
+    if (looks) {
+        local->rotation = relative.rotation;
+    }
+    local->cached = false;
+}
+
 static void
 apply_constraint(scene_t* scene, const scene_constraint_t* c, const anim_playhead_t* time) {
     const scene_row_t row = c->values.entity;
-    const transformf_t local = time == NULL ? c->own : scene_timeline_local_at(scene, row, time, c->own);
-    const scene_row_t parent = scene_row_parent(scene, row);
-    const transformf_t frame = scene_row_world(scene->root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
-    const vec3f_t scale = frame.scale;
-    transformf_t result = local;
-    if (c->values.weight > 0.0F && fabsf(scale.x) >= FLT_MIN && fabsf(scale.y) >= FLT_MIN
-        && fabsf(scale.z) >= FLT_MIN) {
-        const transformf_t own = transformf_compose(&frame, &local);
-        const uint32_t now = time == NULL ? 0 : time->t_ms;
-        const uint32_t lag = control_ms(&c->curves[CONSTRAINT_FIELD_LAG_MS], c->values.lag_ms, now);
-        transformf_t world = own;
-        const bool follows =
-            sample_handoff(scene, c, CONSTRAINT_FIELD_FOLLOW, now, follow_time(scene, now, lag), &own, &world);
-        const bool looks = sample_handoff(scene, c, CONSTRAINT_FIELD_LOOK_AT, now, now, &own, &world);
-        if (follows || looks) {
-            const transformf_t blended = transformf_blend(&own, &world, c->values.weight);
-            const transformf_t relative = transformf_relative(&frame, &blended);
-            if (follows) {
-                result.position = relative.position;
+    transformf_t local = time == NULL ? c->own : scene_timeline_local_at(scene, row, time, c->own);
+    if (c->values.weight > 0.0F) {
+        const scene_row_t parent = scene_row_parent(scene, row);
+        const transformf_t frame = scene_row_world(scene->root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+        const vec3f_t scale = frame.scale;
+        if (fabsf(scale.x) >= FLT_MIN && fabsf(scale.y) >= FLT_MIN && fabsf(scale.z) >= FLT_MIN) {
+            const transformf_t own = transformf_compose(&frame, &local);
+            const uint32_t now = time == NULL ? 0 : time->t_ms;
+            const uint32_t lag = control_ms(&c->curves[CONSTRAINT_FIELD_LAG_MS], c->values.lag_ms, now);
+            scene_constraint_pose_t pose = {own.position, own.rotation};
+            const bool follows =
+                sample_handoff(scene, c, CONSTRAINT_FIELD_FOLLOW, now, follow_time(scene, now, lag), &own, &pose);
+            const bool looks = sample_handoff(scene, c, CONSTRAINT_FIELD_LOOK_AT, now, now, &own, &pose);
+            if (follows || looks) {
+                blend_local(&local, &frame, &own, &pose, follows, looks, c->values.weight);
             }
-            if (looks) {
-                result.rotation = relative.rotation;
-            }
-            result.cached = false;
         }
     }
-    scene_row_set_local(scene->root, row, result);
+    scene_row_set_local(scene->root, row, local);
 }
 
 void
