@@ -113,32 +113,40 @@ class PlacedVariantTests(unittest.TestCase):
         except Exception as error:
             raise unittest.SkipTest(f"the Sponza scene does not load here: {error}")
 
+    # Two fitted renderers sharing a variant, one with a variant of its own, and an unfitted one.
+    SHARED = SimpleNamespace(renderers=[fake_job("hall_fit", "s.hall_fit", "s_full"),
+                                        fake_job("hall_other", "s.hall_other", "s_full"),
+                                        fake_job("hall_small", "s.hall_small", "s_small"),
+                                        fake_job("hall", "s.hall", "s_full", fitted=False)])
+
+    def test_the_scenes_fitted_renderer_is_found_by_object_asset_and_variant(self):
+        job = next(item for item in self.sponza.renderers if item.renderer.fit)
+        for name in (job.object.name, job.asset_name, job.renderer.variant.name):
+            self.assertIs(fitted_variant.placed_variant(self.sponza, name), job)
+
     def test_a_scene_object_name_picks_its_own_renderer_even_when_a_variant_is_shared(self):
-        for name in ("atrium_fitted_full", "atrium_flat_fitted", "atrium_fitted"):
-            job = fitted_variant.placed_variant(self.sponza, name)
-            self.assertEqual(job.object.name, name)
-        self.assertEqual(fitted_variant.placed_variant(self.sponza, "atrium_flat_fitted").renderer.variant.name,
-                         "sponza_fitted_full")
+        for name in ("hall_fit", "hall_other", "hall_small"):
+            self.assertEqual(fitted_variant.placed_variant(self.SHARED, name).object.name, name)
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "hall_other").renderer.variant.name, "s_full")
 
     def test_an_asset_name_picks_its_own_renderer(self):
-        job = fitted_variant.placed_variant(self.sponza, "sponza.atrium_flat_fitted")
-        self.assertEqual(job.object.name, "atrium_flat_fitted")
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "s.hall_other").object.name, "hall_other")
 
     def test_a_variant_only_one_fitted_object_uses_names_that_object(self):
-        self.assertEqual(fitted_variant.placed_variant(self.sponza, "sponza_fitted").object.name, "atrium_fitted")
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "s_small").object.name, "hall_small")
 
     def test_a_variant_two_fitted_objects_share_is_refused_naming_both(self):
         with self.assertRaises(fitted_variant.SettingsError) as caught:
-            fitted_variant.placed_variant(self.sponza, "sponza_fitted_full")
+            fitted_variant.placed_variant(self.SHARED, "s_full")
         message = str(caught.exception)
-        self.assertIn("atrium_fitted_full", message)
-        self.assertIn("atrium_flat_fitted", message)
-        self.assertNotIn("atrium_fitted,", message)
+        self.assertIn("hall_fit", message)
+        self.assertIn("hall_other", message)
+        self.assertNotIn("hall_small", message)
 
     def test_unknown_names_and_objects_that_are_not_fitted_are_refused(self):
-        for name in ("no_such_object", "sponza_lite", "atrium", "atrium_flat", "atrium_lite", "sponza"):
+        for name in ("no_such_object", "hall", "s.hall"):
             with self.assertRaisesRegex(fitted_variant.SettingsError, "no fitted variant"):
-                fitted_variant.placed_variant(self.sponza, name)
+                fitted_variant.placed_variant(self.SHARED, name)
 
     def test_an_object_name_wins_over_another_objects_variant_of_the_same_name(self):
         scene = SimpleNamespace(renderers=[fake_job("wanted", "s.wanted", "other"), fake_job("second", "s.second", "wanted")])

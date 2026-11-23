@@ -62,23 +62,6 @@ laplacian = 10.0
 normal_weight = 1.0
 surface_weight = 10.0
 surface_margin = 0.25
-
-[[objects]]
-name = "statue"
-position = [0.0, 0.0, 300.0]
-scale = [2.0, 2.0, 2.0]
-
-[objects.mesh_renderer]          # a flat fit: one colour per face
-mesh = "statue.import.toml"
-variant = "statue_flat_fitted"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_region", rounds = 160 }
-
-[objects.mesh_renderer.fit]
-prune = { budget = 4000, coverage_every_ms = 20 }
-poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
-optimise = { steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, surface_weight = 10.0, surface_margin = 0.25 }
 ```
 
 ## Objects
@@ -327,19 +310,8 @@ described in [The baked mesh](../offline/Baked-Mesh.md#clusters-and-the-tree).
 
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
 lighting points per face; `auto` chooses a count from face area. One point lights a face
-from one place, so a shadow edge lands on whole faces
-([smooth against flat](../offline/Bake-Quality.md#the-demo-variants)).
-
-A flat fit starts from these sampled colours, then fits them. Top: one fixed
-sample against adaptive on the fit's start mesh. Bottom: adaptive against the
-finished fit.
-
-![One fixed face sample against adaptive, then adaptive against the flat fit](../../images/render/import-face-samples.png)
-
-Face samples are the useful control; extra samples converge, and a face's one
-colour leaves edge error that sampling cannot remove. A flat bake's sky rays
-are the sky light's `rays`. Sweeps, and `bake_fidelity.py` to score your own
-settings, are in the scene tools README.
+from one place, so a shadow edge lands on whole faces. A flat bake's sky rays
+are the sky light's `rays`; `bake_fidelity.py` scores your own settings.
 
 #### fit.prune
 

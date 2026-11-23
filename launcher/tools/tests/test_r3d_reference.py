@@ -20,8 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
+from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
 
 
 def write_reference_tree(work, sets=None):

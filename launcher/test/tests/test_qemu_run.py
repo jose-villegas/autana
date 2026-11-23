@@ -377,9 +377,9 @@ class DriveFrameTest(unittest.TestCase):
         self.assertEqual(sent, ["TOUCH down 10 20"])
 
     def test_a_send_writes_the_rest_of_the_step_as_typed(self):
-        ok, sent = self.run_action("send render scene  sponza-lite")
+        ok, sent = self.run_action("send render scene  bistro")
         self.assertTrue(ok)
-        self.assertEqual(sent, ["render scene  sponza-lite"])
+        self.assertEqual(sent, ["render scene  bistro"])
 
     def test_a_tap_outside_the_screenshot_is_not_an_action(self):
         with unittest.mock.patch("builtins.print"):
