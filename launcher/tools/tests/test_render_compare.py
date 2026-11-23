@@ -55,6 +55,19 @@ class StillColumnsTest(unittest.TestCase):
                                                             render_compare.LABEL_BAR)).getdata())), 1)
 
 
+    def test_one_still_column_is_one_labelled_panel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "fitted.bmp"
+            Image.new("RGB", (80, 40), (0, 0, 255)).save(path)
+            out = Path(tmp) / "sheet.png"
+            run = subprocess.run([sys.executable, render_compare.__file__, "--out", str(out),
+                                  "--still-column", "fitted", str(path)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with Image.open(out) as picture:
+                self.assertEqual(picture.size, (80, 40 + render_compare.LABEL_BAR))
+                self.assertEqual(picture.getpixel((40, render_compare.LABEL_BAR + 20)), (0, 0, 255))
+                self.assertGreater(len(set(picture.crop((0, 0, 80, render_compare.LABEL_BAR)).getdata())), 1)
+
 class AngleSheetTest(unittest.TestCase):
     def test_each_panel_is_labelled_and_the_scale_sits_below(self):
         with tempfile.TemporaryDirectory() as tmp:
