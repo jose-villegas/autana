@@ -1,7 +1,9 @@
 """Making a bake (bake.py bake): runs its stage's tool into the cache and records which bytes the
 key got. Needs the tool's environment: the r3d requirements for a mesh or a reference set, and for a fit
-also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
-counts must match what is installed, so a key never names bytes made with other packages.
+also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). A reference set traces on the CUDA GPU where
+Mitsuba loads a scene there, else on the CPU (reference_render.reference_variant). Before it runs, every
+requirement pin the key counts must match what is installed, so a key never names bytes made with other packages.
+A bake made on the GPU, a fit or a reference set traced there, names the GPU in its row.
 
 A fit's start is a mesh bake of its own and its reference set a reference bake; the fit reads the bytes its key
 names, from the lock or this cache, so any GPU host fits from the same inputs. A reference bake renders its set
@@ -60,22 +62,24 @@ def made(key, cache):
     return row if file.is_file() and keys.file_sha256(file) == row["sha256"] else None
 
 
-def maker(kind):
-    """Where a bake of `kind` is made, as its row names it: the host, and what its bytes differ by."""
+def maker(on_gpu=False):
+    """Where a bake is made, as its row names it: the host, and what its bytes differ by; `on_gpu` for one made on
+    the GPU."""
     fields = {"host": f"{platform.system()} {platform.machine()}"}
     if keys.cpu_vendor() is not None:
         fields["cpu_vendor"] = keys.cpu_vendor()  # a rerun adopts a mesh only from a matching CPU vendor
-    if kind == "fit" and (gpu := keys.gpu_name()) is not None:
-        fields["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
+    if on_gpu and (gpu := keys.gpu_name()) is not None:
+        fields["gpu"] = gpu  # a GPU bake's bytes differ between GPU models: its lock row names the one
     return fields
 
 
-def record(bake, path, cache, run=None):
-    """Puts the file `path` made for `bake` in the cache and indexes it by key."""
+def record(bake, path, cache, run=None, on_gpu=False):
+    """Puts the file `path` made for `bake` in the cache and indexes it by key; `on_gpu` when it was made on the
+    GPU."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
-           **maker(bake.kind)}
+           **maker(on_gpu)}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -207,8 +211,8 @@ def prune_references(cache, now=None):
 def poses_progress(folder):
     """While the block runs, tells the stage's guard each time `folder` holds more files than before: a reference set
     traces for hours and writes each pose's files as it finishes it, so a set still tracing is never taken for hung.
-    The pose pool forks beside this thread safely: a child takes none of its locks, and the parent already runs
-    Dr.Jit's worker threads when it forks."""
+    A CPU trace's pose pool forks beside this thread safely: a child takes none of its locks, and the parent already
+    runs Dr.Jit's worker threads when it forks."""
     from process_tree import progressed
 
     stop = threading.Event()
@@ -264,13 +268,14 @@ def input_file(bake, cache, lock, dependency=None):
 
 
 def produce_reference(bake, cache, fresh_references):
+    from r3d.reference_render import reference_variant
     from r3d.reference_set import pack_references, reference_inputs
 
     folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
-        return record(bake, target, cache)
+        return record(bake, target, cache, on_gpu=reference_variant().startswith("cuda"))
 
 
 def produce_fit(bake, cache, lock):
@@ -284,7 +289,7 @@ def produce_fit(bake, cache, lock):
         unpack_references(references.read_bytes(), inputs)
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
-        return record(bake, target, cache)
+        return record(bake, target, cache, on_gpu=True)
 
 
 def produce_sound(bake, cache):
@@ -353,12 +358,12 @@ def export(row, cache, out):
 
 def adopt(rows, cache):
     """Indexes in this cache each row a run made on a host like this one (maker), its file already there, so a
-    rerun takes it as made here; returns those rows. A row without a `gpu` is taken as no fit's: a fit runs only
-    where nvidia-smi names the GPU."""
+    rerun takes it as made here; returns those rows. A row with a `gpu` was made on the GPU and is taken only where
+    nvidia-smi names the same one; a row without one was made on the CPU."""
     adopted = []
     for row in rows:
         made_on = {name: row[name] for name in ("host", "cpu_vendor", "gpu") if name in row}
-        if made_on == maker("fit" if "gpu" in row else None):
+        if made_on == maker(on_gpu="gpu" in row):
             write_atomically(index_path(row["key"], cache), json.dumps(row, sort_keys=True) + "\n")
             adopted.append(row)
     return adopted

@@ -342,22 +342,26 @@ The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
 [Appearance-Fit.md describes the surface term](../../../docs/render/offline/Appearance-Fit.md#surface).
 
-### Reference on the CPU
+### Reference on the GPU
 
-A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
-made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)), and between CPU models of one vendor.
-It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
-triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
-hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
-than the GPU, paid once per reference key: the fits that read a set share it.
+A reference set traces its rays and bounced light on the fastest variant the machine runs
+(`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
+On CUDA one process traces the poses one after another; a pool of processes would share the one GPU and only add
+memory. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
 
-Since a set differs between CPU models, the bake locks it: the Bakes reference job chooses its poses, renders
+OptiX does not promise the same acceleration structure from the same
+triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>, and a shadow ray grazing an edge hits or
+misses by the build, which the fit would turn into a different mesh. So a set is proven to repeat on the Bakes
+runner's GPU: two traces of one set there make the same bytes. Its bytes differ between GPU models, so its lock row
+names the `gpu`, as a fit's does.
+
+Since a set differs between GPU models, the bake locks it: the Bakes reference job chooses its poses, renders
 them and packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.
 
-The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
+The path-traced backend runs on `cuda_ad_rgb` too where it loads a scene. Under WSL 2 the Windows driver ships only
 an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
 `libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's

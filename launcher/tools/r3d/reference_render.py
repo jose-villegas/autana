@@ -15,6 +15,7 @@ and shares the exposure, tone map and RGB565 conversion below. Only the bake bac
 """
 
 import argparse
+import functools
 import os
 import multiprocessing
 import concurrent.futures
@@ -26,7 +27,7 @@ from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mesh_source, mitsuba_reference
+from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
@@ -166,9 +167,10 @@ def source_for(scene, name=None, lit=True, hide_cards=False, hidden_materials=No
     return lit_source(named[0], scene, lit, hide_cards=hide_cards, hidden_materials=hidden_materials), named[0]
 
 
-def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
-    """Full-detail alpha-tested source with bake lighting. `hide_cards` passes accepted materials on camera rays;
-    they still shadow and bounce light onto the surfaces behind them."""
+def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None, variant=None):
+    """Full-detail alpha-tested source with bake lighting, its rays and bounced light traced on `variant`
+    (`ray_query.VARIANT` when None). `hide_cards` passes accepted materials on camera rays; they still shadow and
+    bounce light onto the surfaces behind them."""
     settings = job.settings
     selecting_cards = hide_cards and hidden_materials is None and settings.cards is not None
     source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
@@ -179,8 +181,8 @@ def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
     source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
-    source.bounce = path_light_for(source, job, scene)
+    source.intersector = RayQuery(source.p, source.tri_v, variant, hit_filter=source.alpha_test)
+    source.bounce = path_light_for(source, job, scene, variant)
     return source
 
 
@@ -192,13 +194,29 @@ def camera_hidden(source, settings, scene=None, hidden_materials=None):
     return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
+@functools.cache
+def reference_variant():
+    """The variant a reference set traces on: the fastest this machine runs (mitsuba_reference.default_variant),
+    `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`; `ray_query.VARIANT` without Mitsuba,
+    where the ray query names what to install. Mitsuba is left on the variant it was on."""
+    mi = mitsuba_reference.import_mitsuba()
+    if mi is None:
+        return ray_query.VARIANT
+    current = mi.variant()
+    try:
+        return mitsuba_reference.default_variant(mi)
+    finally:
+        if current is not None:
+            mi.set_variant(current)
+
+
 def render_sets(inputs, sets, samples=4):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the bake's
-    CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
-    textures a second time, is dropped before it returns, for the fit that follows in the process."""
+    reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on
+    `reference_variant()`. The bounced-light tracer, which holds the source's textures a second time, is dropped
+    before it returns, for the fit that follows in the process."""
     job, scene = inputs.job(), inputs.scene()
-    source = lit_source(job, scene, hide_cards=True)
+    source = lit_source(job, scene, hide_cards=True, variant=reference_variant())
     try:
         for poses_path, out in sets:
             width, height, lens, _near, poses = read_poses(poses_path)
@@ -250,12 +268,14 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
-    if getattr(source, "bounce", None) is not None:
-        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
-        # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
-        # light renders in this process.
+    on_gpu = getattr(getattr(source, "intersector", None), "variant", "").startswith("cuda")
+    if on_gpu or getattr(source, "bounce", None) is not None:
+        # One process traces every pose on the GPU, where forked workers would share it and only add memory. On the
+        # CPU, Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one
+        # thread and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with
+        # bounced light renders in this process too.
         if workers not in (None, 1):
-            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
+            raise ValueError("poses on the GPU or with bounced light render in the main process; leave --workers unset")
         workers = 1
     budget_capacity = None
     if workers is None:

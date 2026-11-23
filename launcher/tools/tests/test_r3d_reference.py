@@ -376,6 +376,25 @@ class BounceReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
+    def test_poses_traced_on_cuda_render_in_this_process_and_cpu_poses_keep_the_pool(self):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        from r3d import reference_render as reference
+        for variant, pooled in (("cuda_ad_rgb", False), ("llvm_ad_rgb", True)):
+            source = SimpleNamespace(bounce=None, intersector=SimpleNamespace(variant=variant))
+            with self.subTest(variant=variant), patch.object(reference, '_write_pose', return_value=(1, 20)), \
+                    patch.object(budget, 'task_reservation', return_value=None), \
+                    patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
+                    patch.object(budget, 'cores_available', return_value=3), \
+                    patch.object(budget, 'worker_capacity', return_value=3), \
+                    patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                    patch.object(reference.multiprocessing, 'get_context'), \
+                    patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+                executor.return_value.__enter__.return_value.map.return_value = [(2, 20)] * 3
+                result = reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.')
+            self.assertEqual(executor.called, pooled)
+            self.assertEqual(result[1], 3 if pooled else 1)
+
 
 def render_one_set(job, **patches):
     """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
@@ -424,19 +443,31 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
-    def test_a_set_traces_on_the_bake_variant(self):
-        from r3d import ray_query
+    def test_a_set_traces_its_rays_and_bounced_light_on_the_reference_variant(self):
         from tests.test_r3d_path_bake import corridor
 
         def variant_of(call, at):
             args, kwargs = call
-            given = kwargs.get("variant", args[at] if len(args) > at else None)
-            return given or ray_query.VARIANT
+            return kwargs.get("variant", args[at] if len(args) > at else None)
 
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
-        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
-        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
-        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
+        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={},
+                               reference_variant={"return_value": "cuda_ad_rgb"})
+        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), "cuda_ad_rgb")
+        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), "cuda_ad_rgb")
+
+    def test_the_reference_variant_is_the_fastest_this_machine_traces_on_else_the_bake_variant(self):
+        from unittest.mock import patch
+        from r3d import mitsuba_reference, ray_query
+        from r3d import reference_render as reference
+        for found, expected in (("cuda_ad_rgb", "cuda_ad_rgb"), (None, ray_query.VARIANT)):
+            reference.reference_variant.cache_clear()
+            self.addCleanup(reference.reference_variant.cache_clear)
+            with self.subTest(found=found), \
+                    patch.object(mitsuba_reference, "import_mitsuba",
+                                 return_value=found and SimpleNamespace(variant=lambda: None)), \
+                    patch.object(mitsuba_reference, "default_variant", return_value=found):
+                self.assertEqual(reference.reference_variant(), expected)
 
     def test_the_bounced_light_cache_is_dropped_even_when_a_pose_fails(self):
         import contextlib

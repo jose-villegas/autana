@@ -1233,22 +1233,60 @@ class CpuVendorTests(FittedBakeCase):
         self.assertNotIn("vendor", path.read_text())
 
 
-class FitGpuTests(FittedBakeCase):
-    """A fit's bytes differ between GPU models: a fit's make names its GPU, and its lock row keeps it."""
+class GpuRowTests(FittedBakeCase):
+    """A GPU bake's bytes differ between GPU models: a make on the GPU, a fit or a reference set traced on CUDA,
+    names its GPU, and its lock row keeps it."""
 
     GPU = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
-    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_fit(self):
+    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_make_on_the_gpu(self):
         tree = self.root / "one.bundle"
         tree.write_bytes(b"fit baked")
         with mock.patch.object(bake, "NVIDIA_SMI_NAME", (sys.executable, "-c", f"print({self.GPU!r}); print('x')")):
             self.assertEqual(bake.gpu_name(), self.GPU)
-            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache)["gpu"], self.GPU)
+            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache, on_gpu=True)["gpu"],
+                             self.GPU)
             self.assertNotIn("gpu", produce.record(bake_of("j" * 64, tree), tree, self.cache))
         for absent in ((str(self.root / "no-nvidia-smi"),), (sys.executable, "-c", "pass")):
             with self.subTest(absent=absent), mock.patch.object(bake, "NVIDIA_SMI_NAME", absent):
                 self.assertIsNone(bake.gpu_name())
-                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache))
+                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache,
+                                                       on_gpu=True))
+
+    def test_a_fit_and_a_reference_set_traced_on_cuda_name_the_gpu_and_a_cpu_trace_does_not(self):
+        start = self.root / "start.bundle"
+        start.write_bytes(b"start")
+        item = bake_of("r" * 64, self.root / "set.tar.xz", kind="reference")
+        fit = dataclasses.replace(bake_of("f" * 64, self.root / "fit.bundle", kind="fit"), stages={},
+                                  scene=types.SimpleNamespace(path=self.root))
+
+        def fit_stub(*args, target, **kwargs):
+            target.write_bytes(b"fit")
+
+        for variant, named in (("cuda_ad_rgb", True), ("llvm_ad_rgb", False)):
+            modules = {"r3d.reference_render": types.SimpleNamespace(reference_variant=lambda variant=variant: variant),
+                       "r3d.reference_set": types.SimpleNamespace(reference_inputs=mock.MagicMock(),
+                                                                  pack_references=lambda *args: b"packed",
+                                                                  unpack_references=lambda *args: None),
+                       "r3d.fit.stage": types.SimpleNamespace(fit=fit_stub)}
+            with self.subTest(variant=variant), mock.patch.dict(sys.modules, modules), \
+                    mock.patch.object(bake, "gpu_name", return_value=self.GPU), \
+                    mock.patch.object(produce, "reference_set", return_value=self.root), \
+                    mock.patch.object(produce, "input_file", return_value=start):
+                self.assertEqual(produce.produce_reference(item, self.cache, None).get("gpu"),
+                                 self.GPU if named else None)
+                self.assertEqual(produce.produce_fit(fit, self.cache, {})["gpu"], self.GPU)
+
+    def test_a_rerun_adopts_a_gpu_row_only_on_the_same_gpu_and_a_cpu_row_on_any(self):
+        here = {"host": f"{platform.system()} {platform.machine()}", "cpu_vendor": "AuthenticAMD"}
+        rows = {"same": {**here, "gpu": self.GPU}, "other": {**here, "gpu": "NVIDIA GeForce RTX 2060"},
+                "cpu": here}
+        rows = [{"key": name * 8, "sha256": REFERENCE_SHA256, "suffix": bake.REFERENCE_SUFFIX, **fields}
+                for name, fields in rows.items()]
+        with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
+                mock.patch.object(bake, "gpu_name", return_value=self.GPU):
+            adopted = produce.adopt(rows, self.cache)
+        self.assertEqual(sorted(row["key"] for row in adopted), ["cpu" * 8, "same" * 8])
 
     def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
         fit = self.fit(MADE_SHA256)
@@ -1289,7 +1327,7 @@ class KeptWorkTests(FittedBakeCase):
             produced.append(item.output)
             path = self.root / item.output
             path.write_text(item.key, encoding="utf-8")
-            return produce.record(item, path, cache)
+            return produce.record(item, path, cache, on_gpu=True)
 
         argv = ["bake", "--kind", "fit", str(self.root), "--cache", str(cache), "--out", str(self.out)]
         with mock.patch.object(bake, "read_lock_tables", return_value={"bake": self.lock, "poses": {}}), \

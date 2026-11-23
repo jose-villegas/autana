@@ -16,11 +16,12 @@ renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
 each key the SHA-256 of the bytes made for it.
-A bake that traces rays (a mesh, a reference set) makes other bytes on another CPU vendor, so the
-Bakes workflow makes them all on one self-hosted runner (docs/assets/Bakes.md); a run records each
-row's host and CPU vendor, and a rerun adopts only what an earlier attempt made on a matching one.
+A mesh bake traces rays on the CPU and makes other bytes on another CPU model; a reference set traces on
+the CUDA GPU and makes other bytes on another GPU model. So the Bakes workflow makes them all on one
+self-hosted runner (docs/assets/Bakes.md); a run records each row's host and CPU vendor, and the GPU of a
+bake made on one, and a rerun adopts only what an earlier attempt made on a matching host.
 
-A fitted renderer has a CPU start (`<entry>.start.bundle`), a CPU reference set
+A fitted renderer has a CPU start (`<entry>.start.bundle`), a GPU reference set
 (`<entry>.reference.tar.xz`, reference_set.pack_references), a GPU fit without rest levels
 (`<entry>.fit.bundle`) and CPU levels (`<entry>.bundle`). Each later key names its inputs' locked
 bytes; only the final bundle enters a pack. The reference set is keyed on what it reads
@@ -118,7 +119,8 @@ PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
 CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
-# bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on; a seeded row has neither.
+# bake is reproducible only on one kind of host, and "gpu" the GPU a bake made on one ran on (a fit, a reference
+# set traced on CUDA); a seeded row has neither.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")

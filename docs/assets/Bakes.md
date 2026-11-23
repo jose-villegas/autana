@@ -45,17 +45,18 @@ levels bake whose fit it has not locked yet; the CPU run makes it afterwards. A 
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
-A bake that traces rays differs between CPU models too (an AMD and an Intel host
-trace a few rays an ulp apart), so every Bakes job that makes a bake runs on the
-self-hosted runner that makes the fits (see [The bakes runner](#the-bakes-runner)).
-A row records the CPU vendor it was made on, and a rerun adopts an earlier attempt's bake only from a matching one.
+A mesh bake traces rays on the CPU and differs between CPU models (an AMD and an Intel host
+trace a few rays an ulp apart); a reference set traces on the CUDA GPU and differs between GPU models. So every
+Bakes job that makes a bake runs on the self-hosted runner that makes the fits (see
+[The bakes runner](#the-bakes-runner)). A row records the CPU vendor it was made on, and the `gpu` of a bake made on
+one; a rerun adopts an earlier attempt's bake only from a matching host.
 
-A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
-tracing may build a different tree each time
-([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
-It is a bake of its own, locked like the start; its bytes differ between CPU models, even two generations of one vendor.
+A fit's reference set is traced on Mitsuba's CUDA variant
+([Reference on the GPU](../../launcher/tools/r3d/README.md#reference-on-the-gpu)), one pose after another in one
+process. It is a bake of its own, locked like the start, and its row names the GPU that traced it.
 
-The Bakes reference job traces every missing set in one job, selecting its poses, rendering them and packing it.
+The Bakes reference job traces every missing set in one job: it selects its poses on the CPU, renders them on the
+GPU and packs the set on the CPU. A runner where Mitsuba cannot trace on CUDA fails the job before it traces.
 The set's folder holds more pose files as it traces, and each one tells the stage guard the set still progresses.
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
@@ -80,7 +81,7 @@ and copies manifest, including when no shapes are carved.
 | Fitted renderer stage | Output | Input |
 |---|---|---|
 | CPU start | `<entry>.start.bundle` | Source and import recipe |
-| CPU reference set | `<entry>.reference.tar.xz` | Source, scene light and camera, pose size and spacing |
+| GPU reference set | `<entry>.reference.tar.xz` | Source, scene light and camera, pose size and spacing |
 | GPU fit | `<entry>.fit.bundle` | Locked start and reference set bytes; rest without levels |
 | CPU levels | `<entry>.bundle` | Locked fit bytes, `lod` and meshlet size |
 
@@ -108,13 +109,13 @@ One self-hosted runner, labelled `gpu-legion`, makes every bake: the Bakes jobs
 that make one (meshes, exports, sounds, levels, reference sets)
 and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
 each other. A fit runs in its fit environment, `~/gpu/env`
-([r3d README](../../launcher/tools/r3d/README.md)); a CPU job makes a venv of
+([r3d README](../../launcher/tools/r3d/README.md)); a Bakes job makes a venv of
 its own over it, so what it installs stays in the venv; only a Bakes GPU run
 installs into the fit environment. Both run on that environment's Python, the
 release the r3d README creates it with, not the `.python-version` one.
-Neither needs root: the machine holds LLVM, Git LFS, a C compiler and the X
-libraries Blender loads.
-Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
+Neither needs root: the machine holds LLVM, Git LFS, a C compiler, the X
+libraries Blender loads and the Linux driver's OptiX library the reference trace loads (`~/gpu/optix`).
+A Bakes job's bake runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
 on every CPU at idle priority, under the stage's hang guard. Other work in the WSL VM, such as a build, pre-empts
 it; the Windows side, the board runner included, shares the VM's CPUs with it as ordinary load.
 
