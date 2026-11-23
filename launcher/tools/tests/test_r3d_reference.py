@@ -338,7 +338,7 @@ class PerPointDirectionsTests(unittest.TestCase):
         self.assertIs(lit.call_args.kwargs["frame"], turned_frame)
 
     @needs_mitsuba
-    def test_a_scene_that_denoises_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
+    def test_a_denoised_trace_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
         from unittest.mock import patch
         from r3d import reference_render
 
@@ -346,10 +346,9 @@ class PerPointDirectionsTests(unittest.TestCase):
         job, scene = sun_scene([0.0, 0.0, 1.0])
         plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
         for denoise in (False, True):
-            scene.bake = SimpleNamespace(aa_samples=1, denoise=denoise)
             with self.subTest(denoise=denoise), \
                     patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
-                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1, denoise)
                 self.assertEqual(filtered.call_count, int(denoise))
                 np.testing.assert_array_equal(linear, plain[0] + float(denoise))
                 np.testing.assert_array_equal(normal, plain[2])
@@ -458,10 +457,32 @@ class BounceReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
+    def test_denoised_poses_render_in_this_process_and_refuse_more_workers(self):
+        from unittest.mock import patch
+        from r3d import reference_render as reference
+        source = SimpleNamespace(bounce=None)
+        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
+                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+            result = reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', denoise=True)
+        executor.assert_not_called()
+        self.assertEqual(result[1], 1)
+        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
+            reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', workers=2, denoise=True)
 
-def render_one_set(job, **patches):
+    def test_a_reference_set_traces_at_its_inputs_samples_and_denoising(self):
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise):
+                render_poses = render_one_set(None, aa_samples=3, denoise=denoise, lit_source={"return_value": object()},
+                                              render_poses={"return_value": (0, 1)})["render_poses"]
+                args, kwargs = render_poses.call_args
+                self.assertEqual((args[7], kwargs["denoise"]), (3, denoise))
+
+
+def render_one_set(job, aa_samples=1, denoise=False, **patches):
     """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
-    patched by its keyword arguments (render_poses returns no work unless given); returns the patches by name."""
+    patched by its keyword arguments (render_poses returns no work unless given), the inputs tracing at `aa_samples`
+    with `denoise`; returns the patches by name."""
     import contextlib
     import io
     import tempfile
@@ -470,7 +491,7 @@ def render_one_set(job, **patches):
     from r3d.fitted_variant import poses_text
 
     patches.setdefault("render_poses", {"return_value": (0, 1)})
-    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, aa_samples=1, denoise=False)
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, aa_samples=aa_samples, denoise=denoise)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
         poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))

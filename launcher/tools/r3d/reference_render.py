@@ -104,11 +104,11 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     return origin, direction, locations, rays, faces, normal, bary, double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples):
+def trace(source, job, scene, pose, width, height, lens, samples, denoise=False):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss). Every hemisphere term turns its directions per point
-    (light.turned_frame); a scene whose [bake] sets denoise passes the colour through `denoised`."""
+    (light.turned_frame); with `denoise` the colour passes through `denoised`."""
     origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
                                                                                     samples)
     linear = np.zeros((len(origin), 3), dtype=float)
@@ -128,15 +128,9 @@ def trace(source, job, scene, pose, width, height, lens, samples):
     shading = shading.reshape(shape).sum(axis=2)
     shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
     linear = linear.reshape(shape).mean(axis=2)
-    if denoised_scene(scene):
+    if denoise:
         linear = denoised(linear, albedo.reshape(shape).mean(axis=2), shading)
     return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
-
-
-def denoised_scene(scene):
-    """Whether the scene's [bake] asks for its reference renders to be denoised."""
-    bake = getattr(scene, "bake", None)
-    return bake is not None and bool(bake.denoise)
 
 
 def denoised(linear, albedo, normal):
@@ -231,7 +225,7 @@ def render_sets(inputs, sets):
             width, height, lens, _near, poses = read_poses(poses_path)
             pathlib.Path(out).mkdir(parents=True, exist_ok=True)
             peak, workers = render_poses(source, job, scene, poses, width, height, lens, inputs.aa_samples, out,
-                                         normals=True)
+                                         normals=True, denoise=inputs.denoise)
             print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
                   flush=True)
     finally:
@@ -248,9 +242,9 @@ POSE_STATE = None
 
 
 def _write_pose(item):
-    source, job, scene, width, height, lens, samples, out, normals, occlusion = POSE_STATE
+    source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise = POSE_STATE
     index, pose = item
-    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples, denoise)
     np.save(out / ("%04d.linear.npy" % index), linear)
     if normals:
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
@@ -272,7 +266,8 @@ def budget_pose_capacity(budget, rss, estimate, cores):
     return max(1, min(cores, (budget - rss) // estimate))
 
 
-def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False,
+                 denoise=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
     Every pose's rays are fixed, so the output matches a serial run.
     """
@@ -280,7 +275,6 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
-    denoise = denoised_scene(scene)
     if getattr(source, "bounce", None) is not None or denoise:
         # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
         # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
@@ -310,7 +304,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         workers = 1
     if budget_capacity is not None:
         print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
+    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion, denoise)
     pose_peaks = {}
     try:
         if workers == 1:
@@ -389,7 +383,8 @@ def main(argv=None):
         parser.error("the scene sets no [bake].ao")
     if path is None:
         try:
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion,
+                                         denoise=bool(scene.bake and scene.bake.denoise))
         except ValueError as error:
             parser.error(str(error))
         print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}", flush=True)

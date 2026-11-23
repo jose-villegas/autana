@@ -89,8 +89,7 @@ class ReferenceInputs:
 
     def scene(self):
         return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,
-                               camera=SimpleNamespace(component=self.camera),
-                               bake=SimpleNamespace(aa_samples=self.aa_samples, denoise=self.denoise))
+                               camera=SimpleNamespace(component=self.camera))
 
 
 def reference_inputs(job, scene):

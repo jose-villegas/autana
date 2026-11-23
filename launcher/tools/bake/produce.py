@@ -269,8 +269,7 @@ def reference_rays(bake, out=None):
     def count(inputs, sets):
         samples = inputs.aa_samples
         nonlocal rays
-        calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
-                      "samples": samples})
+        calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets]})
         for poses, _ in sets:
             width, height, _lens, _near, posed = parse_pose_rows(pathlib.Path(poses).read_text())
             rays += len(posed) * width * height * samples * samples
