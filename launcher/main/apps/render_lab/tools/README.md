@@ -493,7 +493,7 @@ scene with no lit mesh, an unknown name or no value fails the run.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
 cluster a flat hue, with disjoint IDs across instances.
 
-![The meshlets view of the fitted bake](../../../../../docs/images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../../../../docs/images/render/sponza-view-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.

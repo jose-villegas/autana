@@ -48,7 +48,7 @@ Coarse clusters hang in runs under nodes of their own.
 *The importer's clusterizer call on a flat patch, limit 16: whole meshlets in
 emitted order, since meshoptimizer has no per-triangle hook.*
 
-![Clusters painted by the meshlets debug view](../../images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../images/render/sponza-view-meshlets.png)
 
 ![Clusters and submitted triangles against the meshlet size](../../images/render/meshlets/meshlet-size-trade.png)
 
