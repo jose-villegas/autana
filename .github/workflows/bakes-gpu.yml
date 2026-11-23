@@ -16,7 +16,7 @@ name: Bakes GPU
 # copy in ~/gpu/optix, which only the probe names, in its own environment.
 #
 # `runner` picks the self-hosted runner by a label of its own; the default
-# `gpu` is the runner the night queue uses. Any runner makes a fit's locked
+# `gpu-legion` is the runner that makes the CPU bakes too (bakes.yml). Any runner makes a fit's locked
 # bytes; each lock row names the GPU that made it. Runs on different runners do
 # not wait for each other. A fit waits for no board and takes no heavy lock: it
 # runs beside builds and board jobs on its host, on a CPU share
@@ -45,7 +45,7 @@ on:
       runner:
         description: 'The self-hosted runner label to fit on'
         required: false
-        default: gpu
+        default: gpu-legion
 
 concurrency:
   group: bakes-gpu-${{ inputs.runner }}

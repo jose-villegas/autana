@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 151 | 26 | 0 |
+| [render](#render) | 155 | 26 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -227,6 +227,10 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/bistro-street_fitted_full-probes-3.png"><img src="../images/render/bistro-street_fitted_full-probes-3.png" width="160" alt=""></a> | Bistro probes from above the -x -z corner | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
 | <a href="../images/render/bistro-street_fitted_full-probes-4.png"><img src="../images/render/bistro-street_fitted_full-probes-4.png" width="160" alt=""></a> | Bistro probes from above the +x -z corner | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
 | <a href="../images/render/bistro-street_fitted_full-probes-orbit.gif"><img src="figure-thumbnails/render/bistro-street_fitted_full-probes-orbit.gif" width="160" alt=""></a> | Bistro probes, circling | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
+| <a href="../images/render/cards-atrium_fitted_full-cards.png"><img src="../images/render/cards-atrium_fitted_full-cards.png" width="160" alt=""></a> | The cards on the background | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
+| <a href="../images/render/cards-atrium_fitted_full-composite.png"><img src="../images/render/cards-atrium_fitted_full-composite.png" width="160" alt=""></a> | The cards over the light-only render | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
+| <a href="../images/render/cards-atrium_fitted_full-light-only.png"><img src="../images/render/cards-atrium_fitted_full-light-only.png" width="160" alt=""></a> | The foliage hidden from the camera | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
+| <a href="../images/render/cards-atrium_fitted_full-source.png"><img src="../images/render/cards-atrium_fitted_full-source.png" width="160" alt=""></a> | The source with its foliage | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
 | <a href="../images/render/compare-fitted-full-fitted.crops.png"><img src="../images/render/compare-fitted-full-fitted.crops.png" width="160" alt=""></a> | fitted full against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md), [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/compare-fitted-full-fitted.png"><img src="../images/render/compare-fitted-full-fitted.png" width="160" alt=""></a> | fitted full against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md), [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/compare-flat-flat-fitted.crops.png"><img src="../images/render/compare-flat-flat-fitted.crops.png" width="160" alt=""></a> | flat against flat fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
