@@ -26,6 +26,7 @@
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
+#include "scene/constraint/constraint.h"
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
@@ -138,7 +139,8 @@ extern const anim_component_fields_t ANIMATOR_FIELDS;
 #define SCENE_COMPONENT_LIST(X)                                                                                        \
     X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
     X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
-    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)
+    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)                                                           \
+    X(CNST, CONSTRAINT_FIELDS, CONSTRAINT_FIELD_COUNT, ANIMATOR)
 
 #define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
 
@@ -149,9 +151,14 @@ enum { SCENE_COMPONENT_LIST(SCENE_COMPONENT_ID) SCENE_COMPONENT_COUNT };
 
 enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
-typedef uint16_t scene_field_mask_t;
+typedef uint32_t scene_field_mask_t;
 
-_Static_assert(SCENE_FIELD_BASE_ANIMATOR + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+enum {
+    SCENE_PROPERTY_TRANSFORM = 1U << SCENE_FIELD_END_CNST,
+    SCENE_PROTECTED_TRANSFORM = SCENE_PROPERTY_TRANSFORM << 1,
+};
+
+_Static_assert(SCENE_FIELD_END_CNST + 2 <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 static inline scene_field_mask_t
@@ -174,6 +181,8 @@ typedef struct {
     size_t clip_keys, time_keys;
     uint32_t* times_ms;
     uint8_t* slots;
+    size_t target_keys;
+    scene_row_t* targets;
 } scene_timeline_blocks_t;
 
 /* Separate from property animators so the scene root has one shared clock. */
@@ -185,9 +194,24 @@ typedef struct {
     scene_timeline_driver_t* drivers;
     const uint32_t* times_ms;
     const uint8_t* slots;
+    const scene_row_t* target_keys;
     bool dirty;
     anim_bound_t fields[];
 } scene_timeline_t;
+
+typedef struct {
+    const uint32_t* times;
+    const scene_row_t* targets;
+    const float* values;
+    uint16_t count;
+} scene_constraint_curve_t;
+
+typedef struct {
+    scene_asset_constraint_t values;
+    transformf_t own;
+    scene_row_t targets[CONSTRAINT_TARGET_COUNT];
+    scene_constraint_curve_t curves[CONSTRAINT_STEP_COUNT];
+} scene_constraint_t;
 
 /* Temporary component references let the binder address scene columns directly. */
 typedef struct {
@@ -304,6 +328,7 @@ struct scene {
     transformf_t* locals;
     scene_animator_t* animators;
     scene_timeline_t* timeline;
+    scene_constraint_t* constraints;
     size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
@@ -423,10 +448,28 @@ asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id
 bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
                               int count, bool replace, scene_failure_t* why);
 scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* targets,
-                                       const scene_field_mask_t* writes, const anim_tracks_t* timeline,
+                                       scene_field_mask_t* writes, const anim_tracks_t* timeline,
                                        scene_timeline_blocks_t* blocks);
 scene_failure_t scene_timeline_bind(scene_t* scene);
 void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
+transformf_t scene_timeline_local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time,
+                                     transformf_t local);
+transformf_t scene_timeline_world_at(const scene_t* scene, scene_row_t row, uint32_t ms);
+transformf_t scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time);
+
+static inline scene_row_t
+scene_asset_parent(const scene_asset_t* asset, scene_row_t row) {
+    const uint16_t parent = asset->parents[row];
+    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : parent;
+}
+
+scene_row_t scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash);
+scene_failure_t scene_constraint_target(const scene_asset_t* asset, scene_field_mask_t* writes,
+                                        const anim_binding_t* binding, name_hash_t hash, scene_row_t* out);
+scene_failure_t scene_constraint_resolve(const scene_asset_t* asset, scene_field_mask_t* writes, scene_row_t* targets);
+scene_constraint_t* scene_constraint_find(const scene_t* scene, scene_row_t row);
+void scene_constraint_open(scene_t* scene);
+void scene_constraint_step(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);
@@ -473,6 +516,7 @@ void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_binding_failure(asset_status_t status, const anim_binding_t* binding);
+scene_failure_t scene_binding_name_failure(const anim_binding_t* binding, name_hash_t hash, const char* detail);
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
 /* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
  * is not drawn, and scene_failure() names it, until scene_unstarve() as it

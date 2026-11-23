@@ -353,9 +353,9 @@ title Content: hinges, 28 bytes each from hinges_off
 | Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0. The light shines along `SCENE_LIGHT_AXIS` (+Y) turned by its entity's rotation; at run time it lights skinned renderers only, baked renderers carry their light. Sky and camera regions are bake inputs and are not stored |
 | Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
 | Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
-| Constraints | `bind` is world (0), target (1) or target yaw (2). Target hashes name scene entities or use `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
+| Constraints | `bind` is world (0), target (1) or target yaw (2). The scene loader resolves target hashes to scene entities or accepts `NAME_HASH_NONE`. All floats are finite, both times are nonnegative, and weight is in 0..1. |
 | Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
-| Unsupported rows | Constraint and hinge rows are valid in the file, but `scene_load()` fails and names `constraint` or `hinge`. |
+| Unsupported rows | `scene_load()` reports hinge rows as unsupported. |
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |

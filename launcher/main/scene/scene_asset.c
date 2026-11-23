@@ -144,25 +144,21 @@ vector_finite(vec3f_t value) {
     return isfinite(value.x) && isfinite(value.y) && isfinite(value.z);
 }
 
-static bool
-target_fits(const scene_asset_t* scene, name_hash_t target) {
-    if (target == NAME_HASH_NONE) {
-        return true;
-    }
-    for (int i = 0; i < scene->entity_count; i++) {
-        if (scene->names[i].hash == target) {
-            return true;
+scene_row_t
+scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash) {
+    for (int i = first; i < asset->entity_count; i++) {
+        if (asset->names[i].hash == hash) {
+            return (scene_row_t)i;
         }
     }
-    return false;
+    return SCENE_ROW_NONE;
 }
 
 static bool
 constraint_fits(const scene_asset_t* scene, const scene_asset_constraint_t* c) {
     return c->entity < scene->entity_count && c->pad == 0 && c->bind <= SCENE_ASSET_BIND_TARGET_YAW
-           && target_fits(scene, c->follow) && target_fits(scene, c->look_at) && vector_finite(c->offset)
-           && vector_finite(c->look_offset) && nonnegative(c->lag_ms) && nonnegative(c->handoff_ms) && c->weight >= 0.0F
-           && c->weight <= 1.0F;
+           && vector_finite(c->offset) && vector_finite(c->look_offset) && nonnegative(c->lag_ms)
+           && nonnegative(c->handoff_ms) && c->weight >= 0.0F && c->weight <= 1.0F;
 }
 
 static bool

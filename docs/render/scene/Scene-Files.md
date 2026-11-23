@@ -406,7 +406,7 @@ refuse clips that break this rule.
 
 The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
 path relative to the scene file. The clip travels in the scene's pack and
-addresses transforms, camera lenses and skinned animators by object name.
+addresses transforms, camera lenses, skinned animators and constraints by object name.
 
 ```toml
 [timeline]
@@ -421,7 +421,8 @@ and the timeline must write separate fields. Load fails naming
 
 ### Constraint and hinge
 
-`scene_load()` refuses an entry with either table. The example gives the key spellings.
+A [constraint](Constraint.md) can follow one object and face another. The hinge table
+is valid SCNE syntax. `scene_load()` reports hinge rows as unsupported.
 
 ```toml
 [objects.constraint]
@@ -444,6 +445,27 @@ angle = 0.0
 Omit either target to leave it unset. A named target must match an object.
 Offsets and times default to zero, weight defaults to one, and bind
 defaults to `"world"`. The other bind values are `"target"` and `"target_yaw"`.
+
+Prefix a field with `CNST.` in a track-form keys file. For example, a
+camera switches follow targets at 2 seconds.
+
+```toml
+animation = "camera_path"
+
+[[tracks]]
+object = "camera"
+field = "CNST.follow"
+interp = "step"
+keys = [{ t = 0.0, v = "butterfly_blue" }, { t = 2.0, v = "butterfly_green" }]
+```
+
+| Field | Time rule |
+|---|---|
+| `follow`, `look_at` | Step name. A change starts a hand-off from the preceding target. |
+| `lag_ms`, `handoff_ms` | Step float. A nonnegative value rounds to whole milliseconds. |
+| `offset`, `look_offset` | Vector curve. Follow uses `bind` axes and look-at uses the target's frame. |
+| `weight` | Float curve. Zero uses the input pose and one uses the constrained pose. |
+| `bind` | Scene row only. |
 
 A hinge takes a unit axis and ordered bounds in radians.
 Its starting angle defaults to zero.

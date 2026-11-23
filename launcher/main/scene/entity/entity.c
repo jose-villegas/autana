@@ -173,9 +173,11 @@ row_within(const scene_t* scene, scene_row_t row, scene_row_t ancestor) {
 static entity_t
 find_in(const scene_root_t* record, scene_row_t top, name_hash_t name) {
     const scene_t* scene = record->scene;
-    for (int r = top == SCENE_ROW_ROOT ? 0 : top + 1; r < scene->asset.entity_count; r++) {
-        if (scene->asset.names[r].hash == name && row_within(scene, (scene_row_t)r, top)) {
-            return scene_row_entity(scene, (scene_row_t)r);
+    const scene_row_t first = top == SCENE_ROW_ROOT ? 0 : top + 1;
+    for (scene_row_t r = scene_asset_find_row(&scene->asset, first, name); r != SCENE_ROW_NONE;
+         r = scene_asset_find_row(&scene->asset, r + 1, name)) {
+        if (row_within(scene, r, top)) {
+            return scene_row_entity(scene, r);
         }
     }
     return ENTITY_NONE;

@@ -5,6 +5,7 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_file.h"
+#include "kinematics/rig/rig.h"
 #include "math/scalar/rng.h"
 #include "math/scalar/units.h"
 
@@ -38,11 +39,15 @@ enum {
     THIRD_BLEND = 250,
     CAMERA = 1,
     SUBJECT = 0,
+    BUTTERFLY = 2,
     KEYS = 2,
     TRACKS = 6,
     BLOCK_KEYS = 3,
     SPEED_KEYS = 4,
-    TRACK_CAPACITY = TRACKS + BLOCK_KEYS,
+    ANIMATOR_TRACK_COUNT = TRACKS + BLOCK_KEYS,
+    CNST_TRANSFORM_TRACKS = 2,
+    CNST_TRACKS = 5,
+    TRACK_CAPACITY = TRACKS + CNST_TRACKS,
     RANDOM_SEED = 0x7351U,
     TIMES = TEST_TRACKS_HEADER_SIZE + TRACK_CAPACITY * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT),
     CAMERA_VALUES = TIMES + KEYS * sizeof(float),
@@ -56,12 +61,23 @@ enum {
     BLOCK_BLENDS = BLOCK_NAMES + BLOCK_KEYS * ANIM_NAME_WIDTH * sizeof(float),
     SPEED_TIMES = BLOCK_BLENDS + BLOCK_KEYS * sizeof(float),
     SPEED_VALUES = SPEED_TIMES + SPEED_KEYS * sizeof(float),
-    CLIP_BYTES = SPEED_VALUES + SPEED_KEYS * sizeof(float)
+    CNST_TIME_BYTES = BLOCK_KEYS * sizeof(float),
+    CNST_NAME_BYTES = BLOCK_KEYS * ANIM_NAME_WIDTH * sizeof(float),
+    CNST_POSITION = SPEED_VALUES + SPEED_KEYS * sizeof(float),
+    CNST_ROTATION = CNST_POSITION + KEYS * 3 * sizeof(float),
+    CNST_TIMES = CNST_ROTATION + KEYS * 4 * sizeof(float),
+    CNST_FOLLOW = CNST_TIMES + CNST_TIME_BYTES,
+    CNST_LOOK = CNST_FOLLOW + CNST_NAME_BYTES,
+    CNST_WEIGHT_TIMES = CNST_LOOK + CNST_NAME_BYTES,
+    CNST_WEIGHT = CNST_WEIGHT_TIMES + CNST_TIME_BYTES,
+    CLIP_BYTES = CNST_WEIGHT + CNST_TIME_BYTES
 };
 
 static const char CLIP[] = "timeline.clip";
 static const char CAMERA_NAME[] = "camera";
 static const char POSITION[] = "position";
+static const char CAPYBARA_NAME[] = "capybara";
+static const char BUTTERFLY_NAME[] = "butterfly";
 
 static void* allocation;
 static uint8_t* arena;
@@ -121,12 +137,14 @@ fixture(test_pack_t* pack, int timelines, int constraints, int hinges, bool prop
     test_tracks_header(clip, TRACKS, duration);
     const test_track_t tracks[] = {
         {path, field, ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, CAMERA_VALUES, KEYS, ANIM_LINEAR},
-        {"red", POSITION, ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SUBJECT_VALUES, KEYS, ANIM_LINEAR},
+        {constraints ? CAPYBARA_NAME : "red", POSITION, ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES,
+         SUBJECT_VALUES, KEYS, ANIM_LINEAR},
         {CAMERA_NAME, "half_fov_short_tan", ANIM_COMPONENT_CAMERA, ANIM_VALUE_FLOAT, TIMES, FOV_VALUES, KEYS,
          ANIM_LINEAR},
         {CAMERA_NAME, "near_z", ANIM_COMPONENT_CAMERA, ANIM_VALUE_FLOAT, TIMES, NEAR_VALUES, KEYS, ANIM_LINEAR},
         {CAMERA_NAME, "rotation", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_QUAT, TIMES, ROTATION_VALUES, KEYS, ANIM_LINEAR},
-        {"red", "scale", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SCALE_VALUES, KEYS, ANIM_LINEAR},
+        {constraints ? CAPYBARA_NAME : "red", "scale", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SCALE_VALUES,
+         KEYS, ANIM_LINEAR},
     };
     const float times[] = {0.0F, 1.0F};
     const float values[] = {3,    0, -10, 6, 0, -10, 1, 0, 0, 4, 0, 0, 0.5F, 0.75F, 0.25F,
@@ -181,10 +199,10 @@ put_blocks(test_pack_t* writer, const char* last_clip) {
         {"red", "blend_ms", ANIM_COMPONENT_ANIMATOR, ANIM_VALUE_FLOAT, BLOCK_TIMES, BLOCK_BLENDS, BLOCK_KEYS,
          ANIM_STEP},
     };
-    const size_t strings = TEST_TRACKS_HEADER_SIZE + TRACK_CAPACITY * TEST_TRACK_ROW_SIZE;
+    const size_t strings = TEST_TRACKS_HEADER_SIZE + ANIMATOR_TRACK_COUNT * TEST_TRACK_ROW_SIZE;
     const size_t old_strings = TEST_TRACKS_HEADER_SIZE + TRACKS * TEST_TRACK_ROW_SIZE;
     memmove(clip + strings, clip + old_strings, TRACKS * TEST_TRACK_STRING_SLOT);
-    test_tracks_header(clip, TRACK_CAPACITY, DURATION);
+    test_tracks_header(clip, ANIMATOR_TRACK_COUNT, DURATION);
     const char* const names[] = {"idle", "walk", last_clip};
     const float times[] = {(float)FIRST_START / MATH_MS_PER_S, (float)SECOND_START / MATH_MS_PER_S,
                            (float)THIRD_START / MATH_MS_PER_S};
@@ -256,7 +274,7 @@ test_animator_track_load_errors_name_the_field(void) {
                                           ANIM_STEP};
             if (cases[i].remove_clip) {
                 const size_t strings = TEST_TRACKS_HEADER_SIZE + (TRACKS + 1) * TEST_TRACK_ROW_SIZE;
-                const size_t old_strings = TEST_TRACKS_HEADER_SIZE + TRACK_CAPACITY * TEST_TRACK_ROW_SIZE;
+                const size_t old_strings = TEST_TRACKS_HEADER_SIZE + ANIMATOR_TRACK_COUNT * TEST_TRACK_ROW_SIZE;
                 memmove(clip + strings, clip + old_strings, TRACKS * TEST_TRACK_STRING_SLOT);
                 test_tracks_header(clip, TRACKS + 1, DURATION);
                 test_track_row(clip, TRACKS, &control);
@@ -537,7 +555,6 @@ test_load_names_the_failing_clip_field_or_table(void) {
         {.path = CAMERA_NAME, .field = "missing", .what = "camera:TRNS.missing"},
         {.path = ANIM_TARGET_SELF, .field = POSITION, .what = ANIM_TARGET_SELF ":TRNS.position"},
         {CAMERA_NAME, POSITION, ANIM_TARGET_SELF ":TRNS.position", .property = true},
-        {CAMERA_NAME, POSITION, "constraint", .constraint = true},
         {CAMERA_NAME, POSITION, "hinge", .hinge = true},
     };
 
@@ -586,12 +603,6 @@ test_scne_validates_every_new_table(void) {
     const asset_view_t incomplete_header = {.data = entry, .size = SCENE_ASSET_HEADER_SIZE - 1};
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, scene_asset_open(incomplete_header, &asset));
     uint8_t* constraint = part_row(entry, SCENE_ASSET_CONSTRAINTS);
-    const size_t target_fields[] = {SCENE_ASSET_CONSTRAINT_AT_FOLLOW, SCENE_ASSET_CONSTRAINT_AT_LOOK_AT};
-    for (size_t i = 0; i < sizeof target_fields / sizeof *target_fields; i++) {
-        test_pack_put32(constraint + target_fields[i], name_hash("absent"));
-        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, scene_asset_open(view, &asset));
-        test_pack_put32(constraint + target_fields[i], NAME_HASH_NONE);
-    }
     const float zero = 0.0F;
     test_pack_put_floats(constraint + SCENE_ASSET_CONSTRAINT_AT_WEIGHT, &zero, 1);
     uint8_t* hinge = part_row(entry, SCENE_ASSET_HINGES);
@@ -813,16 +824,261 @@ test_scene_writers_refuse_bad_lens_keys(void) {
 
 static void
 test_unsupported_rows_without_timeline(void) {
-    for (int hinge = 0; hinge <= 1; hinge++) {
+    test_pack_t writer;
+    fixture(&writer, 0, 0, 1, false, CAMERA_NAME, POSITION, DURATION);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    scene_failure_t failure;
+    TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNSUPPORTED, failure.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, failure.asset);
+    TEST_ASSERT_EQUAL_STRING("hinge", failure.what);
+}
+
+static void
+test_constraint_follows_lagged_transform(void) {
+    enum { LAG_MS = 200, SAMPLE_MS = 700 };
+
+    test_pack_t writer;
+    uint8_t* entry = fixture(&writer, 1, 1, 0, false, CAMERA_NAME, POSITION, DURATION);
+    const scene_asset_constraint_t constraint = {
+        .entity = CAMERA, .follow = name_hash(CAPYBARA_NAME), .lag_ms = LAG_MS, .weight = 1.0F};
+    memcpy(part_row(entry, SCENE_ASSET_CONSTRAINTS), &constraint, sizeof constraint);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t root = load(&pack);
+    scene_failure_t failure;
+    TEST_ASSERT_FALSE(scene_failure(root, &failure));
+    timeline_seek(root, SAMPLE_MS);
+    const scene_t* scene = columns(root);
+    const transformf_t world = scene_row_world(scene->root, CAMERA);
+    const float fraction = (float)(SAMPLE_MS - LAG_MS) / DURATION;
+    TEST_ASSERT_EQUAL_FLOAT(1.0F + 3.0F * fraction, world.position.x);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, world.position.z);
+}
+
+static void
+constraint_tracks(test_pack_t* writer, bool animate_constraint) {
+    uint8_t* clip = writer->bytes + writer->end - test_pack_aligned(CLIP_BYTES);
+    const int extra = animate_constraint ? CNST_TRACKS : CNST_TRANSFORM_TRACKS;
+    const size_t initial = TEST_TRACKS_HEADER_SIZE + TRACKS * TEST_TRACK_ROW_SIZE;
+    memmove(clip + initial + extra * TEST_TRACK_ROW_SIZE, clip + initial, TRACKS * TEST_TRACK_STRING_SLOT);
+    test_tracks_header(clip, TRACKS + extra, DURATION);
+    const test_track_t tracks[] = {
+        {BUTTERFLY_NAME, POSITION, ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, CNST_POSITION, KEYS, ANIM_LINEAR},
+        {BUTTERFLY_NAME, "rotation", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_QUAT, TIMES, CNST_ROTATION, KEYS,
+         ANIM_LINEAR},
+        {CAMERA_NAME, "follow", ANIM_COMPONENT_CONSTRAINT, ANIM_VALUE_NAME, CNST_TIMES, CNST_FOLLOW, BLOCK_KEYS,
+         ANIM_STEP},
+        {CAMERA_NAME, "look_at", ANIM_COMPONENT_CONSTRAINT, ANIM_VALUE_NAME, CNST_TIMES, CNST_LOOK, BLOCK_KEYS,
+         ANIM_STEP},
+        {CAMERA_NAME, "weight", ANIM_COMPONENT_CONSTRAINT, ANIM_VALUE_FLOAT, CNST_WEIGHT_TIMES, CNST_WEIGHT, BLOCK_KEYS,
+         ANIM_LINEAR},
+    };
+    for (int i = 0; i < extra; i++) {
+        test_track_row(clip, TRACKS + i, &tracks[i]);
+    }
+    const float positions[] = {-4, 2, 7, 8, 3, 9};
+    const quatf_t tilt = quatf_from_euler((vec3f_t){0.4F, 0.25F, 0.5F});
+    const float rotations[] = {tilt.x, tilt.y, tilt.z, tilt.w, tilt.x, tilt.y, tilt.z, tilt.w};
+    const float times[] = {0, 0.4F, 0.75F};
+    const float weight_times[] = {0, 0.55F, 1.0F};
+    const float weights[] = {0, 1, 0.5F};
+    test_pack_put_floats(clip + CNST_POSITION, positions, sizeof positions / sizeof *positions);
+    test_pack_put_floats(clip + CNST_ROTATION, rotations, sizeof rotations / sizeof *rotations);
+    test_pack_put_floats(clip + CNST_TIMES, times, BLOCK_KEYS);
+    test_pack_put_floats(clip + CNST_WEIGHT_TIMES, weight_times, BLOCK_KEYS);
+    test_pack_put_floats(clip + CNST_WEIGHT, weights, BLOCK_KEYS);
+    const name_hash_t targets[] = {name_hash(BUTTERFLY_NAME), name_hash(CAPYBARA_NAME), NAME_HASH_NONE};
+    for (int key = 0; key < BLOCK_KEYS; key++) {
+        float parts[ANIM_NAME_WIDTH];
+        anim_name_encode(targets[key], parts);
+        test_pack_put_floats(clip + CNST_FOLLOW + key * sizeof parts, parts, ANIM_NAME_WIDTH);
+        anim_name_encode(targets[BLOCK_KEYS - 1 - key], parts);
+        test_pack_put_floats(clip + CNST_LOOK + key * sizeof parts, parts, ANIM_NAME_WIDTH);
+    }
+}
+
+static void
+test_constraint_reports_unknown_row_target(void) {
+    for (int track = 0; track <= 1; track++) {
         test_pack_t writer;
-        fixture(&writer, 0, !hinge, hinge, false, CAMERA_NAME, POSITION, DURATION);
+        uint8_t* entry = fixture(&writer, track, 1, 0, false, CAMERA_NAME, POSITION, DURATION);
+        const name_hash_t missing = name_hash("missing");
+        const scene_asset_constraint_t constraint = {
+            .entity = CAMERA, .follow = track ? NAME_HASH_NONE : missing, .weight = 1.0F};
+        memcpy(part_row(entry, SCENE_ASSET_CONSTRAINTS), &constraint, sizeof constraint);
+        if (track) {
+            constraint_tracks(&writer, true);
+            uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+            float value[ANIM_NAME_WIDTH];
+            anim_name_encode(missing, value);
+            test_pack_put_floats(clip + CNST_FOLLOW, value, ANIM_NAME_WIDTH);
+        }
         asset_pack_t pack;
         open_pack(&writer, &pack);
         scene_failure_t failure;
         TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
-        TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNSUPPORTED, failure.status);
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, failure.asset);
-        TEST_ASSERT_EQUAL_STRING(hinge ? "hinge" : "constraint", failure.what);
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, failure.status);
+        TEST_ASSERT_NOT_NULL(strstr(failure.what, "camera:CNST.follow["));
+        TEST_ASSERT_NOT_NULL(strstr(failure.what, track ? "(track)" : "(row)"));
+        release_fixture();
+    }
+}
+
+static void
+assert_constraint_full_weight(entity_t root, uint32_t t, uint32_t lag) {
+    timeline_seek(root, t);
+    const scene_t* scene = columns(root);
+    const transformf_t result = scene_row_world(scene->root, CAMERA);
+    const float now = (float)t / DURATION;
+    const float earlier = (float)(t - lag) / DURATION;
+    const vec3f_t expected_position = {2.0F + 3.0F * earlier, 2.0F, 3.0F};
+    const vec3f_t expected_look = {2.0F + 4.0F * now, 2.0F * (1.0F + now), 0.0F};
+    const quatf_t expected_rotation = rig_look_rotation(expected_position, expected_look, vec3f_unit_y());
+    TEST_ASSERT_EQUAL_FLOAT(expected_position.x, result.position.x);
+    TEST_ASSERT_EQUAL_FLOAT(expected_position.y, result.position.y);
+    TEST_ASSERT_EQUAL_FLOAT(expected_position.z, result.position.z);
+    const quatf_t difference = quatf_mul(quatf_conjugate(expected_rotation), result.rotation);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, fabsf(difference.w));
+}
+
+static void
+test_constraint_seek_equals_play(void) {
+    enum { LAG = 175, HANDOFF = 150, SAMPLES = 16, FIRST_CHANGE = 400, LAST_CHANGE = 750 };
+
+    test_pack_t writer;
+    uint8_t* entry = fixture(&writer, 1, 1, 0, false, CAMERA_NAME, POSITION, DURATION);
+    const scene_asset_constraint_t constraint = {.entity = CAMERA,
+                                                 .follow = name_hash(BUTTERFLY_NAME),
+                                                 .offset = {1, 2, 3},
+                                                 .look_offset = {1, 2, 0},
+                                                 .lag_ms = LAG,
+                                                 .handoff_ms = HANDOFF};
+    memcpy(part_row(entry, SCENE_ASSET_CONSTRAINTS), &constraint, sizeof constraint);
+    constraint_tracks(&writer, true);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t root = load(&pack);
+    scene_t* scene = columns(root);
+    TEST_ASSERT_TRUE(scene->skinned_renderers[SUBJECT].bound);
+    const transformf_t initial = scene_row_local(scene->root, CAMERA);
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, initial.position.x);
+    TEST_ASSERT_EQUAL_FLOAT(-10.0F, initial.position.z);
+    const quatf_t rotation = quatf_identity();
+    TEST_ASSERT_EQUAL_MEMORY(&rotation, &initial.rotation, sizeof rotation);
+    assert_constraint_full_weight(root, FIRST_CHANGE + HANDOFF, LAG);
+    for (int mode = 0; mode < 3; mode++) {
+        rng_t rng;
+        rng_seed(&rng, RANDOM_SEED + (uint32_t)mode);
+        for (int i = 0; i < SAMPLES; i++) {
+            const uint32_t start = i < SAMPLES / 2 ? FIRST_CHANGE : LAST_CHANGE;
+            const uint32_t t =
+                i % 2 ? start + 1 + (uint32_t)rng_below(&rng, HANDOFF - 1) : (uint32_t)rng_below(&rng, DURATION);
+            timeline_seek(root, 0);
+            timeline_play(root);
+            for (uint32_t elapsed = 0; elapsed < t;) {
+                uint32_t dt = 1 + (uint32_t)rng_below(&rng, STEP_MAX);
+                if (dt > t - elapsed) {
+                    dt = t - elapsed;
+                }
+                scene_animation_step(scene, dt);
+                elapsed += dt;
+            }
+            const transformf_t played = scene_row_local(scene->root, CAMERA);
+            timeline_pause(root);
+            timeline_seek(root, DURATION);
+            timeline_seek(root, t);
+            const transformf_t sought = scene_row_local(scene->root, CAMERA);
+            TEST_ASSERT_EQUAL_MEMORY(&played.position, &sought.position, sizeof played.position);
+            TEST_ASSERT_EQUAL_MEMORY(&played.rotation, &sought.rotation, sizeof played.rotation);
+            TEST_ASSERT_EQUAL_MEMORY(&played.scale, &sought.scale, sizeof played.scale);
+        }
+    }
+}
+
+static void
+test_timeline_samples_target_ancestors_at_requested_time(void) {
+    enum { SAMPLE = 250, CURRENT = 900 };
+
+    test_pack_t writer;
+    uint8_t* entry = fixture(&writer, 1, 1, 0, false, CAMERA_NAME, POSITION, DURATION);
+    test_pack_put16(part_row(entry, SCENE_ASSET_PARENTS) + BUTTERFLY * sizeof(uint16_t), SUBJECT);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t root = load(&pack);
+    timeline_seek(root, CURRENT);
+    const scene_t* scene = columns(root);
+    transformf_t child = transformf_identity();
+    child.position = vec3f_unit_x();
+    scene_row_set_local(scene->root, BUTTERFLY, child);
+    const transformf_t sampled = scene_timeline_world_at(scene, BUTTERFLY, SAMPLE);
+    const float fraction = (float)SAMPLE / DURATION;
+    TEST_ASSERT_EQUAL_FLOAT(1.0F + 3.0F * fraction + (1.0F + fraction), sampled.position.x);
+    TEST_ASSERT_EQUAL_UINT32(CURRENT, timeline_time_ms(root));
+}
+
+static void
+test_constraint_bind_modes_and_unset_look(void) {
+    static const rig_bind_t binds[] = {RIG_BIND_WORLD, RIG_BIND_TARGET, RIG_BIND_TARGET_YAW};
+    for (int i = 0; i < (int)(sizeof binds / sizeof *binds); i++) {
+        test_pack_t writer;
+        uint8_t* entry = fixture(&writer, 1, 1, 0, false, CAMERA_NAME, POSITION, DURATION);
+        const scene_asset_constraint_t constraint = {.entity = CAMERA,
+                                                     .bind = binds[i],
+                                                     .follow = name_hash(BUTTERFLY_NAME),
+                                                     .offset = {1, 2, 3},
+                                                     .weight = 1.0F};
+        memcpy(part_row(entry, SCENE_ASSET_CONSTRAINTS), &constraint, sizeof constraint);
+        constraint_tracks(&writer, false);
+        asset_pack_t pack;
+        open_pack(&writer, &pack);
+        const entity_t root = load(&pack);
+        timeline_seek(root, DURATION / 2);
+        const scene_t* scene = columns(root);
+        const transformf_t owner = scene_row_world(scene->root, CAMERA);
+        const transformf_t target = scene_row_world(scene->root, BUTTERFLY);
+        const vec3f_t expected = rig_follow_position(&target, constraint.offset, binds[i]);
+        TEST_ASSERT_EQUAL_FLOAT(expected.x, owner.position.x);
+        TEST_ASSERT_EQUAL_FLOAT(expected.y, owner.position.y);
+        TEST_ASSERT_EQUAL_FLOAT(expected.z, owner.position.z);
+        const transformf_t local = scene_row_local(scene->root, CAMERA);
+        const transformf_t own = scene_timeline_local_at(scene, CAMERA, &scene->timeline->clock, transformf_identity());
+        TEST_ASSERT_EQUAL_MEMORY(&own.rotation, &local.rotation, sizeof own.rotation);
+        release_fixture();
+    }
+}
+
+static void
+test_constraint_refuses_transform_writer_conflicts(void) {
+    enum { TARGET_PROPERTY, OWNER_PROPERTY, TARGET_CONSTRAINT, DUPLICATE, TARGET_HINGE, OWNER_HINGE, CASES };
+
+    for (int i = 0; i < CASES; i++) {
+        const bool property = i == TARGET_PROPERTY || i == OWNER_PROPERTY;
+        const bool hinge = i == TARGET_HINGE || i == OWNER_HINGE;
+        const int constraints = i == TARGET_CONSTRAINT || i == DUPLICATE ? 2 : 1;
+        test_pack_t writer;
+        uint8_t* entry = fixture(&writer, 0, constraints, hinge, property, CAMERA_NAME, POSITION, DURATION);
+        const bool targets_camera = i == TARGET_PROPERTY || i == TARGET_HINGE;
+        const scene_asset_constraint_t constraint = {.entity = targets_camera ? BUTTERFLY : CAMERA,
+                                                     .follow = targets_camera ? name_hash(CAMERA_NAME)
+                                                                              : name_hash(CAPYBARA_NAME),
+                                                     .weight = 1.0F};
+        uint8_t* rows = part_row(entry, SCENE_ASSET_CONSTRAINTS);
+        memcpy(rows, &constraint, sizeof constraint);
+        if (constraints > 1) {
+            const scene_asset_constraint_t other = {.entity = i == DUPLICATE ? CAMERA : SUBJECT, .weight = 1.0F};
+            memcpy(rows + sizeof other, &other, sizeof other);
+        }
+        asset_pack_t pack;
+        open_pack(&writer, &pack);
+        scene_failure_t failure;
+        TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, failure.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+        if (i == TARGET_PROPERTY || i == TARGET_CONSTRAINT || i == TARGET_HINGE) {
+            TEST_ASSERT_NOT_NULL(strstr(failure.what, i == TARGET_CONSTRAINT ? CAPYBARA_NAME : CAMERA_NAME));
+        }
         release_fixture();
     }
 }
@@ -1170,6 +1426,12 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_timeline_refuses_duplicate_tracks);
     RUN_TEST(test_scene_writers_refuse_bad_lens_keys);
     RUN_TEST(test_unsupported_rows_without_timeline);
+    RUN_TEST(test_constraint_follows_lagged_transform);
+    RUN_TEST(test_constraint_reports_unknown_row_target);
+    RUN_TEST(test_constraint_seek_equals_play);
+    RUN_TEST(test_timeline_samples_target_ancestors_at_requested_time);
+    RUN_TEST(test_constraint_bind_modes_and_unset_look);
+    RUN_TEST(test_constraint_refuses_transform_writer_conflicts);
     RUN_TEST(test_clamp_samples_fractional_final_step_key);
     RUN_TEST(test_property_clamp_samples_fractional_final_step_key);
     RUN_TEST(test_timeline_and_disabled_animator_seek_to_the_same_boundary);

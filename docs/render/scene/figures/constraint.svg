@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 270" role="img" aria-labelledby="title desc">
+  <title id="title">Follow and look-at samples on the scene timeline</title>
+  <desc id="desc">The camera stands at the follow target sampled with lag, plus an offset, and faces the current look target plus its local offset.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#374c73"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="268" rx="14" fill="#f5f8ff" stroke="#b5c1d8"/>
+  <g font-family="sans-serif" font-size="22" fill="#182742" text-anchor="middle">
+    <rect x="32" y="62" width="208" height="82" rx="8" fill="#dce8ff"/>
+    <text x="136" y="96">Follow target</text>
+    <text x="136" y="124" font-size="18">sample at t − lag</text>
+    <rect x="320" y="62" width="200" height="82" rx="8" fill="#e3edf3"/>
+    <text x="420" y="96">Camera owner</text>
+    <text x="420" y="124" font-size="18">constrained position</text>
+    <rect x="600" y="62" width="208" height="82" rx="8" fill="#e2e4ff"/>
+    <text x="704" y="96">Look target</text>
+    <text x="704" y="124" font-size="18">sample at t</text>
+    <path d="M241 103H315" stroke="#374c73" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M521 103H595" stroke="#374c73" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="278" y="82" font-size="16">offset</text>
+    <text x="558" y="82" font-size="16">aim +Z</text>
+    <text x="704" y="166" font-size="17">aim includes look_offset</text>
+    <path d="M136 151V218M704 176V218" stroke="#647794" stroke-dasharray="4 4"/>
+    <path d="M60 220H792" stroke="#374c73" stroke-width="2" marker-end="url(#arrow)"/>
+    <circle cx="136" cy="220" r="4" fill="#374c73"/>
+    <circle cx="704" cy="220" r="4" fill="#374c73"/>
+    <text x="136" y="248" font-size="18">max(t − lag, 0)</text>
+    <text x="704" y="248" font-size="18">t</text>
+  </g>
+</svg>
