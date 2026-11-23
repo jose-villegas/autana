@@ -209,6 +209,13 @@ scene_failure_make(scene_status_t status, asset_status_t asset, const char* what
     return out;
 }
 
+scene_failure_t
+scene_binding_failure(asset_status_t status, const anim_binding_t* binding) {
+    scene_failure_t failure = {SCENE_ERR_ASSET, status, ""};
+    (void)anim_binding_describe(binding, failure.what, sizeof failure.what);
+    return failure;
+}
+
 bool
 scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what) {
     if (why != NULL) {
@@ -552,15 +559,14 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
     anim_tracks_t timeline = {0};
     if (asset.timeline_count != 0) {
         const char* clip = asset.timeline->clip;
-        anim_track_error_t rejected;
-        const asset_status_t status = anim_tracks_from_pack_diagnostic(pack, clip, &timeline, &rejected);
-        if (status != ASSET_OK || timeline.root != ANIM_ROOT_SCENE) {
-            scene_failure_t failure =
-                scene_failure_make(SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_FORMAT : status, clip);
-            if (rejected.component == ANIM_COMPONENT_ANIMATOR) {
-                (void)snprintf(failure.what, sizeof failure.what, "%s.%s", rejected.path, rejected.field);
-            }
-            return failure;
+        anim_binding_t rejected;
+        const asset_status_t status = anim_tracks_from_pack(pack, clip, &timeline, &rejected);
+        if (status != ASSET_OK) {
+            return rejected.path != NULL ? scene_binding_failure(status, &rejected)
+                                         : scene_failure_make(SCENE_ERR_ASSET, status, clip);
+        }
+        if (timeline.root != ANIM_ROOT_SCENE) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
         }
     }
     scene_field_mask_t* writes;

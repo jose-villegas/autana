@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -15,6 +16,9 @@
 #include "scene/timeline/timeline.h"
 #include "suites.h"
 #include "test_alloc.h"
+#if !defined(DEVICE_BUILD)
+#include "test_asset_dir.h"
+#endif
 #include "test_anim_tracks.h"
 #include "test_scene_timeline.h"
 #include "testkit/cleanup.h"
@@ -271,29 +275,87 @@ test_animator_track_load_errors_name_the_field(void) {
 }
 
 static void
-assert_timeline_pose(const scene_t* a, const scene_t* b, bool palette_due) {
-    for (int e = 0; e < a->asset.entity_count; e++) {
-        TEST_ASSERT_EQUAL_MEMORY(&a->locals[e].position, &b->locals[e].position, sizeof(vec3f_t));
-        TEST_ASSERT_EQUAL_MEMORY(&a->locals[e].rotation, &b->locals[e].rotation, sizeof(quatf_t));
-        TEST_ASSERT_EQUAL_MEMORY(&a->locals[e].scale, &b->locals[e].scale, sizeof(vec3f_t));
+test_rejected_non_animator_row_names_the_binding(void) {
+    test_pack_t writer;
+    fixture(&writer, 1, 0, 0, false, CAMERA_NAME, POSITION, DURATION);
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+    const float invalid = NAN;
+    test_pack_put_floats(clip + NEAR_VALUES, &invalid, 1);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    scene_failure_t failure;
+    TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+    TEST_ASSERT_EQUAL_STRING("camera:CAMR.near_z", failure.what);
+}
+
+static void
+test_timeline_validates_rounded_block_times(void) {
+    static const struct {
+        uint32_t duration;
+        size_t offset;
+        float time;
+        const char* failed;
+    } cases[] = {
+        {1500, BLOCK_TIMES + sizeof(float), 0.6246F, "red:ANMR.clip"},
+        {1500, SPEED_TIMES + 2 * sizeof(float), 0.6246F, "red:ANMR.speed"},
+        {THIRD_START, BLOCK_TIMES, 0.1F, "red:ANMR.clip"},
+        {DURATION, BLOCK_TIMES + 2 * sizeof(float), 0.9F, "red:ANMR.blend_ms"},
+        {16777217, BLOCK_TIMES + 2 * sizeof(float), 16777.216F, NULL},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        test_pack_t writer;
+        fixture(&writer, 1, 0, 0, false, CAMERA_NAME, POSITION, DURATION);
+        put_blocks(&writer, "gallop");
+        uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+        test_pack_put32(clip + ANIM_TRACKS_AT_DURATION, cases[i].duration);
+        test_pack_put_floats(clip + cases[i].offset, &cases[i].time, 1);
+        if (cases[i].failed == NULL) {
+            const float cut = 0;
+            test_pack_put_floats(clip + BLOCK_BLENDS + 2 * sizeof(float), &cut, 1);
+        }
+        asset_pack_t pack;
+        open_pack(&writer, &pack);
+        const entity_t root = load(&pack);
+        if (cases[i].failed != NULL) {
+            scene_failure_t failure;
+            TEST_ASSERT_TRUE_MESSAGE(scene_failure(root, &failure), cases[i].failed);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, failure.asset);
+            TEST_ASSERT_EQUAL_STRING(cases[i].failed, failure.what);
+        } else {
+            timeline_seek(root, cases[i].duration - 1);
+            TEST_ASSERT_EQUAL_UINT8(2, columns(root)->animators[SUBJECT].layer.current.clip);
+        }
+        release_fixture();
     }
-    TEST_ASSERT_EQUAL_MEMORY(&a->cameras[0].lens, &b->cameras[0].lens, sizeof a->cameras[0].lens);
+}
+
+static void
+assert_timeline_pose(const scene_t* a, const scene_t* b, bool palette_due, const char* message) {
+    for (int e = 0; e < a->asset.entity_count; e++) {
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&a->locals[e].position, &b->locals[e].position, sizeof(vec3f_t), message);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&a->locals[e].rotation, &b->locals[e].rotation, sizeof(quatf_t), message);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&a->locals[e].scale, &b->locals[e].scale, sizeof(vec3f_t), message);
+    }
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&a->cameras[0].lens, &b->cameras[0].lens, sizeof a->cameras[0].lens, message);
     const scene_animator_t* x = &a->animators[SUBJECT];
     const scene_animator_t* y = &b->animators[SUBJECT];
-    TEST_ASSERT_EQUAL_MEMORY(&x->layer.current, &y->layer.current, sizeof x->layer.current);
-    TEST_ASSERT_EQUAL_MEMORY(&x->layer.previous, &y->layer.previous, sizeof x->layer.previous);
-    TEST_ASSERT_EQUAL_UINT32(x->layer.blend_ms, y->layer.blend_ms);
-    TEST_ASSERT_EQUAL_UINT32(x->layer.blended_ms, y->layer.blended_ms);
-    TEST_ASSERT_FALSE(y->layer.frozen_previous);
-    TEST_ASSERT_EQUAL_UINT32(0, x->owed_ms);
-    TEST_ASSERT_EQUAL_UINT32(0, y->owed_ms);
-    TEST_ASSERT_FALSE(y->timeline_pose_pending);
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&x->layer.current, &y->layer.current, sizeof x->layer.current, message);
+    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&x->layer.previous, &y->layer.previous, sizeof x->layer.previous, message);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(x->layer.blend_ms, y->layer.blend_ms, message);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(x->layer.blended_ms, y->layer.blended_ms, message);
+    TEST_ASSERT_FALSE_MESSAGE(y->layer.frozen_previous, message);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, x->owed_ms, message);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, y->owed_ms, message);
+    TEST_ASSERT_FALSE_MESSAGE(y->timeline_pose_pending, message);
     const scene_skinned_renderer_t* skin_a = &a->skinned_renderers[SUBJECT];
     const scene_skinned_renderer_t* skin_b = &b->skinned_renderers[SUBJECT];
-    TEST_ASSERT_NOT_NULL(skin_a->palette);
-    TEST_ASSERT_NOT_NULL(skin_b->palette);
+    TEST_ASSERT_NOT_NULL_MESSAGE(skin_a->palette, message);
+    TEST_ASSERT_NOT_NULL_MESSAGE(skin_b->palette, message);
     if (palette_due) {
-        TEST_ASSERT_EQUAL_MEMORY(skin_a->palette, skin_b->palette, skin_a->skin.joint_count * sizeof *skin_a->palette);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(skin_a->palette, skin_b->palette,
+                                         skin_a->skin.joint_count * sizeof *skin_a->palette, message);
     }
 }
 
@@ -334,23 +396,28 @@ test_seek_matches_play_at_the_same_millisecond(void) {
                 timeline_seek(sought, target);
                 const uint32_t expected =
                     wraps[mode] == ANIM_LOOP ? target % DURATION : (target < DURATION ? target : DURATION);
-                TEST_ASSERT_EQUAL_UINT32(expected, timeline_time_ms(played));
-                TEST_ASSERT_EQUAL_UINT32(expected, timeline_time_ms(sought));
+                char message[80];
+                (void)snprintf(message, sizeof message, "%s at %lu ms (edge %lu ms)",
+                               wraps[mode] == ANIM_LOOP ? "loop" : "clamp", (unsigned long)target,
+                               (unsigned long)edges[i]);
+                TEST_ASSERT_EQUAL_UINT32_MESSAGE(expected, timeline_time_ms(played), message);
+                TEST_ASSERT_EQUAL_UINT32_MESSAGE(expected, timeline_time_ms(sought), message);
                 const scene_animator_t* anim = &a->animators[SUBJECT];
-                const bool due = (a->animation_frame - 1 + anim->phase) % (uint32_t)anim->interval == 0;
-                TEST_ASSERT_GREATER_THAN_UINT32(1, anim->interval);
-                assert_timeline_pose(a, b, due);
+                const bool due = scene_animator_due(a->animation_frame - 1, anim);
+                TEST_ASSERT_GREATER_THAN_UINT32_MESSAGE(1, anim->interval, message);
+                assert_timeline_pose(a, b, due, message);
                 posed |= due;
                 skipped |= !due;
                 blended |= anim->layer.blended_ms < anim->layer.blend_ms;
                 if (expected < FIRST_START) {
-                    TEST_ASSERT_EQUAL_UINT8(ANIM_LAYER_CLIP_NONE, anim->layer.current.clip);
+                    TEST_ASSERT_EQUAL_UINT8_MESSAGE(ANIM_LAYER_CLIP_NONE, anim->layer.current.clip, message);
                     const vec3f_t rest_position = vec3f_zero();
-                    TEST_ASSERT_EQUAL_MEMORY(&rest_position, &b->animators[SUBJECT].layer.shown.local[0].position,
-                                             sizeof rest_position);
+                    TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&rest_position,
+                                                     &b->animators[SUBJECT].layer.shown.local[0].position,
+                                                     sizeof rest_position, message);
                 } else {
                     const int active = expected < SECOND_START ? 0 : expected < THIRD_START ? 1 : 2;
-                    TEST_ASSERT_EQUAL_INT(active, anim->layer.current.clip);
+                    TEST_ASSERT_EQUAL_INT_MESSAGE(active, anim->layer.current.clip, message);
                 }
             }
         }
@@ -359,7 +426,7 @@ test_seek_matches_play_at_the_same_millisecond(void) {
         const entity_t fresh = load(&pack);
         timeline_seek(played, rewind);
         timeline_seek(fresh, rewind);
-        assert_timeline_pose(a, columns(fresh), true);
+        assert_timeline_pose(a, columns(fresh), true, wraps[mode] == ANIM_LOOP ? "loop rewind" : "clamp rewind");
         TEST_ASSERT_FALSE(a->animators[SUBJECT].timeline_pose_pending);
         TEST_ASSERT_EQUAL_UINT32(rewind, timeline_time_ms(played));
 
@@ -466,10 +533,10 @@ test_load_names_the_failing_clip_field_or_table(void) {
         bool missing, property, constraint, hinge;
     } cases[] = {
         {CAMERA_NAME, POSITION, "missing", .missing = true},
-        {.path = "missing", .field = POSITION, .what = CLIP},
-        {.path = CAMERA_NAME, .field = "missing", .what = CLIP},
-        {.path = ANIM_TARGET_SELF, .field = POSITION, .what = CLIP},
-        {CAMERA_NAME, POSITION, "camera.position", .property = true},
+        {.path = "missing", .field = POSITION, .what = "missing:TRNS.position"},
+        {.path = CAMERA_NAME, .field = "missing", .what = "camera:TRNS.missing"},
+        {.path = ANIM_TARGET_SELF, .field = POSITION, .what = ANIM_TARGET_SELF ":TRNS.position"},
+        {CAMERA_NAME, POSITION, ANIM_TARGET_SELF ":TRNS.position", .property = true},
         {CAMERA_NAME, POSITION, "constraint", .constraint = true},
         {CAMERA_NAME, POSITION, "hinge", .hinge = true},
     };
@@ -636,7 +703,7 @@ test_runtime_animator_cannot_take_timeline_field(void) {
     const char* clips[] = {CLIP};
     scene_failure_t failure;
     TEST_ASSERT_FALSE(animator_set_clips(scene_row_entity(scene, CAMERA), NULL, clips, 1, &failure));
-    TEST_ASSERT_EQUAL_STRING("camera.position", failure.what);
+    TEST_ASSERT_EQUAL_STRING("camera:TRNS.position", failure.what);
     timeline_seek(root, DURATION / 2);
     const transformf_t at_middle = scene->locals[CAMERA];
     timeline_seek(root, DURATION / 2);
@@ -717,7 +784,7 @@ test_timeline_refuses_duplicate_tracks(void) {
     open_pack(&writer, &pack);
     scene_failure_t failure;
     TEST_ASSERT_TRUE(scene_failure(load(&pack), &failure));
-    TEST_ASSERT_EQUAL_STRING("camera.position", failure.what);
+    TEST_ASSERT_EQUAL_STRING("camera:TRNS.position", failure.what);
 }
 
 static void
@@ -739,7 +806,7 @@ test_scene_writers_refuse_bad_lens_keys(void) {
             const entity_t camera = scene_row_entity(columns(root), CAMERA);
             TEST_ASSERT_FALSE(animator_set_clips(camera, NULL, clips, 1, &failure));
         }
-        TEST_ASSERT_EQUAL_STRING("camera.near_z", failure.what);
+        TEST_ASSERT_EQUAL_STRING("camera:CAMR.near_z", failure.what);
         release_fixture();
     }
 }
@@ -916,7 +983,7 @@ test_refused_scene_leaves_lender_untouched(void) {
         const entity_t refused = load(&pack);
         scene_failure_t failure;
         TEST_ASSERT_TRUE(scene_failure(refused, &failure));
-        TEST_ASSERT_EQUAL_STRING("camera.position", failure.what);
+        TEST_ASSERT_EQUAL_STRING(ANIM_TARGET_SELF ":TRNS.position", failure.what);
         TEST_ASSERT_EQUAL_size_t(0, arena_used);
         for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
             TEST_ASSERT_NULL(scene_roots[i].scene);
@@ -1030,6 +1097,30 @@ test_checkpoint_restores_timeline_clock_and_locals(void) {
 }
 
 static void
+test_keys_glb_blocks_play_through_scene_load(void) {
+    enum { SWITCH_MS = 1003, BLEND_MS = 250 };
+
+    suite_set_test_cleanup(release_fixture);
+    test_asset_dir_use(".");
+    const entity_t root = scene_load("keys_blocks");
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    scene_t* scene = columns(root);
+    const entity_t first = entity_find(root, name_hash("first"));
+    scene_row_t row;
+    TEST_ASSERT_EQUAL_PTR(scene->root, scene_entity_lookup(first, &row));
+    const anim_layer_t* layer = &scene->animators[row].layer;
+    timeline_play(root);
+    scene_animation_step(scene, SWITCH_MS - 1);
+    TEST_ASSERT_EQUAL_UINT8(0, layer->current.clip);
+    scene_animation_step(scene, 1);
+    TEST_ASSERT_EQUAL_UINT8(1, layer->current.clip);
+    TEST_ASSERT_EQUAL_UINT8(0, layer->previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(BLEND_MS, layer->blend_ms);
+    scene_animation_step(scene, BLEND_MS);
+    TEST_ASSERT_EQUAL_UINT8(ANIM_LAYER_CLIP_NONE, layer->previous.clip);
+}
+
+static void
 test_python_baked_v7_motion_row_layout(void) {
     suite_set_test_cleanup(release_fixture);
     asset_pack_t pack;
@@ -1074,6 +1165,7 @@ run_scene_timeline_suite(void) {
 #if !defined(DEVICE_BUILD)
     RUN_TEST(test_checkpoint_restores_timeline_clock_and_locals);
     RUN_TEST(test_python_baked_v7_motion_row_layout);
+    RUN_TEST(test_keys_glb_blocks_play_through_scene_load);
 #endif
     RUN_TEST(test_timeline_refuses_duplicate_tracks);
     RUN_TEST(test_scene_writers_refuse_bad_lens_keys);
@@ -1087,6 +1179,8 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_timeline_seek_clears_fraction);
     RUN_TEST(test_scene_rejects_overlapping_tables);
     RUN_TEST(test_animator_track_load_errors_name_the_field);
+    RUN_TEST(test_rejected_non_animator_row_names_the_binding);
+    RUN_TEST(test_timeline_validates_rounded_block_times);
     RUN_TEST(test_seek_matches_play_at_the_same_millisecond);
     RUN_TEST(test_clock_and_immediate_seek);
     RUN_TEST(test_zero_duration_loop_holds_zero);

@@ -1,5 +1,7 @@
 #include "anim/anim_track.h"
 
+#include "collections/sort.h"
+
 #include <math.h>
 #include <stdbool.h>
 
@@ -78,19 +80,11 @@ blend(const anim_track_t* track, int lo, float seconds, float* out) {
     }
 }
 
+SORT_DEFINE_LAST_AT_MOST(float_key_at, float)
+
 int
 anim_track_key_at(const anim_track_t* track, float seconds) {
-    int lo = -1;
-    int hi = track->count;
-    while (hi - lo > 1) {
-        const int mid = (lo + hi) / 2;
-        if (track->times[mid] <= seconds) {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
+    return float_key_at(track->times, track->count, seconds);
 }
 
 void

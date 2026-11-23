@@ -60,7 +60,7 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
 }
 
 static scene_failure_t
-resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_track_t* curve, uint8_t* slots) {
+resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_binding_t* binding, uint8_t* slots) {
     const scene_asset_animator_t* animator = NULL;
     for (int i = 0; i < asset->animator_count; i++) {
         if (asset->animators[i].entity == entity) {
@@ -68,6 +68,7 @@ resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_t
             break;
         }
     }
+    const anim_track_t* curve = &binding->curve;
     const int count = animator == NULL ? 0 : animator->clip_count;
     const char* entity_name = asset->names[entity].name;
     for (int key = 0; key < curve->count; key++) {
@@ -86,8 +87,9 @@ resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_t
             }
         }
         if (slots[key] == ANIM_LAYER_CLIP_NONE) {
-            scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
-            (void)snprintf(failure.what, sizeof failure.what, "%s.clip[%08" PRIx32 "]", entity_name, hash);
+            scene_failure_t failure = scene_binding_failure(ASSET_ERR_FORMAT, binding);
+            const size_t used = strlen(failure.what);
+            (void)snprintf(failure.what + used, sizeof failure.what - used, "[%08" PRIx32 "]", hash);
             return failure;
         }
     }
@@ -105,6 +107,47 @@ block_controls_fit(const anim_track_t* curve, int field) {
         }
     }
     return true;
+}
+
+static float
+block_time_ms(float seconds) {
+    return roundf(seconds * (float)MATH_MS_PER_S);
+}
+
+static bool
+block_blends_fit(const anim_track_t* blocks, const anim_track_t* blends, const uint32_t* blend_times, uint32_t end) {
+    int blend = -1;
+    for (int key = 0; key < blocks->count; key++) {
+        const uint32_t start = (uint32_t)block_time_ms(blocks->times[key]);
+        while (blend + 1 < blends->count && blend_times[blend + 1] <= start) {
+            blend++;
+        }
+        const uint32_t length = blend < 0 ? 0 : (uint32_t)blends->values[blend];
+        if ((key == 0 && length != 0) || length > end - start) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static scene_failure_t
+validate_block_blends(const anim_tracks_t* timeline, const uint32_t* times_ms, const char* clip) {
+    for (int i = 0; i < timeline->count; i++) {
+        anim_binding_t binding;
+        (void)anim_tracks_binding_at(timeline, i, &binding);
+        if (binding.component != ANIM_COMPONENT_ANIMATOR) {
+            continue;
+        }
+        if (binding.field_hash == name_hash("blend_ms")) {
+            anim_track_t starts;
+            (void)anim_tracks_find(timeline, binding.path_hash, binding.component, name_hash("clip"), &starts);
+            if (!block_blends_fit(&starts, &binding.curve, times_ms, timeline->clip.duration_ms)) {
+                return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
+            }
+        }
+        times_ms += binding.curve.count;
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, clip);
 }
 
 scene_failure_t
@@ -145,27 +188,36 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
         anim_binding_location_t location;
         if (anim_bind_locate(&binding, targets->targets, targets->count, ANIM_BIND_NO_SELF, &location)
             != ANIM_BIND_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
+            return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         const scene_row_t entity = (scene_row_t)location.target;
         if (location.field == ANIMATOR_FIELD_CLIP) {
-            const scene_failure_t result = resolve_block_slots(asset, entity, &binding.curve, slots);
+            const scene_failure_t result = resolve_block_slots(asset, entity, &binding, slots);
             if (result.status != SCENE_OK) {
                 return result;
             }
             slots += binding.curve.count;
         } else if (!(writes[entity] & scene_field_bit(location.component, ANIMATOR_FIELD_CLIP))
                    || !block_controls_fit(&binding.curve, location.field)) {
-            scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
-            (void)snprintf(failure.what, sizeof failure.what, "%s.%s", asset->names[entity].name, binding.field);
-            return failure;
+            return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
+        uint32_t previous = 0;
         for (int key = 0; key < binding.curve.count; key++) {
-            const float ms = roundf(binding.curve.times[key] * (float)MATH_MS_PER_S);
-            *times_ms++ = ms <= 0.0F ? 0 : ms >= (float)end ? end : (uint32_t)ms;
+            const float seconds = binding.curve.times[key];
+            const float rounded = block_time_ms(seconds);
+            if (seconds < 0.0F || rounded >= (float)ANIM_TRACKS_DURATION_MAX) {
+                return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
+            }
+            const uint32_t ms = (uint32_t)rounded;
+            if (ms > end || (location.field == ANIMATOR_FIELD_CLIP && ms == end)
+                || (location.field != ANIMATOR_FIELD_BLEND_MS && key > 0 && ms == previous)) {
+                return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
+            }
+            *times_ms++ = ms;
+            previous = ms;
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, clip);
+    return validate_block_blends(timeline, blocks->times_ms, clip);
 }
 
 static bool

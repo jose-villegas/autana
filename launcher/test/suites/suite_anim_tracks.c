@@ -342,7 +342,7 @@ open_every_clip(const asset_pack_t* pack) {
             continue;
         }
         anim_tracks_t tracks;
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, e.name, &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, e.name, &tracks, NULL));
         for (int j = 0; j < tracks.count; j++) {
             anim_binding_t b;
             anim_track_t curve;
@@ -441,7 +441,7 @@ test_doc_camera_field_samples_fov(void) {
     void* buffer = NULL;
     open_probe(&pack, &buffer);
     anim_tracks_t clip;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &clip));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &clip, NULL));
     anim_track_t lens;
     float fov[ANIM_WIDTH_MAX];
     TEST_ASSERT_EQUAL_INT(ASSET_OK, camera_field_example_start(&clip, &lens));
@@ -465,7 +465,7 @@ test_the_probe_clip_samples_as_the_python_sampler(void) {
     void* buffer = NULL;
     open_probe(&pack, &buffer);
     anim_tracks_t tracks;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &tracks));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&pack, "probe", &tracks, NULL));
     asset_view_t reference;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "probe_ref", REFERENCE_TYPE, &reference));
     TEST_ASSERT_EQUAL_UINT32(asset_read_u32(reference.data), tracks.clip.duration_ms);
@@ -484,8 +484,8 @@ test_a_missing_clip_and_an_entry_of_another_type_are_told_apart(void) {
     void* buffer = NULL;
     open_probe(&pack, &buffer);
     anim_tracks_t tracks;
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_from_pack(&pack, "nope", &tracks));
-    TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE, anim_tracks_from_pack(&pack, "probe_ref", &tracks));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, anim_tracks_from_pack(&pack, "nope", &tracks, NULL));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_TYPE, anim_tracks_from_pack(&pack, "probe_ref", &tracks, NULL));
     TEST_ASSERT_NULL(tracks.base);
     asset_file_release(buffer);
 }

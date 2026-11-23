@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdalign.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks_format.h"
@@ -18,13 +17,6 @@
 #define SCENE_COMPONENT_TABLE(name, table, count, prior) [SCENE_COMPONENT_##name] = &table,
 static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COUNT] = {
     SCENE_COMPONENT_LIST(SCENE_COMPONENT_TABLE)};
-
-scene_field_mask_t
-scene_field_bit(int component, int field) {
-#define SCENE_COMPONENT_BASE(name, table, count, prior) [SCENE_COMPONENT_##name] = SCENE_FIELD_BASE_##name,
-    static const uint8_t bases[SCENE_COMPONENT_COUNT] = {SCENE_COMPONENT_LIST(SCENE_COMPONENT_BASE)};
-    return (scene_field_mask_t)(1U << (bases[component] + field));
-}
 
 scene_anim_targets_t
 scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
@@ -143,8 +135,9 @@ pose_due(const scene_t* scene, scene_row_t e, const render_anim_settings_t* sett
         return true;
     }
     scene_animator_t* a = &scene->animators[e];
-    a->interval = scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
-    return scene_animator_due(scene, a);
+    a->interval =
+        scene_animator_due(scene->animation_frame, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
+    return scene_animator_due(scene->animation_frame, a);
 }
 
 void
@@ -215,22 +208,14 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         (void)anim_tracks_binding_at(tracks, i, &binding);
         anim_binding_location_t location;
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
-            if (binding.component == ANIM_COMPONENT_ANIMATOR) {
-                scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
-                (void)snprintf(failure.what, sizeof failure.what, "%s.%s", binding.path, binding.field);
-                return failure;
-            }
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
+            return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
         if ((binding.component == ANIM_COMPONENT_ANIMATOR && owned != NULL)
             || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
-            scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
-            (void)snprintf(failure.what, sizeof failure.what, "%s.%s", claims->asset->names[entity].name,
-                           binding.field);
-            return failure;
+            return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         if (owned != NULL) {
             owned[entity] |= bit;

@@ -154,7 +154,15 @@ typedef uint16_t scene_field_mask_t;
 _Static_assert(SCENE_FIELD_BASE_ANIMATOR + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
-scene_field_mask_t scene_field_bit(int component, int field);
+static inline scene_field_mask_t
+scene_field_bit(int component, int field) {
+#define SCENE_COMPONENT_BIT(name, table, count, prior)                                                                 \
+    case SCENE_COMPONENT_##name: return (scene_field_mask_t)(1U << (SCENE_FIELD_BASE_##name + field));
+    switch (component) {
+        SCENE_COMPONENT_LIST(SCENE_COMPONENT_BIT)
+        default: return 0;
+    }
+}
 
 typedef struct {
     anim_blocks_t blocks;
@@ -430,8 +438,8 @@ void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
 /* Whether `a` picks its pose tier, and so needs its drawn size, at the next
  * step: on the frames its current tier poses it, or before it has a tier. */
 static inline bool
-scene_animator_due(const scene_t* scene, const scene_animator_t* a) {
-    return a->interval == 0 || (scene->animation_frame + a->phase) % (uint32_t)a->interval == 0;
+scene_animator_due(uint32_t frame, const scene_animator_t* a) {
+    return a->interval == 0 || (frame + a->phase) % (uint32_t)a->interval == 0;
 }
 
 /* Animates staged[first, first + count). */
@@ -464,6 +472,7 @@ bool scene_lights_allocate(scene_t* scene);
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
+scene_failure_t scene_binding_failure(asset_status_t status, const anim_binding_t* binding);
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
 /* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
  * is not drawn, and scene_failure() names it, until scene_unstarve() as it

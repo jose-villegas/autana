@@ -11,6 +11,7 @@ becomes `half_fov_short_tan`), and a channel that never changes
 collapses to one key. Standard library only.
 """
 
+from bisect import bisect_right
 import math
 import pathlib
 import re
@@ -27,7 +28,6 @@ from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 from anim import scene_fields  # noqa: E402
-from anim.keys_file import DURATION_EXTRA, MS_PER_S  # noqa: E402
 from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR, VALUE_NAME,
                                WIDTHS)  # noqa: E402
 
@@ -48,6 +48,10 @@ ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_PATH_HASH, ROW_FIELD_HASH, ROW_TIMES, RO
 ALIGNMENT, CUBIC_RUNS = [read_define(OWNER, "ANIM_TRACKS_" + name) for name in ("ALIGNMENT", "CUBIC_RUNS")]
 STRING_MAX = read_define(OWNER, "ANIM_BINDING_STRING_MAX")
 STRINGS_MAX, COUNT_MAX, GROUND_MAX = 65535, 65535, 65535
+DURATION_EXTRA = "autana_duration_ms"
+MS_PER_S = read_define(scene_fields.MAIN.parent / "packages/math/include/math/scalar/units.h", "MATH_MS_PER_S")
+F32 = struct.Struct("<f")
+CLIP_FIELD, SPEED_FIELD, BLEND_FIELD = "clip", "speed", "blend_ms"
 DURATION_MAX = read_define(OWNER, "ANIM_TRACKS_DURATION_MAX")
 # Poses a second the ground speed is measured at: fine enough that a stance's
 # slide reads as a straight line between samples.
@@ -221,7 +225,7 @@ def clip_tracks(document, binary, animation):
                 break
         tracks = []
         fields = scene_fields.fields()
-        duration_ms = round(gltf_read.animation_duration(channels) * MS_PER_S)
+        duration_ms = seconds_to_ms(gltf_read.animation_duration(channels))
         extras = animation.get("extras")
         if isinstance(extras, dict) and DURATION_EXTRA in extras:
             end = extras[DURATION_EXTRA]
@@ -252,12 +256,49 @@ def clip_tracks(document, binary, animation):
             tracks.append({"path": path, "component": component, "field": field, "type": value_type,
                            "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
                            "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
+        check_block_timing({(t["path"], t["field"]): (t["name"], t["times"], t["values"])
+                            for t in tracks if t["component"] == scene_fields.ANIMATOR}, duration_ms)
         if joint_paths:
             return tracks, duration_ms, ROOT_SKELETON, ground_mm_s(
                 document, channels, joints)
         return tracks, duration_ms, ROOT_SCENE, 0
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation.get("name", ""), error)) from error
+
+
+def seconds_to_ms(seconds):
+    """Round glTF float seconds with the same float32 product and ties as C roundf."""
+    seconds, = F32.unpack(F32.pack(seconds))
+    milliseconds, = F32.unpack(F32.pack(seconds * MS_PER_S))
+    return math.floor(milliseconds + 0.5) if milliseconds >= 0 else math.ceil(milliseconds - 0.5)
+
+
+def check_block_timing(curves, end):
+    """Validate animator curves on the integer millisecond clock."""
+    rounded = {}
+    for (path, field), (name, times, values) in curves.items():
+        key_ms = []
+        for i, time in enumerate(times):
+            ms = seconds_to_ms(time)
+            if time < 0 or ms > end:
+                raise TracksError(f"{name} key {i}: key is outside the duration")
+            if field != BLEND_FIELD and key_ms and ms == key_ms[-1]:
+                raise TracksError(f"{name} key {i}: two keys share a millisecond")
+            if field == CLIP_FIELD and ms == end:
+                raise TracksError(f"{name} key {i}: block must start before the duration")
+            key_ms.append(ms)
+        rounded[path, field] = name, key_ms, values
+    for (path, field), (name, starts, _) in rounded.items():
+        if field != CLIP_FIELD:
+            continue
+        blend_name, blend_times, blends = rounded.get((path, BLEND_FIELD), (name, (), ()))
+        for i, start in enumerate(starts):
+            key = bisect_right(blend_times, start) - 1
+            blend = int(F32.unpack(F32.pack(blends[key][0]))[0]) if key >= 0 else 0
+            if i == 0 and blend != 0:
+                raise TracksError(f"{blend_name} key {key}: the first block cannot have a blend")
+            if start + blend > end:
+                raise TracksError(f"{blend_name} key {key}: blend ends past the duration")
 
 
 def find_animation(document, name, where):

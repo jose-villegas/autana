@@ -54,7 +54,7 @@ boot_anim_motion_load(boot_anim_motion_t* out) {
     }
     anim_tracks_t tracks;
     const char* node = NULL;
-    asset_status_t status = anim_tracks_from_pack(pack, BOOT_CLIP, &tracks);
+    asset_status_t status = anim_tracks_from_pack(pack, BOOT_CLIP, &tracks, NULL);
     if (status == ASSET_OK) {
         node = "camera";
         status = anim_tracks_find_node(&tracks, name_hash(node), &out->camera);

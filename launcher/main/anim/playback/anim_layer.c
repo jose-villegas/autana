@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "collections/sort.h"
+
 void
 anim_layer_init(anim_layer_t* l, const anim_clip_t* clips, int count, anim_pose_t shown, anim_pose_t frozen) {
     assert(count >= 0 && count <= ANIM_LAYER_CLIP_NONE);
@@ -80,20 +82,7 @@ anim_layer_pose(anim_layer_t* layer, const anim_skeleton_t* skeleton, const anim
     return &layer->shown;
 }
 
-static int
-block_key_at(const uint32_t* times_ms, int count, uint32_t t_ms) {
-    int lo = -1;
-    int hi = count;
-    while (hi - lo > 1) {
-        const int mid = (lo + hi) / 2;
-        if (times_ms[mid] <= t_ms) {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
-}
+SORT_DEFINE_LAST_AT_MOST(block_key_at, uint32_t)
 
 static uint64_t
 speed_integral(const anim_block_curve_t* speed, uint32_t from, uint32_t t_ms) {

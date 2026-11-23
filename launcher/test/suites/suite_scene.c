@@ -1533,7 +1533,7 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     fixture();
     expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
-    expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
+    expect_failure("test_skewed", ASSET_ERR_FORMAT, ANIM_TARGET_SELF ":TRNS.position");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
     TEST_ASSERT_EQUAL_INT(0, loaded_count());
 }
@@ -4869,7 +4869,7 @@ test_clip_bind_failure_names_the_first_rejected_clip(void) {
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         anim_tracks_t tracks;
         anim_binding_t binding;
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks, NULL));
         TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, 0, &binding));
         memcpy((char*)(uintptr_t)binding.path, cases[i].missing, strlen(cases[i].missing));
         TEST_ASSERT_TRUE(animator_set_clips(entity, cases[i].skeleton, &cases[i].clips[1], 1, NULL));
@@ -5426,7 +5426,7 @@ turned(entity_t entity, int i) {
 /* Steps `scene` until `a` is due: a copy picks its tier only on its due frames. */
 static void
 until_due(scene_t* scene, const scene_animator_t* a) {
-    while (!scene_animator_due(scene, a)) {
+    while (!scene_animator_due(scene->animation_frame, a)) {
         scene_animation_step(scene, ANIM_RATE_DT_MS);
     }
 }
@@ -5647,7 +5647,7 @@ test_a_copy_holds_its_tier_between_its_due_frames(void) {
     step_due_at(scene, a, 0.0F);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
     for (int i = 1; i < s.far_every; i++) {
-        TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+        TEST_ASSERT_FALSE(scene_animator_due(scene->animation_frame, a));
         a->drawn_radius_px = s.mid_px + s.hysteresis_px * 2;
         scene_animation_step(scene, ANIM_RATE_DT_MS);
         TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
@@ -5716,7 +5716,7 @@ static void
 frame_due(scene_t* scene, const scene_animator_t* a) {
     do {
         frame(0);
-    } while (!scene_animator_due(scene, a));
+    } while (!scene_animator_due(scene->animation_frame, a));
 }
 
 static void
@@ -5765,7 +5765,7 @@ interval_follows_settings(float px, int tier, int base, int wanted) {
     step_due_at(scene, a, px);
     TEST_ASSERT_EQUAL_INT(tier, a->tier);
     TEST_ASSERT_EQUAL_INT(base, a->interval);
-    TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+    TEST_ASSERT_FALSE(scene_animator_due(scene->animation_frame, a));
     if (tier == SCENE_ANIM_TIER_MID) {
         settings.anim.mid_every = wanted;
     } else {
@@ -5806,7 +5806,7 @@ static void
 assert_measured_only_when_due(scene_t* scene, const scene_animator_t* a) {
     for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         frame(0);
-        if (scene_animator_due(scene, a)) {
+        if (scene_animator_due(scene->animation_frame, a)) {
             TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
         } else {
             TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
@@ -5861,7 +5861,8 @@ test_the_draw_measures_two_copies_each_on_its_own_due_frames(void) {
     int red_only = 0, green_only = 0;
     for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         frame(0);
-        const bool red_due = scene_animator_due(scene, red), green_due = scene_animator_due(scene, green);
+        const bool red_due = scene_animator_due(scene->animation_frame, red),
+                   green_due = scene_animator_due(scene->animation_frame, green);
         TEST_ASSERT_EQUAL(red_due, red->drawn_radius_px > 0.0F);
         TEST_ASSERT_EQUAL(green_due, green->drawn_radius_px > 0.0F);
         red_only += red_due && !green_due;

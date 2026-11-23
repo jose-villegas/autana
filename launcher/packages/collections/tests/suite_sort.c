@@ -118,8 +118,23 @@ test_typed_insert_builds_the_same_order_one_item_at_a_time(void) {
     }
 }
 
+SORT_DEFINE_LAST_AT_MOST(int_key_at, int)
+
+static void
+test_last_key_at_most(void) {
+    static const int keys[] = {3, 5, 5, 7};
+    const int count = sizeof keys / sizeof keys[0];
+    TEST_ASSERT_EQUAL_INT(-1, int_key_at(NULL, 0, 3));
+    TEST_ASSERT_EQUAL_INT(0, int_key_at(keys, 1, 3));
+    TEST_ASSERT_EQUAL_INT(-1, int_key_at(keys, count, 2));
+    TEST_ASSERT_EQUAL_INT(2, int_key_at(keys, count, 5));
+    TEST_ASSERT_EQUAL_INT(2, int_key_at(keys, count, 6));
+    TEST_ASSERT_EQUAL_INT(3, int_key_at(keys, count, 8));
+}
+
 void
 run_sort_suite(void) {
+    RUN_TEST(test_last_key_at_most);
     RUN_TEST(test_typed_sort_keeps_equal_keys_in_arrival_order);
     RUN_TEST(test_typed_insert_builds_the_same_order_one_item_at_a_time);
     RUN_TEST(test_sort_insertion_orders_like_qsort);

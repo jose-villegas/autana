@@ -547,7 +547,7 @@ AUTANA_SKIN_PROBE="$BUILD_DIR/skin_probe.bin"
 export AUTANA_SKIN_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/skin_probe.py" -o "$AUTANA_SKIN_PROBE"
 # The scene suite_scene.c holds to the scene entry's Python writer.
-AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
+AUTANA_SCENE_PROBE="$BUILD_DIR/run/keys_blocks.apak"
 export AUTANA_SCENE_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/scene_probe.py" -o "$AUTANA_SCENE_PROBE"
 

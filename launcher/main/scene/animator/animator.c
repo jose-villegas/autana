@@ -92,7 +92,7 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
     if (a->root == ANIM_ROOT_SCENE) {
         for (int c = 0; c < count; c++) {
             anim_tracks_t tracks;
-            (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks);
+            (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks, NULL);
             const scene_failure_t result = scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned);
             if (result.status != SCENE_OK) {
                 return result;
@@ -111,7 +111,7 @@ bind_animator_storage(scene_t* scene, scene_animator_t* a, const char* const* id
     asset_status_t result = ASSET_OK;
     for (int c = 0; c < a->layer.clip_count; c++) {
         scene_animator_clip_t* clip = &a->clips[c];
-        (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks);
+        (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks, NULL);
         char* name = (char*)block + l.names + (c * ASSET_NAME_MAX);
         /* The clip was opened from the pack, whose names fit ASSET_NAME_MAX. */
         const size_t length = strlen(ids[c]);
@@ -186,7 +186,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
 
 asset_status_t
 scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out) {
-    const asset_status_t status = anim_tracks_from_pack(pack, id, out);
+    const asset_status_t status = anim_tracks_from_pack(pack, id, out, NULL);
     return status == ASSET_OK && out->root != root ? ASSET_ERR_FORMAT : status;
 }
 

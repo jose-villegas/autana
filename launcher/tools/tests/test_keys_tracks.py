@@ -531,3 +531,34 @@ def test_block_only_duration_validation(duration, blocks, message):
         values["duration"] = duration
     with pytest.raises(ValueError, match=message):
         keys_file.build(values)
+
+
+@pytest.mark.parametrize("track", [
+    dict(BLOCK_TRACK, blocks=[dict(t=0.9996, clip="idle"), dict(t=1.0004, clip="walk")]),
+    dict(object="rig", field="speed", interp="step", keys=[dict(t=0.9996, v=1), dict(t=1.0004, v=2)]),
+    dict(object="rig", field="speed", interp="step", keys=[dict(t=0.4004, v=2)]),
+])
+def test_keys_refuse_times_in_the_same_millisecond(track):
+    tracks = [BLOCK_TRACK, track] if track["field"] == "speed" and len(track["keys"]) == 1 else [track]
+    with pytest.raises(ValueError, match=rf"rig.*\.{track['field']}.*millisecond"):
+        keys_file.build(dict(animation="path", duration=2, tracks=tracks))
+
+
+def test_half_millisecond_duration_matches_the_final_key():
+    track = dict(object="rig", field="near_z", interp="step", keys=[dict(t=0, v=1), dict(t=1.0025, v=2)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1.0025, tracks=[track])))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    assert tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))[1] == 1003
+
+
+@pytest.mark.parametrize("end, message", [(None, "block must start"), (1100, "blend ends")])
+def test_glb_import_checks_block_timing(end, message):
+    track = dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1.5, tracks=[track])))
+    animation = doc["animations"][0]
+    if end is None:
+        animation.pop("extras")
+    else:
+        animation["extras"][tracks_asset.DURATION_EXTRA] = end
+    with pytest.raises(ValueError, match=rf"rig:ANMR\..*{message}"):
+        tracks_asset.clip_tracks(doc, binary, animation)
