@@ -612,7 +612,8 @@ class KeeperTests(unittest.TestCase):
             return Future()
         self.keeper = stages.Keeper(mock.Mock(submit=mock.Mock(side_effect=submit)), self.root / "cache")
         self.scene = load_scene(self.SCENE)
-        self.jobs = [placed_variant(self.scene, "atrium_fitted_full")]
+        self.fitted = next(job.object.name for job in self.scene.renderers if job.renderer.fit)
+        self.jobs = [placed_variant(self.scene, self.fitted)]
         self.inputs = self.root / "inputs"
         self.inputs.mkdir()
         (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"start")
@@ -691,8 +692,8 @@ class KeeperTests(unittest.TestCase):
             self.assertEqual(self.fit_folder({"budget": 4000, "cost_weight": 0.0}), unweighted)
 
     def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
-        self.keeper.bake(self.scene, "atrium_fitted_full", False)
-        self.keeper.bake(self.scene, "atrium_fitted_full", True)
+        self.keeper.bake(self.scene, self.fitted, False)
+        self.keeper.bake(self.scene, self.fitted, True)
         self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 2)
 
     def test_the_code_that_makes_a_result_is_in_its_key(self):

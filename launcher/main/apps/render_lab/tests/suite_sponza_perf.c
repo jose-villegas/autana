@@ -73,6 +73,8 @@ typedef struct {
     void* scratch;
     gfx_color_t* panel;
     r3d_instance_t instance; /* the one drawn, with coarse bits when its mesh has levels */
+    transformf_t pose;       /* a placed instance's, behind its `model` */
+    mat4f_t model;
     uint32_t* coarse;
     raster_t raster;
     render_settings_t settings; /* the default under the overrides set when it opened */
@@ -221,7 +223,8 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
              (long long)core1_result.us, (long long)together_bottom.us, (long long)wall, perf_quarter->name);
 }
 
-static void
+/* Not inlined, so its asserts stay out of the timed tests' draw chains. */
+static __attribute__((noinline)) void
 open_the_meshes(void) {
     TEST_ASSERT_FALSE_MESSAGE(handle_is_none(sponza), "scene sponza did not load: see the log above");
     const entity_t bake = entity_find(sponza, name_hash(baked_sponza.bake));
@@ -309,13 +312,17 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_PASS();
 }
 
-/* `moving`, when not NULL, is the pose behind the instance's `model`,
+/* `placed`: the instance drawn through a model matrix whose pose is
  * nudged every frame. */
 static void
-report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, transformf_t* moving,
-                  mat4f_t* model, const perf_budget_t budget[LAB_PERF_QUARTER_COUNT]) {
+report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, bool placed,
+                  const perf_budget_t budget[LAB_PERF_QUARTER_COUNT]) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t* b = bench_open(instance);
+    if (placed) {
+        b->pose = transformf_identity();
+        b->instance.model = &b->model;
+    }
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" LAB_PERF_QUARTER_FORMAT,
              label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
@@ -348,10 +355,10 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
         const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
                                                      (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-        if (moving != NULL) {
-            transformf_set_position(moving,
+        if (placed) {
+            transformf_set_position(&b->pose,
                                     (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
-            *model = transformf_compute_matrix(moving);
+            b->model = transformf_compute_matrix(&b->pose);
         }
         /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time:
          * a pick spread over frames has the pose's earlier frames drawn first, untimed. */
@@ -422,9 +429,9 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     static const perf_budget_t showcase_budget[LAB_PERF_QUARTER_COUNT] = {{41877, 53439}, {39437, 49049}};
     static const perf_budget_t cull_off_budget[LAB_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     const r3d_instance_t shown = {&bake_mesh, NULL, NULL, NULL};
-    report_frame_cost(baked_sponza.bake, baked_sponza.bake, &shown, NULL, NULL, showcase_budget);
+    report_frame_cost(baked_sponza.bake, baked_sponza.bake, &shown, false, showcase_budget);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
-    report_frame_cost("cull_off", baked_sponza.bake, &shown, NULL, NULL, cull_off_budget);
+    report_frame_cost("cull_off", baked_sponza.bake, &shown, false, cull_off_budget);
     TEST_PASS();
 }
 
@@ -435,10 +442,8 @@ test_sponza_frame_cost_placed(void) {
     /* Worst of a 5-run capture on 20E8, + 1%; per quarter, portrait then
      * landscape. */
     static const perf_budget_t placed_budget[LAB_PERF_QUARTER_COUNT] = {{39512, 49324}, {36129, 42843}};
-    transformf_t pose = transformf_identity();
-    mat4f_t model = transformf_compute_matrix(&pose);
-    const r3d_instance_t moving = {&bake_mesh, &model, NULL, NULL};
-    report_frame_cost("placed", baked_sponza.bake, &moving, &pose, &model, placed_budget);
+    const r3d_instance_t moving = {&bake_mesh, NULL, NULL, NULL};
+    report_frame_cost("placed", baked_sponza.bake, &moving, true, placed_budget);
     TEST_PASS();
 }
 

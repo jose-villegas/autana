@@ -196,6 +196,7 @@ class DocImageFailureTest(unittest.TestCase):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
         assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
         calls = [line for line in source.splitlines() if line.startswith('run bash "$TOOLS_DIR/doc_images_demo.sh"')]
+        demo_object = next(line for line in assignments if line.startswith("DEMO_OBJECT=")).split("=", 1)[1]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             stub = root / "doc_images_demo.sh"
@@ -205,7 +206,7 @@ class DocImageFailureTest(unittest.TestCase):
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual((root / "argv").read_text().splitlines(),
-                             ["out", "work/demo", DEMO_SCENE.relative_to(ROOT).as_posix(), "atrium_fitted_full"])
+                             ["out", "work/demo", DEMO_SCENE.relative_to(ROOT).as_posix(), demo_object])
 
     def test_orphans_require_a_demo_prefix_and_a_matching_template(self):
         with tempfile.TemporaryDirectory() as directory:
