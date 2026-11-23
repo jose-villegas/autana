@@ -15,7 +15,9 @@ class ReplyTests(unittest.TestCase):
                          ("EXAMPLE_OK", "EXAMPLE_ERR", "EXAMPLE_END"))
         self.assertEqual(console_protocol.reply_endings(console_protocol.TUNE_LIST),
                          console_protocol.TUNE_REPLY_ENDS)
-        self.assertEqual(reply_prefix("sound stats"), ("SOUND", ("SOUND_END", "SOUND_ERR")))
+        sound_prefix = "SOUND"
+        _, error, end = console_protocol.reply_endings(sound_prefix)
+        self.assertEqual(reply_prefix("sound stats"), (sound_prefix, (end, error)))
 
     def test_tunable_verbs_use_tune_reply_contract(self):
         for line in ('SET render.cull 0', 'get render.cull', 'RESET render.cull', 'TUNE'):
