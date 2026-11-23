@@ -55,8 +55,8 @@ tracing may build a different tree each time
 ([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
 It is a bake of its own, locked like the start; its bytes differ between CPU models, even two generations of one vendor.
 
-The Bakes plan job selects each missing set's poses once and uploads their files for that attempt.
-Every reference shard renders that plan and copies its pose files byte for byte; the join job packs their union.
+The Bakes reference job traces every missing set in one job, selecting its poses, rendering them and packing it.
+The set's folder holds more pose files as it traces, and each one tells the stage guard the set still progresses.
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the
@@ -105,7 +105,7 @@ keyed independently of mesh and reference bakes. See
 ## The bakes runner
 
 One self-hosted runner, labelled `gpu-legion`, makes every bake: the Bakes jobs
-that make one (meshes, exports, sounds, levels, the reference plan and shards)
+that make one (meshes, exports, sounds, levels, reference sets)
 and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
 each other. A fit runs in its fit environment, `~/gpu/env`
 ([r3d README](../../launcher/tools/r3d/README.md)); a CPU job makes a venv of

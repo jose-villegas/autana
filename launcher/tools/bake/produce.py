@@ -13,7 +13,6 @@ nothing has read for REFERENCE_KEEP_DAYS is deleted.
 import contextlib
 import copy
 import importlib.metadata
-import inspect
 import json
 import os
 import pathlib
@@ -22,18 +21,15 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 
 from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
-# How a poses file (reference_set.poses_text) starts each pose's line.
-POSE_LINE = "pose "
-# A reference shard's record: the CPU vendor that traced it, and each set it rendered a share of, by folder, with
-# its pose count. A joined set keeps it, so its row names the vendor that traced it, not the one that packed it.
-SHARD_MANIFEST = "shard.json"
-PLAN_MANIFEST = "plan.json"
+# How often a reference set's render is looked at for the pose files it added: each is progress for a stage guard.
+POSE_PROGRESS_POLL_S = 60
 DONE = "done"
 PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
@@ -74,13 +70,12 @@ def maker(kind):
     return fields
 
 
-def record(bake, path, cache, run=None, traced_on=None):
-    """Puts the file `path` made for `bake` in the cache and indexes it by key; `traced_on` names the CPU vendor
-    that traced it when another host did."""
+def record(bake, path, cache, run=None):
+    """Puts the file `path` made for `bake` in the cache and indexes it by key."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
-           **maker(bake.kind), **({"cpu_vendor": traced_on} if traced_on else {})}
+           **maker(bake.kind)}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -208,6 +203,33 @@ def prune_references(cache, now=None):
             continue  # gone already, or held open
 
 
+@contextlib.contextmanager
+def poses_progress(folder):
+    """While the block runs, tells the stage's guard each time `folder` holds more files than before: a reference set
+    traces for hours and writes each pose's files as it finishes it, so a set still tracing is never taken for hung."""
+    from process_tree import progressed
+
+    stop = threading.Event()
+
+    def watch():
+        seen = 0
+        while not stop.wait(POSE_PROGRESS_POLL_S):
+            try:
+                count = sum(path.is_file() for path in pathlib.Path(folder).rglob("*"))
+            except OSError:
+                continue  # a folder renamed or removed while counting: count again next time
+            if count > seen:
+                seen = count
+                progressed()
+    watcher = threading.Thread(target=watch, daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        watcher.join()
+
+
 def reference_set(key, job, scene, cache, fresh=None):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
     given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
@@ -216,127 +238,14 @@ def reference_set(key, job, scene, cache, fresh=None):
 
     folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
     reused = (folder / DONE).is_file()
-    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial))
+
+    def make(partial):
+        with poses_progress(partial):
+            prepare_references(reference_inputs(job, scene), partial)
+    keyed_folder(folder, make)
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder
-
-
-def shard_poses(text, shard, count):
-    """A poses file's text cut to shard `shard` of `count`: its header and every count-th pose from `shard`, as
-    lines, so no pose is formatted again."""
-    lines = text.splitlines(keepends=True)
-    poses = [line for line in lines if line.startswith(POSE_LINE)]
-    return "".join(line for line in lines if not line.startswith(POSE_LINE)) + "".join(poses[shard::count])
-
-
-def shard_renderer(render_sets, shard, count, rendered_sets):
-    """render_sets for shard `shard` of `count`: each set's poses shard, shard + count, ... rendered by `render_sets`
-    and saved under their own indices, and each set's folder name and pose count put in `rendered_sets`. A pose's
-    files depend on that pose alone, so shards join into the very files one render makes."""
-    def render(inputs, sets, samples=4):
-        for poses, out in sets:
-            text = pathlib.Path(poses).read_text()
-            rendered_sets[pathlib.Path(out).name] = sum(line.startswith(POSE_LINE) for line in text.splitlines())
-        # Beside the outputs, so a rendered file is renamed into place, never copied across filesystems.
-        beside = pathlib.Path(sets[0][1]).parent
-        beside.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=beside) as work:
-            cut = [(pathlib.Path(work) / f"{number}.txt", pathlib.Path(work) / str(number)) for number in range(len(sets))]
-            for (poses, _), (subset, _) in zip(sets, cut):
-                subset.write_text(shard_poses(pathlib.Path(poses).read_text(), shard, count))
-            # A set with fewer poses than shards leaves some shards none; the renderer takes no empty set.
-            kept = [(subset, rendered) for subset, rendered in cut
-                    if any(line.startswith(POSE_LINE) for line in subset.read_text().splitlines())]
-            render_sets(inputs, kept, samples)
-            for (_, out), (_, rendered) in zip(sets, cut):
-                pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-                for path in (pathlib.Path(rendered).iterdir() if pathlib.Path(rendered).is_dir() else ()):
-                    index, rest = path.name.split(".", 1)
-                    os.replace(path, pathlib.Path(out) / f"{shard + int(index) * count:04d}.{rest}")
-    return render
-
-
-def reference_rays(bake, out=None):
-    """The primary rays `bake`'s reference set traces: every pose's width x height x samples², read from the poses
-    files the reference stage writes, with its renderer swapped for one that counts and traces nothing.
-    Given `out`, keeps those files and the render calls there as a plan for reference_shard."""
-    from r3d import reference_render
-    from r3d.poses import parse_pose_rows
-    from r3d.reference_set import prepare_references, reference_inputs
-
-    rays, calls = 0, []
-    # The samples render_sets traces at when prepare_references names none.
-    default = inspect.signature(reference_render.render_sets).parameters["samples"].default
-
-    def count(inputs, sets, samples=default):
-        nonlocal rays
-        calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
-                      "samples": samples})
-        for poses, _ in sets:
-            width, height, _lens, _near, posed = parse_pose_rows(pathlib.Path(poses).read_text())
-            rays += len(posed) * width * height * samples * samples
-
-    render_sets, reference_render.render_sets = reference_render.render_sets, count
-    try:
-        with contextlib.nullcontext(out) if out is not None else tempfile.TemporaryDirectory() as work:
-            work = pathlib.Path(work)
-            prepare_references(reference_inputs(bake.job, bake.scene), work)
-            if out is not None:
-                (work / PLAN_MANIFEST).write_text(json.dumps(calls, sort_keys=True))
-    finally:
-        reference_render.render_sets = render_sets
-    return rays
-
-
-def reference_shard(bake, out, shard, count, plan):
-    """Shard `shard` of `count` of `bake`'s reference set into `out`, copying the plan's files byte for byte and
-    rendering only its poses. Selection runs only in the plan job."""
-    from r3d import reference_render
-    from r3d.reference_set import reference_inputs
-
-    folder = pathlib.Path(plan) / bake.output
-    if not (folder / PLAN_MANIFEST).is_file():
-        raise keys.BakeMissing(f"{bake.output}: reference plan lacks this set: {folder}")
-    calls = json.loads((folder / PLAN_MANIFEST).read_text())
-    out = pathlib.Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    for path in folder.iterdir():
-        if path.is_file() and path.name != PLAN_MANIFEST:
-            shutil.copyfile(path, out / path.name)
-    rendered_sets = {}
-    render = shard_renderer(reference_render.render_sets, shard, count, rendered_sets)
-    inputs = reference_inputs(bake.job, bake.scene)
-    for call in calls:
-        render(inputs, [(out / poses, out / target) for poses, target in call["sets"]], call["samples"])
-    manifest = {"cpu_vendor": keys.cpu_vendor(), "sets": rendered_sets}
-    (out / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
-
-
-def join_reference_shards(bake, cache, shards):
-    """`bake`'s reference set in this cache, joined from the folders `shards` (reference_shard). Files the shards share
-    must match, and each set must hold every pose of its poses file exactly once."""
-    def join(partial):
-        for shard in map(pathlib.Path, shards):
-            for path in sorted(item for item in shard.rglob("*") if item.is_file() and item.name != SHARD_MANIFEST):
-                target = partial / path.relative_to(shard)
-                if target.is_file():
-                    if target.read_bytes() != path.read_bytes():
-                        raise keys.BakeMissing(f"{bake.output}: shards disagree on {path.relative_to(shard)}")
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
-        manifests = {(pathlib.Path(shard) / SHARD_MANIFEST).read_text() for shard in shards}
-        if len(manifests) != 1:
-            raise keys.BakeMissing(f"{bake.output}: shards disagree on {SHARD_MANIFEST}")
-        manifest = manifests.pop()
-        (partial / SHARD_MANIFEST).write_text(manifest)
-        for folder, wanted in json.loads(manifest)["sets"].items():
-            found = {path.name.split(".", 1)[0] for path in (partial / folder).iterdir()} if (partial / folder).is_dir() else set()
-            if found != {f"{index:04d}" for index in range(wanted)}:
-                raise keys.BakeMissing(f"{bake.output}: the shards hold {len(found)} of {folder}'s {wanted} poses")
-
-    return keyed_folder(pathlib.Path(cache) / REFERENCES / bake.key, join)
 
 
 def input_file(bake, cache, lock, dependency=None):
@@ -356,11 +265,10 @@ def produce_reference(bake, cache, fresh_references):
     from r3d.reference_set import pack_references, reference_inputs
 
     folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
-    joined = folder / SHARD_MANIFEST
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
-        return record(bake, target, cache, traced_on=json.loads(joined.read_text())["cpu_vendor"] if joined.is_file() else None)
+        return record(bake, target, cache)
 
 
 def produce_fit(bake, cache, lock):
