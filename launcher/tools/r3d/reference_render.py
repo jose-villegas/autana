@@ -30,7 +30,8 @@ from r3d import mesh_source, mitsuba_reference
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
-from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8
+from r3d.light import (AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8,
+                       turned_frame)
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
@@ -61,7 +62,11 @@ def hit_albedo(source, hits, bary):
     return out
 
 
-def render_linear(source, job, scene, pose, width, height, lens, samples=4):
+# Rays per pixel side when a caller names none: the command line's --samples; a reference set reads [reference].
+SAMPLES = 4
+
+
+def render_linear(source, job, scene, pose, width, height, lens, samples=SAMPLES):
     """Return a linear RGB source render, supersampled then box filtered."""
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
@@ -103,31 +108,50 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     return origin, direction, locations, rays, faces, normal, bary, double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples=4):
+def trace(source, job, scene, pose, width, height, lens, samples=SAMPLES):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
-    the pixel's rays and zero where they all miss)."""
-    settings = job.settings
+    the pixel's rays and zero where they all miss). Every hemisphere term turns its directions per point
+    (light.turned_frame); a scene whose [reference] sets denoise passes the colour through `denoised`."""
     origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
                                                                                     samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
     covered[rays] = 1.0
     shading = np.zeros((len(origin), 3), dtype=float)
+    albedo = np.zeros((len(origin), 3), dtype=float)
     if len(rays):
-        albedo = hit_albedo(source, faces, bary)
+        albedo[rays] = hit_albedo(source, faces, bary)
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
                          source.bounce, ao=job.bake.ao,
-                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
-        linear[rays] = albedo * radiance
+                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0,
+                         frame=turned_frame)
+        linear[rays] = albedo[rays] * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
-    shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
-    return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
-            covered.reshape(height, width, samples * samples).mean(axis=2),
-            shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12))
+    shape = (height, width, samples * samples, 3)
+    shading = shading.reshape(shape).sum(axis=2)
+    shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
+    linear = linear.reshape(shape).mean(axis=2)
+    if getattr(scene, "reference", None) is not None and scene.reference.denoise:
+        linear = denoised(linear, albedo.reshape(shape).mean(axis=2), shading)
+    return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
 
 
-def occlusion_map(source, job, pose, width, height, lens, samples=4):
+def denoised(linear, albedo, normal):
+    """`linear` through Open Image Denoise's ray-tracing filter (OIDN, pinned in requirements.txt) on the CPU,
+    guided by the pixel's albedo and shading normal. The guides come from the primary rays alone, which carry no
+    sampling noise, so OIDN takes them as they are (clean_aux) and only the colour is filtered."""
+    import pyoidn
+
+    def image(values):
+        return np.ascontiguousarray(values, dtype=np.float32)
+
+    out = pyoidn.denoise(image(linear), image(np.clip(albedo, 0.0, 1.0)), image(normal), hdr=True, clean_aux=True,
+                         quality="high")
+    return np.maximum(out.astype(np.float64), 0.0)
+
+
+def occlusion_map(source, job, pose, width, height, lens, samples=SAMPLES):
     """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
     subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
     light by, so the scene must set it."""
@@ -192,8 +216,8 @@ def camera_hidden(source, settings, scene=None, hidden_materials=None):
     return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
-def render_sets(inputs, sets, samples=4):
-    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
+def render_sets(inputs, sets, samples):
+    """Renders each (poses file, folder) of `sets` at `samples` x `samples` rays per pixel with normals from `inputs` alone (a
     reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the bake's
     CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
     textures a second time, is dropped before it returns, for the fit that follows in the process."""
@@ -303,7 +327,7 @@ def main(argv=None):
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--workers", type=int, help="pose workers; default: available CPU and memory budget")
-    parser.add_argument("--samples", type=int, default=4)
+    parser.add_argument("--samples", type=int, default=SAMPLES)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--occlusion", action="store_true",

@@ -97,7 +97,7 @@ class SharedOwnerTests(unittest.TestCase):
                 patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),
-                                                   ('two', pathlib.Path(folder)/'two')])
+                                                   ('two', pathlib.Path(folder)/'two')], reference_render.SAMPLES)
         accepted.assert_called_once()
         self.assertEqual(render.call_count, 2)
         self.assertIs(render.call_args_list[0].args[0], render.call_args_list[1].args[0])

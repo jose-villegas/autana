@@ -23,6 +23,14 @@ cosine-weighted, so it is even on the disc seen from above, for any $R$.
 
 ![The first 8, 32 and 128 fixed directions seen from above](../../images/render/bake-directions.png)
 
+A bake keeps this frame fixed, so equal surroundings give equal light. A
+reference render turns each point's frame about its normal by its own angle,
+hashed from the point's coordinates<sup>[[141]](../../Citations.md#steele-2014)</sup>.
+With one fixed frame, neighbouring pixels on a flat surface trace the same rays
+and share one error, which shows as straight-edged light and dark patches. Turned
+frames leave grain instead, which the scene's [`[reference]`](../scene/Scene-Files.md#reference)
+denoising removes.
+
 ## Local-occlusion implementation
 
 The [`ao` setting](../scene/Scene-Files.md#bake-ao) darkens a point that has geometry

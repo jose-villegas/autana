@@ -21,6 +21,12 @@ colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }
 
+# The fit's references: today's bake light traced at samples x samples rays per pixel, every hemisphere term
+# turned per point, then denoised with the pixel's albedo and normal as guides (docs/render/offline/Appearance-Fit.md).
+[reference]
+samples = 4
+denoise = true
+
 [[objects]]
 name = "sun"
 rotation = [25.0, -47.5, 0.0]   # toward (-0.344, 1.0, 0.315)

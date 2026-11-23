@@ -78,6 +78,7 @@ class ReferenceInputs:
     size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
+    reference: SimpleNamespace = None  # the scene's [reference]: samples per pixel side, denoising
 
     def sets(self):
         return fit_sets(self.camera.path is not None, self.probes is not None)
@@ -87,7 +88,7 @@ class ReferenceInputs:
 
     def scene(self):
         return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,
-                               camera=SimpleNamespace(component=self.camera))
+                               camera=SimpleNamespace(component=self.camera), reference=self.reference)
 
 
 def reference_inputs(job, scene):
@@ -97,7 +98,7 @@ def reference_inputs(job, scene):
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes)
+                           probes=job.settings.fit.probes, reference=scene.reference)
 
 
 def prepare_references(inputs, work):
@@ -126,7 +127,8 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
+                inputs.reference.samples)
     return count
 
 

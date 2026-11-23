@@ -311,7 +311,7 @@ class SweepTests(unittest.TestCase):
                                    visibility=SimpleNamespace(source="camera_path", size=(9, 7)))
         job = SimpleNamespace(settings=SimpleNamespace(path="settings", fit=UNSHAPED), bake=SimpleNamespace(), renderer=renderer,
                               object=SimpleNamespace(name="tiny"))
-        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0,
+        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, reference=SimpleNamespace(samples=1, denoise=False),
                                 camera=SimpleNamespace(component=SimpleNamespace(path="fly.anim.toml")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
@@ -324,7 +324,8 @@ class SweepTests(unittest.TestCase):
                 fitted_variant.sweep_references("scene", scene, job, work)
         self.assertEqual(render.call_count, 1)
         self.assertEqual(prepare.call_args.args[0].size, renderer.fit.size)
-        inputs, sets = render.call_args.args
+        inputs, sets, samples = render.call_args.args
+        self.assertEqual(samples, scene.reference.samples)
         self.assertIsInstance(inputs, fitted_variant.ReferenceInputs)
         self.assertEqual(inputs.size, renderer.fit.size)
         self.assertEqual([folder.name for _poses, folder in sets],
@@ -363,7 +364,8 @@ class SweepTests(unittest.TestCase):
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):
         fit = SimpleNamespace(size=(8, 6), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
-        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
+        scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None),
+                                reference=SimpleNamespace(samples=1, denoise=False))
         size = (8, 6)
         for source in ("camera_region", None):
             visibility = None if source is None else SimpleNamespace(source=source, size=size)

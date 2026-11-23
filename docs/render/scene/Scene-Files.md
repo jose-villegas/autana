@@ -108,6 +108,7 @@ or skinned renderer.
 | A scene with | Must carry | May also carry |
 |---|---|---|
 | a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility | `[indirect]`, when a renderer bakes `[bake].indirect` |
+| a fitted renderer (`fit`) | `[reference]`, beside what a baked renderer carries | |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
@@ -123,6 +124,7 @@ is in [Mesh-Import.md](../offline/Mesh-Import.md#import-options).
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
 | `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+| `[reference]` | `samples`, `denoise` | How the fit's reference renders are traced. | Required by a fitted renderer, rejected without one. | [reference](#reference) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant linear light for bakes and skinned renderers. | Absent: zero intensity. | [ambient](#ambient) |
@@ -137,6 +139,23 @@ the bake. The image compares albedo with the result of a renderer whose
 `bake = true` light is then [fitted](../offline/Appearance-Fit.md).
 
 ![Albedo against the fitted bake](../../images/render/import-light.png)
+
+#### reference
+
+`[reference]` sets how the reference renders a fit learns from are traced
+([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)). Both
+keys are required, and both are in the reference set's bake key.
+
+| Field | Meaning |
+|---|---|
+| `samples` | Rays per pixel along each side, at least 1: `samples`² primary rays per pixel. |
+| `denoise` | `true` filters each render with Open Image Denoise<sup>[[142]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
+
+```toml
+[reference]
+samples = 4
+denoise = true
+```
 
 #### bake: indirect
 

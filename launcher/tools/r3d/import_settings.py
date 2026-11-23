@@ -798,7 +798,8 @@ def load_scene(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
+    check_keys(values, ("objects",), "scene",
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "reference"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -847,7 +848,9 @@ def load_scene(path):
         path=path, objects=objects, renderers=jobs, bake=bake,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
-        indirect=load_indirect_look(values.get("indirect", {})))
+        indirect=load_indirect_look(values.get("indirect", {})),
+        reference=load_fields(values["reference"], {"samples": count, "denoise": boolean}, "scene.reference")
+        if "reference" in values else None)
     lit = any(item.renderer.bake for item in jobs)
     runtime_lit = any(item.kind == "skinned_renderer" for item in objects)
     if scene.tonemap_white is not None and scene.tonemap_white < 0:
@@ -874,6 +877,11 @@ def load_scene(path):
             raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
+    fitted = any(item.renderer.fit for item in jobs)
+    if fitted and scene.reference is None:
+        raise SettingsError("scene [reference] is required: a renderer is fitted to references")
+    if scene.reference is not None and not fitted:
+        raise SettingsError("scene [reference] is read by no placed mesh: no renderer is fitted")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   ("camera region", region is not None, "camera_region" in sources)):

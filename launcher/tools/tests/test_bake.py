@@ -1918,7 +1918,7 @@ class ProduceTests(unittest.TestCase):
         # A camera path and probes: every set a reference bake can hold.
         self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True))
 
-        def render_sets(inputs, sets, samples=4):
+        def render_sets(inputs, sets, samples):
             for poses_path, out in sets:
                 pathlib.Path(out).mkdir(parents=True, exist_ok=True)
                 lines = [line for line in pathlib.Path(poses_path).read_text().splitlines()
@@ -1940,7 +1940,8 @@ class ProduceTests(unittest.TestCase):
                     (work / name).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
             (work / "probes.json").write_bytes(b'{"train": "selection"}\n')
             reference_render.render_sets(inputs, [(work / name, work / folder)
-                                                  for name, folder in sets.training + sets.held_out])
+                                                  for name, folder in sets.training + sets.held_out],
+                                         reference_render.SAMPLES)
 
         with mock.patch.object(reference_render, "render_sets", autospec=True, side_effect=render_sets), \
              mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: self.inputs), \
@@ -2036,8 +2037,9 @@ class ProduceTests(unittest.TestCase):
             sets = self.inputs.sets()
             rays = produce.reference_rays(reference)
             reference_render.render_sets.assert_not_called()
-        # The stand-in's sets: 7 poses each at 4 x 2, traced at render_sets' default 4 x 4 samples.
-        self.assertEqual(rays, len(sets.training + sets.held_out) * 7 * 4 * 2 * 4 * 4)
+        # The stand-in's sets: 7 poses each at 4 x 2, traced at the SAMPLES x SAMPLES its prepare names.
+        samples = reference_render.SAMPLES
+        self.assertEqual(rays, len(sets.training + sets.held_out) * 7 * 4 * 2 * samples * samples)
 
     def test_shards_keep_each_near_the_shard_time_on_a_hosted_runner(self):
         self.assertEqual(bake.reference_shards(0), 1)

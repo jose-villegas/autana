@@ -295,6 +295,86 @@ class PooledReferenceTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class PerPointDirectionsTests(unittest.TestCase):
+    def test_a_turned_frame_stays_orthonormal_about_the_normal_and_turns_a_point_alike_in_any_batch(self):
+        from r3d.light import turned_frame
+
+        rng = np.random.default_rng(0)
+        points = rng.uniform(-100.0, 100.0, (64, 3))
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        tu, tv = turned_frame(points, normals)
+        for a, b in ((tu, tu), (tv, tv), (tu, tv), (tu, normals), (tv, normals)):
+            np.testing.assert_allclose((a * b).sum(axis=1), 1.0 if a is b else 0.0, atol=1e-12)
+        alone = [turned_frame(points[i:i + 1], normals[i:i + 1]) for i in (5, 40)]
+        reversed_u, _ = turned_frame(points[::-1], normals[::-1])
+        for i, (u, v) in zip((5, 40), alone):
+            self.assertTrue(np.array_equal(u[0], tu[i]) and np.array_equal(v[0], tv[i]))
+            self.assertTrue(np.array_equal(reversed_u[len(points) - 1 - i], tu[i]))
+
+    def test_neighbouring_points_on_one_plane_turn_apart_where_a_fixed_frame_does_not(self):
+        from r3d.light import fixed_frame, turned_frame
+
+        points = np.array([[x, 0.0, 0.0] for x in np.linspace(0.0, 1e-3, 16)])
+        up = np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        fixed = fixed_frame(points, up)[0]
+        turned = turned_frame(points, up)[0]
+        self.assertTrue(np.all(fixed == fixed[0]))
+        angles = np.arctan2(turned[:, 1], turned[:, 0])
+        self.assertEqual(len(np.unique(angles)), len(points))
+        # Spread over the whole turn, not clustered: every quarter holds some of the angles.
+        quarters = np.floor((angles + np.pi) / (np.pi / 2)).astype(int) % 4
+        self.assertEqual(set(quarters), {0, 1, 2, 3})
+
+    @needs_mitsuba
+    def test_a_trace_turns_every_hemisphere_term_per_point(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.light import turned_frame
+
+        source = plane_source(square())
+        with patch.object(reference_render, "light", wraps=reference_render.light) as lit:
+            trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 0.1, 1)
+        self.assertIs(lit.call_args.kwargs["frame"], turned_frame)
+
+    @needs_mitsuba
+    def test_a_scene_that_denoises_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source(square())
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+        for denoise in (False, True):
+            scene.reference = SimpleNamespace(samples=1, denoise=denoise)
+            with self.subTest(denoise=denoise), \
+                    patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
+                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+                self.assertEqual(filtered.call_count, int(denoise))
+                np.testing.assert_array_equal(linear, plain[0] + float(denoise))
+                np.testing.assert_array_equal(normal, plain[2])
+                if denoise:
+                    colour, albedo, guide = filtered.call_args.args
+                    np.testing.assert_array_equal(colour, plain[0])
+                    np.testing.assert_allclose(albedo, 1.0, atol=1e-12)
+                    np.testing.assert_array_equal(guide, plain[2])
+
+    def test_oidn_takes_the_grain_out_of_a_flat_surface_and_keeps_its_level(self):
+        from r3d.reference_render import denoised
+
+        rng = np.random.default_rng(0)
+        size = 64
+        level = 0.4
+        noisy = level * rng.uniform(0.5, 1.5, (size, size, 3))
+        albedo = np.full((size, size, 3), 0.8)
+        normal = np.tile([0.0, 0.0, 1.0], (size, size, 1))
+        clean = denoised(noisy, albedo, normal)
+        self.assertEqual(clean.dtype, np.float64)
+        self.assertLess(clean.std(), noisy.std() / 4)
+        self.assertAlmostEqual(clean.mean(), noisy.mean(), delta=0.02 * level)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class ReferenceSetTests(unittest.TestCase):
     def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
         import contextlib
@@ -329,7 +409,7 @@ class ReferenceSetTests(unittest.TestCase):
                 stack.enter_context(patch.object(budget, "cores_available", return_value=1))
                 stack.enter_context(patch.object(budget, "worker_capacity", return_value=1))
                 with patch.object(reference_render, "lit_source", return_value=source):
-                    reference_render.render_sets(inputs, together)
+                    reference_render.render_sets(inputs, together, reference_render.SAMPLES)
                 stack.enter_context(patch.object(reference_render, "load_scene", return_value=scene))
                 stack.enter_context(patch.object(reference_render, "source_for", return_value=(source, job)))
                 for file in files:
@@ -348,7 +428,7 @@ class ReferenceSetTests(unittest.TestCase):
 @unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
-        def bounce(self, points, normals, ray_offset):
+        def bounce(self, points, normals, ray_offset, frame):
             return np.full((len(points), 3), 0.25)
 
     @needs_mitsuba
@@ -396,7 +476,7 @@ def render_one_set(job, **patches):
         stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
         mocks = {name: stack.enter_context(patch.object(reference_render, name, **kwargs))
                  for name, kwargs in patches.items()}
-        reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
+        reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")], reference_render.SAMPLES)
     return mocks
 
 

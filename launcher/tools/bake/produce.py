@@ -13,7 +13,6 @@ nothing has read for REFERENCE_KEEP_DAYS is deleted.
 import contextlib
 import copy
 import importlib.metadata
-import inspect
 import json
 import os
 import pathlib
@@ -234,7 +233,7 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
     """render_sets for shard `shard` of `count`: each set's poses shard, shard + count, ... rendered by `render_sets`
     and saved under their own indices, and each set's folder name and pose count put in `rendered_sets`. A pose's
     files depend on that pose alone, so shards join into the very files one render makes."""
-    def render(inputs, sets, samples=4):
+    def render(inputs, sets, samples):
         for poses, out in sets:
             text = pathlib.Path(poses).read_text()
             rendered_sets[pathlib.Path(out).name] = sum(line.startswith(POSE_LINE) for line in text.splitlines())
@@ -266,10 +265,8 @@ def reference_rays(bake, out=None):
     from r3d.reference_set import prepare_references, reference_inputs
 
     rays, calls = 0, []
-    # The samples render_sets traces at when prepare_references names none.
-    default = inspect.signature(reference_render.render_sets).parameters["samples"].default
 
-    def count(inputs, sets, samples=default):
+    def count(inputs, sets, samples):
         nonlocal rays
         calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
                       "samples": samples})

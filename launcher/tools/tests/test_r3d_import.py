@@ -50,6 +50,9 @@ FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n
        '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\n'
        '')
+# A fitted renderer's scene needs [reference]; TOML lets the top-level table follow the renderer's own.
+REFERENCE = '[reference]\nsamples = 2\ndenoise = false\n'
+FIT += REFERENCE
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
@@ -418,6 +421,15 @@ class SceneTests(unittest.TestCase):
         with self.subTest(budget="absent"):
             scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
             self.assertIsNone(scene.renderers[0].renderer.fit.budget)
+
+    def test_a_fitted_renderer_needs_reference_settings_and_an_unfitted_scene_refuses_them(self):
+        options = dict(body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
+        self.lit_rejects(r"\[reference\] is required", 'variant = "mesh"\n' + FIT.replace(REFERENCE, ""), **options)
+        self.lit_rejects(r"\[reference\] is read by no placed mesh", 'variant = "mesh"\n' + REFERENCE, **options)
+        for bad, pattern in (("samples = 0", "samples must be at least 1"), ("denoise = 1", "denoise must be true")):
+            with self.subTest(bad=bad):
+                broken = REFERENCE.replace("samples = 2" if "samples" in bad else "denoise = false", bad)
+                self.lit_rejects(pattern, 'variant = "mesh"\n' + FIT.replace(REFERENCE, broken), **options)
 
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
@@ -1090,6 +1102,28 @@ class LocalSourceTests(unittest.TestCase):
             self.assertEqual(reference_digest(job, scene), first)
             job.renderer.fit.size = (92, 112)
             self.assertNotEqual(reference_digest(job, scene), first)
+
+    def test_reference_settings_key_the_reference_set_and_leave_the_start_alone(self):
+        from bake import bake
+        from r3d.fitted_variant import reference_digest
+
+        def keys(reference):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT.replace(REFERENCE, reference))
+                scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
+                job = scene.renderers[0]
+                return bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"], \
+                    reference_digest(job, scene), scene.reference
+
+        start, reference, settings = keys(REFERENCE)
+        self.assertEqual(vars(settings), {"samples": 2, "denoise": False})
+        for changed in (REFERENCE.replace("samples = 2", "samples = 3"), REFERENCE.replace("false", "true")):
+            with self.subTest(changed=changed):
+                moved = keys(changed)
+                self.assertEqual(moved[0], start, "[reference] moved the start's key")
+                self.assertNotEqual(moved[1], reference, "[reference] left the reference key alone")
 
     def test_geometry_probes_move_only_the_keys_they_shape(self):
         from bake import bake
