@@ -32,14 +32,17 @@ TRANSFORM_FIELDS = {"position": "translation", "rotation": "rotation", "scale": 
 
 def discover(root=MAIN):
     """Map (component tag, field name) to (value type, step only) from C."""
-    tags, sources = {}, {}
+    tags, sources, field_lists = {}, {}, {}
     for path in sorted(root.rglob("*.[ch]")):
         source = path.read_text(encoding="utf-8")
         if "ASSET_TYPE" in source or "anim_component_fields_t" in source or "ANIM_FIELD" in source:
-            sources[path] = blank_comments(source)
+            sources[path] = blank_comments(source).replace("\\\n", " ")
     for path, source in sources.items():
         for definition in INTEGER_DEFINE.finditer(source):
             name, value = definition.groups()
+            if re.search(FIELD_CALL, value):
+                if field_lists.setdefault(name, value) != value:
+                    raise ValueError(f"{path}: conflicting field lists named {name}")
             if re.match(r"ASSET_TYPE\s*\(", value):
                 tag = read_define(path, name)
                 if tags.setdefault(name, tag) != tag:
@@ -57,10 +60,12 @@ def discover(root=MAIN):
             if define not in tags or table not in tables:
                 raise ValueError(f"{path}: cannot resolve animation component {define} with field table {table}")
             tag = tags[define]
-            declarations = FIELD_DECL.findall(tables[table])
-            if len(declarations) != len(re.findall(FIELD_CALL, tables[table])):
+            initializer = tables[table].strip()
+            body = field_lists.get(initializer, initializer)
+            declarations = FIELD_DECL.findall(body)
+            if not declarations or len(declarations) != len(re.findall(FIELD_CALL, body)):
                 raise ValueError(f"{path}: unsupported animation field declaration in {table}")
-            matched[table] = len(declarations)
+            matched[table] = len(re.findall(FIELD_CALL, initializer))
             for macro, field, value_type in declarations:
                 if value_type not in VALUE_TYPES:
                     raise ValueError(f"{path}: {field} has unknown animation value type {value_type}")
