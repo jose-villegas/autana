@@ -1023,9 +1023,14 @@ def download(row, suffix, cache):
 
 def locked_fit(scene_path, object_name):
     """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    return locked_bake(scene_path, object_name, "fit")
+
+
+def locked_bake(scene_path, object_name, kind):
+    """The renderer's bake of the given kind, keyed by the lock."""
     tables = read_lock_tables()
     found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
-    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+    return next(item for item in found if item.kind == kind and item.job.object.name == object_name)
 
 
 def fetch(bake, cache=None):

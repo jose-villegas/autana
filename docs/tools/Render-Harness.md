@@ -413,7 +413,8 @@ stateDiagram-v2
     Close --> [*]: give back the scene, pack and framebuffer
 ```
 
-If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+If [`render_host_open()`](../../launcher/tools/render/render_host.c) returns false,
+`exit_code` carries the command's result.
 
 `render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
 retain frame history in host and development builds. Saving can return NULL
@@ -561,6 +562,14 @@ unchanged alongside `--video`, or on its own.
 stands: `frame,ms`, its world position and rotation quaternion. A `--video`
 run writes them to `PATH.poses.csv` and refuses `--poses`, so every video can
 be held to the poses of the reference it is scored against.
+
+`--ids DIR` saves each frame's ID map and `entries.json` from an ID view such
+as `--view triangles`. It writes the pose log to `DIR/capture.poses.csv`, also
+when recording video, and refuses an explicit `--poses`.
+
+`--camera-poses FILE` drives the active camera from a source-frame poses file.
+Its size must match the upright raster size. Each pose supplies one frame.
+When provided, `--frames` must equal the pose count.
 
 ```sh
 ./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
