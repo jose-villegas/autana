@@ -5,6 +5,7 @@ the part of a QEMU run that decides its exit status, with no QEMU needed.
 """
 import base64
 import json
+import math
 import os
 import struct
 import subprocess
@@ -348,6 +349,44 @@ class RunSuiteTest(unittest.TestCase):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))
 
+
+
+class ListingConsole(LiveConsole):
+    """An image that lists its suites, completes each RUNSUITE, and answers every heartbeat."""
+
+    def __init__(self, listing):
+        super().__init__(answers=math.inf)
+        self.listing = listing
+
+    def send(self, line):
+        super().send(line)
+        if line == "RUNSUITE ?":
+            self._lines = ["RUNSUITE_SUITE name=%s on_request=%d" % entry for entry in self.listing]
+            self._lines.append("RUNSUITE_END count=%d" % len(self.listing))
+        elif line.startswith("RUNSUITE "):
+            self._lines = ["RUNSUITE_COMPLETE name=%s found=1 selected=1 unmatched=0" % line.split()[1]]
+
+
+class SpreadTest(unittest.TestCase):
+    def drive(self, console, spread):
+        with unittest.mock.patch.object(qemu_run.time, "sleep"):
+            return qemu_run.drive_spread(console, spread)
+
+    def test_the_image_lists_what_runs_and_the_unmeasured_then_the_longest_go_first(self):
+        console = ListingConsole([("short", 0), ("asked_for", 1), ("long", 0), ("new", 0)])
+        spread = qemu_run.Spread([], {"short": 1.0, "long": 9.0, "asked_for": 99.0})
+        self.assertTrue(self.drive(console, spread))
+        runs = [line.split()[1] for line in console.sent if line.startswith("RUNSUITE ") and line != "RUNSUITE ?"]
+        self.assertEqual(["new", "long", "short"], runs)
+        self.assertEqual({"new", "long", "short"}, set(spread.ran))
+
+    def test_a_given_list_is_shared_without_asking_the_image(self):
+        console = ListingConsole([])
+        spread = qemu_run.Spread(["a", "b"], {})
+        self.assertTrue(self.drive(console, spread))
+        self.assertNotIn("RUNSUITE ?", console.sent)
+        self.assertEqual(["a", "b"], sorted(spread.ran))
+        self.assertIsNone(spread.take())
 
 
 class DriveFrameTest(unittest.TestCase):

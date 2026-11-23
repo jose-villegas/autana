@@ -3,6 +3,7 @@
 # Build the self-test image for Espressif's QEMU and run it with no board.
 #
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build]
+#   ./launcher/test/run_qemu_tests.sh --jobs N [--suite <name> ...] [--timeout S] [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --icount-ratchet [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] [--test <pattern>[,...]] \
 #                                 [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
@@ -14,10 +15,11 @@
 # boots it and reads the console; its header says what a run under emulation
 # can and cannot tell you, and what --icount counts.
 #
-# The first form runs every suite at boot. The second builds the same image
-# without autorun (build.qemu.shell/), which boots into the shell, and asks
+# The first form runs every suite at boot. The others build the same image
+# without autorun (build.qemu.shell/), which boots into the shell, and ask
 # its console for one suite at a time (seconds each), for a touch to be put
-# on the screen, and for the screen itself.
+# on the screen, and for the screen itself. --jobs N shares the suites, every
+# one by default, among N instances of that image (qemu_run.py --jobs).
 #
 # Needs qemu-xtensa, which ESP-IDF does not install by default:
 #   python %IDF_PATH%\tools\idf_tools.py install qemu-xtensa
@@ -48,15 +50,16 @@ while [ "$left" -gt 0 ]; do
         # One image serves however many instances a driver then starts
         # against it by hand, each with its own qemu_run.py --workdir.
         --build-only) RUN=0 ;;
-        --timeout | --log | --workdir | --test | --suite | --touch | --do | --screenshot)
+        --timeout | --log | --workdir | --test | --suite | --touch | --do | --screenshot | --jobs)
             [ "$left" -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
-            case "$1" in --suite | --touch | --do | --screenshot) AUTORUN=0 ;; esac
+            case "$1" in --suite | --touch | --do | --screenshot | --jobs) AUTORUN=0 ;; esac
             set -- "$@" "$1" "$2"
             shift
             left=$((left - 1))
             ;;
         *)
             echo "usage: run_qemu_tests.sh [--perf-scope] [--icount | --icount-ratchet] [--timeout S] [--no-build] [--build-only]" >&2
+            echo "       run_qemu_tests.sh --jobs N [--suite <name> ...] [--timeout S] [--no-build]" >&2
             echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--test <pattern>[,<pattern>...]] [--screenshot <png>]" >&2
             exit 2
             ;;
