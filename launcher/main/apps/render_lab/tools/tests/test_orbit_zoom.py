@@ -11,10 +11,7 @@ the scene's farthest stop at one distance.
 import csv
 import math
 import pathlib
-import shutil
-import subprocess
 import sys
-import tempfile
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -31,26 +28,14 @@ FARTHEST_SET = 4 * FITS
 PLACES = 4  # the poses file's floats agree to this many decimals
 
 
-class OrbitZoom(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.out = pathlib.Path(tempfile.mkdtemp(prefix="orbit_zoom_"))
-        run, cls.binary = host_render.run(cls.out, "--build-only")
-        cls.build_output = run.stdout + run.stderr
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls.out, ignore_errors=True)
+class OrbitZoom(host_render.BuiltRenderer):
+    prefix = "orbit_zoom_"
 
     def pose(self, zoom):
         """The camera's position and rotation in the first frame at that orbit_zoom."""
-        self.assertTrue(self.binary.exists(), self.build_output[-2000:])
         poses = self.out / f"zoom-{zoom}.csv"
-        run = subprocess.run([str(self.binary), "--quarter", "0", "--no-hud", "--scene", SCENE, "--frames", "1",
-                              "--set", f"render_lab.orbit_zoom={zoom}", "--poses", str(poses),
-                              "-o", str(self.out / f"zoom-{zoom}.bmp")],
-                             capture_output=True, text=True, timeout=600)
-        self.assertEqual(run.returncode, 0, run.stderr[-2000:])
+        self.render("--quarter", "0", "--no-hud", "--scene", SCENE, "--frames", "1",
+                    "--set", f"render_lab.orbit_zoom={zoom}", "--poses", str(poses), "-o", str(self.out / f"zoom-{zoom}.bmp"))
         with poses.open(newline="") as rows:
             row = next(csv.DictReader(rows))
         return ([float(row[k]) for k in ("px", "py", "pz")], [float(row[k]) for k in ("qx", "qy", "qz", "qw")])
