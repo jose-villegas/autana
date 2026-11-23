@@ -662,6 +662,11 @@ open_host(const frame_provider_t* provider, int argc, char** argv, int* exit_cod
         release();
         return false;
     }
+    /* On stderr, as stdout may carry the image: what a caller covering the
+     * whole camera path reads, 0 for a scene without one. */
+    if (host.provider->path_ms != NULL) {
+        fprintf(stderr, "RENDER path_ms=%u\n", (unsigned)host.provider->path_ms());
+    }
     if (settings_set && !render_host_apply_settings(&settings)) {
         fprintf(stderr, "%s: --set render.FIELD needs the renderer linked (autana::render_host)\n",
                 host.provider->name);
