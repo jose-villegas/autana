@@ -177,7 +177,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
                 result = scene_failure_make(SCENE_ERR_ASSET, status, failed);
             } else if (needs_claims) {
                 for (int e = 0; e < scene->asset.entity_count; e++) {
-                    scene->writes[e] = (uint16_t)writes[e];
+                    scene->writes[e] = (scene_property_mask_t)writes[e];
                 }
             }
         }

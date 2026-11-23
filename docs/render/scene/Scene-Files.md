@@ -394,7 +394,8 @@ A missing clip fails scene load with the object name and clip hash.
 
 Before the first block, the skin uses its rest pose. At each millisecond, seek
 matches the timeline's written values and playback layer state.
-Seek poses immediately and matches play's palette on tier-due frames and enable frames.
+Seek poses immediately. Its skin palette matches play on frames where the
+skin's pose tier is due and on the frame the skin is enabled.
 
 A clip may animate the scale of an entity with children only if its three axes
 stay equal (within the scale tolerance) at every key and every cubic tangent.
@@ -419,6 +420,17 @@ The default wrap is `"clamp"`, which holds the clip's final frame.
 `"loop"` wraps to the first frame at the duration. A property animator
 and the timeline must write separate fields. Load fails naming
 `object.field` when both claim that field.
+
+A step track on `ENTY.enabled` switches an object off (0) or on (nonzero).
+It is enabled before its first key. See [Enabled state](Scene-Components.md#enabled-state).
+
+```toml
+[[tracks]]
+object = "prop"
+field = "ENTY.enabled"
+interp = "step"
+keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.0 }]
+```
 
 ### Constraint and hinge
 
@@ -483,12 +495,6 @@ object = "joint"
 field = "HNGE.angle"
 interp = "linear"
 keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.2 }, { t = 1.0, v = 0.0 }]
-
-[[tracks]]
-object = "prop"
-field = "ENTY.enabled"
-interp = "step"
-keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.0 }]
 ```
 
 ### Light options

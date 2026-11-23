@@ -133,5 +133,6 @@ the parent's frame; a world is the parent's world times the local, an exact
 | draw | after the resolve | the raster reads the renderers' worlds ([Each frame](Scene-Frame.md#each-frame)) |
 
 Property clips move an entity's own transform, so a clip on a parent carries
-its children in the same frame. Cameras, lights and skinned renderers sit directly
-under the scene root.
+its children in the same frame. Cameras, lights and skinned renderers sit
+directly under the scene root. The entry check refuses a light or skinned
+renderer with a parent.

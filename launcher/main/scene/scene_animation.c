@@ -232,7 +232,7 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const bool protected_transform = binding.component == ANIM_COMPONENT_TRANSFORM
                                          && scene_constraint_covers(claims->protected_rows, entity)
                                          && !(scale && scene_hinge_index(claims->asset, entity) >= 0);
-        if ((owned != NULL && location.component > SCENE_COMPONENT_LENS) || protected_transform
+        if ((owned != NULL && (bit & ~SCENE_PROPERTY_FIELDS)) || protected_transform
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
             || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
                 && !scalar_keys_fit(&binding.curve, weight_fits))
@@ -390,24 +390,26 @@ skin_stage_prepare(scene_t* scene, bool lights_dirty) {
 
 void
 scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
-    if (scene->animator_count == 0) {
+    if (scene->animator_count == 0 && scene->light_count == 0 && scene->asset.hinge_count == 0) {
         return;
     }
-    FRAME_COST_BEGIN(posed_from);
-    for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        scene_animator_t* animator = &scene->animators[e];
-        if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
-            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
-            apply_property(scene, animator, dt_ms);
+    if (scene->animator_count != 0) {
+        FRAME_COST_BEGIN(posed_from);
+        for (int i = 0; i < scene->staged_count; i++) {
+            const scene_row_t e = scene->staged[i];
+            scene_animator_t* animator = &scene->animators[e];
+            if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
+                && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+                apply_property(scene, animator, dt_ms);
+            }
         }
+        animate_entities(scene, dt_ms);
+        FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     }
-    animate_entities(scene, dt_ms);
-    FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
     const bool lights_dirty = skin_lights_changed(scene);
     const int clusters = skin_stage_prepare(scene, lights_dirty);
-    if ((clusters > 0 || lights_dirty) && scene->light_transfer != NULL) {
+    if (lights_dirty || (clusters > 0 && scene->light_transfer != NULL)) {
         scene_lights_prepare(scene);
     }
     FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);
@@ -435,10 +437,15 @@ scene_drivers_step(scene_t* scene, bool applied) {
 }
 
 void
-scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+scene_animation_advance(scene_t* scene, uint32_t dt_ms) {
     const bool applied = scene_timeline_step(scene, dt_ms);
     scene_skins_settle(scene);
     scene_drivers_step(scene, applied);
+}
+
+void
+scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    scene_animation_advance(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

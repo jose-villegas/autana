@@ -163,6 +163,7 @@ enum { SCENE_COMPONENT_LIST(SCENE_COMPONENT_ID) SCENE_COMPONENT_COUNT };
 enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
 typedef uint32_t scene_field_mask_t;
+typedef uint16_t scene_property_mask_t;
 
 #define SCENE_PROPERTY_FIELDS ((1U << SCENE_FIELD_END_LENS) - 1U)
 
@@ -172,7 +173,8 @@ enum {
     SCENE_HINGE_TRANSFORM = 1U << 2,
 };
 
-_Static_assert(SCENE_FIELD_END_LENS <= sizeof(uint16_t) * CHAR_BIT, "property animator fields fit in kept claims");
+_Static_assert(SCENE_FIELD_END_LENS <= sizeof(scene_property_mask_t) * CHAR_BIT,
+               "property animator fields fit in kept claims");
 _Static_assert(SCENE_FIELD_END_ENTY <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
@@ -209,7 +211,6 @@ typedef struct {
 typedef struct {
     anim_block_curve_t curve;
     scene_row_t row;
-    bool authored;
 } scene_timeline_enabled_t;
 
 /* Separate from property animators so the scene root has one shared clock. */
@@ -350,7 +351,7 @@ struct scene {
     const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
-    uint16_t* writes;
+    scene_property_mask_t* writes;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -527,6 +528,7 @@ int scene_hinge_index(const scene_asset_t* asset, scene_row_t row);
 void scene_hinge_apply_pose(const scene_hinge_t* hinge, float angle, transformf_t* local);
 void scene_hinge_step(scene_t* scene, bool applied);
 void scene_drivers_step(scene_t* scene, bool applied);
+void scene_animation_advance(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

@@ -635,7 +635,7 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened, s
             *opened = instantiate(&asset, &timeline, blocks, defaults);
             if (*opened != NULL && *scratch != NULL) {
                 for (int row = 0; row < asset.entity_count; row++) {
-                    (*opened)->writes[row] = (uint16_t)((*scratch)[row] & SCENE_PROPERTY_FIELDS);
+                    (*opened)->writes[row] = (scene_property_mask_t)((*scratch)[row] & SCENE_PROPERTY_FIELDS);
                 }
             }
             if (*opened == NULL) {

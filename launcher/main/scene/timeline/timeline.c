@@ -45,7 +45,7 @@ timeline_apply_enabled(scene_t* scene) {
     const scene_timeline_t* timeline = scene->timeline;
     for (int i = 0; i < timeline->enabled_count; i++) {
         const scene_timeline_enabled_t* track = &timeline->enabled[i];
-        const bool enabled = anim_block_curve_step(&track->curve, timeline->clock.t_ms, track->authored) != 0.0F;
+        const bool enabled = anim_block_curve_step(&track->curve, timeline->clock.t_ms, 1.0F) != 0.0F;
         if (enabled != ((scene->flags[track->row] & SCENE_FLAG_ENABLED) != 0)) {
             scene_row_set_enabled(scene->root, track->row, enabled);
         }
@@ -361,10 +361,8 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets, const 
             }
             times_ms += binding.curve.count;
         } else if (location.component == SCENE_COMPONENT_ENTY) {
-            timeline->enabled[timeline->enabled_count++] =
-                (scene_timeline_enabled_t){.curve = {times_ms, binding.curve.values, binding.curve.count},
-                                           .row = location.target,
-                                           .authored = (scene->flags[location.target] & SCENE_FLAG_ENABLED) != 0};
+            timeline->enabled[timeline->enabled_count++] = (scene_timeline_enabled_t){
+                .curve = {times_ms, binding.curve.values, binding.curve.count}, .row = location.target};
             times_ms += binding.curve.count;
         } else if (storage != TIMELINE_FIELD) {
             scene_constraint_t* constraint = scene_constraint_find(scene, (scene_row_t)location.target);
@@ -445,11 +443,10 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     scene_timeline_t* timeline = scene->timeline;
     anim_playhead_seek(&timeline->clock, &timeline->tracks.clip, t_ms);
     timeline->dirty = true;
-    scene_drivers_step(scene, scene_timeline_step(scene, 0));
+    scene_animation_advance(scene, 0);
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }
-    scene_skins_settle(scene);
     scene_animation_repose(scene, 0);
     timeline_camera_cut(scene);
 }

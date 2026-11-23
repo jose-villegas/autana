@@ -1,4 +1,4 @@
-/* light: a directional light on an entity, pointed by its world rotation. */
+/* light: a directional light on a root entity, pointed by its world rotation. */
 #pragma once
 
 #include <stdbool.h>

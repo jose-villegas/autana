@@ -15,6 +15,7 @@
 #include "anim/anim_tracks_format.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
+#include "scene/light/light.h"
 #include "scene/scene_asset.h"
 #include "scene/scene_internal.h"
 #include "scene/timeline/timeline.h"
@@ -234,6 +235,32 @@ put_blocks(test_pack_t* writer, const char* last_clip) {
     test_pack_put_floats(clip + BLOCK_BLENDS, blends, BLOCK_KEYS);
     test_pack_put_floats(clip + SPEED_TIMES, speed_times, SPEED_KEYS);
     test_pack_put_floats(clip + SPEED_VALUES, speeds, SPEED_KEYS);
+}
+
+static void
+test_speed_key_playhead_matches_seek(void) {
+    enum { SPEED_KEY_COUNT = 2 };
+
+    const uint32_t times[] = {FIRST_START, SECOND_START, 0}, starts[] = {0};
+    const float speeds[] = {0.3F, 1.25F, 0.0F};
+    const uint8_t slots[] = {0};
+    const anim_blocks_t blocks = {
+        .starts_ms = starts, .slots = slots, .count = 1, .speed = {times, speeds, SPEED_KEY_COUNT}};
+    const anim_clip_t clip = {.duration_ms = DURATION};
+    anim_playhead_t played;
+    anim_playhead_init(&played, ANIM_CLAMP);
+    played.paused = false;
+    uint32_t previous = 0;
+    for (uint32_t now = FIRST_START - 1; now <= SECOND_START + 1; now++) {
+        (void)anim_playhead_advance(&played, &clip, now - previous);
+        const anim_block_sample_t sought = anim_blocks_sample(&blocks, &clip, ANIM_CLAMP, now);
+        TEST_ASSERT_EQUAL_UINT32(played.t_ms, sought.current.playhead.t_ms);
+        TEST_ASSERT_EQUAL_UINT16(played.fraction, sought.current.playhead.fraction);
+        const float rate = now < FIRST_START ? 1.0F : speeds[now < SECOND_START ? 0 : 1];
+        TEST_ASSERT_EQUAL_FLOAT(rate, anim_block_curve_step(&blocks.speed, now, 1.0F));
+        TEST_ASSERT_TRUE(anim_playhead_set_speed(&played, rate));
+        previous = now;
+    }
 }
 
 static void
@@ -956,7 +983,7 @@ enum {
 };
 
 static uint8_t*
-enabled_fixture(test_pack_t* pack, bool hinge, bool constraint) {
+enabled_fixture(test_pack_t* pack, bool hinge, bool constraint, bool lights_only) {
     const size_t capacity = 2 * CAPACITY;
     uint8_t* bytes = test_alloc_aligned(capacity, ASSET_PACK_BASE_ALIGN, &allocation);
     suite_set_test_cleanup(release_fixture);
@@ -968,7 +995,7 @@ enabled_fixture(test_pack_t* pack, bool hinge, bool constraint) {
     const size_t sizes[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_TIMELINE] = sizeof(scene_asset_timeline_t),
                                                   [SCENE_ASSET_HINGES] = sizeof(scene_asset_hinge_t),
                                                   [SCENE_ASSET_CONSTRAINTS] = sizeof(scene_asset_constraint_t)};
-    uint8_t* entry = scene_test_timeline_entry(pack, bytes, capacity, counts, sizes, false);
+    uint8_t* entry = scene_test_timeline_entry(pack, bytes, capacity, counts, sizes, lights_only);
     test_pack_put16(part_row(entry, SCENE_ASSET_LIGHTS) + offsetof(scene_asset_light_t, entity), VIS_LAMP);
     test_pack_put16(part_row(entry, SCENE_ASSET_PARENTS) + VIS_CHILD * sizeof(uint16_t), VIS_PARENT);
     const scene_asset_timeline_t timeline = {.clip = "timeline.clip", .wrap = ANIM_CLAMP};
@@ -1038,7 +1065,7 @@ assert_enabled_frame(scene_t* played, scene_t* sought, uint32_t now) {
 static void
 test_enabled_seek_equals_play(void) {
     test_pack_t writer;
-    enabled_fixture(&writer, false, false);
+    enabled_fixture(&writer, false, false, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     const entity_t played = load(&pack), sought = load(&pack), initial = load(&pack);
@@ -1134,13 +1161,13 @@ test_constraint_refuses_a_hinged_ancestor(void) {
 static void
 test_enabled_refuses_nonstep_keys(void) {
     test_pack_t writer;
-    enabled_fixture(&writer, false, false);
+    enabled_fixture(&writer, false, false, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     scene_failure_t failure;
     TEST_ASSERT_FALSE(scene_failure(load(&pack), &failure));
     release_fixture();
-    enabled_fixture(&writer, false, false);
+    enabled_fixture(&writer, false, false, false);
     uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
     const test_track_t linear = {
         "green", "enabled",  ANIM_COMPONENT_ENTITY, ANIM_VALUE_FLOAT, TIMES, TIMES + 4 * sizeof(float),
@@ -1156,7 +1183,7 @@ test_enabled_refuses_nonstep_keys(void) {
 static void
 test_enabled_refuses_duplicate_tracks(void) {
     test_pack_t writer;
-    enabled_fixture(&writer, false, false);
+    enabled_fixture(&writer, false, false, false);
     uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
     const test_track_t duplicate = {
         "red", "enabled", ANIM_COMPONENT_ENTITY, ANIM_VALUE_FLOAT, TIMES, TIMES + 4 * sizeof(float), KEYS, ANIM_STEP};
@@ -1169,9 +1196,44 @@ test_enabled_refuses_duplicate_tracks(void) {
 }
 
 static void
-test_enabled_holds_authored_flag_before_first_key(void) {
+test_enabled_reapplies_start_on_loop_wrap(void) {
     test_pack_t writer;
-    enabled_fixture(&writer, false, false);
+    uint8_t* entry = enabled_fixture(&writer, false, false, false);
+    part_row(entry, SCENE_ASSET_TIMELINE)[offsetof(scene_asset_timeline_t, wrap)] = ANIM_LOOP;
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+    const uint32_t values = TIMES + 4 * sizeof(float);
+    const float enabled[] = {1.0F, 0.0F};
+    test_pack_put_floats(clip + values, enabled, KEYS);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t played = load(&pack), sought = load(&pack);
+    scene_t* a = columns(played);
+    scene_t* b = columns(sought);
+    timeline_play(played);
+    scene_animation_step(a, DURATION - 1);
+    TEST_ASSERT_FALSE(a->flags[VIS_RED] & SCENE_FLAG_ACTIVE);
+    scene_animation_step(a, 1);
+    timeline_seek(sought, 0);
+    TEST_ASSERT_EQUAL_UINT32(0, timeline_time_ms(played));
+    const uint8_t state = SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE;
+    for (int e = 0; e < VIS_ROWS; e++) {
+        TEST_ASSERT_EQUAL_UINT8(b->flags[e] & state, a->flags[e] & state);
+    }
+    const scene_skinned_renderer_t* red = &a->skinned_renderers[VIS_RED];
+    const scene_skinned_renderer_t* fresh = &b->skinned_renderers[VIS_RED];
+    TEST_ASSERT_NOT_NULL(red->palette);
+    TEST_ASSERT_NOT_NULL(fresh->palette);
+    TEST_ASSERT_EQUAL_MEMORY(fresh->palette, red->palette, red->skin.joint_count * sizeof *red->palette);
+    for (int e = VIS_GREEN; e < VIS_COPIES; e++) {
+        TEST_ASSERT_NULL(a->skinned_renderers[e].palette);
+        TEST_ASSERT_NULL(b->skinned_renderers[e].palette);
+    }
+}
+
+static void
+test_enabled_holds_before_first_key(void) {
+    test_pack_t writer;
+    enabled_fixture(&writer, false, false, false);
     uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
     const test_track_t delayed = {
         "red", "enabled", ANIM_COMPONENT_ENTITY, ANIM_VALUE_FLOAT, TIMES, TIMES + 4 * sizeof(float), 1, ANIM_STEP};
@@ -1218,7 +1280,7 @@ test_enabled_skins_settle_in_row_order_under_pressure(void) {
     enum { EARLY = 100, LATE = 200, SAMPLE = 300 };
 
     test_pack_t writer;
-    enabled_fixture(&writer, false, false);
+    enabled_fixture(&writer, false, false, false);
     uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
     const uint32_t stride = 8 * sizeof(float);
     const float early = (float)EARLY / MATH_MS_PER_S, late = (float)LATE / MATH_MS_PER_S;
@@ -1246,9 +1308,16 @@ test_enabled_skins_settle_in_row_order_under_pressure(void) {
     const scene_skinned_renderer_t* winner = &a->skinned_renderers[VIS_RED];
     TEST_ASSERT_NOT_NULL(winner->palette);
     TEST_ASSERT_NULL(a->skinned_renderers[VIS_GREEN].palette);
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(played, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    TEST_ASSERT_EQUAL_STRING("green", why.what);
+    scene_animation_step(a, 0);
+    TEST_ASSERT_NULL(a->skinned_renderers[VIS_GREEN].palette);
     const size_t palette_bytes = winner->skin.joint_count * sizeof *winner->palette;
     const uint32_t played_palette = name_hash_n(winner->palette, palette_bytes);
     timeline_seek(played, 0);
+    TEST_ASSERT_FALSE(scene_failure(played, &why));
     timeline_seek(sought, SAMPLE);
     TEST_ASSERT_NOT_NULL(b->skinned_renderers[VIS_RED].palette);
     TEST_ASSERT_NULL(b->skinned_renderers[VIS_GREEN].palette);
@@ -1256,8 +1325,82 @@ test_enabled_skins_settle_in_row_order_under_pressure(void) {
 }
 
 static void
-hinged_light_fixture(test_pack_t* writer, bool delayed, bool scale) {
-    uint8_t* entry = enabled_fixture(writer, true, false);
+test_enabled_skins_repack_fragmented_storage(void) {
+    test_pack_t writer;
+    uint8_t* entry = enabled_fixture(&writer, false, false, false);
+    test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + SCENE_ASSET_LIGHTS * sizeof(uint16_t), 0);
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+
+    enum { LIGHT_KEYS = 4, STRIDE = 2 * LIGHT_KEYS * sizeof(float) };
+
+    const float temporary[] = {0.0F, 1.0F, 0.0F};
+    const float times[] = {0.0F, (float)VIS_FIRST / MATH_MS_PER_S, (float)VIS_THIRD / MATH_MS_PER_S};
+    const test_track_t red = {"red",
+                              "enabled",
+                              ANIM_COMPONENT_ENTITY,
+                              ANIM_VALUE_FLOAT,
+                              TIMES,
+                              TIMES + LIGHT_KEYS * sizeof(float),
+                              sizeof times / sizeof *times,
+                              ANIM_STEP};
+    test_track_row(clip, VIS_RED, &red);
+    test_pack_put_floats(clip + TIMES, times, red.keys);
+    test_pack_put_floats(clip + TIMES + STRIDE / 2, temporary, red.keys);
+
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t played = load(&pack), sought = load(&pack);
+    scene_t* a = columns(played);
+    scene_t* b = columns(sought);
+    TEST_ASSERT_NULL(a->light_transfer);
+    const size_t available = memory_free_bytes(MEMORY_INTERNAL);
+    if (available > MEMORY_FAST_INTERNAL_RESERVE) {
+        skin_internal_guard = memory_alloc(available - MEMORY_FAST_INTERNAL_RESERVE, MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(skin_internal_guard);
+    }
+    timeline_seek(played, VIS_FIRST);
+    const scene_skinned_renderer_t* small = &a->skinned_renderers[VIS_RED];
+    TEST_ASSERT_NOT_NULL(small->storage);
+    const size_t unit = (uint8_t*)(small->palette + small->skin.joint_count) - (uint8_t*)small->storage;
+    timeline_seek(played, 0);
+
+    scene_skinned_renderer_t* big[] = {&a->skinned_renderers[VIS_BLUE], &b->skinned_renderers[VIS_BLUE]};
+    for (size_t i = 0; i < sizeof big / sizeof *big; i++) {
+        /* Pad the output reservation while leaving all cluster vertex ranges intact. */
+        big[i]->bind.vertex_count += unit / sizeof *big[i]->bind.positions;
+        big[i]->skin.vertex_count = big[i]->bind.vertex_count;
+    }
+    void* space = memory_alloc(3 * unit + unit / 2, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(space);
+    take_skin_pressure();
+    memory_free(space);
+
+    timeline_play(played);
+    scene_animation_step(a, VIS_FIRST);
+    TEST_ASSERT_NOT_NULL(a->skinned_renderers[VIS_RED].storage);
+    scene_animation_step(a, VIS_SECOND - VIS_FIRST);
+    TEST_ASSERT_NOT_NULL(a->skinned_renderers[VIS_GREEN].storage);
+    scene_animation_step(a, VIS_THIRD - VIS_SECOND);
+    const bool played_big = big[0]->storage != NULL;
+    const scene_skinned_renderer_t* green = &a->skinned_renderers[VIS_GREEN];
+    TEST_ASSERT_NOT_NULL(green->palette);
+    const size_t palette_bytes = green->skin.joint_count * sizeof *green->palette;
+    const uint32_t green_palette = name_hash_n(green->palette, palette_bytes);
+    const uint32_t blue_palette = played_big ? name_hash_n(big[0]->palette, palette_bytes) : 0;
+    timeline_seek(played, 0);
+
+    timeline_seek(sought, VIS_THIRD);
+    TEST_ASSERT_NULL(b->skinned_renderers[VIS_RED].storage);
+    TEST_ASSERT_NOT_NULL(b->skinned_renderers[VIS_GREEN].storage);
+    TEST_ASSERT_NOT_NULL(big[1]->storage);
+    TEST_ASSERT_TRUE(played_big);
+    TEST_ASSERT_EQUAL_UINT32(green_palette, name_hash_n(b->skinned_renderers[VIS_GREEN].palette, palette_bytes));
+    TEST_ASSERT_EQUAL_UINT32(blue_palette, name_hash_n(big[1]->palette, palette_bytes));
+}
+
+static void
+hinged_light_fixture(test_pack_t* writer, bool delayed, bool scale, bool lights_only) {
+    uint8_t* entry = enabled_fixture(writer, true, false, lights_only);
     const scene_asset_hinge_t hinge = {.entity = VIS_LAMP, .axis = {0, 0, 1}, .min = -MATH_PI, .max = MATH_PI};
     memcpy(part_row(entry, SCENE_ASSET_HINGES), &hinge, sizeof hinge);
     uint8_t* parents = part_row(entry, SCENE_ASSET_PARENTS);
@@ -1283,7 +1426,7 @@ hinged_light_fixture(test_pack_t* writer, bool delayed, bool scale) {
 static void
 test_hinge_off_time_samples_ancestors(void) {
     test_pack_t writer;
-    hinged_light_fixture(&writer, false, false);
+    hinged_light_fixture(&writer, false, false, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     const entity_t root = load(&pack);
@@ -1306,7 +1449,7 @@ test_hinge_off_time_samples_ancestors(void) {
 static void
 test_hinge_moves_root_light_during_play(void) {
     test_pack_t writer;
-    hinged_light_fixture(&writer, false, false);
+    hinged_light_fixture(&writer, false, false, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     const entity_t played = load(&pack), sought = load(&pack);
@@ -1341,7 +1484,7 @@ test_hinge_moves_root_light_during_play(void) {
 static void
 assert_hinge_samples(bool scale) {
     test_pack_t writer;
-    hinged_light_fixture(&writer, true, scale);
+    hinged_light_fixture(&writer, true, scale, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     const entity_t played = load(&pack), sought = load(&pack);
@@ -1379,9 +1522,83 @@ test_hinge_preserves_timeline_scale(void) {
 }
 
 static void
+test_hinge_reapplies_after_bounds_while_paused(void) {
+    test_pack_t writer;
+    hinged_light_fixture(&writer, false, false, false);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t root = load(&pack);
+    const entity_t lamp = entity_find(root, name_hash(LAMP_NAME));
+    scene_t* scene = columns(root);
+    timeline_seek(root, VIS_SECOND);
+    (void)scene_bounds(root);
+    const transformf_t posed = transform_local(lamp);
+    transformf_t written = transformf_identity();
+    transformf_set_position(&written, vec3f_unit_x());
+    scene->locals[VIS_LAMP] = written;
+    scene_animation_step(scene, 1);
+    TEST_ASSERT_FALSE(scene->flags[VIS_LAMP] & SCENE_FLAG_CHANGED);
+    TEST_ASSERT_EQUAL_FLOAT(written.position.x, scene->locals[VIS_LAMP].position.x);
+
+    transform_set_local(lamp, written);
+    (void)scene_bounds(root);
+    scene_animation_step(scene, 1);
+    const transformf_t restored = transform_local(lamp);
+    TEST_ASSERT_EQUAL_MEMORY(&posed.position, &restored.position, sizeof posed.position);
+    TEST_ASSERT_EQUAL_MEMORY(&posed.rotation, &restored.rotation, sizeof posed.rotation);
+}
+
+static void
+test_keyed_lights_settle_without_animators(void) {
+    test_pack_t writer;
+    hinged_light_fixture(&writer, false, false, true);
+    uint8_t* clip = writer.bytes + writer.end - test_pack_aligned(CLIP_BYTES);
+    test_tracks_header(clip, 2, DURATION);
+    const test_track_t tracks[] = {
+        {LAMP_NAME, "angle", ANIM_COMPONENT_HINGE, ANIM_VALUE_FLOAT, TIMES, FOV_VALUES, KEYS, ANIM_STEP},
+        {"parent", "enabled", ANIM_COMPONENT_ENTITY, ANIM_VALUE_FLOAT, CAMERA_VALUES, NEAR_VALUES, KEYS, ANIM_STEP},
+    };
+    for (size_t i = 0; i < sizeof tracks / sizeof *tracks; i++) {
+        test_track_row(clip, i, &tracks[i]);
+    }
+    const float angle_times[] = {0.0F, (float)VIS_FIRST / MATH_MS_PER_S};
+    const float enable_times[] = {0.0F, (float)VIS_SECOND / MATH_MS_PER_S};
+    const float enabled[] = {1.0F, 0.0F};
+    test_pack_put_floats(clip + TIMES, angle_times, KEYS);
+    test_pack_put_floats(clip + CAMERA_VALUES, enable_times, KEYS);
+    test_pack_put_floats(clip + NEAR_VALUES, enabled, KEYS);
+    asset_pack_t pack;
+    open_pack(&writer, &pack);
+    const entity_t roots[] = {load(&pack), load(&pack)};
+    for (size_t i = 0; i < sizeof roots / sizeof *roots; i++) {
+        TEST_ASSERT_EQUAL_INT(0, columns(roots[i])->animator_count);
+        TEST_ASSERT_TRUE(light_set_intensity(entity_find(roots[i], name_hash("parent")), 1.0F));
+    }
+    scene_t* a = columns(roots[0]);
+    const scene_t* b = columns(roots[1]);
+    timeline_play(roots[0]);
+    const uint32_t keys[] = {0, VIS_FIRST, VIS_SECOND};
+    uint32_t previous = 0;
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+        scene_animation_step(a, keys[i] - previous);
+        timeline_seek(roots[1], keys[i]);
+        TEST_ASSERT_EQUAL_INT(keys[i] < VIS_SECOND ? 2 : 1, a->world_lights.count);
+        TEST_ASSERT_EQUAL_INT(a->world_lights.count, b->world_lights.count);
+        const float angle = keys[i] < VIS_FIRST ? 0.0F : MATH_PI / 2;
+        const vec3f_t direction = quatf_rotate(quatf_from_axis_angle(vec3f_unit_z(), angle), SCENE_LIGHT_AXIS);
+        TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, direction.x, a->world_lights.direction[0].x);
+        TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, direction.y, a->world_lights.direction[0].y);
+        TEST_ASSERT_EQUAL_MEMORY(a->world_lights.direction, b->world_lights.direction,
+                                 sizeof a->world_lights.direction);
+        TEST_ASSERT_EQUAL_MEMORY(a->world_lights.color, b->world_lights.color, sizeof a->world_lights.color);
+        previous = keys[i];
+    }
+}
+
+static void
 test_hinge_at_rest_leaves_row_clean(void) {
     test_pack_t writer;
-    hinged_light_fixture(&writer, false, false);
+    hinged_light_fixture(&writer, false, false, false);
     asset_pack_t pack;
     open_pack(&writer, &pack);
     const entity_t root = load(&pack);
@@ -1397,7 +1614,7 @@ test_hinge_at_rest_leaves_row_clean(void) {
 static void
 test_enabled_seek_matches_play_with_constraint_and_hinge(void) {
     test_pack_t writer;
-    uint8_t* entry = enabled_fixture(&writer, true, true);
+    uint8_t* entry = enabled_fixture(&writer, true, true, false);
     const scene_asset_constraint_t constraint = {
         .entity = VIS_PARENT, .follow = name_hash(CAMERA_NAME), .weight = 1.0F};
     const scene_asset_hinge_t hinge = {.entity = VIS_CHILD, .axis = {0, 0, 1}, .min = -MATH_PI, .max = MATH_PI};
@@ -1435,10 +1652,6 @@ test_enabled_seek_matches_play_with_constraint_and_hinge(void) {
             TEST_ASSERT_EQUAL_MEMORY(&x.rotation, &y.rotation, sizeof x.rotation);
         }
         TEST_ASSERT_EQUAL_INT(now >= VIS_SECOND, (a->flags[VIS_CHILD] & SCENE_FLAG_ACTIVE) != 0);
-        if (now <= VIS_SECOND) {
-            TEST_ASSERT_TRUE(a->constraint_inputs_placed);
-            TEST_ASSERT_TRUE(b->constraint_inputs_placed);
-        }
         for (int e = 0; e < VIS_COPIES; e++) {
             const scene_skinned_renderer_t* x = &a->skinned_renderers[e];
             const scene_skinned_renderer_t* y = &b->skinned_renderers[e];
@@ -1450,6 +1663,13 @@ test_enabled_seek_matches_play_with_constraint_and_hinge(void) {
             }
         }
     }
+    const entity_t fresh = load(&pack);
+    scene_t* c = columns(fresh);
+    scene_animation_step(a, 1);
+    timeline_seek(fresh, VIS_THIRD + 1);
+    scene_resolve(a);
+    scene_resolve(c);
+    TEST_ASSERT_EQUAL_UINT8(c->flags[VIS_CHILD], a->flags[VIS_CHILD]);
 }
 
 static __attribute__((noinline)) void
@@ -2697,8 +2917,10 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_enabled_seek_equals_play);
     RUN_TEST(test_enabled_refuses_nonstep_keys);
     RUN_TEST(test_enabled_refuses_duplicate_tracks);
-    RUN_TEST(test_enabled_holds_authored_flag_before_first_key);
+    RUN_TEST(test_enabled_holds_before_first_key);
+    RUN_TEST(test_enabled_reapplies_start_on_loop_wrap);
     RUN_TEST(test_enabled_skins_settle_in_row_order_under_pressure);
+    RUN_TEST(test_enabled_skins_repack_fragmented_storage);
     RUN_TEST(test_property_animator_refuses_timeline_only_fields);
     RUN_TEST(test_constraint_refuses_a_hinged_ancestor);
     RUN_TEST(test_hinge_off_time_samples_ancestors);
@@ -2706,7 +2928,10 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_hinge_samples_inside_limits);
     RUN_TEST(test_hinge_preserves_timeline_scale);
     RUN_TEST(test_hinge_at_rest_leaves_row_clean);
+    RUN_TEST(test_hinge_reapplies_after_bounds_while_paused);
+    RUN_TEST(test_keyed_lights_settle_without_animators);
     RUN_TEST(test_enabled_seek_matches_play_with_constraint_and_hinge);
+    RUN_TEST(test_speed_key_playhead_matches_seek);
     RUN_TEST(test_constraint_follows_lagged_transform);
     RUN_TEST(test_constraint_lag_across_wrap);
     RUN_TEST(test_constraint_reacts_without_timeline);

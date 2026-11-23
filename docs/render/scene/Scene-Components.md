@@ -41,10 +41,10 @@ false for a non-camera entity or an invalid value.
 `lens_t` (`scene/camera/lens.h`) is a camera's lens value; `camera_*` is the
 component.
 
-A new light starts white with zero intensity. Its rotated +Y axis gives its
-world direction. Rotation updates skin shading next frame, even while paused.
-
-Scene ambient and tone map are private. SCNE settings apply both before lights attach.
+A new light starts white with zero intensity. Its world direction is its
+entity's rotated +Y axis; moving its rotation changes skin shading next frame,
+including while the pose is paused. Scene ambient and tone map are private;
+SCNE settings apply ambient and tone map before authored lights attach.
 All lit skins share world-space lights. Their normal palettes include entity
 and joint scale through an inverse-transpose transform. Skin dirty bits are
 consumed by the skin stage even when another scene is active.
@@ -63,10 +63,11 @@ Each skinned renderer reads its lighting mode from SKIN, direct by default;
 
 A timeline can key any named object's enabled flag with `ENTY.enabled`.
 Use step interpolation and float values. Zero disables the entity and any
-other value enables it. The authored flag holds before the first key.
+other value enables it. The entity is enabled before its first key.
 
 The timeline reapplies its value the next time it samples the track, including
-on seek. Skin buffers go to active entities in scene row order as memory permits.
+on seek. If any active skin cannot get its buffers, the scene releases all its
+skin buffers and retries active skins in row order.
 
 ## Hinge
 
@@ -82,18 +83,10 @@ See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
 
 ## Timeline step and seek
 
+Sampling writes keyed fields and enabled flags; the drivers rewrite constrained and hinged locals.
+
 ```mermaid
 flowchart LR
-    subgraph Step["Playback step"]
-        direction LR
-        Advance["Sample timeline"] --> Settle["Settle skins"]
-        Settle --> Drive["Apply constraints, then hinges"]
-        Drive --> Pose["Pose due skins"]
-    end
-    subgraph Seek["Seek"]
-        direction LR
-        Sample["Sample requested time"] --> Drivers["Apply constraints, then hinges"]
-        Drivers --> Buffers["Settle skins"]
-        Buffers --> Repose["Pose immediately"]
-    end
+    Sample["Sample timeline"] --> Settle["Settle skins"] --> Drive["Apply constraints, then hinges"]
+    Drive --> Pose["Step: pose due skins<br/>Seek: repose now"]
 ```

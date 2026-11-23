@@ -193,21 +193,16 @@ scene_skins_settle(scene_t* scene) {
         return;
     }
 
-    /* Reclaim later rows before retrying the first row that could not fit. */
-    bool released = false;
-    for (int i = first + 1; i < scene->staged_count; i++) {
+    for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t row = scene->staged[i];
         if (scene->skinned_renderers[row].storage != NULL) {
             scene_skin_deactivate(scene, row);
-            released = true;
         }
     }
-
-    for (int i = first; i < scene->staged_count; i++) {
+    for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t row = scene->staged[i];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
-        const bool fits = (released || i != first) && settle_skin(scene, row);
-        if (!fits && !skin->starved) {
+        if (!settle_skin(scene, row) && !skin->starved) {
             scene_starve(scene, row, &skin->starved, "skin");
         }
     }

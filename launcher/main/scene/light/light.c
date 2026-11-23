@@ -160,9 +160,6 @@ light_intensity(entity_t entity) {
 
 void
 scene_lights_prepare(scene_t* scene) {
-    if (scene->light_transfer == NULL) {
-        return;
-    }
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
