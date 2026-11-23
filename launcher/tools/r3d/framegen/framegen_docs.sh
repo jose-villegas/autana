@@ -27,7 +27,7 @@ TABLES=
 [ "${1:-}" = --out ] && { IMAGES=$2; TABLES=$3; shift 3; }
 
 # Each scene key with the scene file and camera whose path it flies.
-SCENES="bistro-fitted-full sponza-fitted-full sponza sponza-flat sponza-lite sponza-fitted sponza-flat-fitted"
+SCENES="bistro sponza"
 CAMERA=camera
 scene_file() {
     case $1 in
@@ -39,8 +39,8 @@ SIZES="184x224 184x149 184x112"
 # The doc's pictures, at the ladder's top half-picture step: for the target
 # scene and the reference one, the frame whose warp opens the most holes, and
 # a clip around the target scene's.
-LEAD=bistro-fitted-full
-SECOND=sponza-fitted-full
+LEAD=bistro
+SECOND=sponza
 SHOWN_SIZE=184x224
 
 WORK=$(mktemp -d)
