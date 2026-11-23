@@ -934,6 +934,16 @@ def unlocked(bake):
     return f"{relative(LOCK)} has no row for this key: its recipe, a source or its tool changed"
 
 
+# A branch push only checks the lock; the bakes run when the branch requests them (.github/workflows/bakes.yml).
+REQUEST = "gh workflow run bakes.yml --ref {branch}"
+
+
+def request_bakes(branch="<branch>"):
+    """What to run on a branch whose lock lacks a row the Bakes run makes."""
+    return (f"when it is this branch's turn to lock, request the Bakes run ({REQUEST.format(branch=branch)}); "
+            "then bake.py lock --from-run N with that run")
+
+
 def bake_again(bake):
     if bake.stages and bake.stages.get("reason"):
         return ("run bake.py lock on a host with a C compiler (track_host.py builds the device sampler), "
@@ -946,12 +956,21 @@ def bake_again(bake):
         return ("lock its start and reference set first: bake.py lock --from-run N with the Bakes run that made "
                 "them, then run the Bakes GPU workflow on this branch")
     if bake.kind == "blend":
-        return ("an export needs Blender: push, the Bakes check exports it on the pull request; then "
-                "bake.py lock --from-run N with that run")
+        return "an export needs Blender: " + request_bakes()
     if bake.kind == "fit":
         return ("a fit needs the CUDA GPU: run the Bakes GPU workflow on this branch, then "
                 "bake.py lock --from-run N with that run")
-    return "push: the Bakes check bakes it on the pull request; then bake.py lock --from-run N with that run"
+    return request_bakes()
+
+
+def lock_after(env):
+    """The line `check` ends on in a Bakes run: lock this run, or on a branch push, which bakes nothing, request one."""
+    run = env.get("GITHUB_RUN_ID")
+    if not run:
+        return ""
+    if env.get("GITHUB_EVENT_NAME") == "push" and env.get("GITHUB_REF") != "refs/heads/main":
+        return f"\nThis push bakes nothing: {request_bakes(env.get('GITHUB_REF_NAME', '<branch>'))}, and commit {relative(LOCK)}."
+    return f"\nThis run made the bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
 
 
 def download(row, suffix, cache):
@@ -1467,9 +1486,7 @@ def main(argv=None):
         elif args.command == "check":
             problems = check(found, lock) + check_poses(found, held)
             if problems:
-                run = os.environ.get("GITHUB_RUN_ID")
-                after = (f"\nThis run made the mesh bakes: bake.py lock --from-run {run}, then commit {relative(LOCK)}."
-                         if run else "")
+                after = lock_after(os.environ)
                 raise BakeMissing(f"{relative(LOCK)} is out of date:\n" + "\n".join(problems) + after)
             seeded = sorted(row["output"] for row in lock.values() if row.get("seeded"))
             if seeded:
