@@ -1,6 +1,7 @@
 """Seed inference and foreground acquisition exercised without hardware."""
 import contextlib
 import io
+import json
 import math
 import pathlib
 import random
@@ -269,6 +270,106 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
         with patch("perf_job.duration_history", return_value={}):
             self.assertEqual(job_estimate(2, 3, 900, restore=False),
                              2 * DEFAULT_FLASH_SECONDS + 3 * 900)
+
+    def test_side_b_settings_enable_hot_tunables_on_both_sides(self):
+        from shell_job import replay
+        for setup in ((), ('--set-b', 'render.cull=0', '--set-b', 'render.scale=1')):
+            with self.subTest(setup=setup):
+                result, calls = replay(self, 'compare', extra=setup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                flashes = [call['words'] for call in calls if '--flash' in call['words']]
+                self.assertEqual({pathlib.Path(words[words.index('--project') + 1]).name
+                                  for words in flashes}, {'a', 'b'})
+                for words in flashes:
+                    side = pathlib.Path(words[words.index('--project') + 1]).name
+                    self.assertEqual('--hot-tunables' in words, bool(setup))
+                    settings = [words[i + 1] for i, word in enumerate(words) if word == '--set']
+                    self.assertEqual(settings, list(setup[1::2]) if side == 'b' else [])
+                if setup:
+                    self.assertIn('Tunables (both built with `--hot-tunables`): '
+                                  'A = none, B = `render.cull=0`, `render.scale=1`.', result.stdout)
+
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, cap=4)
+            args.set_b = ['render.cull=0']
+            with patch('layout_measure.run_stamped', FakeAutana(root)), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(tool.main([
+                    '--out', str(args.out), '--project-a', str(args.project_a), '--project-b', str(args.project_b),
+                    '--suite', *args.suite[0], '--max-seeds', str(args.max_seeds), '--set-b', args.set_b[0],
+                ]), 0)
+            plan = json.loads((args.out / 'plan.json').read_text())
+            self.assertIs(plan['hot_tunables'], True)
+            for item in plan['plan']:
+                self.assertEqual(item['tune_set'], args.set_b if item['side'] == 'b' else [])
+
+    def test_octal_set_reaches_only_side_a_with_hot_tunables(self):
+        from shell_job import replay
+        result, calls = replay(self, 'compare', extra=('--set-a', 'x=010'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        captures = [call['words'] for call in calls if 'suite' in call['words']]
+        for side in ('a', 'b'):
+            commands = [words for words in captures
+                        if pathlib.Path(words[words.index('--project') + 1]).name == side]
+            self.assertTrue(commands)
+            for words in commands:
+                settings = [words[i + 1] for i, word in enumerate(words) if word == '--set']
+                self.assertEqual(settings, ['x=010'] if side == 'a' else [])
+                self.assertEqual('--hot-tunables' in words, '--flash' in words)
+
+    def test_impossible_setup_is_refused_before_any_flash(self):
+        from shell_job import replay
+        cases_by_diagnostic = {
+            'tunable command': (
+                ('--send-a', 'SET render.cull 1'),
+                ('--send-b', ' Set  render.cull 1'),
+                ('--send-a', 'reset render.cull'),
+                ('--send-b', 'GET render.cull'),
+                ('--send-b', 'tune'),
+            ),
+            'expected one console line': (
+                ('--send-a', 'sound stop all\nversion'),
+                ('--send-b', 'sound stop all\r'),
+            ),
+            'empty console line': (('--send-a', '   '),),
+            'expected NAME=VALUE': (('--set-b', 'render.cull'),),
+            'expected a decimal, octal or hexadecimal integer': (
+                ('--set-b', 'render.cull=nope'),
+                ('--set-b', 'render.cull=0b1'),
+                ('--set-b', 'render.cull=1_000'),
+            ),
+            'value must fit int32': (('--set-b', 'render.cull=2147483648'),),
+        }
+        for mode in ((), ('--validate-plan',)):
+            for diagnostic, cases in cases_by_diagnostic.items():
+                for option, value in cases:
+                    with self.subTest(value=value, mode=mode):
+                        result, calls = replay(self, 'compare', extra=(*mode, option, value))
+                        self.assertEqual(result.returncode, 2)
+                        self.assertIn(repr(value) if option.startswith('--send') else value, result.stderr)
+                        self.assertIn(diagnostic, result.stderr)
+                        self.assertEqual(calls, [])
+
+    def test_first_refused_set_stops_the_comparison(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root, cap=4)
+            args.set_a = args.set_b = ['render.cull=2']
+            captures = []
+            refusal = 'device: SET render.cull 2: TUNE_ERR range render.cull'
+
+            def runner(command, log, timeout):
+                if 'status' in command:
+                    return 0, [(0, 'free')], 0
+                captures.append(command)
+                return 1, [(0, 'batch: suite run 1/2'), (1, refusal)], 1
+
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, refusal):
+                tool.measure(args, runner)
+            self.assertEqual(len(captures), 1)
+            plan = json.loads((args.out / 'plan.json').read_text())['plan']
+            self.assertEqual([item['error'] for item in plan], [refusal])
+            result = json.loads((args.out / 'comparison.json').read_text())
+            self.assertTrue(result['incomplete'])
+            self.assertEqual(result['stop'], refusal)
 
     def test_shell_validation_takes_no_hold(self):
         from shell_job import replay

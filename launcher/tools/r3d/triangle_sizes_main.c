@@ -19,6 +19,8 @@
 #include "render/r3d_pipeline.h"
 #include "triangle_sizes.h"
 
+#include "../anim/camera_poses.h"
+
 typedef struct {
     int width, height;
     size_t pixels;
@@ -136,9 +138,9 @@ print_sizes(int pose, const r3d_sizes_t* s) {
 }
 
 static void
-read_poses_or_exit(const char* path, r3d_sizes_poses_t* poses) {
+read_poses_or_exit(const char* path, camera_poses_t* poses) {
     char problem[160];
-    if (!r3d_sizes_read_poses_path(path, poses, problem, sizeof problem)) {
+    if (!camera_poses_load(path, poses, problem, sizeof problem)) {
         (void)fprintf(stderr, "%s: %s\n", path, problem);
         exit(1);
     }
@@ -171,7 +173,8 @@ main(int argc, char** argv) {
     }
     const char* dir = argc == 6 ? argv[5] : NULL;
     const bool compare = argc == 6 && strcmp(argv[4], "--against") == 0;
-    r3d_sizes_poses_t* poses = checked_malloc(sizeof(*poses));
+    camera_poses_t input;
+    camera_poses_t* poses = &input;
     read_poses_or_exit(argv[3], poses);
 
     asset_pack_t pack;
@@ -179,12 +182,14 @@ main(int argc, char** argv) {
     asset_status_t status = asset_file_open(argv[1], &pack, &pack_bytes);
     if (status != ASSET_OK) {
         (void)fprintf(stderr, "%s: %s\n", argv[1], asset_status_text(status));
+        camera_poses_free(poses);
         return 1;
     }
     r3d_lit_mesh_t mesh_view;
     status = r3d_lit_mesh_open(&pack, argv[2], &mesh_view);
     if (status != ASSET_OK) {
         (void)fprintf(stderr, "mesh %s: %s\n", argv[2], asset_status_text(status));
+        camera_poses_free(poses);
         return 1;
     }
     const r3d_lit_mesh_t* mesh = &mesh_view;
@@ -202,9 +207,10 @@ main(int argc, char** argv) {
     r3d_sizes_t total = {0};
     for (int pose = 0; pose < poses->count; pose++) {
         r3d_lens_t lens;
-        const transformf_t camera_pose = transformf_looking(poses->eye[pose], poses->forward[pose], vec3f_unit_y());
-        const render_view_t view = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z,
-                                                    (viewport_t){size.width, size.height, 0});
+        const transformf_t camera_pose =
+            transformf_looking(poses->poses[pose].eye, poses->poses[pose].forward, vec3f_unit_y());
+        const render_view_t view =
+            render_view_make(&camera_pose, poses->lens, poses->near_z, (viewport_t){size.width, size.height, 0});
         r3d_lens_init(&lens, &view, mesh->position_scale);
         const int count = r3d_pipeline_cull(mesh, &lens, NULL, b.visible, b.work, NULL);
         r3d_sizes_t s = {0};
@@ -219,7 +225,7 @@ main(int argc, char** argv) {
     print_sizes(-1, &total);
     (void)printf("\nTriangles the draw hands the rasterizer, over every pose, by bounding box in pixel centres:\n\n");
     r3d_boxes_print(stdout, &boxes);
-    free(poses);
+    camera_poses_free(poses);
     free(b.work);
     free(b.visible);
     free(b.rows);

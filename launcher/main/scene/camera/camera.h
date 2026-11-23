@@ -36,6 +36,8 @@ void camera_deactivate(void);
 bool camera_set_present(entity_t camera, camera_present_t present);
 /* render_view_t.skip_hidden for the camera's views. */
 bool camera_set_skip_hidden(entity_t camera, bool skip);
+/* The projection in short-axis tangent units; invalid values change nothing. */
+bool camera_set_projection(entity_t camera, float half_fov_short_tan, float near_z);
 /* The lens shift (render_view_t.shift): an off-axis view, as a window onto a
  * fixed rectangle needs. False also for a shift that is not finite. */
 bool camera_set_shift(entity_t camera, vec2f_t shift);
