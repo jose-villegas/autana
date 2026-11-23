@@ -29,6 +29,10 @@ from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_L
 from r3d.views.probes import ProbeViews
 
 
+# A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
+PROBE_FACE = np.array([0., 0., 10., 0., 0., -1.])
+CLEAR = NS(first_hits=lambda o, d: (np.zeros(len(o), bool), np.zeros(len(o)), np.zeros(len(o), int)))
+
 class SharedOwnerTests(unittest.TestCase):
     def setUp(self):
         self.source = NS(p=np.eye(3), tri_v=np.array([[0, 1, 2]]), tri_t=np.array([[0, 1, 2]]),
@@ -137,38 +141,34 @@ class CardContractTests(unittest.TestCase):
 
     def test_probe_weights_visibility_distance_lens_and_accumulation(self):
         points = np.array([[0., 0., 0.], [0., 0., -5.], [12., 0., 0.]])
-        face = np.array([0., 0., 10., 0., 0., -1.])
-        clear = NS(first_hits=lambda o, d: (np.zeros(len(o), bool), np.zeros(len(o)), np.zeros(len(o), int)))
-        weights = probe_weights(points, [face], clear, 1.0, near_floor=0.)
+        weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
         self.assertGreater(weights[0], 0)
         self.assertGreater(weights[0], weights[1])
         self.assertEqual(weights[2], 0)
         self.assertAlmostEqual(weights[weights > 0].mean(), 1)
         self.assertAlmostEqual(weights[0] / weights[1], (15/10)**2)
-        self.assertGreater(probe_weights(points, [face], clear, 2.0, near_floor=0.)[2], 0)
+        self.assertGreater(probe_weights(points, [PROBE_FACE], CLEAR, 2.0, near_floor=0.)[2], 0)
         second = np.array([0., 0., -10., 0., 0., 1.])
-        combined = probe_weights(points[:2], [face, second], clear, 1.0, near_floor=0.)
+        combined = probe_weights(points[:2], [PROBE_FACE, second], CLEAR, 1.0, near_floor=0.)
         self.assertLess(combined[0], combined[1])
         self.assertAlmostEqual(combined[0] / combined[1], (1/100 + 1/100) / (1/225 + 1/25))
         for z, visible in ((0.5, True), (2., False)):
             self.assertEqual(z < VISIBILITY_MARGIN, visible)
             wall = np.array([[-20., -20., z], [20., -20., z], [0., 20., z]])
             query = RayQuery(wall, np.array([[0, 1, 2]]), 'scalar_rgb')
-            weight = probe_weights(points[:1], [face], query, 1.0, near_floor=0.)
+            weight = probe_weights(points[:1], [PROBE_FACE], query, 1.0, near_floor=0.)
             self.assertEqual(bool(weight[0]), visible)
         surface = RayQuery(np.array([[-20., -20., 0.], [20., -20., 0.], [0., 20., 0.]]),
                            np.array([[0, 1, 2]]), 'scalar_rgb')
-        self.assertGreater(probe_weights(points[:1], [face], surface, 1.0, near_floor=0.)[0], 0)
+        self.assertGreater(probe_weights(points[:1], [PROBE_FACE], surface, 1.0, near_floor=0.)[0], 0)
 
     def test_probe_weight_floor_bounds_a_sample_close_to_the_probe(self):
         floor = 5.
         points = np.array([[0., 0., 9.9], [0., 0., 10. - floor], [0., 0., 10. - 2 * floor]])
-        face = np.array([0., 0., 10., 0., 0., -1.])
-        clear = NS(first_hits=lambda o, d: (np.zeros(len(o), bool), np.zeros(len(o)), np.zeros(len(o), int)))
-        weights = probe_weights(points, [face], clear, 1.0, near_floor=floor)
+        weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=floor)
         self.assertAlmostEqual(weights[0], weights[1], msg="nearer than the floor weighs as at the floor")
         self.assertAlmostEqual(weights[1] / weights[2], 4, msg="past the floor the weight still falls as 1/z^2")
-        unbounded = probe_weights(points, [face], clear, 1.0, near_floor=0.)
+        unbounded = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
         self.assertAlmostEqual(unbounded[0] / unbounded[1], (floor / .1) ** 2)
 
     def test_split_caps_a_huge_card_among_small_cards(self):
