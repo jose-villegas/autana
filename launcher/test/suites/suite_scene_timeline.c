@@ -83,6 +83,7 @@ enum {
 
 static const char CLIP[] = "timeline.clip";
 static const char CAMERA_NAME[] = "camera";
+static const char LAMP_NAME[] = "lamp";
 static const char POSITION[] = "position";
 static const char CAPYBARA_NAME[] = "capybara";
 static const char BUTTERFLY_NAME[] = "butterfly";
@@ -977,7 +978,7 @@ enabled_fixture(test_pack_t* pack, bool hinge, bool constraint) {
     enum { LIGHT_KEYS = 4, TRACK_STRIDE = 2 * LIGHT_KEYS * sizeof(float), VIS_TRACKS = VIS_ROWS - 1 };
 
     test_tracks_header(clip, VIS_TRACKS, DURATION);
-    const char* names[] = {"red", "green", "blue", "lamp", "parent", "child"};
+    const char* names[] = {"red", "green", "blue", LAMP_NAME, "parent", "child"};
     const uint32_t starts[] = {VIS_FIRST, VIS_SECOND, VIS_THIRD, VIS_FIRST, DURATION, VIS_SECOND};
     for (int i = 0; i < VIS_TRACKS; i++) {
         const bool light = i == VIS_LAMP - 1;
@@ -1257,15 +1258,14 @@ test_enabled_skins_settle_in_row_order_under_pressure(void) {
 static void
 hinged_light_fixture(test_pack_t* writer, bool delayed, bool scale) {
     uint8_t* entry = enabled_fixture(writer, true, false);
-    const scene_asset_hinge_t hinge = {.entity = VIS_CAMERA, .axis = {0, 0, 1}, .min = -MATH_PI, .max = MATH_PI};
+    const scene_asset_hinge_t hinge = {.entity = VIS_LAMP, .axis = {0, 0, 1}, .min = -MATH_PI, .max = MATH_PI};
     memcpy(part_row(entry, SCENE_ASSET_HINGES), &hinge, sizeof hinge);
     uint8_t* parents = part_row(entry, SCENE_ASSET_PARENTS);
-    test_pack_put16(parents + VIS_LAMP * sizeof(uint16_t), VIS_CAMERA);
     test_pack_put16(parents + VIS_CHILD * sizeof(uint16_t), VIS_LAMP);
     uint8_t* clip = writer->bytes + writer->end - test_pack_aligned(CLIP_BYTES);
     test_tracks_header(clip, scale ? 2 : 1, DURATION);
-    const test_track_t angle = {CAMERA_NAME, "angle", ANIM_COMPONENT_HINGE, ANIM_VALUE_FLOAT, TIMES,
-                                FOV_VALUES,  KEYS,    ANIM_LINEAR};
+    const test_track_t angle = {LAMP_NAME,  "angle", ANIM_COMPONENT_HINGE, ANIM_VALUE_FLOAT, TIMES,
+                                FOV_VALUES, KEYS,    ANIM_LINEAR};
     test_track_row(clip, 0, &angle);
     const float times[] = {delayed ? (float)VIS_FIRST / MATH_MS_PER_S : 0.0F, 1.0F};
     const float angles[] = {0.0F, MATH_PI / 2};
@@ -1273,7 +1273,7 @@ hinged_light_fixture(test_pack_t* writer, bool delayed, bool scale) {
     test_pack_put_floats(clip + FOV_VALUES, angles, KEYS);
     if (scale) {
         const test_track_t scaling = {
-            CAMERA_NAME, "scale", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SCALE_VALUES, KEYS, ANIM_LINEAR};
+            LAMP_NAME, "scale", ANIM_COMPONENT_TRANSFORM, ANIM_VALUE_VEC3, TIMES, SCALE_VALUES, KEYS, ANIM_LINEAR};
         const float scales[] = {1, 1, 1, 2, 2, 2};
         test_track_row(clip, 1, &scaling);
         test_pack_put_floats(clip + SCALE_VALUES, scales, sizeof scales / sizeof *scales);
@@ -1304,7 +1304,7 @@ test_hinge_off_time_samples_ancestors(void) {
 }
 
 static void
-test_hinge_moves_child_light_during_play(void) {
+test_hinge_moves_root_light_during_play(void) {
     test_pack_t writer;
     hinged_light_fixture(&writer, false, false);
     asset_pack_t pack;
@@ -1317,14 +1317,20 @@ test_hinge_moves_child_light_during_play(void) {
         scene_row_set_enabled(b->root, e, false);
     }
     scene_animation_step(a, 0);
+    timeline_seek(sought, 0);
     scene_resolve(a);
+    scene_resolve(b);
     timeline_play(played);
-    for (uint32_t now = VIS_FIRST; now <= VIS_THIRD; now += VIS_FIRST) {
-        scene_animation_step(a, VIS_FIRST);
+
+    enum { STEP_MS = 1 };
+
+    for (uint32_t now = STEP_MS; now <= DURATION; now += STEP_MS) {
+        scene_animation_step(a, STEP_MS);
         timeline_seek(sought, now);
-        const vec3f_t expected = quatf_rotate(b->locals[VIS_CAMERA].rotation, SCENE_LIGHT_AXIS);
+        const vec3f_t expected = quatf_rotate(b->locals[VIS_LAMP].rotation, SCENE_LIGHT_AXIS);
         TEST_ASSERT_EQUAL_FLOAT(expected.x, b->world_lights.direction[0].x);
-        TEST_ASSERT_EQUAL_FLOAT(expected.x, a->world_lights.direction[0].x);
+        TEST_ASSERT_EQUAL_FLOAT(expected.y, b->world_lights.direction[0].y);
+        TEST_ASSERT_EQUAL_FLOAT(expected.z, b->world_lights.direction[0].z);
         TEST_ASSERT_EQUAL_MEMORY(a->world_lights.direction, b->world_lights.direction,
                                  sizeof a->world_lights.direction);
         scene_resolve(a);
@@ -1351,13 +1357,13 @@ assert_hinge_samples(bool scale) {
         timeline_seek(sought, now);
         const float t = now < VIS_FIRST ? 0.0F : (float)(now - VIS_FIRST) / (DURATION - VIS_FIRST);
         const quatf_t expected = quatf_from_axis_angle(vec3f_unit_z(), t * (MATH_PI / 2));
-        const transformf_t* local = &b->locals[VIS_CAMERA];
+        const transformf_t* local = &b->locals[VIS_LAMP];
         TEST_ASSERT_EQUAL_FLOAT(scale ? 1.0F + t : 1.0F, local->scale.x);
         TEST_ASSERT_EQUAL_FLOAT(expected.z, local->rotation.z);
         TEST_ASSERT_EQUAL_FLOAT(expected.w, local->rotation.w);
         TEST_ASSERT_EQUAL_MEMORY(&rest, &local->position, sizeof rest);
-        TEST_ASSERT_EQUAL_MEMORY(&a->locals[VIS_CAMERA].rotation, &local->rotation, sizeof local->rotation);
-        TEST_ASSERT_EQUAL_MEMORY(&a->locals[VIS_CAMERA].scale, &local->scale, sizeof local->scale);
+        TEST_ASSERT_EQUAL_MEMORY(&a->locals[VIS_LAMP].rotation, &local->rotation, sizeof local->rotation);
+        TEST_ASSERT_EQUAL_MEMORY(&a->locals[VIS_LAMP].scale, &local->scale, sizeof local->scale);
         previous = now;
     }
 }
@@ -1383,9 +1389,9 @@ test_hinge_at_rest_leaves_row_clean(void) {
     scene_animation_step(scene, 0);
     scene_resolve(scene);
     scene_animation_step(scene, 0);
-    TEST_ASSERT_FALSE(scene->flags[VIS_CAMERA] & SCENE_FLAG_CHANGED);
+    TEST_ASSERT_FALSE(scene->flags[VIS_LAMP] & SCENE_FLAG_CHANGED);
     timeline_seek(root, VIS_SECOND);
-    TEST_ASSERT_TRUE(scene->flags[VIS_CAMERA] & SCENE_FLAG_CHANGED);
+    TEST_ASSERT_TRUE(scene->flags[VIS_LAMP] & SCENE_FLAG_CHANGED);
 }
 
 static void
@@ -2696,7 +2702,7 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_property_animator_refuses_timeline_only_fields);
     RUN_TEST(test_constraint_refuses_a_hinged_ancestor);
     RUN_TEST(test_hinge_off_time_samples_ancestors);
-    RUN_TEST(test_hinge_moves_child_light_during_play);
+    RUN_TEST(test_hinge_moves_root_light_during_play);
     RUN_TEST(test_hinge_samples_inside_limits);
     RUN_TEST(test_hinge_preserves_timeline_scale);
     RUN_TEST(test_hinge_at_rest_leaves_row_clean);

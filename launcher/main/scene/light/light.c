@@ -70,6 +70,10 @@ scene_lights_allocate(scene_t* scene) {
 
 static scene_light_t*
 light_attach(scene_t* scene, scene_row_t entity) {
+    /* Its direction is its own rotation under the scene root, so a light has no other parent. */
+    if (scene_row_parent(scene, entity) != SCENE_ROW_NONE) {
+        return NULL;
+    }
     scene_light_t* light = &scene->lights[entity];
     if (light->kind != SCENE_LIGHT_NONE) {
         return light;

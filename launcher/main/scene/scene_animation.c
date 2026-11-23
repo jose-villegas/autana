@@ -342,6 +342,20 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
+static bool
+skin_lights_changed(const scene_t* scene) {
+    if (scene->light_count == 0) {
+        return false;
+    }
+    bool lights_dirty = false;
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t e = scene->staged[i];
+        lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE
+                        && (scene->flags[e] & (SCENE_FLAG_SKIN_DIRTY | SCENE_FLAG_RELIGHT));
+    }
+    return lights_dirty;
+}
+
 static int
 skin_stage_prepare(scene_t* scene, bool lights_dirty) {
     const int entities = scene->asset.entity_count;
@@ -391,7 +405,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     animate_entities(scene, dt_ms);
     FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
-    const bool lights_dirty = scene_hierarchy_lights_changed(scene);
+    const bool lights_dirty = skin_lights_changed(scene);
     const int clusters = skin_stage_prepare(scene, lights_dirty);
     if ((clusters > 0 || lights_dirty) && scene->light_transfer != NULL) {
         scene_lights_prepare(scene);

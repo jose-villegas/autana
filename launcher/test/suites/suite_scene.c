@@ -2076,12 +2076,12 @@ test_staged_entities_stay_in_entity_order_once_each(void) {
 }
 
 static void
-test_a_light_can_attach_under_a_parent(void) {
+test_a_light_or_skin_does_not_attach_under_a_parent(void) {
     fixture();
     entity_t scene = load("test_family");
     const entity_t green = entity_find(scene, name_hash("green"));
-    TEST_ASSERT_TRUE(light_set_intensity(green, 1.0F));
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, light_intensity(green));
+    TEST_ASSERT_FALSE(light_set_intensity(green, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, light_intensity(green));
     scene_failure_t why;
     TEST_ASSERT_FALSE(renderer_set_skin(green, "rig.quad", &why));
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
@@ -8594,7 +8594,7 @@ run_scene_suite(void) {
     RUN_TEST(test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle);
     RUN_TEST(test_toggled_parents_and_a_late_animator_draw_as_a_fresh_scene);
     RUN_TEST(test_staged_entities_stay_in_entity_order_once_each);
-    RUN_TEST(test_a_light_can_attach_under_a_parent);
+    RUN_TEST(test_a_light_or_skin_does_not_attach_under_a_parent);
     RUN_TEST(test_a_scene_with_parents_releases_everything_when_a_load_fails);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_released_scenes_entities_are_refused_even_when_their_slots_return);

@@ -41,12 +41,10 @@ false for a non-camera entity or an invalid value.
 `lens_t` (`scene/camera/lens.h`) is a camera's lens value; `camera_*` is the
 component.
 
-A new light starts white with zero intensity. Its world direction is its
-entity's +Y axis rotated into world space. Rotation of the light or an
-ancestor changes skin shading on the next frame, even with the pose paused.
+A new light starts white with zero intensity. Its rotated +Y axis gives its
+world direction. Rotation updates skin shading next frame, even while paused.
 
-Scene ambient and tone map are private;
-SCNE settings apply ambient and tone map before authored lights attach.
+Scene ambient and tone map are private. SCNE settings apply both before lights attach.
 All lit skins share world-space lights. Their normal palettes include entity
 and joint scale through an inverse-transpose transform. Skin dirty bits are
 consumed by the skin stage even when another scene is active.

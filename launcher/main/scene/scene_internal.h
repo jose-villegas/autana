@@ -527,7 +527,6 @@ int scene_hinge_index(const scene_asset_t* asset, scene_row_t row);
 void scene_hinge_apply_pose(const scene_hinge_t* hinge, float angle, transformf_t* local);
 void scene_hinge_step(scene_t* scene, bool applied);
 void scene_drivers_step(scene_t* scene, bool applied);
-bool scene_hierarchy_lights_changed(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);
