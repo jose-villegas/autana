@@ -446,8 +446,9 @@ Omit either target to leave it unset. A named target must match an object.
 Offsets and times default to zero, weight defaults to one, and bind
 defaults to `"world"`. The other bind values are `"target"` and `"target_yaw"`.
 
-Prefix a field with `CNST.` in a track-form keys file. For example, a
-camera switches follow targets at 2 seconds.
+Prefix a field with `CNST.` in a [track-form keys file](../animation/Animation-Tracks.md#keys-files).
+This camera returns to its own position at 2 seconds and follows a new
+target at 4 seconds.
 
 ```toml
 animation = "camera_path"
@@ -456,7 +457,7 @@ animation = "camera_path"
 object = "camera"
 field = "CNST.follow"
 interp = "step"
-keys = [{ t = 0.0, v = "butterfly_blue" }, { t = 2.0, v = "butterfly_green" }]
+keys = [{ t = 0.0, v = "butterfly_blue" }, { t = 2.0, v = "" }, { t = 4.0, v = "butterfly_green" }]
 ```
 
 | Field | Time rule |

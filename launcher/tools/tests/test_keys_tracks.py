@@ -10,6 +10,7 @@ import pytest
 from test_camera_keys import TOOLS, keys_file, clip_of, has_compiler, track_host, tracks_asset
 from anim import scene_fields
 from bake import bake
+from build.name_hash import NONE, name_hash
 from gltf import gltf_read
 
 
@@ -457,6 +458,23 @@ BLOCK_TRACK = dict(object="rig", field="clip", blocks=[
 @pytest.mark.parametrize("hash_value", [0, 1, 0xffff, 0x10000, 0xffffffff])
 def test_name_key_round_trip(hash_value):
     assert scene_fields.decode_name(scene_fields.encode_name(hash_value)) == hash_value
+
+
+def test_follow_keys_round_trip_with_unset_target(tmp_path):
+    clip = clip_of(tmp_path, """
+animation = "path"
+[[tracks]]
+object = "camera"
+field = "CNST.follow"
+interp = "step"
+keys = [{t = 0, v = "butterfly"}, {t = 1, v = ""}, {t = 2, v = "capybara"}]
+""")
+    rows, _ = tracks_asset.decode(tracks_asset.bake(clip))
+    follow, = rows
+    assert follow["name"] == "camera:CNST.follow"
+    assert follow["times"] == [0, 1, 2]
+    assert [scene_fields.decode_name(parts) for parts in follow["values"]] == [
+        name_hash("butterfly"), NONE, name_hash("capybara")]
 
 
 @pytest.mark.parametrize("extra", [[], [dict(object="rig", field="speed", interp="step", keys=[dict(t=0.5, v=2)])]])

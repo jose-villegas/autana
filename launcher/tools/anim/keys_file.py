@@ -193,10 +193,10 @@ def track_curve(track, label, value_type, interp, transform_field, start_at_zero
         where = f"{label} key {i}"
         authored = key["v"]
         if value_type == scene_fields.VALUE_NAME:
-            if not isinstance(authored, str) or not authored or "\0" in authored:
-                raise ValueError(f"{where}: v must be a nonempty name without NUL")
-            hashed = name_hash(authored)
-            if hashed == NONE:
+            if not isinstance(authored, str) or "\0" in authored:
+                raise ValueError(f"{where}: v must be a name without NUL")
+            hashed = name_hash(authored) if authored else NONE
+            if authored and hashed == NONE:
                 raise ValueError(f"{where}: name hashes to NONE")
             authored = scene_fields.encode_name(hashed)
         value = vector(authored, width, where, "v", quaternion=quaternion)
@@ -261,6 +261,8 @@ def block_tracks(track, label):
             "t", "clip", "speed", "blend"
         }:
             raise ValueError(f"{label} key {i}: block needs t and clip, with optional speed and blend")
+        if not isinstance(block["clip"], str) or not block["clip"]:
+            raise ValueError(f"{label} key {i}: clip must be a nonempty name")
         for field, value in zip(columns, (block["clip"], block.get("speed", 1), block.get("blend", 0))):
             columns[field].append(dict(t=block["t"], v=value))
     key_times(blocks, label, start_at_zero=False)
