@@ -17,12 +17,12 @@ try:
 
     from r3d import isa, mitsuba_reference, ray_query
     from r3d.ray_query import RayQuery
-    from tests.test_r3d_path_bake import SUN, corridor, have_llvm, path_light
+    from tests.test_r3d_path_bake import SUN, corridor, path_light
 except ImportError:
     np = None
 
 from bake.bake import cpu_vendor  # noqa: E402
-from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
+from tests.r3d_env import HAVE_MITSUBA, have_llvm  # noqa: E402
 
 PINNED = HAVE_MITSUBA and sys.platform == "linux" and platform.machine() == "x86_64" and isa.pin()
 needs_pin = unittest.skipIf(not (PINNED and have_llvm()), "the pin needs Linux on x86-64 with AVX2, FMA and libLLVM")

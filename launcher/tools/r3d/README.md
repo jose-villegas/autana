@@ -27,7 +27,7 @@ mesh. Nothing here runs on the board.
 | [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [skin_light/](skin_light/report_skin_light.sh) | Skinned-mesh lighting measured on the host, direct N.L against a lookup table: from a skinned glTF, runs the benchmark, draws the sheet and rewrites the document's tables; see [Skinned-Mesh Lighting](../../../docs/render/animation/Skinned-Lighting.md). |
-| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
@@ -184,6 +184,36 @@ the poses and scores them with `render_compare.py`. A variant is
 and `place=stratified|centroid`. Without `--variant` the
 mesh is baked as its import file declares it, byte for byte the tracked bake.
 It prints a table sorted by mean ΔE.
+
+### Material ID differences
+
+Compare a triangle ID capture against the full source from `launcher/`.
+`POSES` must match the capture's camera positions, directions and lens.
+
+```sh
+render_host --scene ID --object OBJECT --view triangles --ids IDS_DIR -o frame.bmp
+$PY tools/render/render_compare.py --material-ids SCENE.scene.toml OBJECT POSES IDS_DIR --out sheet.png
+```
+
+Capture a frame per pose with `--camera-poses POSES`. Add shaded PNGs with `--reference DIR`,
+select the worst N frames with `--views N`, or show up to N crop clusters per view with `--crops N`.
+
+Add any combination of these options. Each can be repeated, and the first
+match in argument order owns the pixel.
+
+| Option | Excluded reference pixels |
+| --- | --- |
+| `--exclude-material GLOB` | Source material name matches the glob. |
+| `--exclude-object GLOB` | Source object name matches the glob. |
+| `--exclude alpha-tested` | Source material is alpha-tested (its texture cuts texels away). |
+| `--exclude thin=T` | Source object's total triangle area divided by its bounding-box diagonal is below `T` in source units. |
+| `--exclude not-drawn` | No triangle in a rest mesh, placed copy or card maps to the source object by nearest source triangle. |
+
+The sheet colours excluded pixels separately. `sheet.csv` counts them by
+reference material, and `sheet.excluded.csv` lists their first selector,
+source object ID and name, material name and pixel count, largest first.
+`sheet.confusions.csv` counts wrong-material pairs. Each CSV begins with
+a comment listing the selectors, as shown in the sheet header.
 
 ## Appearance fit
 

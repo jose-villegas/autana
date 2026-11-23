@@ -9,8 +9,14 @@
 raster_attachment_t raster_depth_view(void* state);
 raster_attachment_t raster_depth_tiles_view(void* state);
 
+raster_attachment_t
+raster_attachment_ids(image_format_t format,
+                      void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int), void* state);
+
 /* Development builds only: paints attached views before upscale. */
 void raster_show(const raster_t* raster);
 /* Paints colour from attachment `index`, retaining its map and the depth. */
 void raster_show_map(const gfx_target_t* picture, int index, uint16_t clear,
-                     gfx_color_t (*color_of)(const void* pixel, uint16_t clear));
+                     gfx_color_t (*color_of)(const void* pixel, size_t width, uint16_t clear));

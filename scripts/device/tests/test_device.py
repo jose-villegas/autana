@@ -29,6 +29,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+from console_protocol import TUNE_REPLY_ENDS, TUNE_VALUE_MAX
 from fake_serial import FakeConnection, FakeUsbBoard
 import fake_flash  # noqa: E402
 import device_lock
@@ -799,7 +800,7 @@ class DeviceTests(unittest.TestCase):
                 b"I (813) screenshot: TUNE launcher.glow_radius=13 min=1 max=31\r\n"
                 b"TUNE_END count=2\n"
                 b"TUNE_OK later=1\n")
-        found, complete = device.replies_to(data, "TUNE", ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+        found, complete = device.replies_to(data, "TUNE", list(TUNE_REPLY_ENDS))
         self.assertTrue(complete)
         self.assertEqual(found, ["TUNE launcher.ridge_trail=226 min=0 max=255",
                                  "TUNE launcher.glow_radius=13 min=1 max=31",
@@ -807,7 +808,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_replies_are_incomplete_until_the_terminator_arrives(self):
         found, complete = device.replies_to(b"TUNE a=1 min=0 max=2\nTUNE_EN", "TUNE",
-                                            ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+                                            list(TUNE_REPLY_ENDS))
         self.assertFalse(complete)
         self.assertEqual(found, ["TUNE a=1 min=0 max=2"])
 
@@ -821,7 +822,7 @@ class DeviceTests(unittest.TestCase):
 
     def send_args(self, line, reply="TUNE", until=None, seconds=1, optional=False):
         return Namespace(owner="agent", purpose="send", wait=0, line=line, reply=reply,
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"] if until is None else until,
+                         until=list(TUNE_REPLY_ENDS) if until is None else until,
                          seconds=seconds, optional=optional)
 
     def test_send_writes_the_line_and_prints_the_reply(self):
@@ -1738,6 +1739,33 @@ class TuneSetTests(unittest.TestCase):
     def test_hex_is_compared_as_the_board_prints_it(self):
         self.apply("a.rgb=0x10", b"log line\nI (5) console: TUNE_OK a.rgb=16\n")
 
+    def test_cli_accepts_the_decimal_echo_of_an_octal_setting(self):
+        connection = FakeConnection([b"TUNE_OK x=8\n", b"RUNSUITE_COMPLETE name=sand found=1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
+                 mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
+                 mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=root / "records"), \
+                 mock.patch("builtins.print"):
+                result = device.main(["--owner", "agent", "run-suite", "sand",
+                                      "--out", str(root / "capture.log"), "--set", "x=010"])
+        self.assertEqual(result, 0)
+        self.assertEqual(b"".join(connection.writes), b"\nSET x 010\n\nRUNSUITE sand\n")
+
+    def test_cli_rejects_invalid_settings_before_locking(self):
+        commands = (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"])
+        for command in commands:
+            for setting, message in (("bad name=1", "expected a console name"),
+                                     (f"x={TUNE_VALUE_MAX + 1}", "value must fit int32")):
+                with self.subTest(command=command[0], setting=setting):
+                    with mock.patch.object(device.device_lock, "LockStore",
+                                           side_effect=AssertionError("lock opened")), \
+                         contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit) as stop:
+                        device.main([*command, "--set", setting])
+                    self.assertEqual(stop.exception.code, 2)
+                    self.assertIn(f"argument --set: {setting!r}: {message}", errors.getvalue())
+
     def test_a_dropped_line_is_asked_again(self):
         class AnswersSecondAsk(FakeConnection):
             def read(self, unused_size):
@@ -1767,6 +1795,20 @@ class TuneSetTests(unittest.TestCase):
 
 
 class ConsoleSetupTests(unittest.TestCase):
+    def test_send_parsing_refuses_tunable_commands_and_line_breaks(self):
+        for command in (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"]):
+            for line in ("SET render.cull 0", "reset render.cull", "GET render.cull", "tune",
+                         "sound stop all\nversion", "sound stop all\r", "  "):
+                with self.subTest(command=command, line=line), \
+                     mock.patch.object(device, "plugged_boards", return_value=[]) as discover, \
+                     contextlib.redirect_stderr(io.StringIO()) as stderr:
+                    with self.assertRaises(SystemExit) as error:
+                        device.main([*command, "--send", line])
+                    self.assertEqual(error.exception.code, 2)
+                    self.assertIn("argument --send", stderr.getvalue())
+                    self.assertIn(repr(line), stderr.getvalue())
+                    discover.assert_not_called()
+
     def run_setup(self, replies, lines):
         connection = FakeConnection(replies)
         args = suite_args()

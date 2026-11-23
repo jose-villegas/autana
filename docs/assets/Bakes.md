@@ -27,11 +27,13 @@ other stages count everything their entry scripts import.
 | A reached line edited, renamed or moved | that stage, and the fit when it is the reference set (the fit names its key) |
 | A start's or fit's code, with the same bytes out | only that bake: the fit and levels keys name the bytes they read |
 
-A pull request that changes what a mesh is made from gets its bake from the
-Bakes workflow: its CPU job bakes the meshes the lock lacks and uploads them,
+A branch that changes what a mesh is made from gets its bake from the
+Bakes workflow, which every push to a branch of this repository starts: its CPU job bakes the meshes the lock lacks and uploads them,
 and the lock check fails until the author runs `bake.py lock --from-run N`
-with that run and commits the lock. A fit needs the CUDA GPU, so the Bakes GPU
-workflow makes it, started by hand on the branch; no pull request reaches that
+with that run and commits the lock. A branch keeps one Bakes run: a push cancels
+the run of the head before it, so wait for the run to finish before `lock --from-run`,
+which refuses one still going.
+A fit needs the CUDA GPU, so the Bakes GPU workflow makes it, started by hand on the branch; no pull request reaches that
 runner. `--from-run` repeats, so the two runs lock together
 (`--from-run CPU --from-run GPU`); two runs that made one key with different
 bytes fail, naming both. Only a run's
@@ -43,14 +45,10 @@ levels bake whose fit it has not locked yet; the CPU run makes it afterwards. A 
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
-A bake that traces rays differs by CPU vendor too (an AMD and an Intel host
-trace a few rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the
-vendor its meshes and reference sets were made on. A run records its host's
-vendor; `lock --from-run` refuses a run that made one on another vendor, naming
-both. A hosted runner's vendor cannot be asked for, so a Bakes job with traced
-work starts on several runners and the first on the lock's vendor does it
-([`runner_vendor.py`](../../scripts/ci/runner_vendor.py)). When none is,
-[`bakes-vendor-rerun.yml`](../../.github/workflows/bakes-vendor-rerun.yml) re-runs the job.
+A bake that traces rays differs between CPU models too (an AMD and an Intel host
+trace a few rays an ulp apart), so every Bakes job that makes a bake runs on the
+self-hosted runner that makes the fits (see [The bakes runner](#the-bakes-runner)).
+A row records the CPU vendor it was made on, and a rerun adopts an earlier attempt's bake only from a matching one.
 
 A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
@@ -62,7 +60,7 @@ Every reference shard renders that plan and copies its pose files byte for byte;
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the
-self-hosted runner by its label (default `gpu`); with `again`, the run fails
+self-hosted runner by its label (default `gpu-legion`); with `again`, the run fails
 when a fit makes other bytes than its lock row, which checks a fit on a GPU
 other than the one that made it.
 
@@ -103,3 +101,26 @@ SH incident-radiance grids are a CPU bake kind, `sh_probes`, requested by a
 scene's sibling `<scene>.probes.toml`. They produce one `.shpr` payload per scene,
 keyed independently of mesh and reference bakes. See
 [SH probe baking](../render/offline/SH-Probes.md) for sampling and commands.
+
+## The bakes runner
+
+One self-hosted runner, labelled `gpu-legion`, makes every bake: the Bakes jobs
+that make one (meshes, exports, sounds, levels, the reference plan and shards)
+and the Bakes GPU fits. It is one instance, so a CPU bake and a fit queue behind
+each other. A fit runs in its fit environment, `~/gpu/env`
+([r3d README](../../launcher/tools/r3d/README.md)); a CPU job makes a venv of
+its own over it, so what it installs stays in the venv; only a Bakes GPU run
+installs into the fit environment. Both run on that environment's Python, the
+release the r3d README creates it with, not the `.python-version` one.
+Neither needs root: the machine holds LLVM, Git LFS, a C compiler and the X
+libraries Blender loads.
+Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
+on the half of the CPUs board work leaves, under the stage's hang guard.
+
+No pull request starts the Bakes workflow, since a self-hosted runner never
+takes a pull request's code ([`check_workflows.py`](../../scripts/gates/check_workflows.py)).
+A pull request's bake checks are those of the push run on its head commit. A
+fork's pull request has none until a maintainer pushes its branch here; until
+then the hosted [`bakes-fork.yml`](../../.github/workflows/bakes-fork.yml)
+fails it when it needs a bake. While the machine is off, its jobs wait in GitHub's queue,
+which fails a job after a day; nothing falls back to a hosted runner, whose bytes would differ.

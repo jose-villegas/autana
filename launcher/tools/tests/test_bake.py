@@ -693,10 +693,9 @@ class FittedBakeCase(unittest.TestCase):
         return next(item for item in self.bakes(starts)
                     if item.kind == "levels")
 
-    def command(self, argv, lock, made=None, mesh_cpu_vendor=None, cpu=None):
-        """Runs bake.py main over the tree with the lock (naming `mesh_cpu_vendor`), the runs' makes and this host's CPU
-        vendor given and produce.produce stubbed: a start is made with MADE_SHA256, a fit with FIT_SHA256.
-        Returns what it did."""
+    def command(self, argv, lock, made=None, cpu=None, status="completed"):
+        """Runs bake.py main over the tree with the lock, the runs' makes and status and this host's CPU vendor given
+        and produce.produce stubbed: a start is made with MADE_SHA256, a fit with FIT_SHA256. Returns what it did."""
         written, produced, fresh = [], [], []
 
         def stub(item, cache, lock=None, blender=None, fresh_references=None):
@@ -706,17 +705,18 @@ class FittedBakeCase(unittest.TestCase):
 
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(bake, "read_lock_tables",
-                               return_value={"bake": lock, "poses": {}, "mesh_cpu_vendor": mesh_cpu_vendor}), \
-                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append((rows, kwargs))), \
+                               return_value={"bake": lock, "poses": {}}), \
+                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
+                mock.patch.object(bake, "run_status", return_value=status) as asked, \
                 mock.patch.object(bake, "cpu_vendor", return_value=cpu), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = bake.main([*argv, str(self.root), "--cache", str(self.cache)])
-        rows, kwargs = written[0] if written else ([], {})
+        rows = written[0] if written else []
         return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced, fresh=fresh,
                                      rows={row["output"]: row for row in rows}, written=bool(written),
-                                     mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
+                                     status_asked=asked.call_count)
 
     def locked(self, sha256, **fields):
         """The lock holding each start with the bytes `sha256` and each reference set with REFERENCE_SHA256."""
@@ -829,6 +829,19 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(list(done.rows), [self.start.output])
         self.assertIn("still to lock", done.out)
         self.assertIn(self.fit(MADE_SHA256).output, done.out)
+
+    def test_a_lock_from_a_run_still_going_fails_naming_it_and_writes_nothing(self):
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        for status in ("queued", "in_progress"):
+            done = self.command(["lock", "--from-run", str(RUN), "--partial"], {}, made, status=status)
+            self.assertEqual(done.code, 1)
+            self.assertIn(f"run {RUN} is {status}", done.err)
+            self.assertFalse(done.written)
+
+    def test_a_lock_without_a_run_asks_no_status(self):
+        done = self.command(["lock", "--partial"], self.locked(LOCKED_SHA256, run=RUN), status="in_progress")
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.status_asked, 0)
 
     def test_kinds_repeat_and_levels_key_on_the_fit_the_same_command_made(self):
         done = self.command(["bake", "--kind", "fit", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
@@ -1187,85 +1200,35 @@ class PosesTests(FittedBakeCase):
 
 
 class CpuVendorTests(FittedBakeCase):
-    """A mesh bake's bytes differ between CPU vendors: the lock takes meshes made only on its own vendor's hosts,
-    and a run to upload makes them only there. A fit, made on the GPU host whatever its CPU, is not checked."""
+    """A run records the CPU vendor it made each row on, for a rerun's adoption; one runner makes every traced bake,
+    so neither `bake` nor `lock` checks it, and the lock holds no vendor."""
 
     AMD, INTEL = "AuthenticAMD", "GenuineIntel"
 
-    def made(self, start_cpu, fit_cpu=None):
-        """A run's makes: the start mesh on `start_cpu` and its fit on `fit_cpu`; None leaves the CPU out."""
-        made = {item.key: row_of(item, sha256, run=RUN, **({"cpu_vendor": start_cpu} if start_cpu else {}))
+    def made(self, start_cpu):
+        """A run's makes: the start mesh and reference set on `start_cpu`, its fit and levels."""
+        made = {item.key: row_of(item, sha256, run=RUN, cpu_vendor=start_cpu)
                 for item, sha256 in ((self.start, MADE_SHA256), (self.reference, REFERENCE_SHA256))}
         fit = self.fit(MADE_SHA256)
-        made[fit.key] = row_of(fit, FIT_SHA256, run=RUN, **({"cpu_vendor": fit_cpu} if fit_cpu else {}))
+        made[fit.key] = row_of(fit, FIT_SHA256, run=RUN)
         made[self.level(MADE_SHA256).key] = row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)
         return made
 
-    def lock(self, made, mesh_cpu_vendor, lock=None):
-        return self.command(["lock", "--from-run", str(RUN)], lock or {}, made, mesh_cpu_vendor=mesh_cpu_vendor)
+    def test_a_run_on_either_vendor_locks_and_the_rows_name_none(self):
+        for cpu in (self.AMD, self.INTEL):
+            with self.subTest(cpu=cpu):
+                done = self.command(["lock", "--from-run", str(RUN)], {}, self.made(cpu))
+                self.assertEqual(done.code, 0, done.err)
+                self.assertEqual(done.rows[self.start.output]["sha256"], MADE_SHA256)
+                self.assertEqual(done.rows[self.reference.output]["sha256"], REFERENCE_SHA256)
+                self.assertNotIn("cpu_vendor", done.rows[self.start.output])
 
-    def test_a_run_whose_mesh_was_made_on_another_vendor_is_refused_naming_both(self):
-        done = self.lock(self.made(self.INTEL), self.AMD)
-        self.assertEqual(done.code, 1)
-        self.assertFalse(done.written, "a refused run writes no lock")
-        for named in (f"run {RUN}", self.start.output, self.INTEL, self.AMD, "re-run the failed Bakes job"):
-            self.assertIn(named, done.err)
-
-    def test_a_run_whose_reference_was_made_on_another_vendor_is_refused_naming_it(self):
-        made = self.made(self.AMD)
-        made[self.reference.key]["cpu_vendor"] = self.INTEL
-        done = self.lock(made, self.AMD)
-        self.assertEqual(done.code, 1)
-        self.assertFalse(done.written)
-        for named in (f"run {RUN}", self.reference.output, self.INTEL, self.AMD):
-            self.assertIn(named, done.err)
-
-    def test_a_run_that_names_no_vendor_is_refused(self):
-        done = self.lock(self.made(None), self.AMD)
-        self.assertEqual(done.code, 1)
-        self.assertIn("a CPU it does not name", done.err)
-
-    def test_a_run_on_the_locks_vendor_locks_and_keeps_the_vendor_line(self):
-        done = self.lock(self.made(self.AMD, fit_cpu=self.INTEL), self.AMD)
-        self.assertEqual(done.code, 0, done.err)
-        self.assertEqual(done.rows[self.start.output]["sha256"], MADE_SHA256)
-        self.assertEqual(done.rows[self.fit(MADE_SHA256).output]["sha256"], FIT_SHA256)
-        self.assertNotIn("cpu_vendor", done.rows[self.start.output], "the vendor is the lock's line, not a row field")
-        self.assertEqual(done.mesh_cpu_vendor, self.AMD)
-
-    def test_a_mesh_the_lock_already_holds_is_not_taken_so_not_checked(self):
-        made = self.made(self.INTEL)
-        made[self.fit(LOCKED_SHA256).key] = row_of(self.fit(LOCKED_SHA256), FIT_SHA256, run=RUN)
-        made[self.level(LOCKED_SHA256).key] = row_of(self.level(LOCKED_SHA256), FIT_SHA256, run=RUN)
-        done = self.lock(made, self.AMD, self.locked(LOCKED_SHA256, run=RUN - 1))
-        self.assertEqual(done.code, 0, done.err)
-        self.assertEqual(done.rows[self.start.output]["sha256"], LOCKED_SHA256)
-
-    def test_a_lock_that_names_no_vendor_takes_the_runs(self):
-        done = self.lock(self.made(self.INTEL), None)
-        self.assertEqual(done.code, 0, done.err)
-        self.assertEqual(done.mesh_cpu_vendor, self.INTEL)
-
-    def test_baking_meshes_to_upload_on_another_vendor_fails_before_making_anything(self):
-        out = str(self.root / "upload")
-        done = self.command(["bake", "--kind", "mesh", "--out", out], {}, mesh_cpu_vendor=self.AMD, cpu=self.INTEL)
-        self.assertEqual(done.code, 1)
-        self.assertEqual(done.produced, [])
-        for named in (self.INTEL, self.AMD, "re-run the failed Bakes job"):
-            self.assertIn(named, done.err)
-        for argv, cpu in ((["bake", "--kind", "mesh"], self.INTEL), (["bake", "--kind", "mesh", "--out", out], self.AMD)):
-            with self.subTest(argv=argv, cpu=cpu):
-                with mock.patch.object(produce, "export"):
-                    done = self.command(argv, {}, mesh_cpu_vendor=self.AMD, cpu=cpu)
+    def test_baking_meshes_to_upload_makes_them_on_either_vendor(self):
+        for cpu in (self.AMD, self.INTEL):
+            with self.subTest(cpu=cpu), mock.patch.object(produce, "export"):
+                done = self.command(["bake", "--kind", "mesh", "--out", str(self.root / "upload")], {}, cpu=cpu)
                 self.assertEqual(done.code, 0, done.err)
                 self.assertEqual([item.output for item in done.produced], [self.start.output])
-
-    def test_a_run_with_no_mesh_to_make_passes_on_any_vendor(self):
-        with mock.patch.object(produce, "export"):
-            done = self.command(["bake", "--kind", "mesh", "--out", str(self.root / "upload")],
-                                self.locked(LOCKED_SHA256, run=RUN - 1), mesh_cpu_vendor=self.AMD, cpu=self.INTEL)
-        self.assertEqual(done.code, 0, done.err)
-        self.assertEqual(done.produced, [])
 
     def test_the_vendor_is_read_from_cpuinfo_and_recorded_with_a_make(self):
         cpuinfo = self.root / "cpuinfo"
@@ -1279,13 +1242,12 @@ class CpuVendorTests(FittedBakeCase):
             self.assertIsNone(bake.cpu_vendor())
             self.assertNotIn("cpu_vendor", produce.record(bake_of("j" * 64, tree), tree, self.cache))
 
-    def test_the_vendor_line_reads_back_and_a_lock_without_one_writes_none(self):
+    def test_a_lock_names_no_vendor(self):
         path = self.root / "bakes.lock"
-        bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path, mesh_cpu_vendor=self.AMD)
-        self.assertEqual(bake.read_lock_tables(path)["mesh_cpu_vendor"], self.AMD)
+        path.write_text('mesh_cpu_vendor = "AuthenticAMD"\n')
+        self.assertEqual(set(bake.read_lock_tables(path)), {"bake", "poses"}, "an old lock's vendor line is not read")
         bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path)
-        self.assertIsNone(bake.read_lock_tables(path)["mesh_cpu_vendor"])
-        self.assertNotIn("mesh_cpu_vendor", path.read_text())
+        self.assertNotIn("vendor", path.read_text())
 
 
 class FitGpuTests(FittedBakeCase):
@@ -1311,12 +1273,12 @@ class FitGpuTests(FittedBakeCase):
                 self.reference.key: row_of(self.reference, REFERENCE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
                 fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU),
                 self.level(MADE_SHA256).key: row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)}
-        done = self.command(["lock", "--from-run", str(RUN)], {}, made, mesh_cpu_vendor="AuthenticAMD")
+        done = self.command(["lock", "--from-run", str(RUN)], {}, made)
         self.assertEqual(done.code, 0, done.err)
         self.assertEqual(done.rows[fit.output]["gpu"], self.GPU)
         self.assertNotIn("gpu", done.rows[self.start.output])
         path = self.root / "bakes.lock"
-        bake.write_lock(list(done.rows.values()), path, mesh_cpu_vendor="AuthenticAMD")
+        bake.write_lock(list(done.rows.values()), path)
         self.assertIn(f'gpu = "{self.GPU}"', path.read_text(encoding="utf-8"))
 
 
@@ -1651,6 +1613,36 @@ class LockTests(unittest.TestCase):
             bake.run_files(7, self.root / "run")
         self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
         self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
+
+    def test_a_runs_status_is_read_through_the_api(self):
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch.object(bake, "github_get", return_value=json.dumps({"status": "queued"}).encode()) as get:
+            self.assertEqual(bake.run_status(7), "queued")
+        self.assertEqual(get.call_args.args, (f"{bake.API_URL}/actions/runs/7", "t"))
+
+    def test_each_unfinished_run_is_named_and_a_finished_one_is_not(self):
+        statuses = {41: "completed", 42: "in_progress", 43: "waiting"}
+        with mock.patch.object(bake, "run_status", side_effect=statuses.get):
+            with self.assertRaises(bake.BakeMissing) as refused:
+                bake.refuse_unfinished([41, 42, 43])
+            bake.refuse_unfinished([41])
+        self.assertIn("run 42 is in_progress", str(refused.exception))
+        self.assertIn("run 43 is waiting", str(refused.exception))
+        self.assertNotIn("run 41", str(refused.exception))
+
+    def test_the_run_a_ci_job_runs_in_locks_its_own_bakes_while_it_goes(self):
+        # The Bakes CPU job locks from its own run on the runner, never pushing that lock.
+        with mock.patch.dict("os.environ", {"GITHUB_RUN_ID": "42"}), \
+                mock.patch.object(bake, "run_status", return_value="in_progress") as status:
+            bake.refuse_unfinished([42])
+            with self.assertRaisesRegex(bake.BakeMissing, "run 43 is in_progress"):
+                bake.refuse_unfinished([42, 43])
+        self.assertEqual([call.args for call in status.call_args_list], [(43,)])
+
+    def test_a_status_read_without_a_token_fails_naming_the_run(self):
+        with mock.patch.object(bake, "github_token", return_value=None), \
+                self.assertRaisesRegex(bake.BakeMissing, "run 7"):
+            bake.run_status(7)
 
     def test_a_refused_rename_onto_the_same_bytes_is_done_and_leaves_no_scratch(self):
         target = self.cache / "a.bundle"

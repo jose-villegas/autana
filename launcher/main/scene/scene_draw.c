@@ -407,10 +407,10 @@ draw_active(uint32_t dt_ms, int quarter, int width, int height) {
     }
 }
 
-void
-scene_render(uint32_t dt_ms, int quarter, int width, int height) {
+static bool
+render_frame(uint32_t dt_ms, int quarter, int width, int height, bool (*before_draw)(void)) {
     if (paused) {
-        return;
+        return before_draw == NULL;
     }
     stepped = true;
     for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
@@ -419,10 +419,26 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
             scene_animation_step(scene, dt_ms);
         }
     }
+    if (before_draw != NULL && !before_draw()) {
+        return false;
+    }
     if (active.scene != NULL) {
         draw_active(dt_ms, quarter, width, height);
     }
+    return true;
 }
+
+void
+scene_render(uint32_t dt_ms, int quarter, int width, int height) {
+    (void)render_frame(dt_ms, quarter, width, height, NULL);
+}
+
+#ifndef ESP_PLATFORM
+bool
+scene_render_with_setup(uint32_t dt_ms, int quarter, int width, int height, bool (*before_draw)(void)) {
+    return render_frame(dt_ms, quarter, width, height, before_draw);
+}
+#endif
 
 bool
 scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
