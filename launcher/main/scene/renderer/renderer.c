@@ -185,7 +185,6 @@ copy_texels(renderer_texturing_t* block) {
     return true;
 }
 
-/* The textures another renderer of `scene` opened for renderer `i`'s pack mesh, or NULL. */
 /* The UV asset beside renderer `i`'s pack mesh, the one its textures open from. */
 static asset_status_t
 open_uvs(const scene_t* scene, int i, asset_view_t* uvs) {
@@ -193,6 +192,7 @@ open_uvs(const scene_t* scene, int i, asset_view_t* uvs) {
                                      R3D_TEXTURE_UVS_ASSET, false, uvs);
 }
 
+/* The textures another renderer of `scene` opened for renderer `i`'s pack mesh, or NULL. */
 static renderer_texturing_t*
 shared_texturing(const scene_t* scene, int i) {
     const char* mesh_id = scene->asset.renderers[i].mesh;
