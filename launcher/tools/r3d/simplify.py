@@ -104,6 +104,7 @@ class Allocation:
     detail: object = None
     split: object = None
     double_sided: tuple = ()
+    held: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -127,12 +128,18 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     """Material shares budget the rest; carved meshes own independent per-copy budgets."""
     allocation = Allocation() if allocation is None else allocation
     tri_o = np.zeros(len(tris), dtype=np.int64) if allocation.tri_o is None else np.asarray(allocation.tri_o)
+    held = np.zeros(len(tris), dtype=bool) if allocation.held is None else np.asarray(allocation.held, dtype=bool)
     options = REGULARIZE | PERMISSIVE
     if seal_seams:
-        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o]), seal_tolerance(position_scale))
-        labels, tri_o = ownership.T
+        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o, held]),
+                                           seal_tolerance(position_scale))
+        labels, tri_o, held = ownership.T
+        held = held.astype(bool)
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
+    # Held triangles (thinned pieces) pass the collapse whole: their corners are locked, so the rest pays the budget.
+    locks = np.zeros(len(pos), dtype=bool)
+    locks[tris[held]] = True
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     probes = None
     if seal_seams and allocation.camera is not None:
@@ -141,7 +148,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
         probes = LeakProbes(pos, tris, *allocation.camera)
     if allocation.meshes or allocation.selection:
         return _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation,
-                                colour_deviation, options, position_scale, probes)
+                                colour_deviation, options, position_scale, locks, probes)
     for group, share in reserved:
         sel = np.isin(labels, list(group)) & ~taken
         parts.append((sel, max(1, int(triangles * share))))
@@ -153,6 +160,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
         if budget == 0 or not np.any(sel):
             continue
         p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options,
+                               locks if np.any(locks[tris[sel]]) else None,
                                leaks=None if probes is None else (probes, np.flatnonzero(sel)))
         out_pos.append(p)
         out_rgb.append(c)
@@ -437,7 +445,7 @@ def own_materials(placed, faces, materials, pos, own_tris, own_labels):
 
 
 def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale,
-                     probes=None):
+                     held_locks, probes=None):
     from .objects.contact import contact_graph
 
     selected = (match_meshes(tri_o, labels, allocation.object_names, allocation.material_names, allocation.meshes)
@@ -448,7 +456,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
     requested = rest_budget + sum(budgets[obj] for obj in selected)
     edges = contact_graph(pos, tris, tri_o, position_scale)
     parts, policies = _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budgets)
-    locks = np.zeros(len(pos), dtype=bool)
+    locks = held_locks.copy()
     for edge in edges:
         if any(policies.get(obj) == 'lock' or (edge.unshared and policies.get(obj) == 'weld')
                for obj in (edge.a, edge.b)):

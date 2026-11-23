@@ -55,6 +55,7 @@ from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
+from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
@@ -154,6 +155,20 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
+def thin_choice(src, tri_v, tri_m, settings, renderer, seen, selected):
+    """(per triangle, the share thinning keeps; its piece): the thin rule's material, and with
+    simplify on, every aggregate of a cut-out material at the simplify ratio (the budget over the triangles seen).
+    Carved objects are left to their own thinning."""
+    names = {settings.thin.material} if settings.thin else set()
+    cut = alpha_tested(src.textures) if settings.simplify else np.zeros(len(src.names), dtype=bool)
+    candidates = np.isin(tri_m, [i for i, name in enumerate(src.names) if cut[i] or name in names])
+    piece = np.full(len(tri_v), -1)
+    if np.any(candidates):
+        piece[candidates] = pieces(src.p, tri_v[candidates], tri_m[candidates])
+    ratio = renderer.variant.triangles / max(seen, 1) if settings.simplify else 1
+    return thin_keep(tri_m, src.tri_o, piece, settings.thin, cut, ratio, src.names, skip=selected), piece
+
+
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
     """The rules' objects plus every free repeat, each carried by one rule per shape whose `triangles` is pinned
     or derived (objects/carve.py), and the derived shapes for the report."""
@@ -194,7 +209,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
         for name, report in card_report.items():
             share = "always" if report['forced'] else f"{report['see_through']:.3f}"
-            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f}, "
+            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f} "
+                f"(all area {report['covered_area']:.3f}), "
                 f"accepted={report['accepted']}")
         selected_cards = np.isin(tri_m, [material for material, _, _ in accepted_cards])
         if selected_cards.any():
@@ -234,40 +250,36 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
-        if settings.thin:
-            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
-            seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+        points, held = src.p, np.zeros(len(tri_v), dtype=bool)
+        keep, piece = thin_choice(src, tri_v, tri_m, settings, renderer, int(seen.sum()), selected)
+        if np.any(keep < 1):
+            kept, points, tri_v = thin(src.p, tri_v, piece, keep, rng)
+            seen &= kept
+            held = keep < 1
         if selected:
             carved = np.isin(src.tri_o, list(selected))
             seen[carved] = carved_keep[carved]
         step["triangles_out"] = int(seen.sum())
-    shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
+    shown_v, shown_m, shown_o, shown_h = tri_v[seen], tri_m[seen], src.tri_o[seen], held[seen]
     mesh_report = {}
     shapes = [] if carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(light_src, job, scene)
         if settings.simplify:
             log("splitting evenly")
-            wp, wt = weld_keeping(src.p, shown_v)
-            dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o]), settings.simplify.dense_edge)
-            dm, do = ownership.T
-            parts = [(material, do[dm == material], *compact(dp, dt[dm == material]))
-                     for material in range(len(src.names)) if np.any(dm == material)]
+            wp, wt = weld_keeping(points, shown_v)
+            dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o, shown_h]),
+                                        settings.simplify.dense_edge)
+            dm, do, dh = ownership.T
         else:
-            parts = [(material, shown_o[shown_m == material], *compact(src.p, shown_v[shown_m == material]))
-                     for material in range(len(src.names))
-                     if np.any(shown_m == material)]
-        if selected:
-            split_parts = []
-            for material, owners, mp, mt in parts:
-                carved = np.isin(owners, list(selected))
-                for mask in (carved, ~carved):
-                    if np.any(mask):
-                        split_parts.append((material, owners[mask], *compact(mp, mt[mask])))
-            parts = split_parts
-        all_pos, all_rgb, all_tris, all_double, all_mat, all_obj = [], [], [], [], [], []
+            dp, dt, dm, do, dh = points, shown_v, shown_m, shown_o, shown_h
+        carved = np.isin(do, list(selected))
+        parts = [(material, do[mask], hold, *compact(dp, dt[mask]))
+                 for material in range(len(src.names)) for split in (carved, ~carved) for hold in (False, True)
+                 for mask in [(dm == material) & split & (dh.astype(bool) == hold)] if np.any(mask)]
+        all_pos, all_rgb, all_tris, all_double, all_mat, all_obj, all_held = [], [], [], [], [], [], []
         base = 0
-        for material, owners, mp, mt in parts:
+        for material, owners, hold, mp, mt in parts:
             double = src.names[material] in double_names
             if job.bake and not np.all(np.isin(owners, list(selected))):
                 vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, occluder, bounce,
@@ -280,6 +292,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             all_double.append(np.full(len(vtris), int(double)))
             all_mat.append(np.full(len(vtris), material))
             all_obj.append(owners)
+            all_held.append(np.full(len(vtris), hold))
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
         positions = np.concatenate(all_pos) if all_pos else np.empty((0, 3))
@@ -311,6 +324,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                                                              occluder, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes,
+                                                                         held=np.concatenate(all_held),
                                                                          camera=seal_camera(scene, renderer) if steps.seal_seams else None),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],

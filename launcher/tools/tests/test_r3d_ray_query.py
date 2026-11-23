@@ -19,19 +19,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
-
-
-def have_llvm():
-    if not HAVE_MITSUBA:
-        return False
-    import drjit as dr
-
-    return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
-
-
-from tests.r3d_env import needs_mitsuba  # noqa: E402
-needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
+from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
 
 
 def brute_force(positions, tris, origin, direction):

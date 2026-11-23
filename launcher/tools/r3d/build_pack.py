@@ -47,6 +47,7 @@ products, never committed.
 
 import argparse
 import functools
+import hashlib
 import os
 import pathlib
 from types import SimpleNamespace
@@ -57,12 +58,13 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from bake import bake  # noqa: E402
+from build.c_header import read_define  # noqa: E402
 from docs.producer import DEPENDS_FOLDER  # noqa: E402
 from audio import sound_asset  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset, curve_asset  # noqa: E402
-from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
+from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import mesh_bundle, mesh_asset, scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
@@ -232,14 +234,15 @@ def pack_jobs(paths, development=True):
 
 
 def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
-               max_influences=skin_asset.DEFAULT_INFLUENCES, development=True):
+               max_influences=skin_asset.DEFAULT_INFLUENCES, development=True, host_provenance=False):
     """{pack name: its bytes}. Every mesh and sound come from the bake cache by its locked key (bake/bake.py),
     `cache` or the user cache, downloading what it lacks unless `offline`; each --replace NAME=FILE takes
     mesh NAME from FILE instead and is never fetched. The lock is this repository's: a mesh of a scene
     or import outside it (a test's or a scratch scene) is the file beside it. With `unlocked` a list, a
     pack whose bakes only lack their lock rows (bake.BakeUnlocked) is left out and its name appended.
     The uncached skin step adds rig entries with `max_influences` weights per vertex.
-    `development=False` omits development-only folder packs."""
+    `development=False` omits development-only folder packs. `host_provenance` records the
+    source bundle and texture pack digests of each mesh for host id captures."""
     packs, jobs = pack_jobs(paths) if development else pack_jobs(paths, development=False)
     replaced = {}
     for item in replace:
@@ -298,21 +301,28 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                         previous = camera_nodes.setdefault(path.animation, path.node)
                         if previous != path.node:
                             raise SettingsError(f"{source}: camera clip {path.clip!r} selects different nodes")
-        bundle_rows, bundle_copies = [], {}
+        texture_packs = {found.start.tree.resolve(): fetched[found.tree.resolve()].read_bytes()
+                         for found in wanted.get(name, []) if found.kind == "texture"}
+        bundle_rows, bundle_copies, provenance = [], {}, []
         for key, source in sources.items():
             if source.suffix == mesh_bundle.SUFFIX:
-                rows, bundle_copies[key] = mesh_bundle.decode(source.read_bytes())
+                data = source.read_bytes()
+                rows, bundle_copies[key] = mesh_bundle.decode(data)
                 if key in replaced:
                     rows = mesh_bundle.rename_rest(rows, bundle_copies[key], key)
                 bundle_rows.extend(rows)
+                if host_provenance:
+                    texture = texture_packs.get(original_packs[name][key].resolve())
+                    bundle_hash = hashlib.sha256(data).digest()
+                    texture_hash = hashlib.sha256(texture).digest() if texture is not None else bytes(len(bundle_hash))
+                    provenance.extend(mesh.encode("ascii").ljust(NAME_BYTES, b"\0") + bundle_hash + texture_hash
+                                      for mesh, kind, _ in rows if kind == LIT_MESH)
         entry_rows = [pack_entry(key, source, engine_frame=False, camera_node=camera_nodes.get(source.resolve()),
                                  cache=cache, offline=offline, copies=bundle_copies) for key, source in sorted(sources.items())
                       if source.suffix != mesh_bundle.SUFFIX]
         entry_rows.extend(bundle_rows)
-        for found in wanted.get(name, []):
-            if found.kind == "texture":
-                textured = parse_pack(fetched[found.tree.resolve()].read_bytes())
-                entry_rows.extend((key, kind, data) for key, (kind, data) in textured.items())
+        for texture in texture_packs.values():
+            entry_rows.extend((key, kind, data) for key, (kind, data) in parse_pack(texture).items())
         mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
                      if kind == LIT_MESH and key in original_packs[name] and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
@@ -325,6 +335,11 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
                 raise SettingsError(f"entry {key!r}: {error}") from error
         validate_colour_sets(mirrored)
         validate_clip_scales(mirrored)
+        if provenance:
+            header = REPO / "launcher/tools/render/render_host.h"
+            entry = read_define(header, "RENDER_HOST_BAKE_PROVENANCE_NAME")
+            kind = read_define(header, "RENDER_HOST_BAKE_PROVENANCE_TYPE").encode("ascii")
+            mirrored.append((entry, kind, b"".join(provenance)))
         result[name] = build_pack(sorted(mirrored))
     return result
 
@@ -476,6 +491,7 @@ def main(argv=None):
     parser.add_argument("--development", action="store_true", help="include development-only packs in the partition image")
     parser.add_argument("--replace", action="append", default=[], metavar="NAME=FILE",
                         help="take mesh NAME from FILE: a scratch bake beside the committed ones")
+    parser.add_argument("--host-provenance", action="store_true", help="record input digests for host id captures")
     parser.add_argument("--pack-of", metavar="ID", help="print the pack that holds entry ID and write nothing")
     parser.add_argument("--bake-cache", metavar="DIR", help="the bake cache; the user cache when omitted")
     parser.add_argument("--offline", action="store_true", help="never download a bake the cache lacks")
@@ -498,7 +514,7 @@ def main(argv=None):
         cache = pathlib.Path(args.bake_cache) if args.bake_cache else None
         unlocked = [] if args.skip_unlocked else None
         packs = pack_bytes(paths, args.replace, cache, args.offline, unlocked, args.max_influences,
-                           development=args.development or not args.image)
+                           development=args.development or not args.image, host_provenance=args.host_provenance)
         if os.environ.get(DEPENDS_FOLDER):
             list_reads(paths, os.environ[DEPENDS_FOLDER])
         if args.skip_unlocked:

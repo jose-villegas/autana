@@ -1,13 +1,12 @@
 /*
  * r3d_dynamic_mesh: a lit mesh rebuilt from caller triangles, for geometry
- * made at run time (a fluid's surface, a generated shape). The source is a
- * plain indexed mesh with one colour per vertex, and for a textured mesh
- * one UV per vertex; a build cuts it into
- * clusters of at most R3D_DYNAMIC_CLUSTER_TRIANGLES triangles, in source
- * order, each owning copies of the vertices it uses, and hangs them off a
- * tree of leaves over R3D_DYNAMIC_LEAF_CLUSTERS clusters and inner nodes
- * over R3D_LIT_NODE_CHILDREN_MAX. The result is an ordinary r3d_lit_mesh_t the raster
- * draws, valid until the next build.
+ * made at run time (a fluid's surface, a generated shape). The source is an
+ * r3d_mesh_source_t; a build cuts it into clusters of at most
+ * R3D_DYNAMIC_CLUSTER_TRIANGLES triangles, in source order, each owning
+ * copies of the vertices it uses, and hangs them off a tree of leaves over
+ * R3D_DYNAMIC_LEAF_CLUSTERS clusters and inner nodes over
+ * R3D_LIT_NODE_CHILDREN_MAX. The result is an ordinary r3d_lit_mesh_t the
+ * raster draws, valid until the next build.
  *
  * Its vertex and cluster counts are always the capacities, so a raster
  * sizes its scratch once rather than growing it as the source does: the
@@ -22,30 +21,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "math/linear/vec3f.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_mesh_source.h"
 
 /* The bake's default meshlet size (geometry.meshlet_triangles). */
 #define R3D_DYNAMIC_CLUSTER_TRIANGLES 32
 /* Clusters under one leaf node. */
 #define R3D_DYNAMIC_LEAF_CLUSTERS     8
-
-typedef struct {
-    const vec3f_t* positions;   /* model units */
-    const uint8_t (*colors)[3]; /* sRGB, one per vertex */
-    int vertex_count;
-    /* Wound as the maths winds them: (b - a) x (c - a) points out of the
-     * front, right-handed, as iso_surface makes them. The build turns each
-     * over for the raster, which in the engine's mirrored frame meets a front
-     * face wound the other way about that numeric normal. */
-    const uint16_t (*triangles)[3];
-    int triangle_count;
-    bool double_sided;
-    /* One UV per vertex in LUVS's form (1/16 texel, R3D_TEXTURE_UV_SHIFT),
-     * which the caller's r3d_mesh_texturing_t reads from the built mesh's
-     * `uvs`; NULL for an untextured mesh. Needs a textured capacity. */
-    const int16_t (*uvs)[2];
-} r3d_dynamic_source_t;
 
 typedef struct {
     int vertices;  /* output vertices, counting the copies clusters make */
@@ -85,4 +67,4 @@ bool r3d_dynamic_mesh_init(r3d_dynamic_mesh_t* m, void* block, size_t bytes, r3d
  * has them. False when it did not fit, or has UVs and the capacity no room
  * for them: the mesh then holds the triangles that did, in order. Positions past int16 ticks clamp.
  * An empty source leaves no nodes: nothing to draw. */
-bool r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_dynamic_source_t* src);
+bool r3d_dynamic_mesh_build(r3d_dynamic_mesh_t* m, const r3d_mesh_source_t* src);

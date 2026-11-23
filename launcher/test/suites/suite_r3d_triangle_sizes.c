@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../../tools/anim/camera_poses.h"
 #include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
@@ -222,31 +223,33 @@ static char problem[160];
 
 /* NULL when the text reads whole, else the reader's problem. */
 static const char*
-read_poses_text(const char* text, r3d_sizes_poses_t* out) {
-    FILE* f = tmpfile();
+read_poses_text(const char* text, camera_poses_t* out) {
+    const char path[] = "suite_r3d_triangle_sizes_input.txt";
+    FILE* f = fopen(path, "w");
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_TRUE(fputs(text, f) >= 0);
-    rewind(f);
-    const bool read = r3d_sizes_read_poses(f, out, problem, sizeof problem);
     TEST_ASSERT_EQUAL_INT(0, fclose(f));
+    const bool read = camera_poses_load(path, out, problem, sizeof problem);
+    TEST_ASSERT_EQUAL_INT(0, remove(path));
     return read ? NULL : problem;
 }
 
 static void
 test_a_poses_file_gives_its_size_lens_and_poses(void) {
-    r3d_sizes_poses_t* p = malloc(sizeof(*p));
+    camera_poses_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     TEST_ASSERT_NULL(read_poses_text("# two views\nsize 64 48\nlens 0.5 1.0\n\npose 0 0 400 0 0.001 -1\n"
                                      "pose 1.5 -2 60 0.25 0 -1\n",
                                      p));
     TEST_ASSERT_EQUAL_INT(64, p->width);
     TEST_ASSERT_EQUAL_INT(48, p->height);
-    TEST_ASSERT_EQUAL_FLOAT(0.5f, p->half_fov_short_tan);
+    TEST_ASSERT_EQUAL_FLOAT(0.5f, p->lens);
     TEST_ASSERT_EQUAL_INT(2, p->count);
-    TEST_ASSERT_EQUAL_FLOAT(-2.0f, p->eye[1].y);
-    TEST_ASSERT_EQUAL_FLOAT(-60.0f, p->eye[1].z);
-    TEST_ASSERT_EQUAL_FLOAT(1.0f, p->forward[1].z);
-    TEST_ASSERT_EQUAL_FLOAT(0.25f, p->forward[1].x);
+    TEST_ASSERT_EQUAL_FLOAT(-2.0f, p->poses[1].eye.y);
+    TEST_ASSERT_EQUAL_FLOAT(-60.0f, p->poses[1].eye.z);
+    TEST_ASSERT_EQUAL_FLOAT(1.0f, p->poses[1].forward.z);
+    TEST_ASSERT_EQUAL_FLOAT(0.25f, p->poses[1].forward.x);
+    camera_poses_free(p);
     free(p);
 }
 
@@ -254,13 +257,13 @@ static void
 test_a_poses_line_and_its_rotated_pose_make_the_same_asymmetric_view(void) {
     const transformf_t camera_pose = {
         .position = {3.0F, 2.0F, -400.0F}, .rotation = {0.0F, -0.31622777F, 0.0F, 0.9486833F}, .scale = vec3f_one()};
-    r3d_sizes_poses_t* poses = malloc(sizeof(*poses));
+    camera_poses_t* poses = malloc(sizeof(*poses));
     TEST_ASSERT_NOT_NULL(poses);
     TEST_ASSERT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 3 2 400 -0.6 0 -0.8\n", poses));
     const viewport_t viewport = {poses->width, poses->height, 0};
-    const render_view_t runtime = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z, viewport);
-    const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], vec3f_unit_y());
-    const render_view_t measured = render_view_make(&pose, poses->half_fov_short_tan, poses->near_z, viewport);
+    const render_view_t runtime = render_view_make(&camera_pose, poses->lens, poses->near_z, viewport);
+    const transformf_t pose = transformf_looking(poses->poses[0].eye, poses->poses[0].forward, vec3f_unit_y());
+    const render_view_t measured = render_view_make(&pose, poses->lens, poses->near_z, viewport);
     const vec3f_t runtime_axes[] = {runtime.position, runtime.screen_x, runtime.screen_y, runtime.forward};
     const vec3f_t measured_axes[] = {measured.position, measured.screen_x, measured.screen_y, measured.forward};
     for (size_t axis = 0; axis < sizeof runtime_axes / sizeof runtime_axes[0]; axis++) {
@@ -268,12 +271,13 @@ test_a_poses_line_and_its_rotated_pose_make_the_same_asymmetric_view(void) {
         TEST_ASSERT_FLOAT_WITHIN(1.0E-5F, runtime_axes[axis].y, measured_axes[axis].y);
         TEST_ASSERT_FLOAT_WITHIN(1.0E-5F, runtime_axes[axis].z, measured_axes[axis].z);
     }
+    camera_poses_free(poses);
     free(poses);
 }
 
 static void
 test_a_poses_file_missing_a_part_or_a_number_is_refused(void) {
-    r3d_sizes_poses_t* p = malloc(sizeof(*p));
+    camera_poses_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\npose 0 0 400 0 0 -1\n", p));
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\n", p));
@@ -281,6 +285,7 @@ test_a_poses_file_missing_a_part_or_a_number_is_refused(void) {
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 0 0 400 0 0 -1 7\n", p));
     TEST_ASSERT_NOT_NULL(read_poses_text("size 64 48\nlens 0.5 1\nposes 0 0 400 0 0 -1\n", p));
     TEST_ASSERT_NOT_NULL(strstr(read_poses_text("size 64 48\n# lens next\nlens 0.5\n", p), "line 3"));
+    camera_poses_free(p);
     free(p);
 }
 
@@ -289,21 +294,23 @@ test_a_poses_file_missing_a_part_or_a_number_is_refused(void) {
 /* "-" reads the poses from standard input, where a generator pipes them. */
 static void
 test_poses_read_from_standard_input_when_the_path_is_a_dash(void) {
-    r3d_sizes_poses_t* p = malloc(sizeof(*p));
+    camera_poses_t* p = malloc(sizeof(*p));
     TEST_ASSERT_NOT_NULL(p);
     FILE* f = fopen(STDIN_POSES, "w");
     TEST_ASSERT_NOT_NULL(f);
     TEST_ASSERT_TRUE(fputs("size 32 16\nlens 0.5 1\npose 0 0 50 0 0 -1\n", f) >= 0);
     TEST_ASSERT_EQUAL_INT(0, fclose(f));
     TEST_ASSERT_NOT_NULL(freopen(STDIN_POSES, "r", stdin));
-    const bool read = r3d_sizes_read_poses_path("-", p, problem, sizeof problem);
+    const bool read = camera_poses_load("-", p, problem, sizeof problem);
     /* Windows keeps an open file; the host runner never reads stdin. */
     TEST_ASSERT_EQUAL_INT(0, fclose(stdin));
     TEST_ASSERT_EQUAL_INT(0, remove(STDIN_POSES));
     TEST_ASSERT_TRUE_MESSAGE(read, problem);
     TEST_ASSERT_EQUAL_INT(32, p->width);
     TEST_ASSERT_EQUAL_INT(1, p->count);
-    TEST_ASSERT_FALSE(r3d_sizes_read_poses_path("no-such-poses-file.txt", p, problem, sizeof problem));
+    camera_poses_free(p);
+    TEST_ASSERT_FALSE(camera_poses_load("no-such-poses-file.txt", p, problem, sizeof problem));
+    camera_poses_free(p);
     free(p);
 }
 
