@@ -179,10 +179,10 @@ scene_baked_controls(int width) {
 
 /* A family's scene: titled and listed as `name_`, keyed `key_`, drawing `family_`'s bake. */
 #define SCENE_BAKED_ENTRY(name_, key_, family_)                                                                        \
-    {.name = name_,                                                                                                    \
-     .key = key_,                                                                                                      \
-     .family = name_,                                                                                                  \
-     .data = family_,                                                                                                  \
+    {.name = (name_),                                                                                                  \
+     .key = (key_),                                                                                                    \
+     .family = (name_),                                                                                                \
+     .data = (family_),                                                                                                \
      .enter = scene_baked_enter,                                                                                       \
      .frame = scene_baked_frame,                                                                                       \
      .exit = scene_baked_exit,                                                                                         \
