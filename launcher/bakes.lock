@@ -86,10 +86,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "bistro.street_fitted_full.texture.pack"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "fab3cf6e351e0101a193f2ca28e07ee74b1e9515b731136cb425fa2a05a3cec5"
+key = "1e2ee3f2eb2f7d13df303b986b08a5db21db3d7c35cc8e99caf8d9ffd2c721ff"
 sha256 = "1a643fc9f717373aa4bc9d7b5efdcb8e2c2114701e1ef6eb21c422d657d23bb4"
 size = 318916
-run = 45078433913
+run = 45111354318
 host = "Linux x86_64"
 
 [[bake]]
