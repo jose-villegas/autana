@@ -218,8 +218,8 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
-bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task,
+bake or reference pose has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
 `GPU_STAGE_HANG_SECONDS`. A dispatch starts at once and keeps the board-lock
 wait; `force` controls freshness independently.
 
@@ -579,9 +579,8 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
                                                      # checks frame count, size and rate agree
 ```
 
-Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
-field's 4 GB, so a run whose video would pass 1 GB is refused before
-anything is drawn, with the frame count
+A RIFF AVI 1.0 file keeps its size in a 32-bit field, so a run whose
+video would pass 4 GB is refused before anything is drawn, with the frame count
 that does fit stated in the refusal; `render_host_video_frames_fit()` gives
 an open run that count, and a run stepped past its `--frames` stops its
 video there with an error. `--video` never changes what a scene's
