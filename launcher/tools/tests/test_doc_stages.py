@@ -20,6 +20,15 @@ MEMINFO = Path("/proc/meminfo")
 POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
 
 
+def flight_scene(renderer):
+    """A scene holding `renderer` whose scene camera has no path (its fits train on probes over its region)
+    and whose second camera flies tour.anim.toml, the flight the board flies."""
+    from types import SimpleNamespace as NS
+    visitor = NS(kind="camera", component=NS(path=None))
+    flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
+    return NS(renderers=[renderer], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
+
+
 class DocStagesTests(unittest.TestCase):
     def test_capture_intervals_are_required_positive_and_common(self):
         first, second = self.tmp / "a.log", self.tmp / "b.log"
@@ -45,10 +54,7 @@ class DocStagesTests(unittest.TestCase):
         import numpy as np
         from r3d import mesh_import, lit_mesh, light, ray_query, poses as poses_module
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
-        # The scene camera, first, has no path (its fits train on probes); the cull flies the flight.
-        flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
-        visitor = NS(kind="camera", component=NS(path=None))
-        scene = NS(renderers=[baked], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
+        scene = flight_scene(baked)
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
         poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
@@ -76,9 +82,7 @@ class DocStagesTests(unittest.TestCase):
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
                              variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
-        flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
-        visitor = NS(kind="camera", component=NS(path=None))
-        scene = NS(renderers=[job], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
+        scene = flight_scene(job)
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory:

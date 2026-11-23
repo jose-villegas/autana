@@ -1,5 +1,6 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
 import csv
+import json
 import os
 import pathlib
 import shutil
@@ -77,11 +78,12 @@ path = { animation = "fly.anim.toml", node = "camera" }
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def render(self, *args):
+    def render(self, *args, frames=2):
         out = self.root / "probe.bmp"
         out.unlink(missing_ok=True)
         env = dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets"))
-        run = subprocess.run([str(self.binary), "--scene", "room", "--frames", "2", "--dt", "100",
+        count = [] if frames is None else ["--frames", str(frames)]
+        run = subprocess.run([str(self.binary), "--scene", "room", *count, "--dt", "100",
                               *args, "-o", str(out)], capture_output=True, text=True, timeout=120, env=env)
         return run, out
 
@@ -90,6 +92,140 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertEqual(run.returncode, 0, run.stderr)
         with Image.open(out) as image:
             return image.copy()
+
+    def test_id_capture_uses_saved_picture_orientation(self):
+        full = self.pixels('--quarter', '0').size
+        squares = []
+        for quarter in range(4):
+            root = self.root / f'orientation-{quarter}'
+            run, path = self.render('--frames', '1', '--quarter', str(quarter), '--view', 'triangles',
+                                    '--ids', str(root), '--size', f'{full[0]}x{full[1]}')
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with Image.open(path) as image:
+                pixels = np.asarray(image.convert('RGB'))
+                size = image.size
+            metadata = json.loads((root / 'entries.json').read_text())
+            self.assertEqual((metadata['width'], metadata['height']), size)
+            ids = np.fromfile(root / '0000.ids', '<u4').reshape(size[1], size[0])
+            np.testing.assert_array_equal(ids == 0, np.all(pixels == pixels[0, 0], axis=-1))
+            side = min(size)
+            x, y = (size[0] - side) // 2, (size[1] - side) // 2
+            square = ids[y:y + side, x:x + side]
+            self.assertEqual(set(np.unique(square)), {0, 1, 2})
+            for changed in (square[::-1], square[:, ::-1], square.T):
+                self.assertFalse(np.array_equal(square, changed))
+            for tag in (0, 1, 2):
+                colours = np.unique(pixels[ids == tag], axis=0)
+                self.assertEqual(len(colours), 1)
+            squares.append(square)
+        for square in squares[1:]:
+            np.testing.assert_array_equal(squares[0], square)
+
+    def test_id_capture_stays_upright_with_panel_output(self):
+        images = []
+        for panel in ((), ('--panel',)):
+            root = self.root / f'panel-ids-{len(panel)}'
+            run, _out = self.render('--quarter', '1', '--size', '80x120', '--view', 'triangles',
+                                    '--ids', str(root), *panel, frames=1)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            metadata = json.loads((root / 'entries.json').read_text())
+            self.assertEqual((metadata['width'], metadata['height']), (120, 80))
+            images.append((root / '0000.ids').read_bytes())
+        self.assertEqual(*images)
+
+    def test_id_capture_records_the_drawn_bundle_digest(self):
+        import hashlib
+        root = self.root / 'digest-ids'
+        run, _out = self.render('--view', 'triangles', '--ids', str(root), frames=1)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        metadata = json.loads((root / 'entries.json').read_text())
+        expected = hashlib.sha256((self.root / 'card.bundle').read_bytes()).hexdigest()
+        self.assertTrue(metadata['entries'])
+        for row in metadata['entries']:
+            self.assertEqual((row.get('bundle_sha256'), row.get('texture_sha256')), (expected, None))
+
+    def test_camera_pose_input_matches_logged_poses(self):
+        sys.path.insert(0, str(TOOLS / "render"))
+        import reference_poses
+        poses = self.root / 'probes.txt'
+        poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 0 0 0 0 -1\n'
+                         'pose 0.1 0.2 0 0.2 0.1 -1\npose 0.2 -0.1 0 -0.1 0.2 -1\n')
+        root = self.root / 'probe-ids'
+        run, _out = self.render('--frames', '3', '--camera', 'visitor', '--camera-poses', str(poses),
+                                '--quarter', '0', '--size', '8x10', '--ids', str(root), '--view', 'triangles')
+        self.assertEqual(run.returncode, 0, run.stderr)
+        check = reference_poses.checker(root / 'capture', self.root, poses)
+        for frame in range(3):
+            check(frame, frame)
+        metadata = json.loads((root / 'entries.json').read_text())
+        self.assertEqual((metadata['width'], metadata['height']), (8, 10))
+        self.assertAlmostEqual(metadata['lens'], 0.7)
+        self.assertAlmostEqual(metadata['near'], 0.25)
+        shifted = self.root / 'shifted.txt'
+        lines = poses.read_text().splitlines()
+        shifted.write_text('\n'.join(lines[:2] + lines[3:] + lines[2:3]) + '\n')
+        with self.assertRaisesRegex(ValueError, 'not at the same pose'):
+            reference_poses.checker(root / 'capture', self.root, shifted)(0, 0)
+
+    def test_camera_pose_input_overrides_the_default_path_camera(self):
+        sys.path.insert(0, str(TOOLS / "render"))
+        import reference_poses
+        poses = self.root / 'off-path.txt'
+        poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 1 0 0.2 0 -1\n'
+                         'pose 0.3 -1 0 -0.2 0.1 -1\npose -0.4 0.5 0.2 0 -0.1 -1\n')
+        root = self.root / 'off-path-ids'
+        run, _out = self.render('--camera-poses', str(poses), '--quarter', '0', '--size', '8x10',
+                                '--ids', str(root), '--view', 'triangles', frames=None)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        check = reference_poses.checker(root / 'capture', self.root, poses)
+        for frame in range(3):
+            check(frame, frame)
+
+    def test_camera_pose_input_rejects_a_different_raster_size(self):
+        poses = self.root / 'wrong-size.txt'
+        poses.write_text('size 8 10\nlens 0.7 0.25\npose 0 0 0 0 0 -1\n')
+        run, _out = self.render('--frames', '1', '--camera-poses', str(poses),
+                                '--quarter', '0', '--size', '9x10')
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('pose size 8x10 differs from render size 9x10', run.stderr)
+
+    def test_camera_pose_count_defaults_to_the_log_and_refuses_an_explicit_mismatch(self):
+        poses = self.root / 'pose-count.txt'
+        pose = 'pose 0 0 0 0 0 -1\n'
+        poses.write_text('size 8 10\nlens 0.7 0.25\n' + pose * 3)
+        ids = self.root / 'pose-count-ids'
+        args = ('--camera-poses', str(poses), '--quarter', '0', '--size', '8x10',
+                '--view', 'triangles', '--ids', str(ids))
+        run, _out = self.render(*args, frames=None)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(len(list(ids.glob('*.ids'))), 3)
+        for count in (2, 4):
+            with self.subTest(count=count):
+                run, _out = self.render(*args, frames=count)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn('--frames differs from pose count', run.stderr)
+        run, _out = self.render(*args, '--poses', str(self.root / 'duplicate.csv'), frames=None)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('drop --poses', run.stderr)
+
+    def test_id_capture_frames_match_entry_ranges(self):
+        for view in ("triangles", "meshlets", "copies"):
+            root = self.root / f"ids-{view}"
+            run, _out = self.render("--view", view, "--ids", str(root))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            metadata = json.loads((root / "entries.json").read_text())
+            for frame in range(2):
+                ids = np.fromfile(root / f"{frame:04d}.ids", "<u4")
+                self.assertEqual(ids.size, metadata["width"] * metadata["height"])
+                covered = ids == 0
+                for row in metadata["entries"]:
+                    if row["frame"] == frame:
+                        covered |= (ids >= row["first_id"]) & (ids < row["first_id"] + row["id_count"])
+                self.assertTrue(covered.all())
+                self.assertTrue((ids != 0).any())
+        refused, _out = self.render("--ids", str(self.root / "no-id-view"))
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("id attachment", refused.stderr)
 
     def test_triangle_sizes_source_poses_match_the_runtime_engine_clip_pixels(self):
         clip = write_camera_clip(self.root, name="asymmetric", reach=2.0, degrees=30.0)
@@ -274,6 +410,17 @@ path = { animation = "fly.anim.toml", node = "camera" }
         video = self.root / "clip.avi"
         self.pixels("--object", "card", "--video", str(video))
         self.assertEqual(video.read_bytes()[:4], b"RIFF")
+        with open(str(video) + ".poses.csv") as handle:
+            poses = list(csv.DictReader(handle))
+        # The video's two frames, where they stood: the rows --poses writes for the same run.
+        logged = self.root / "logged.csv"
+        self.pixels("--object", "card", "--poses", str(logged))
+        with open(logged) as handle:
+            self.assertEqual(poses, list(csv.DictReader(handle)))
+        self.assertEqual([pose["frame"] for pose in poses], ["0", "1"])
+        run, _ = self.render("--video", str(video), "--poses", str(logged))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("drop --poses", run.stderr)
 
     def test_wrapper_build_only_uses_the_requested_directory_and_never_renders(self):
         out = self.root / "build only"

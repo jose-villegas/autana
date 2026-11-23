@@ -40,8 +40,11 @@ OK
 ./launcher/test/run_tests.sh                  # portable suites, on this machine
 ./launcher/test/run_tests.sh --verbose        # the full build-and-test stream
 ./launcher/test/run_tests.sh --sanitize       # with UBSan, and ASan on Linux (CI too)
-./launcher/test/run_tests.sh --build-dir DIR  # build in DIR, so two runs never share a binary
+./launcher/test/run_tests.sh --build-dir DIR  # build in DIR, to run beside a run in another dir
 ```
+
+One build dir takes one run at a time: a second run there prints
+`waiting for another run in DIR` and starts when the first ends.
 
 The default output is the verdict and Unity's test counts. A failure adds the
 failing assertion lines and the first compiler and gate errors, including the

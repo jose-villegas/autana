@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -39,15 +40,17 @@ GPU_NOT_ON_HOST = "GPU runner not on this host"
 RECENT_RUNS_WINDOW = timedelta(days=2)
 BAKES_WORKFLOW = "bakes-gpu.yml"
 DOC_IMAGES_WORKFLOW = "doc-images-gpu.yml"
+# The CPU bakes' tracing steps run as stages too, on the runner that makes the fits.
+CPU_BAKES_WORKFLOW = "bakes.yml"
 GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # A GPU stage is hung once no task or bake has finished for this long: above the slowest single task (a
 # cold CPU reference set, about 2.5 h), so a slow stage that still progresses is never stopped.
 GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
 # Each stage's backstop, far above GPU_STAGE_PROGRESS_SECONDS so only a stage that never ends meets it, and
-# under its job's timeout-minutes (doc images 1380, bakes 600) so the guard, not GitHub, stops it.
-GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60}
+# under its job's timeout-minutes (doc images 1380, bakes and CPU bakes 600) so the guard, not GitHub, stops it.
+GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60, CPU_BAKES_WORKFLOW: 9 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
-# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share.
+# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share, as a CPU bake does.
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
 # A stage beside board work runs on the top 1/SHARED_CPU_DIVISOR of the host's CPUs; builds and board
 # tooling keep the rest.
@@ -239,10 +242,15 @@ def main():
         os.sched_setaffinity(0, share)
         print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
     started, code = clock.now(), EXIT_HUNG
-    marker = os.environ.get("MARKER") or started.isoformat()
-    steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+    # Only a night's stage leaves a record, under its marker's key, for the night's timeline; any other keeps its
+    # progress file in a folder of its own that goes with it.
+    marker = os.environ.get("MARKER")
+    if marker:
+        steps = heavy_root() / "night-steps" / datetime.fromisoformat(marker).strftime(MARKER_KEY_FORMAT)
+        steps.mkdir(parents=True, exist_ok=True)
+    else:
+        steps = Path(tempfile.mkdtemp(prefix="stage-"))
     progress = steps / (workflow + ".progress")
-    progress.parent.mkdir(parents=True, exist_ok=True)
     progress.touch()
     os.environ[STAGE_PROGRESS_ENV] = str(progress)
     try:
@@ -253,9 +261,12 @@ def main():
         return EXIT_HUNG
     finally:
         progress.unlink(missing_ok=True)
-        write_json(steps / (workflow + ".json"),
-                   dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
-                        started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
+        if marker:
+            write_json(steps / (workflow + ".json"),
+                       dict(workflow=workflow, run=os.environ.get("GITHUB_RUN_ID"), marker=marker,
+                            started=started.isoformat(), ended=clock.now().isoformat(), exit=code))
+        else:
+            steps.rmdir()
 
 
 if __name__ == "__main__":

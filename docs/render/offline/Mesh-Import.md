@@ -102,7 +102,7 @@ cost and error of each mode on the board.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`. | None / none. | [process](#process) |
 
 #### process
 
@@ -117,7 +117,7 @@ card selection, with `geometry.cards` tuning its decisions.
 |---|---|---|---|---|---|
 | `geometry.cards` | `never`, `always`, `epsilon`, `area_cost` | Selects cut-out materials for billboard clouds. | Automatic with `alpha_mask`. | Probe selection and mask tracing / cut-out quads. | [cards](#cards) |
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
-| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's pieces, enlarged to cover the rest. | Cut-out foliage only, with simplify. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
 
@@ -185,14 +185,18 @@ The image compares triangle removal with it disabled.
 
 #### cards
 
+Cards are what the literature calls a billboard cloud: textured quads with an
+alpha cutout that stand in for geometry, chosen greedily after Décoret et
+al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>
+
 `geometry.alpha_mask` enables automatic billboard clouds. Each accepted
 material becomes a double-sided shape with vertex colours,
 [LUVS](../../assets/formats/LUVS.md) and [MASK1 LTEX](../../assets/formats/LTEX.md) pages.
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. Carved and thinned materials are excluded. |
-| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's area-weighted samples, within their slabs, rectangles and kept texels. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved and thinned materials are excluded. |
+| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
 
@@ -200,7 +204,9 @@ The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#de
 projected sample area earns coverage; an area cost and a per-card floor stop
 selection when another plane would not pay for itself.
 
-Training probe faces weight samples by visible projected size. The grid
+Training probe faces weight samples by visible projected size, with depth
+floored at `PROBE_WEIGHT_FLOOR` probe spacings so samples beside a probe
+cannot outweigh the rest. The grid
 covers the scene camera's region, else the source bounds. Its default
 spacing is `PROBE_SPACING_NEAR_PLANES` near planes (`views/probes.py`).
 
@@ -248,9 +254,14 @@ record. Generate the CSV with `cards_report.py SCENE --object NAME --docs`;
 
 #### thin
 
-`geometry.thin` retains a selected share of one material's triangles. It is
-for material whose geometry occupies more of the budget than it shows. The
-share is random, so `process.seed` makes it repeatable.
+`geometry.thin` keeps a random share `keep` of one material's pieces, each a set of triangles joined at their corners.
+Each kept piece grows by √(1/`keep`) about its centre, so the kept pieces cover the area all of them did<sup>[[140]](../../Citations.md#cook-2007)</sup>.
+It is for material whose geometry occupies more of the budget than it shows; `process.seed` makes the share repeatable.
+
+With `simplify` on, thin also runs without a rule on foliage: any object holding at least
+`AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
+Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
+of the mesh pays the budget. Materials drawn as cards are not thinned; carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 

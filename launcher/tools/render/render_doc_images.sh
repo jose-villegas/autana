@@ -64,6 +64,8 @@ PLAYBACK_CLIPS="walk gallop idle"
 RATE_CLIPS="idle walk gallop"
 # The tree depth whose node boxes the cull figures draw.
 CULL_LEVEL=2
+# The atrium path pose the cards composition figures show: foliage fills much of the view.
+CARDS_POSE_MS=8000
 # The cull chase GIFs play one path sample per frame at this rate.
 CULL_GIF_FPS=8
 # Where Bistro's high view looks down on its street over the ground square: the depth figure's first frame.
@@ -345,6 +347,11 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/re
 # The import's seam policies: a pillar on a floor through the importer's contact graph and simplify pass.
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT/render" > "$WORK/contact_figures.log" 2>&1
 # --orphans scans this runner: import-mesh-contact.png
+# How carded foliage composes: the source, the foliage light-only, the cards alone and the composite at one path pose.
+run "$R3D_PYTHON" launcher/tools/r3d/cards/composition_figures.py launcher/demo/sponza/sponza.scene.toml \
+    --object atrium_fitted_full --time-ms "$CARDS_POSE_MS" --out "$OUT/render" > "$WORK/composition_figures.log" 2>&1
+# --orphans scans this runner: cards-atrium_fitted_full-source.png, cards-atrium_fitted_full-light-only.png,
+# cards-atrium_fitted_full-cards.png, cards-atrium_fitted_full-composite.png
 
 # The baked mesh's figures: the demo scene's delivered mesh, its clusters and tree, and the clusterizer's build.
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$tree_stem" --out "$OUT/render" \
