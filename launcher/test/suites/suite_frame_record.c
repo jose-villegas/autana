@@ -384,7 +384,7 @@ carried(uint16_t index, uint8_t kind, uint16_t type) {
 static const uint16_t quad_face_colours[2] = {1, 2};
 
 static void
-test_a_mesh_lit_per_face_is_recorded_with_its_face_colours(void) {
+test_a_mesh_lit_per_face_is_recorded_as_lit_per_face(void) {
     open_recording(-1);
     rig->quad[0].mesh.face_colors = quad_face_colours;
     draw_frame();
@@ -816,7 +816,7 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_settings_record_is_the_callers_own_not_the_tuned_copy);
     RUN_TEST(test_a_keyframes_lodstate_carries_the_contexts_steer_and_the_rasters_pick_round);
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
-    RUN_TEST(test_a_mesh_lit_per_face_is_recorded_with_its_face_colours);
+    RUN_TEST(test_a_mesh_lit_per_face_is_recorded_as_lit_per_face);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_pack_mounted_in_a_freed_slot_between_keyframes_is_named_again);
 #endif

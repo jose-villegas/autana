@@ -442,8 +442,8 @@ test_sponza_frame_cost_placed(void) {
     /* Worst of a 5-run capture on 20E8, + 1%; per quarter, portrait then
      * landscape. */
     static const perf_budget_t placed_budget[LAB_PERF_QUARTER_COUNT] = {{39512, 49324}, {36129, 42843}};
-    const r3d_instance_t moving = {&bake_mesh, NULL, NULL, NULL};
-    report_frame_cost("placed", baked_sponza.bake, &moving, true, placed_budget);
+    const r3d_instance_t placed = {&bake_mesh, NULL, NULL, NULL};
+    report_frame_cost("placed", baked_sponza.bake, &placed, true, placed_budget);
     TEST_PASS();
 }
 
