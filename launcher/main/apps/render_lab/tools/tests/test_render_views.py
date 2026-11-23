@@ -208,6 +208,17 @@ class RenderViews(unittest.TestCase):
         self.assertIn(" sponza", run.stderr)
         self.assertFalse(path.exists())
 
+    def test_a_run_prints_its_scene_path_length_once(self):
+        lengths = {}
+        for scene in ("sponza", "water"):
+            run, _ = self.render("--scene", scene)
+            self.assertEqual(0, run.returncode, run.stderr[-2000:])
+            lines = [line for line in run.stdout.splitlines() if line.startswith("RENDER path_ms=")]
+            self.assertEqual(1, len(lines), run.stdout[-2000:])
+            lengths[scene] = int(lines[0].split("=", 1)[1])
+        self.assertGreater(lengths["sponza"], 0)
+        self.assertEqual(0, lengths["water"])
+
     def test_a_picture_that_cannot_be_written_fails_the_run(self):
         missing = self.out / "no-such-folder" / "view.bmp"
         run = subprocess.run(

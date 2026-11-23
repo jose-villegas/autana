@@ -348,6 +348,9 @@ setup(int quarter) {
         (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab.start_camera);
         return false;
     }
+    /* The started scene's camera path length, 0 for none: a recording reads
+     * it to cover the whole path. */
+    (void)printf("RENDER path_ms=%u\n", (unsigned)lab_path_duration_ms(&render_lab));
     if (size_rect.w > 0) {
         const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
