@@ -233,7 +233,7 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
     """render_sets for shard `shard` of `count`: each set's poses shard, shard + count, ... rendered by `render_sets`
     and saved under their own indices, and each set's folder name and pose count put in `rendered_sets`. A pose's
     files depend on that pose alone, so shards join into the very files one render makes."""
-    def render(inputs, sets, samples):
+    def render(inputs, sets):
         for poses, out in sets:
             text = pathlib.Path(poses).read_text()
             rendered_sets[pathlib.Path(out).name] = sum(line.startswith(POSE_LINE) for line in text.splitlines())
@@ -247,7 +247,7 @@ def shard_renderer(render_sets, shard, count, rendered_sets):
             # A set with fewer poses than shards leaves some shards none; the renderer takes no empty set.
             kept = [(subset, rendered) for subset, rendered in cut
                     if any(line.startswith(POSE_LINE) for line in subset.read_text().splitlines())]
-            render_sets(inputs, kept, samples)
+            render_sets(inputs, kept)
             for (_, out), (_, rendered) in zip(sets, cut):
                 pathlib.Path(out).mkdir(parents=True, exist_ok=True)
                 for path in (pathlib.Path(rendered).iterdir() if pathlib.Path(rendered).is_dir() else ()):
@@ -266,7 +266,8 @@ def reference_rays(bake, out=None):
 
     rays, calls = 0, []
 
-    def count(inputs, sets, samples):
+    def count(inputs, sets):
+        samples = inputs.aa_samples
         nonlocal rays
         calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
                       "samples": samples})
@@ -305,7 +306,7 @@ def reference_shard(bake, out, shard, count, plan):
     render = shard_renderer(reference_render.render_sets, shard, count, rendered_sets)
     inputs = reference_inputs(bake.job, bake.scene)
     for call in calls:
-        render(inputs, [(out / poses, out / target) for poses, target in call["sets"]], call["samples"])
+        render(inputs, [(out / poses, out / target) for poses, target in call["sets"]])
     manifest = {"cpu_vendor": keys.cpu_vendor(), "sets": rendered_sets}
     (out / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
 

@@ -62,11 +62,7 @@ def hit_albedo(source, hits, bary):
     return out
 
 
-# Rays per pixel side when a caller names none: the command line's --samples; a reference set reads [reference].
-SAMPLES = 4
-
-
-def render_linear(source, job, scene, pose, width, height, lens, samples=SAMPLES):
+def render_linear(source, job, scene, pose, width, height, lens, samples):
     """Return a linear RGB source render, supersampled then box filtered."""
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
@@ -108,11 +104,11 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     return origin, direction, locations, rays, faces, normal, bary, double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples=SAMPLES):
+def trace(source, job, scene, pose, width, height, lens, samples):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss). Every hemisphere term turns its directions per point
-    (light.turned_frame); a scene whose [reference] sets denoise passes the colour through `denoised`."""
+    (light.turned_frame); a scene whose [bake] sets denoise passes the colour through `denoised`."""
     origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
                                                                                     samples)
     linear = np.zeros((len(origin), 3), dtype=float)
@@ -132,9 +128,15 @@ def trace(source, job, scene, pose, width, height, lens, samples=SAMPLES):
     shading = shading.reshape(shape).sum(axis=2)
     shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
     linear = linear.reshape(shape).mean(axis=2)
-    if getattr(scene, "reference", None) is not None and scene.reference.denoise:
+    if denoised_scene(scene):
         linear = denoised(linear, albedo.reshape(shape).mean(axis=2), shading)
     return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
+
+
+def denoised_scene(scene):
+    """Whether the scene's [bake] asks for its reference renders to be denoised."""
+    bake = getattr(scene, "bake", None)
+    return bake is not None and bool(bake.denoise)
 
 
 def denoised(linear, albedo, normal):
@@ -151,7 +153,7 @@ def denoised(linear, albedo, normal):
     return np.maximum(out.astype(np.float64), 0.0)
 
 
-def occlusion_map(source, job, pose, width, height, lens, samples=SAMPLES):
+def occlusion_map(source, job, pose, width, height, lens, samples):
     """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
     subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
     light by, so the scene must set it."""
@@ -163,7 +165,8 @@ def occlusion_map(source, job, pose, width, height, lens, samples=SAMPLES):
     covered = np.zeros(len(origin))
     covered[rays] = 1.0
     if len(rays):
-        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset)
+        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset,
+                                           turned_frame)
     shape = (height, width, samples * samples)
     return factor.reshape(shape).mean(axis=2), covered.reshape(shape).mean(axis=2)
 
@@ -216,8 +219,8 @@ def camera_hidden(source, settings, scene=None, hidden_materials=None):
     return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
-def render_sets(inputs, sets, samples):
-    """Renders each (poses file, folder) of `sets` at `samples` x `samples` rays per pixel with normals from `inputs` alone (a
+def render_sets(inputs, sets):
+    """Renders each (poses file, folder) of `sets` at the scene's [bake] aa_samples per pixel side with normals from `inputs` alone (a
     reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the bake's
     CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
     textures a second time, is dropped before it returns, for the fit that follows in the process."""
@@ -227,7 +230,8 @@ def render_sets(inputs, sets, samples):
         for poses_path, out in sets:
             width, height, lens, _near, poses = read_poses(poses_path)
             pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True)
+            peak, workers = render_poses(source, job, scene, poses, width, height, lens, inputs.aa_samples, out,
+                                         normals=True)
             print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
                   flush=True)
     finally:
@@ -238,6 +242,8 @@ def render_sets(inputs, sets, samples):
 # Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
 # sky tangents, samples, directions and temporaries 256.
 POSE_BASE_BYTES_PER_RAY = 768
+# Rays per pixel side the command line traces a scene without [bake] aa_samples at.
+FALLBACK_SAMPLES = 4
 POSE_STATE = None
 
 
@@ -274,12 +280,14 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
-    if getattr(source, "bounce", None) is not None:
+    denoise = denoised_scene(scene)
+    if getattr(source, "bounce", None) is not None or denoise:
         # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
         # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
-        # light renders in this process.
+        # light renders in this process. So does a denoised pose: OIDN's device already threads over every core,
+        # and a forked worker would inherit a device another process started.
         if workers not in (None, 1):
-            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
+            raise ValueError("poses with bounced light or denoising render in the main process; leave --workers unset")
         workers = 1
     budget_capacity = None
     if workers is None:
@@ -327,7 +335,9 @@ def main(argv=None):
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--workers", type=int, help="pose workers; default: available CPU and memory budget")
-    parser.add_argument("--samples", type=int, default=SAMPLES)
+    parser.add_argument("--samples", type=int,
+                        help="rays per pixel side; default: the scene's [bake] aa_samples, or %d without it"
+                             % FALLBACK_SAMPLES)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--occlusion", action="store_true",
@@ -344,7 +354,7 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=0, help="mitsuba: sampler seed")
     mitsuba_reference.add_options(parser)
     args = parser.parse_args(argv)
-    if args.samples < 1 or args.skip < 0:
+    if (args.samples is not None and args.samples < 1) or args.skip < 0:
         parser.error("--samples must be positive and --skip cannot be negative")
     if args.backend == "mitsuba" and (args.spp < 1 or args.max_depth < 1):
         parser.error("--spp and --max-depth must be positive")
@@ -357,6 +367,8 @@ def main(argv=None):
     if args.backend == "bake" and args.sky:
         parser.error("--sky needs --backend mitsuba")
     scene = load_scene(args.scene)
+    if args.samples is None:
+        args.samples = FALLBACK_SAMPLES if scene.bake is None or scene.bake.aa_samples is None else scene.bake.aa_samples
     width, height, lens, near, poses = read_poses(args.poses)
     poses = poses[args.skip :]
     if not poses:

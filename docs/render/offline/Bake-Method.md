@@ -28,8 +28,8 @@ reference render turns each point's frame about its normal by its own angle,
 hashed from the point's coordinates<sup>[[141]](../../Citations.md#steele-2014)</sup>.
 With one fixed frame, neighbouring pixels on a flat surface trace the same rays
 and share one error, which shows as straight-edged light and dark patches. Turned
-frames leave grain instead, which the scene's [`[reference]`](../scene/Scene-Files.md#reference)
-denoising removes.
+frames leave grain instead, which the scene's
+[`[bake]` `denoise`](../scene/Scene-Files.md#bake-reference-traces) removes.
 
 ## Local-occlusion implementation
 
@@ -91,7 +91,7 @@ at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
 
 | Rule | Why |
 |---|---|
-| Same first directions per point, fixed path seed | The same tree and the same partition of points give the same bytes |
+| Same first directions per point in a bake, a hashed turn per point in a reference; fixed path seed | The same tree and the same partition of points give the same bytes |
 | One gather for the vertex copies a crease splits | Bounced light changes slowly; copies that differ only in it would stop merging |
 | A double-sided surface is lit on both sides and keeps the brighter | A card in the sun takes its sunlit side, a curtain in shade its open side |
 | A ray reaching a one-sided triangle from behind finds no light | Light does not pass through shells |

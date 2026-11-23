@@ -24,12 +24,10 @@ ray_offset = 5.0
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }
-
-# The fit's references: today's bake light traced at samples x samples rays per pixel, every hemisphere term
-# turned per point, then denoised with the pixel's albedo and normal as guides (docs/render/offline/Appearance-Fit.md).
-[reference]
-samples = 4
-denoise = true
+# The fit's references, traced with every hemisphere term turned per point (docs/render/scene/Scene-Files.md#bake-reference-traces);
+# no vertex bake reads these two.
+aa_samples = 4      # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 
 [[objects]]
 name = "sun"

@@ -757,11 +757,15 @@ def load_indirect_look(table):
 
 
 def load_bake(table):
-    """The scene's bake settings: ray offset, colour merging, bounced light and local occlusion."""
-    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("indirect", "ao"))
+    """The scene's bake settings: ray offset, colour merging, bounced light, local occlusion, and how a fit's
+    reference renders are traced (aa_samples, denoise: None when absent; no vertex bake reads them)."""
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake",
+               optional=("indirect", "ao", "aa_samples", "denoise"))
     bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
-                           indirect=None, ao=None)
+                           indirect=None, ao=None,
+                           aa_samples=count(table["aa_samples"], "scene.bake.aa_samples") if "aa_samples" in table else None,
+                           denoise=boolean(table["denoise"], "scene.bake.denoise") if "denoise" in table else None)
     if "indirect" in table:
         bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
@@ -799,7 +803,7 @@ def load_scene(path):
     with open(path, "rb") as source:
         values = tomllib.load(source)
     check_keys(values, ("objects",), "scene",
-               optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "reference"))
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -848,9 +852,7 @@ def load_scene(path):
         path=path, objects=objects, renderers=jobs, bake=bake,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
-        indirect=load_indirect_look(values.get("indirect", {})),
-        reference=load_fields(values["reference"], {"samples": count, "denoise": boolean}, "scene.reference")
-        if "reference" in values else None)
+        indirect=load_indirect_look(values.get("indirect", {})))
     lit = any(item.renderer.bake for item in jobs)
     runtime_lit = any(item.kind == "skinned_renderer" for item in objects)
     if scene.tonemap_white is not None and scene.tonemap_white < 0:
@@ -878,10 +880,12 @@ def load_scene(path):
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
     fitted = any(item.renderer.fit for item in jobs)
-    if fitted and scene.reference is None:
-        raise SettingsError("scene [reference] is required: a renderer is fitted to references")
-    if scene.reference is not None and not fitted:
-        raise SettingsError("scene [reference] is read by no placed mesh: no renderer is fitted")
+    for name in ("aa_samples", "denoise"):
+        present = bake is not None and getattr(bake, name) is not None
+        if fitted and not present:
+            raise SettingsError(f"scene.bake.{name} is required: a renderer is fitted to references")
+        if present and not fitted:
+            raise SettingsError(f"scene.bake.{name} is read by no placed mesh: only a fit's references read it")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   ("camera region", region is not None, "camera_region" in sources)):

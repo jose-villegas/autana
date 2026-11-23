@@ -89,7 +89,7 @@ class SharedOwnerTests(unittest.TestCase):
     def test_reference_sets_accept_materials_once(self):
         source = self.source
         job = NS(settings=NS(cards=NS(), alpha_keep=.5))
-        inputs = NS(job=lambda: job, scene=lambda: NS())
+        inputs = NS(job=lambda: job, scene=lambda: NS(), aa_samples=1, denoise=False)
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(reference_render, 'load_source', return_value=source), \
                 patch.object(reference_render, 'RayQuery'), patch.object(reference_render, 'path_light_for'), \
@@ -97,7 +97,7 @@ class SharedOwnerTests(unittest.TestCase):
                 patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),
-                                                   ('two', pathlib.Path(folder)/'two')], reference_render.SAMPLES)
+                                                   ('two', pathlib.Path(folder)/'two')])
         accepted.assert_called_once()
         self.assertEqual(render.call_count, 2)
         self.assertIs(render.call_args_list[0].args[0], render.call_args_list[1].args[0])

@@ -32,7 +32,7 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from bake import bake, produce  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
+from test_r3d_import import (FIT, FIT_HEAD, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
                              write_import, write_scene)
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
@@ -651,7 +651,7 @@ def write_fitted_tree(root, names=("fit",), visibility=PATH):
         renderer(name=name, extra='variant = "mesh"\nbake = true\n' + visibility
                  + FIT.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
         for index, name in enumerate(names))
-    return write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
+    return write_scene(root, objects + sun_object() + camera(path=True, region=False), FIT_HEAD)
 
 
 def row_of(item, sha256, **fields):
@@ -1916,9 +1916,10 @@ class ProduceTests(unittest.TestCase):
         from r3d.reference_set import fit_sets
 
         # A camera path and probes: every set a reference bake can hold.
-        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True))
+        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True),
+                                            aa_samples=3, denoise=False)
 
-        def render_sets(inputs, sets, samples):
+        def render_sets(inputs, sets):
             for poses_path, out in sets:
                 pathlib.Path(out).mkdir(parents=True, exist_ok=True)
                 lines = [line for line in pathlib.Path(poses_path).read_text().splitlines()
@@ -1940,8 +1941,7 @@ class ProduceTests(unittest.TestCase):
                     (work / name).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
             (work / "probes.json").write_bytes(b'{"train": "selection"}\n')
             reference_render.render_sets(inputs, [(work / name, work / folder)
-                                                  for name, folder in sets.training + sets.held_out],
-                                         reference_render.SAMPLES)
+                                                  for name, folder in sets.training + sets.held_out])
 
         with mock.patch.object(reference_render, "render_sets", autospec=True, side_effect=render_sets), \
              mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: self.inputs), \
@@ -2037,8 +2037,8 @@ class ProduceTests(unittest.TestCase):
             sets = self.inputs.sets()
             rays = produce.reference_rays(reference)
             reference_render.render_sets.assert_not_called()
-        # The stand-in's sets: 7 poses each at 4 x 2, traced at the SAMPLES x SAMPLES its prepare names.
-        samples = reference_render.SAMPLES
+        # The stand-in's sets: 7 poses each at 4 x 2, traced at its aa_samples on each side.
+        samples = self.inputs.aa_samples
         self.assertEqual(rays, len(sets.training + sets.held_out) * 7 * 4 * 2 * samples * samples)
 
     def test_shards_keep_each_near_the_shard_time_on_a_hosted_runner(self):

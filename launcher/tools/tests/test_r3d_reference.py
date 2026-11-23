@@ -128,7 +128,7 @@ def plane_source(*quads):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)])
+    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)], bake=None)
     return job, scene
 
 
@@ -346,7 +346,7 @@ class PerPointDirectionsTests(unittest.TestCase):
         job, scene = sun_scene([0.0, 0.0, 1.0])
         plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
         for denoise in (False, True):
-            scene.reference = SimpleNamespace(samples=1, denoise=denoise)
+            scene.bake = SimpleNamespace(aa_samples=1, denoise=denoise)
             with self.subTest(denoise=denoise), \
                     patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
                 linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
@@ -391,7 +391,8 @@ class ReferenceSetTests(unittest.TestCase):
         background = SimpleNamespace(background=0x123456)
         scene.camera = SimpleNamespace(component=background)
         inputs = ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=None,
-                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={})
+                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={},
+                                 aa_samples=reference_render.FALLBACK_SAMPLES, denoise=False)
         shifts = ([0.], [.5], [-.5, 1.])
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -409,7 +410,7 @@ class ReferenceSetTests(unittest.TestCase):
                 stack.enter_context(patch.object(budget, "cores_available", return_value=1))
                 stack.enter_context(patch.object(budget, "worker_capacity", return_value=1))
                 with patch.object(reference_render, "lit_source", return_value=source):
-                    reference_render.render_sets(inputs, together, reference_render.SAMPLES)
+                    reference_render.render_sets(inputs, together)
                 stack.enter_context(patch.object(reference_render, "load_scene", return_value=scene))
                 stack.enter_context(patch.object(reference_render, "source_for", return_value=(source, job)))
                 for file in files:
@@ -469,14 +470,14 @@ def render_one_set(job, **patches):
     from r3d.fitted_variant import poses_text
 
     patches.setdefault("render_poses", {"return_value": (0, 1)})
-    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, aa_samples=1, denoise=False)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
         poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
         stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
         mocks = {name: stack.enter_context(patch.object(reference_render, name, **kwargs))
                  for name, kwargs in patches.items()}
-        reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")], reference_render.SAMPLES)
+        reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
     return mocks
 
 

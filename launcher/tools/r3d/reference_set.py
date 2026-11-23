@@ -78,7 +78,8 @@ class ReferenceInputs:
     size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
-    reference: SimpleNamespace = None  # the scene's [reference]: samples per pixel side, denoising
+    aa_samples: int = None        # the scene's [bake] rays per pixel side of a reference render
+    denoise: bool = None          # the scene's [bake]: denoise each reference render
 
     def sets(self):
         return fit_sets(self.camera.path is not None, self.probes is not None)
@@ -88,7 +89,8 @@ class ReferenceInputs:
 
     def scene(self):
         return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,
-                               camera=SimpleNamespace(component=self.camera), reference=self.reference)
+                               camera=SimpleNamespace(component=self.camera),
+                               bake=SimpleNamespace(aa_samples=self.aa_samples, denoise=self.denoise))
 
 
 def reference_inputs(job, scene):
@@ -98,7 +100,7 @@ def reference_inputs(job, scene):
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes, reference=scene.reference)
+                           probes=job.settings.fit.probes, aa_samples=scene.bake.aa_samples, denoise=scene.bake.denoise)
 
 
 def prepare_references(inputs, work):
@@ -127,8 +129,7 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
-                inputs.reference.samples)
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
     return count
 
 

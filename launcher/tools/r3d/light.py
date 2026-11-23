@@ -253,10 +253,11 @@ def fixed_frame(points, normals):
     return tangent_frame(normals)
 
 
-# SplitMix64's multipliers (Steele et al. 2014): they mix
-# a point's three coordinates' bits into one 64-bit hash, then finish it with SplitMix64's shifts.
-MIX_MULTIPLIERS = np.array([0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=np.uint64)
-MIX_SHIFTS = (30, 27, 31)
+# A point's hash: each coordinate's bits times its own odd constant, xored together, then SplitMix64's finalizer
+# (Steele et al. 2014). The constants are SplitMix64's gamma and its two finalizer multipliers.
+COORDINATE_CONSTANTS = np.array([0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=np.uint64)
+FINALIZER_MULTIPLIERS = (np.uint64(0xBF58476D1CE4E5B9), np.uint64(0x94D049BB133111EB))
+FINALIZER_SHIFTS = (np.uint64(30), np.uint64(27), np.uint64(31))
 # The hash's top 53 bits become a fraction of a turn, the most a float64 holds exactly.
 TURN_BITS = 53
 
@@ -267,9 +268,10 @@ def turned_frame(points, normals):
     A point turns the same however it is traced: alone, with others, or in another shard."""
     tu, tv = tangent_frame(normals)
     bits = np.ascontiguousarray(points, dtype=np.float64).view(np.uint64)
-    mixed = np.bitwise_xor.reduce(bits * MIX_MULTIPLIERS, axis=1)
-    for shift, multiplier in zip(MIX_SHIFTS, (MIX_MULTIPLIERS[1], MIX_MULTIPLIERS[2], np.uint64(1))):
-        mixed = (mixed ^ (mixed >> np.uint64(shift))) * multiplier
+    mixed = np.bitwise_xor.reduce(bits * COORDINATE_CONSTANTS, axis=1)
+    mixed = (mixed ^ (mixed >> FINALIZER_SHIFTS[0])) * FINALIZER_MULTIPLIERS[0]
+    mixed = (mixed ^ (mixed >> FINALIZER_SHIFTS[1])) * FINALIZER_MULTIPLIERS[1]
+    mixed = mixed ^ (mixed >> FINALIZER_SHIFTS[2])
     angle = (2 * math.pi / 2 ** TURN_BITS) * (mixed >> np.uint64(64 - TURN_BITS)).astype(np.float64)[:, None]
     cos, sin = np.cos(angle), np.sin(angle)
     return cos * tu + sin * tv, cos * tv - sin * tu
