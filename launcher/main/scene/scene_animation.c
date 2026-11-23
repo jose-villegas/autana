@@ -211,12 +211,6 @@ weight_fits(float value) {
     return value >= 0.0F && value <= 1.0F;
 }
 
-static bool
-transform_protected(const scene_claims_t* claims, scene_row_t row) {
-    return claims->transforms == NULL ? scene_constraint_protects(claims->scene, row)
-                                      : (claims->transforms[row] & SCENE_PROTECTED_TRANSFORM) != 0;
-}
-
 scene_failure_t
 scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
                            const char* clip, int self, scene_field_mask_t* owned, anim_binding_location_t* locations) {
@@ -235,18 +229,18 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
         if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT)
              && owned != NULL)
-            || (property_transform && transform_protected(claims, entity))
+            || (property_transform && scene_constraint_covers(claims->protected_rows, entity))
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
             || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
                 && !scalar_keys_fit(&binding.curve, weight_fits))
+            || (binding.component == ANIM_COMPONENT_CONSTRAINT
+                && (location.field == CONSTRAINT_FIELD_LAG_MS || location.field == CONSTRAINT_FIELD_HANDOFF_MS)
+                && !scalar_keys_fit(&binding.curve, scene_constraint_duration_fits))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         if (owned != NULL) {
             owned[entity] |= bit;
-            if (property_transform && claims->transforms != NULL) {
-                claims->transforms[entity] |= SCENE_PROPERTY_TRANSFORM;
-            }
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, clip);

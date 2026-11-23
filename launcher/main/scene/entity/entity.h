@@ -2,7 +2,6 @@
  * entity: the engine world's entities. One world holds every loaded scene;
  * each scene is a subtree under its root entity (scene_load()). An entity_t is
  * a handle: kept across frames, refused once its scene is released.
- * An applied constraint overwrites app writes to its owner's local pose.
  */
 #pragma once
 

@@ -62,6 +62,7 @@ typedef struct {
 #define SCENE_FLAG_RELIGHT          32U
 #define SCENE_FLAG_PLACED           (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
 #define SCENE_FLAG_CONSTRAINT_INPUT 64U
+#define SCENE_PROTECTED_TRANSFORM   128U /* shared by writer validation and live row flags */
 #define SCENE_WORLD_SLOT_NONE       0xFFFFU
 #define SCENE_LIGHT_FAILURE_ALBEDO  "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL  "skin normal transform invalid"
@@ -156,8 +157,7 @@ typedef uint16_t scene_field_mask_t;
 
 enum {
     SCENE_PROPERTY_TRANSFORM = 1U << 0,
-    SCENE_PROTECTED_TRANSFORM = 1U << 1,
-    SCENE_CONSTRAINT_TRANSFORM = 1U << 2,
+    SCENE_CONSTRAINT_TRANSFORM = 1U << 1,
 };
 
 _Static_assert(SCENE_FIELD_END_CNST <= sizeof(scene_field_mask_t) * CHAR_BIT,
@@ -186,6 +186,7 @@ typedef struct {
     size_t target_keys;
     scene_row_t* targets;
     anim_binding_location_t* locations;
+    const uint8_t* protected_rows;
 } scene_timeline_blocks_t;
 
 typedef struct {
@@ -231,8 +232,7 @@ typedef struct {
 typedef struct {
     const scene_asset_t* asset;
     scene_field_mask_t* writes;
-    uint8_t* transforms;
-    const scene_t* scene;
+    const uint8_t* protected_rows;
 } scene_claims_t;
 
 enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
@@ -459,12 +459,14 @@ asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id
 bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
                               int count, bool replace, scene_failure_t* why);
 scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_claims_t* claims,
-                                       const anim_tracks_t* timeline, scene_timeline_blocks_t* blocks);
-scene_failure_t scene_timeline_bind(scene_t* scene);
+                                       const anim_tracks_t* timeline, scene_timeline_blocks_t* blocks,
+                                       uint8_t* transforms);
+scene_failure_t scene_timeline_bind(scene_t* scene, const anim_binding_location_t* locations);
 bool scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 transformf_t scene_timeline_local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time,
                                      transformf_t local);
 transformf_t scene_timeline_world_at(const scene_t* scene, scene_row_t row, uint32_t ms);
+vec3f_t scene_row_sample_point(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time, vec3f_t point);
 transformf_t scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time);
 
 static inline scene_row_t
@@ -473,11 +475,29 @@ scene_asset_parent(const scene_asset_t* asset, scene_row_t row) {
     return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : parent;
 }
 
+static inline bool
+scene_asset_row_within(const scene_asset_t* asset, scene_row_t row, scene_row_t ancestor) {
+    if (ancestor == SCENE_ROW_ROOT) {
+        return row != SCENE_ROW_NONE;
+    }
+    for (scene_row_t e = row; e != SCENE_ROW_NONE && e >= ancestor; e = scene_asset_parent(asset, e)) {
+        if (e == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
 scene_row_t scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash);
 scene_failure_t scene_constraint_target(const scene_asset_t* asset, uint8_t* transforms, const anim_binding_t* binding,
-                                        name_hash_t hash, scene_row_t* out);
+                                        scene_row_t owner, name_hash_t hash, scene_row_t* out);
 scene_failure_t scene_constraint_resolve(const scene_asset_t* asset, uint8_t* transforms, scene_row_t* targets);
-bool scene_constraint_protects(const scene_t* scene, scene_row_t row);
+
+static inline bool
+scene_constraint_covers(const uint8_t* protected_rows, scene_row_t row) {
+    return (protected_rows[row] & SCENE_PROTECTED_TRANSFORM) != 0;
+}
+
 scene_constraint_t* scene_constraint_find(const scene_t* scene, scene_row_t row);
 void scene_constraint_open(scene_t* scene);
 void scene_constraint_step(scene_t* scene, bool applied);

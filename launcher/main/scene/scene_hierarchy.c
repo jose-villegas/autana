@@ -190,7 +190,7 @@ scene_row_parent(const scene_t* scene, scene_row_t row) {
 void
 scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
     scene_t* scene = root->scene;
-    const bool watched = scene != NULL && scene->timeline != NULL && scene->asset.constraint_count != 0;
+    const bool watched = scene != NULL && scene->asset.constraint_count != 0;
     const uint8_t placed = SCENE_FLAG_PLACED | (watched ? SCENE_FLAG_CONSTRAINT_INPUT : 0);
     if (watched) {
         scene->constraint_inputs_placed = true;
@@ -236,6 +236,16 @@ scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_pla
         world = transformf_compose(&parent, &world);
     }
     return transformf_compose(&root->local, &world);
+}
+
+vec3f_t
+scene_row_sample_point(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time, vec3f_t point) {
+    for (scene_row_t e = row; e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
+        const transformf_t local = local_at(root->scene, e, time);
+        const mat4f_t matrix = transformf_compute_matrix(&local);
+        point = mat4f_apply(&matrix, point);
+    }
+    return root->placed ? mat4f_apply(&root->world, point) : point;
 }
 
 transformf_t
