@@ -453,7 +453,8 @@ through their recorded views.
 
 Each draw receives a `provider_frame_t`. The optional `frame_count` hook
 sets the default count after provider options. Optional `path_ms` and `seek` hooks
-expose a provider's path duration and camera cuts. The scene-file provider
+expose a provider's path duration and camera cuts; a run with `path_ms` prints
+`RENDER path_ms=<n>` on stderr after setup. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.

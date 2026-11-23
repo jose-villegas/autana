@@ -453,15 +453,13 @@ list_scenes(const lab_t* lab) {
 
 static void
 request_scene(lab_t* lab, const char* key) {
-    for (int i = 0; i < lab->scene_count; i++) {
-        if (strcmp(lab->scenes[i]->key, key) == 0) {
-            lab->state.requested = i;
-            (void)printf("%s scene=%s\n%s_END\n", lab->reply_tag, lab->scenes[i]->key, lab->reply_tag);
-            (void)fflush(stdout);
-            return;
-        }
+    const int index = lab_scene_index(lab, key);
+    if (index < 0) {
+        (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->reply_tag, key, lab->console_word);
+    } else {
+        lab->state.requested = index;
+        (void)printf("%s scene=%s\n%s_END\n", lab->reply_tag, lab->scenes[index]->key, lab->reply_tag);
     }
-    (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->reply_tag, key, lab->console_word);
     (void)fflush(stdout);
 }
 

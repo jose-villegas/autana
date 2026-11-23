@@ -213,8 +213,8 @@ class RenderViews(unittest.TestCase):
         for scene in ("sponza", "water"):
             run, _ = self.render("--scene", scene)
             self.assertEqual(0, run.returncode, run.stderr[-2000:])
-            lines = [line for line in run.stdout.splitlines() if line.startswith("RENDER path_ms=")]
-            self.assertEqual(1, len(lines), run.stdout[-2000:])
+            lines = [line for line in run.stderr.splitlines() if line.startswith("RENDER path_ms=")]
+            self.assertEqual(1, len(lines), run.stderr[-2000:])
             lengths[scene] = int(lines[0].split("=", 1)[1])
         self.assertGreater(lengths["sponza"], 0)
         self.assertEqual(0, lengths["water"])
