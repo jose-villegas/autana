@@ -67,21 +67,14 @@ class GpuQueueTests(unittest.TestCase):
                 self.assertEqual(self.run_main(workflow, 'ready'), (0, quiet))
         self.assertNotIn(schedule.BAKES_WORKFLOW, schedule.QUIET_HOST_WORKFLOWS)
 
-    def test_cpu_share_is_the_top_cpus_and_never_empty(self):
-        for count in (1, 2, 3, 10, 12):
-            with self.subTest(count=count):
-                cpus = set(range(count))
-                share = schedule.cpu_share(cpus)
-                self.assertEqual(len(share), max(1, count // schedule.SHARED_CPU_DIVISOR))
-                self.assertEqual(min(share), count - len(share))
-        self.assertEqual(schedule.cpu_share({4, 7, 9, 11}), {9, 11})
-
-    @unittest.skipUnless(hasattr(os, 'sched_setaffinity'), 'the GPU stages run on Linux')
-    def test_start_runs_only_a_beside_board_stage_on_its_share(self):
+    @unittest.skipUnless(hasattr(os, 'SCHED_IDLE'), 'the GPU stages run on Linux')
+    def test_start_runs_a_beside_board_stage_on_every_cpu_at_idle_priority(self):
         import subprocess
         root = Path(__file__).resolve().parents[3]
-        probe = [sys.executable, '-c', 'import os, sys; sys.exit(len(os.sched_getaffinity(0)))']
-        ours = os.sched_getaffinity(0)
+        # Exits with its CPU count, plus 1000 when it runs at SCHED_IDLE.
+        probe = [sys.executable, '-c', 'import os, sys; sys.exit(len(os.sched_getaffinity(0)) % 1000'
+                 ' + 1000 * (os.sched_getscheduler(0) == os.SCHED_IDLE))']
+        ours = len(os.sched_getaffinity(0)) % 1000
         for workflow in schedule.GPU_WORKFLOWS:
             with self.subTest(workflow=workflow):
                 environment = {name: value for name, value in os.environ.items() if name != 'GITHUB_OUTPUT'}
@@ -89,8 +82,8 @@ class GpuQueueTests(unittest.TestCase):
                                       cwd=root, capture_output=True, text=True,
                                       env=dict(environment, GPU_WORKFLOW=workflow))
                 quiet = workflow in schedule.QUIET_HOST_WORKFLOWS
-                self.assertEqual(done.returncode, len(ours) if quiet else len(schedule.cpu_share(ours)), done.stderr)
-                self.assertEqual('beside board work on CPUs' in done.stdout, not quiet)
+                self.assertEqual(done.returncode % 256, (ours + (0 if quiet else 1000)) % 256, done.stderr)
+                self.assertEqual('beside board work on every CPU at SCHED_IDLE' in done.stdout, not quiet)
 
     def test_the_nightly_separates_marker_wait_and_work(self):
         root = Path(__file__).resolve().parents[3]

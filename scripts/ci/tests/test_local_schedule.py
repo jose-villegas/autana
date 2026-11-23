@@ -187,11 +187,11 @@ class LocalScheduleTests(unittest.TestCase):
                 self.assertEqual(list(Path(root).rglob('*')), [])
                 self.assertEqual(list(Path(temporary).iterdir()), [])
 
-    def test_a_stage_runs_where_os_has_no_cpu_affinity(self):
+    def test_a_stage_runs_where_os_has_no_idle_priority(self):
         class WindowsOs:
-            """os as Windows has it: no sched_getaffinity or sched_setaffinity."""
+            """os as Windows has it: no scheduler policy and no nice."""
             def __getattr__(self, name):
-                if name.startswith('sched_'):
+                if name.startswith(('sched_', 'SCHED_')) or name == 'nice':
                     raise AttributeError(name)
                 return getattr(os, name)
         with tempfile.TemporaryDirectory() as root:

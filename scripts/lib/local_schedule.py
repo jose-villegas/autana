@@ -47,16 +47,15 @@ GPU_WORKFLOWS = (BAKES_WORKFLOW, DOC_IMAGES_WORKFLOW)
 # task, so a slow stage that still progresses is never stopped.
 GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
 # Each stage's backstop, far above GPU_STAGE_PROGRESS_SECONDS so only a stage that never ends meets it, and
-# under its job's timeout-minutes (doc images 1380, bakes 600, CPU bakes 1440) so the guard, not GitHub, stops it.
-# The CPU bakes trace every missing reference set in one stage: a re-key of every scene's sets takes many hours.
+# under its job's timeout-minutes so the guard, not GitHub, stops it. The CPU bakes trace every missing reference
+# set in one stage, which takes many hours when every scene's sets re-key.
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60, CPU_BAKES_WORKFLOW: 23 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
-# A fit is one GPU-bound process: it runs beside builds and board jobs, on its CPU share, as a CPU bake does.
+# A fit and a CPU bake run beside builds and board jobs, on every CPU at idle priority (idle_priority).
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
-# A stage beside board work runs on the top 1/SHARED_CPU_DIVISOR of the host's CPUs; builds and board
-# tooling keep the rest.
-SHARED_CPU_DIVISOR = 2
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
+# The lowest nice value, the priority a stage takes where SCHED_IDLE is refused.
+IDLE_NICE = 19
 GPU_PENDING_STATUSES = ("queued", "waiting", "in_progress")
 DEFERRED = "GPU doc images deferred: bakes queued or running"
 EXIT_DEFERRED = 3
@@ -186,10 +185,19 @@ def quiet_host(workflow):
     return workflow in QUIET_HOST_WORKFLOWS
 
 
-def cpu_share(cpus):
-    """The CPUs a stage beside board work runs on: the highest-numbered 1/SHARED_CPU_DIVISOR, at least one."""
-    cpus = sorted(cpus)
-    return set(cpus[len(cpus) - max(1, len(cpus) // SHARED_CPU_DIVISOR):])
+def idle_priority():
+    """Runs this process and all it starts on CPU time nothing else wants, so builds and board tooling pre-empt it
+    on every CPU: SCHED_IDLE, else nice 19. Names the one it took; None where neither exists (Windows)."""
+    if hasattr(os, "SCHED_IDLE"):
+        try:
+            os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
+            return "SCHED_IDLE"
+        except OSError:
+            pass
+    if hasattr(os, "nice"):
+        os.nice(IDLE_NICE - os.nice(0))
+        return f"nice {IDLE_NICE}"
+    return None
 
 
 def gpu_ready(clock=None, board_held=None):
@@ -237,11 +245,8 @@ def main():
     if not command:
         parser.error("start needs -- <command...>")
     output({"rendered": True})
-    # Windows has no CPU affinity call in os; a stage there shares every CPU.
-    if not quiet_host(workflow) and hasattr(os, "sched_setaffinity"):
-        share = cpu_share(os.sched_getaffinity(0))
-        os.sched_setaffinity(0, share)
-        print(f"beside board work on CPUs {','.join(map(str, sorted(share)))}", flush=True)
+    if not quiet_host(workflow) and (priority := idle_priority()):
+        print(f"beside board work on every CPU at {priority}", flush=True)
     started, code = clock.now(), EXIT_HUNG
     # Only a night's stage leaves a record, under its marker's key, for the night's timeline; any other keeps its
     # progress file in a folder of its own that goes with it.

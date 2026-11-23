@@ -11,8 +11,8 @@ name: Bakes
 # a pull request needs are this push run's, on its head commit; a fork's pull request gets them only once its branch
 # is pushed here, and bakes-fork.yml fails it when it changes a bake. Each runner job installs into a venv of its own
 # over the fit environment ~/gpu/env, so what it installs stays there (only a Bakes GPU dispatch installs into the
-# fit environment), and its tracing steps run on the share of the machine's CPUs scripts/lib/local_schedule.py
-# leaves board work.
+# fit environment), and its tracing steps run on every CPU at the idle priority scripts/lib/local_schedule.py gives
+# a stage beside board work.
 # A fit needs the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked start and reference
 # set, started by hand on the branch. On main, publish uploads each locked file the `bakes` release lacks, taking it
 # from the run that made it. No branch writes the release.

@@ -115,7 +115,7 @@ release the r3d README creates it with, not the `.python-version` one.
 Neither needs root: the machine holds LLVM, Git LFS, a C compiler and the X
 libraries Blender loads.
 Tracing runs as a stage of [`local_schedule.py`](../../scripts/lib/local_schedule.py),
-on the half of the CPUs board work leaves, under the stage's hang guard.
+on every CPU at idle priority, so builds and board tooling pre-empt it, under the stage's hang guard.
 
 No pull request starts the Bakes workflow, since a self-hosted runner never
 takes a pull request's code ([`check_workflows.py`](../../scripts/gates/check_workflows.py)).
