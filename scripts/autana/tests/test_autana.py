@@ -1122,10 +1122,10 @@ class SuiteCommandTests(unittest.TestCase):
         self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == "--send"], lines)
 
     def test_each_set_is_forwarded(self):
+        settings = ["r3d_span.small_max_side=3", "a.b=0x10", "x=010"]
         command = forwarded_command(
-            autana.suite, ["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])
-        self.assertEqual([command[i + 1] for i, word in enumerate(command) if word == "--set"],
-                         ["r3d_span.small_max_side=3", "a.b=0x10"])
+            autana.suite, ["run_gfx_suite", *(word for setting in settings for word in ("--set", setting))])
+        self.assertEqual([command[i + 1] for i, word in enumerate(command) if word == "--set"], settings)
 
     def test_a_set_without_a_whole_number_is_refused(self):
         for value in ("r3d_span.small_max_side", "=3", "a.b=three"):

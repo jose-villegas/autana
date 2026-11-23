@@ -138,12 +138,26 @@ raster_depth_tiles_view(void* state) {
     return (raster_attachment_t){.show = tiles_show};
 }
 
+raster_attachment_t
+raster_attachment_ids(image_format_t format,
+                      void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                      void* state) {
+    return (raster_attachment_t){.format = format,
+                                 .clear = raster_attachment_clear_zero,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
+}
+
 void
 raster_show_map(const gfx_target_t* picture, int index, uint16_t clear,
-                gfx_color_t (*color_of)(const void* pixel, uint16_t clear)) {
+                gfx_color_t (*color_of)(const void* pixel, size_t width, uint16_t clear)) {
     const image_t* map = &picture->attachment[index];
     const image_t* output = &picture->attachment[GFX_ATTACHMENT_COLOR];
-    const size_t step = image_format_bits(map->format) / CHAR_BIT;
+    const size_t step = IMAGE_PITCH(map->format, 1);
     const int width = output->width;
     const int height = output->height;
     const size_t map_pitch = map->pitch;
@@ -154,7 +168,7 @@ raster_show_map(const gfx_target_t* picture, int index, uint16_t clear,
         const char* pixels = row;
         gfx_color_t* color = (gfx_color_t*)out;
         for (int x = 0; x < width; x++) {
-            color[x] = color_of(pixels, clear);
+            color[x] = color_of(pixels, step, clear);
             pixels += step;
         }
     }
