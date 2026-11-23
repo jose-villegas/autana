@@ -1,3 +1,5 @@
+#include <float.h>
+
 #include "math/linear/transformf.h"
 #include "testkit/suite.h"
 #include "unity.h"
@@ -109,6 +111,14 @@ test_inverse_point_under_an_uneven_parent(void) {
     TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, point.z, actual.z);
 }
 
+/* A fused multiply-add can round a blend component one ULP differently. */
+static void
+assert_blend_vec3(vec3f_t expected, vec3f_t actual) {
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON * fabsf(expected.x), expected.x, actual.x);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON * fabsf(expected.y), expected.y, actual.y);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON * fabsf(expected.z), expected.z, actual.z);
+}
+
 static void
 test_blend_clamps_and_interpolates_trs(void) {
     transformf_t a = {.position = {-3.7F, 0.3F, -4.9F},
@@ -133,8 +143,8 @@ test_blend_clamps_and_interpolates_trs(void) {
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         const transformf_t got = transformf_blend(&a, &b, cases[i].weight);
         const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, cases[i].weight);
-        TEST_ASSERT_EQUAL_MEMORY(&cases[i].position, &got.position, sizeof got.position);
-        TEST_ASSERT_EQUAL_MEMORY(&cases[i].scale, &got.scale, sizeof got.scale);
+        assert_blend_vec3(cases[i].position, got.position);
+        assert_blend_vec3(cases[i].scale, got.scale);
         TEST_ASSERT_EQUAL_MEMORY(&rotation, &got.rotation, sizeof rotation);
         TEST_ASSERT_FALSE(got.cached);
     }
