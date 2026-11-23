@@ -1,17 +1,14 @@
 /*
  * triangle_sizes: how many of a lit mesh's drawn triangles cover 0, 1, 2-4
  * or more pixel centres from a lens, binned by r3d_triangle_size.h; the bounding
- * boxes of the triangles the rasterizer chooses a path for, by shading mode;
- * and the poses file the triangle_sizes tool reads.
+ * boxes of the triangles the rasterizer chooses a path for, by shading mode.
  */
 #pragma once
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#include "math/linear/vec3f.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/view/r3d_triangle_size.h"
@@ -49,26 +46,3 @@ void r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3
 /* Each mode's triangles, then all of them, and the share whose box is at
  * most n x n centres, n from 2 to R3D_BOXES_SIDES - 1, as a Markdown table. */
 void r3d_boxes_print(FILE* f, const r3d_boxes_t* boxes);
-
-#define R3D_SIZES_POSES_MAX 64
-
-/* A poses file, one item a line, `#` starting a comment:
- *   size <width> <height>
- *   lens <half_fov_short_tan> <near_z>
- *   pose <eye x y z> <forward x y z>
- * in the mesh's model units, one pose line per view. */
-typedef struct {
-    int width, height;
-    float half_fov_short_tan, near_z;
-    int count;
-    vec3f_t eye[R3D_SIZES_POSES_MAX];
-    vec3f_t forward[R3D_SIZES_POSES_MAX];
-} r3d_sizes_poses_t;
-
-/* Reads poses from the source frame into the engine frame. False reports what is
- * wrong and on which line in `problem`. */
-bool r3d_sizes_read_poses(FILE* f, r3d_sizes_poses_t* out, char* problem, size_t problem_size);
-
-/* The same from a path, "-" reading standard input, so a generator can pipe
- * its poses in and no copy of them is kept to go stale. */
-bool r3d_sizes_read_poses_path(const char* path, r3d_sizes_poses_t* out, char* problem, size_t problem_size);
