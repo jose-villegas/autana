@@ -115,7 +115,7 @@ class RenderViews(unittest.TestCase):
         return run, target
 
     def test_default_size_and_explicit_disabled_tunables_match(self):
-        for scene in ("sponza-fitted-full", "capybara"):
+        for scene in ("sponza", "capybara"):
             for quarter in (0, 1):
                 images = []
                 for extra in ((), ("--size", "184x224"),
@@ -127,7 +127,7 @@ class RenderViews(unittest.TestCase):
                 self.assertEqual(images[0], images[2])
 
     def test_height_only_present_repeats_panel_rows_in_both_quarters(self):
-        for scene in ("sponza-fitted-full", "capybara"):
+        for scene in ("sponza", "capybara"):
             for quarter in (0, 1):
                 for present in (2, 1):
                     run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", "--panel",

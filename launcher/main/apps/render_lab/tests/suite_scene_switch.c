@@ -13,6 +13,7 @@
 #include "apps/render_lab/herd/scene_herd.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_test.h"
@@ -23,6 +24,7 @@ static lab_test_t saved;
 
 static void
 release_fixture(void) {
+    (void)render_lab_textures_set_on(false);
 #if TUNE_ENABLED
     (void)render_lab_dynres_set_on(false);
 #endif
@@ -45,8 +47,8 @@ test_console_scene_requests_survive_expanded_frames(void) {
         const char* request;
         const char* key;
     } switches[] = {
-        {"scene sponza-lite", "sponza-lite"}, {"scene sponza", "sponza"}, {"scene sponza-flat", "sponza-flat"},
-        {"scene sponza-lite", "sponza-lite"}, {"scene sponza", "sponza"},
+        {"scene capybara", "capybara"}, {"scene sponza", "sponza"}, {"scene water", "water"},
+        {"scene capybara", "capybara"}, {"scene sponza", "sponza"},
     };
 
     lab_test_frame(false, NULL);
@@ -84,10 +86,10 @@ test_scene_switches_keep_the_arena_flat(void) {
     fixture();
     size_t first_lap = 0;
     for (int lap = 0; lap < LAPS; lap++) {
-        for (int v = 0; v < (int)SCENE_BAKED_VARIANT_COUNT; v++) {
-            show_scene(scene_sponza[v].key);
-            show_scene(scene_bistro[v].key);
-        }
+        show_scene(scene_sponza.key);
+        show_scene(scene_bistro.key);
+        TEST_ASSERT_TRUE(render_lab_textures_set_on(true));
+        lab_test_frame(false, NULL);
         show_scene(scene_capybara.key);
         for (int n = 0; n < HERD_SIZE_COUNT; n++) {
             show_scene(scene_herd[n].key);

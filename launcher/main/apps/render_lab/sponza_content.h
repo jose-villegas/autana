@@ -1,5 +1,5 @@
 /*
- * sponza_content: the Sponza scene's id and its bakes, the size it is seen
+ * sponza_content: the Sponza scene's id, the size it is seen
  * at, and what its camera loop is held to. The loop is the scene's camera:
  * its lens from camera_lens() and its entity's animated transform once
  * the scene has loaded. Model units are centimetres; y is up.
@@ -25,12 +25,7 @@
 /* The frame-cost rows' pose spacing. */
 #define SPONZA_PERF_POSE_EVERY_MS   500
 
-#include "apps/render_lab/scene_baked_variant.h"
-
-/* The name of the entity that draws each bake, found at load. */
-extern const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT];
-
 /* The camera a start with none named follows; the tour is the other. */
-#define SPONZA_CAMERA       "camera"
-#define SPONZA_CAMERA_COUNT 2
+#define SPONZA_CAMERA               "camera"
+#define SPONZA_CAMERA_COUNT         2
 extern const char* const sponza_cameras[SPONZA_CAMERA_COUNT];
