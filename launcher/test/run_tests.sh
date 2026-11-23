@@ -179,6 +179,7 @@ $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
 $MAIN_DIR/shell/ui/ui_ridge.c
 $MAIN_DIR/../tools/gen/draw_palette_gen.c
+$MAIN_DIR/../tools/anim/camera_poses.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 "
 

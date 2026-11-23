@@ -14,7 +14,6 @@ launcher/tools/render/render_doc_images.sh runs it.
 """
 
 import argparse
-import colorsys
 import pathlib
 import re
 import sys
@@ -26,6 +25,7 @@ from scipy.spatial import Delaunay
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
+from docs.figures import index_hue  # noqa: E402
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, save, save_gif, subplots  # noqa: E402
 from r3d import mesh_asset, mesh_bundle  # noqa: E402
 from r3d.lit_mesh import read_bundle_mesh  # noqa: E402
@@ -64,7 +64,7 @@ def view_hash():
 
 def hue(index, multiplier):
     """The meshlets view's colour of cluster id `index` (ids start at 1), as RGB 0..1."""
-    return colorsys.hsv_to_rgb(((index * multiplier) & 0xFFFFFFFF) / 2**32, 1.0, 1.0)
+    return index_hue((index * multiplier) & 0xFFFFFFFF, 1 / 2**32, 1.0, 1.0)
 
 
 def faded(rgb, amount):
