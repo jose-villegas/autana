@@ -195,6 +195,21 @@ def parent_index(obj, index):
     return index[parent]
 
 
+def world_placement(scene, obj):
+    """The authored object-to-world transform, composed in source axes."""
+    import numpy as np
+
+    index = {item.name: i for i, item in enumerate(scene.objects)}
+    matrix, position = np.asarray(obj.matrix), np.asarray(obj.position)
+    parent = parent_index(obj, index)
+    while parent != PARENT_ROOT:
+        obj = scene.objects[parent]
+        position = obj.matrix @ position + obj.position
+        matrix = obj.matrix @ matrix
+        parent = parent_index(obj, index)
+    return SimpleNamespace(matrix=matrix, position=position)
+
+
 def column_scales(matrix):
     return [math.sqrt(sum(matrix[r][c] ** 2 for r in range(3))) for c in range(3)]
 

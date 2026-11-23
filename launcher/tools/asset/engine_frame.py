@@ -37,7 +37,10 @@ def _mirror_box(box):
     return (*low[:Z_AXIS], high[Z_AXIS], *high[:Z_AXIS], low[Z_AXIS])
 
 
-def _mirror_matrix(matrix, column_signs):
+def mirror_matrix(matrix, column_signs=AXIS_SIGNS):
+    """Conjugate a flat or row-shaped affine matrix across the source and engine axes."""
+    if hasattr(matrix, "shape") and matrix.ndim == 2:
+        return matrix * tuple((sign,) for sign in AXIS_SIGNS) * column_signs
     width = len(column_signs)
     return tuple(value * AXIS_SIGNS[row] * column_signs[column]
                  for row in range(AXIS_COUNT)
@@ -58,7 +61,7 @@ def _mirror_scene_rows(entry, out, header):
     count = dict(zip(parts, header[1:1 + len(parts)]))
     offset = dict(zip(parts, header[1 + len(parts):]))
     for part, mirror in (("chunks", lambda centre_x, centre_y, centre_z, reach:
-                          (*_mirror_point(centre_x, centre_y, centre_z), reach)),
+                          (*mirror_point((centre_x, centre_y, centre_z)), reach)),
                          ("places", lambda x, y, z, colour_set: (*_mirror_position((x, y, z)), colour_set)),
                          ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest)),
                          ("constraints", lambda e, bind, pad, follow, look, ox, oy, oz, lx, ly, lz, *scalars:
@@ -71,7 +74,8 @@ def _mirror_scene_rows(entry, out, header):
             row.pack_into(out, at, *mirror(*row.unpack_from(entry, at)))
 
 
-def _mirror_point(*point):
+def mirror_point(point):
+    """Mirror a point between the source and engine axes."""
     return tuple(value * sign for value, sign in zip(point, AXIS_SIGNS))
 
 
@@ -129,7 +133,7 @@ def to_engine(kind, entry):
             at = transforms_at + index * scene_asset.TRANSFORM.size
             values = scene_asset.TRANSFORM.unpack_from(entry, at)
             matrix_width = AXIS_COUNT * AXIS_COUNT
-            matrix = _mirror_matrix(values[:matrix_width], AXIS_SIGNS)
+            matrix = mirror_matrix(values[:matrix_width], AXIS_SIGNS)
             position = [value * sign for value, sign in zip(values[matrix_width:], AXIS_SIGNS)]
             scene_asset.TRANSFORM.pack_into(out, at, *matrix, *position)
         _mirror_scene_rows(entry, out, header)
@@ -145,7 +149,7 @@ def to_engine(kind, entry):
         matrix_at, vertices_at = skin_asset.HEADER.unpack_from(entry)[4:6]
         for index, matrix in enumerate(matrices):
             skin_asset.MATRIX.pack_into(out, matrix_at + index * skin_asset.MATRIX.size,
-                                       *_mirror_matrix(matrix, AFFINE_SIGNS))
+                                       *mirror_matrix(matrix, AFFINE_SIGNS))
         record_size = influences * 2 + skin_asset.NORMAL.size
         for index, (_, _, normal) in enumerate(vertices):
             skin_asset.NORMAL.pack_into(out, vertices_at + index * record_size + influences * 2,

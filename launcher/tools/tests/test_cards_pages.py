@@ -106,9 +106,9 @@ class CardSamplingTests(unittest.TestCase):
             normals = np.tile([0., 0., 1.], (len(points), 1))
             faces = [np.array([0., 0., EYE_Z, 0., 0., -1.])]
             wall = RayQuery(source.p, source.tri_v, "scalar_rgb")
-            np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0), 0)
+            np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0, near_floor=0.), 0)
             cut = RayQuery(source.p, source.tri_v, "scalar_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
-            weight = probe_weights(points, faces, cut, 1.0)
+            weight = probe_weights(points, faces, cut, 1.0, near_floor=0.)
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
 
