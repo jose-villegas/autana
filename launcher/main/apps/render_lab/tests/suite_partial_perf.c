@@ -110,7 +110,7 @@ start_flythrough(void) {
 static const scenario_t scenarios[] = {
     {"gallop", &scene_capybara, start_gallop},
     {"water", &scene_water, start_water},
-    {"flythrough", &scene_sponza[SCENE_BAKED_FITTED_FULL], start_flythrough},
+    {"flythrough", &scene_sponza, start_flythrough},
 };
 
 /* One pass of `s` from its start, partial redraw on or off. */

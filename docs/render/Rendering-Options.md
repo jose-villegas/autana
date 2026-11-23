@@ -83,7 +83,7 @@ settings and take effect when the mesh is baked.
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
 | [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](offline/Baked-Mesh.md#meshlets) |
-| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](offline/Bake-Quality.md) |
+| [Decimation method](#decimation-method) | the fit's quality for a CUDA GPU at bake time | none | the fit | the renderer's `fit` table | [Bake-Quality.md](offline/Bake-Quality.md) |
 | [Level morph](frame/Levels-of-Detail.md#the-blend) | morphed level switches for flash, in place of the dither | LMOR sibling in flash | off | `geometry.morph` | [LMOR.md](../assets/formats/LMOR.md) |
 | [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](animation/Skinned-Lighting.md#lighting-modes) |
 
@@ -295,15 +295,14 @@ The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the
 camera calls `raster_split_forget()` on its `raster_split_t`.
 
-### Bake variants
+### Decimation method
 
-A mesh can be baked smooth, flat, simplified or fitted to a reference, each a
-separate mesh entry a renderer names. Flat and lite variants draw fewer
-gradients or triangles; fitted keeps lite's triangle budget, moved onto what
-the camera path draws.
+A renderer with a `fit` table is fitted to reference renders on a CUDA GPU.
+Without a GPU the importer writes its start: the import simplified to the
+fit's budget. A lower budget is the runtime LOD cut, not another bake.
 
-- **Pick** with the fidelity tables and the
-  [board measurements](offline/Bake-Quality.md#board-measurements) in Bake-Quality.md.
+- **Use** the fit; the start is the fallback where CUDA is missing.
+- **Measured**: [Bake-Quality.md](offline/Bake-Quality.md).
 
 ### Skinned lighting
 

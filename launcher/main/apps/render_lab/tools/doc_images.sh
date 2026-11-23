@@ -30,7 +30,7 @@ run "$PYTHON" launcher/tools/docs/figures.py gif "$W/butterflies-motion.avi" \
     "$OUT/render-lab-butterflies.gif" --fps "1000/$BUTTERFLY_DT"
 
 # The start of the flythrough, on the fitted full mesh.
-run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
+run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" --fps 8 --seconds 6
 
