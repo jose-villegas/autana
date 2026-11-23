@@ -201,6 +201,13 @@ class RenderViews(unittest.TestCase):
         self.assertNotEqual(0, run.returncode)
         self.assertIn("--view is shaded, depth, tiles, meshlets", run.stderr)
 
+    def test_an_unknown_scene_is_refused_with_the_keys(self):
+        run, path = self.render("--scene", "no-such-scene")
+        self.assertNotEqual(0, run.returncode)
+        self.assertIn("no scene no-such-scene; --scene is one of", run.stderr)
+        self.assertIn(" sponza", run.stderr)
+        self.assertFalse(path.exists())
+
     def test_a_picture_that_cannot_be_written_fails_the_run(self):
         missing = self.out / "no-such-folder" / "view.bmp"
         run = subprocess.run(
