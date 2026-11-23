@@ -26,7 +26,7 @@
     <path d="M60 220H792" stroke="#374c73" stroke-width="2" marker-end="url(#arrow)"/>
     <circle cx="136" cy="220" r="4" fill="#374c73"/>
     <circle cx="704" cy="220" r="4" fill="#374c73"/>
-    <text x="136" y="248" font-size="18">max(t − lag, 0)</text>
+    <text x="136" y="248" font-size="18">t − lag (wrap or clamp)</text>
     <text x="704" y="248" font-size="18">t</text>
   </g>
 </svg>

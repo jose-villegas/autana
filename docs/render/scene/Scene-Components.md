@@ -77,7 +77,7 @@ as its rest pose. The SCNE angle applies unless the timeline keys
 
 The hinge applies after constraints. Its position and rotation are reserved
 for the hinge, so timeline and property animator tracks cannot write them.
-An object with a hinge cannot own a constraint or be on its target path.
+Constraint owners, targets and their ancestors require unhinged transforms.
 
 See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
 [Scene Files](Scene-Files.md#constraint-and-hinge) for authoring.

@@ -164,7 +164,7 @@ def test_track_field_discovery():
     headers = "\n".join(path.read_text(encoding="utf-8") for path in main.rglob("*.h"))
     tags = {name: int.from_bytes("".join(re.findall(r"'(.)'", value)).encode(), "little")
             for name, value in re.findall(r"#define (ANIM_COMPONENT_\w+)\s+ASSET_TYPE\(([^)]+)\)", headers)}
-    field_pattern = r"ANIM_FIELD(_STEP)?\(\w+,\s*(\w+),\s*(ANIM_VALUE_\w+)\)"
+    field_pattern = r"ANIM_FIELD(_STEP(?:_OPTIONAL_NAME)?)?\(\w+,\s*(\w+),\s*(ANIM_VALUE_\w+)\)"
     field_lists = dict(re.findall(r"^#define[ \t]+(\w+)[ \t]+([^\n]+)", headers.replace("\\" + "\n", " "), re.M))
     expected = {}
     for path in main.rglob("*.c"):
@@ -174,7 +174,8 @@ def test_track_field_discovery():
             fields = field_lists.get(body, body)
             entries = re.findall(field_pattern, fields)
             assert entries, table
-            expected.update({(tags[tag], field): (names.index(kind), bool(step))
+            expected.update({(tags[tag], field): (names.index(kind), (scene_fields.STEP_ONLY if step else 0)
+                                                  | (scene_fields.ALLOW_NONE if step == "_STEP_OPTIONAL_NAME" else 0))
                              for step, field, kind in entries})
     assert any(step for _, step in expected.values())
     assert scene_fields.fields() == expected
@@ -458,6 +459,20 @@ BLOCK_TRACK = dict(object="rig", field="clip", blocks=[
 @pytest.mark.parametrize("hash_value", [0, 1, 0xffff, 0x10000, 0xffffffff])
 def test_name_key_round_trip(hash_value):
     assert scene_fields.decode_name(scene_fields.encode_name(hash_value)) == hash_value
+
+
+def test_animator_clip_key_rejects_empty_name(tmp_path):
+    clip = clip_of(tmp_path, """
+animation = "path"
+duration = 2
+[[tracks]]
+object = "rig"
+field = "clip"
+interp = "step"
+keys = [{t = 0, v = ""}]
+""")
+    with pytest.raises(ValueError, match="nonempty name"):
+        tracks_asset.bake(clip)
 
 
 def test_follow_keys_round_trip_with_unset_target(tmp_path):

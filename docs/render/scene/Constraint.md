@@ -1,25 +1,30 @@
 # Scene constraints
 
-![The camera follows the butterfly sampled at an earlier time, and points toward the capybara sampled at the current time.](figures/constraint.svg)
+![The owner follows an earlier target pose and faces a target sampled at the current time.](figures/constraint.svg)
 
-A constraint takes the owner's timeline pose as input. Follow sets the position.
-Look-at aims the owner's local +Z from that position. Weight blends the result
-with the input pose and preserves the owner's scale.
+A constraint writes the owner's local transform. It starts from the owner's
+timeline keys and uses the authored local for unkeyed fields. Weight blends
+the two poses while preserving the owner's scale.
 
-The scene samples a target and its ancestors at the requested time. Each
-unkeyed transform field keeps its current local value. Follow clamps its
-lagged sample time at zero. Look-at uses the current time and transforms
-`look_offset` through the look target's world transform.
+Target sampling includes every ancestor. Unkeyed target fields use their current locals.
 
-A target key starts a hand-off from the preceding target. Both targets are
-sampled on every evaluation. An unset target uses the owner's position for
-follow or the owner's rotation for look-at. Seek and playback produce the
-same pose at the same millisecond.
+| Input | Sample |
+|---|---|
+| Follow | Subtract `lag_ms` from `t`, then wrap in a looping clip or clamp at zero. Apply the offset in the [follow frame](../../kinematics/Rig.md#follow-position). |
+| Look-at | Sample at `t` and apply each local transform along the target path to `look_offset`. Compute the [look rotation](../../kinematics/Rig.md#look-rotation) from the owner's weighted world position. |
+| Unset | Use the owner's position for follow or its rotation for look-at. |
 
-Constraints run after the scene timeline and before the pose update.
-The loader rejects property animation, constraints and hinges on a
-target's transform path, or on the owner's ancestors. The owner's own
-transform can have timeline keys.
+A changed target starts a smooth hand-off with the `handoff_ms` sampled
+at that key. Repeated targets keep the active hand-off. Before the first
+key the scene uses the row's default target.
 
-See [Scene Files](Scene-Files.md#constraint-and-hinge) for authoring and
-[Rig](../../kinematics/Rig.md) for follow frames, aiming and the pole fallback.
+During an interrupted hand-off, the outgoing pose is the preceding
+hand-off evaluated at the current time. A completed hand-off supplies
+its target directly. Seek and playback yield the same pose at the same time.
+
+Constraints apply after the timeline samples and when a target path is
+placed. If a parent scale axis is effectively zero, the owner keeps its
+input local for that frame. Rotation under an unevenly scaled parent
+uses the TRS model without skew.
+
+See [Scene Files](Scene-Files.md#constraint-and-hinge) for authoring.

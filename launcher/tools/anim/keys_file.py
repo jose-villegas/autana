@@ -181,7 +181,7 @@ def curve_keys(track, label):
     return keys
 
 
-def track_curve(track, label, value_type, interp, transform_field, start_at_zero=True):
+def track_curve(track, label, value_type, interp, transform_field, start_at_zero=True, allow_none=False):
     keys = curve_keys(track, label)
     times = key_times(keys, label, start_at_zero=start_at_zero)
     values, rows = [], []
@@ -195,6 +195,8 @@ def track_curve(track, label, value_type, interp, transform_field, start_at_zero
         if value_type == scene_fields.VALUE_NAME:
             if not isinstance(authored, str) or "\0" in authored:
                 raise ValueError(f"{where}: v must be a name without NUL")
+            if not authored and not allow_none:
+                raise ValueError(f"{where}: v must be a nonempty name")
             hashed = name_hash(authored) if authored else NONE
             if authored and hashed == NONE:
                 raise ValueError(f"{where}: name hashes to NONE")
@@ -329,8 +331,8 @@ def tracks_glb(values):
         interp = track["interp"]
         if not isinstance(interp, str) or interp not in INTERPOLATIONS:
             raise ValueError(f"{where}: interp must be step, linear or cubic")
-        value_type, step_only = fields[component, field]
-        if step_only and interp != "step":
+        value_type, flags = fields[component, field]
+        if flags & scene_fields.STEP_ONLY and interp != "step":
             raise ValueError(f"{where}: field requires step interpolation")
         if binding in expanded and binding in authored:
             if field != SPEED_FIELD:
@@ -339,7 +341,8 @@ def tracks_glb(values):
         transform = scene_fields.TRANSFORM_FIELDS.get(field) if component == scene_fields.TRANSFORM else None
         interp = INTERPOLATIONS[interp]
         times, rows = track_curve(track, label, value_type, interp, field if transform else None,
-                                  start_at_zero=component != scene_fields.ANIMATOR)
+                                  start_at_zero=component != scene_fields.ANIMATOR,
+                                  allow_none=bool(flags & scene_fields.ALLOW_NONE))
         if component == scene_fields.ANIMATOR and field in ANIMATOR_LIMITS:
             for i, (value,) in enumerate(rows):
                 if not 0 <= value <= ANIMATOR_LIMITS[field] or float32(value, where, field) > ANIMATOR_LIMITS[field]:

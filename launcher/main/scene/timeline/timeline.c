@@ -10,7 +10,7 @@
 static scene_t*
 timeline_scene(entity_t root) {
     scene_row_t row;
-    scene_root_t* record = scene_entity_lookup(root, &row);
+    scene_root_t* record = scene_entity_peek(root, &row);
     return record != NULL && row == SCENE_ROW_ROOT && record->scene != NULL && record->scene->timeline != NULL
                ? record->scene
                : NULL;
@@ -21,6 +21,9 @@ timeline_camera_cut(const scene_t* scene) {
     const scene_timeline_t* timeline = scene->timeline;
     for (int i = 0; i < timeline->field_count; i++) {
         scene_draw_camera_cut(scene, (scene_row_t)(timeline->fields[i].dirty - scene->flags));
+    }
+    for (int i = 0; i < scene->asset.constraint_count; i++) {
+        scene_draw_camera_cut(scene, scene->constraints[i].values.entity);
     }
 }
 
@@ -40,31 +43,27 @@ timeline_apply_blocks(scene_t* scene) {
 static void
 timeline_apply_enabled(scene_t* scene) {
     const scene_timeline_t* timeline = scene->timeline;
-    if (timeline->enabled_count == 0) {
-        return;
-    }
-    const float seconds = anim_playhead_sample_seconds(&timeline->clock, &timeline->tracks.clip);
-    for (int i = timeline->tracks.count - timeline->enabled_count; i < timeline->tracks.count; i++) {
-        const anim_bound_t* field = &timeline->fields[i];
-        const int key = anim_track_key_at(&field->curve, seconds);
-        const bool enabled = field->curve.values[key < 0 ? 0 : key] != 0.0F;
-        if (enabled != ((*field->dirty & SCENE_FLAG_ENABLED) != 0)) {
-            const scene_row_t row = (scene_row_t)(field->dirty - scene->flags);
-            scene_row_set_enabled(scene->root, row, enabled);
+    for (int i = 0; i < timeline->enabled_count; i++) {
+        const scene_timeline_enabled_t* track = &timeline->enabled[i];
+        const int key = anim_track_key_at_ms(track->curve.times_ms, track->curve.count, timeline->clock.t_ms);
+        const bool enabled = track->curve.values[key < 0 ? 0 : key] != 0.0F;
+        if (enabled != ((scene->flags[track->row] & SCENE_FLAG_ENABLED) != 0)) {
+            scene_row_set_enabled(scene->root, track->row, enabled);
         }
     }
 }
 
-void
+bool
 scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     scene_timeline_t* timeline = scene->timeline;
     if (timeline == NULL) {
-        return;
+        return false;
     }
     anim_playhead_t* clock = &timeline->clock;
     const bool wrapped = anim_playhead_advance(clock, &timeline->tracks.clip, dt_ms);
     const uint32_t now = clock->t_ms;
-    if (timeline->dirty || now != timeline->applied_ms) {
+    const bool applied = timeline->dirty || now != timeline->applied_ms || wrapped;
+    if (applied) {
         scene_animation_apply_fields(scene, timeline->fields, timeline->field_count, clock, &timeline->tracks.clip);
         timeline_apply_blocks(scene);
         timeline_apply_enabled(scene);
@@ -74,28 +73,21 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     if (wrapped) {
         timeline_camera_cut(scene);
     }
+    return applied;
 }
 
 transformf_t
 scene_timeline_local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time, transformf_t local) {
     const scene_timeline_t* timeline = scene->timeline;
     const float seconds = anim_playhead_sample_seconds(time, &timeline->tracks.clip);
-    for (int i = 0; i < timeline->field_count; i++) {
-        const anim_bound_t* b = &timeline->fields[i];
-        if (b->dirty != &scene->flags[row]) {
-            continue;
-        }
-        for (int f = 0; f < ANIM_POSE_TRANSFORM_FIELD_COUNT; f++) {
-            const uint16_t at = ANIM_POSE_TRANSFORM_FIELDS.fields[f].offset;
-            if ((const void*)b->target == (const uint8_t*)&scene->locals[row] + at) {
-                anim_bound_t sample = *b;
-                sample.target = (float*)(void*)((uint8_t*)&local + at);
-                sample.dirty = NULL;
-                anim_apply(&sample, 1, seconds);
-                local.cached = false;
-                break;
-            }
-        }
+    const scene_timeline_fields_t range = timeline->row_fields[row];
+    for (int i = range.first; i < range.first + range.count; i++) {
+        anim_bound_t sample = timeline->fields[i];
+        const ptrdiff_t offset = (const uint8_t*)sample.target - (const uint8_t*)&scene->locals[row];
+        sample.target = (float*)(void*)((uint8_t*)&local + offset);
+        sample.dirty = NULL;
+        anim_apply(&sample, 1, seconds);
+        local.cached = false;
     }
     return local;
 }
@@ -178,31 +170,35 @@ block_blends_fit(const anim_track_t* blocks, const anim_track_t* blends, const u
     return true;
 }
 
-static int
-constraint_step_field(const anim_binding_t* binding) {
-    for (int i = 0; i < CONSTRAINT_STEP_COUNT; i++) {
-        if (strcmp(binding->field, CONSTRAINT_FIELDS.fields[i].name) == 0) {
-            return i;
-        }
+typedef enum {
+    TIMELINE_FIELD,
+    TIMELINE_TIME_KEYS,
+    TIMELINE_TARGET_KEYS,
+    TIMELINE_CLIP_KEYS,
+} timeline_storage_t;
+
+static timeline_storage_t
+timeline_storage(anim_binding_location_t location) {
+    if (location.component == SCENE_COMPONENT_ANIMATOR) {
+        return location.field == ANIMATOR_FIELD_CLIP ? TIMELINE_CLIP_KEYS : TIMELINE_TIME_KEYS;
     }
-    return -1;
+    if (location.component == SCENE_COMPONENT_CNST && location.field < CONSTRAINT_STEP_COUNT) {
+        return location.field < CONSTRAINT_TARGET_COUNT ? TIMELINE_TARGET_KEYS : TIMELINE_TIME_KEYS;
+    }
+    return location.component == SCENE_COMPONENT_ENTY ? TIMELINE_TIME_KEYS : TIMELINE_FIELD;
 }
 
 static scene_failure_t
-validate_block_blends(const anim_tracks_t* timeline, const uint32_t* times_ms, const char* clip) {
+validate_block_blends(const anim_tracks_t* timeline, const scene_timeline_blocks_t* blocks, const char* clip) {
+    const uint32_t* times_ms = blocks->times_ms;
     for (int i = 0; i < timeline->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(timeline, i, &binding);
-        if (binding.component == ANIM_COMPONENT_CONSTRAINT) {
-            if (constraint_step_field(&binding) >= 0) {
-                times_ms += binding.curve.count;
-            }
+        const anim_binding_location_t location = blocks->locations[i];
+        if (timeline_storage(location) == TIMELINE_FIELD) {
             continue;
         }
-        if (binding.component != ANIM_COMPONENT_ANIMATOR) {
-            continue;
-        }
-        if (binding.field_hash == name_hash("blend_ms")) {
+        if (location.component == SCENE_COMPONENT_ANIMATOR && location.field == ANIMATOR_FIELD_BLEND_MS) {
             anim_track_t starts;
             (void)anim_tracks_find(timeline, binding.path_hash, binding.component, name_hash("clip"), &starts);
             if (!block_blends_fit(&starts, &binding.curve, times_ms, timeline->clip.duration_ms)) {
@@ -215,40 +211,33 @@ validate_block_blends(const anim_tracks_t* timeline, const uint32_t* times_ms, c
 }
 
 scene_failure_t
-scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* targets, scene_field_mask_t* writes,
-                       const anim_tracks_t* timeline, scene_timeline_blocks_t* blocks) {
+scene_timeline_resolve(const scene_asset_t* asset, const scene_claims_t* claims, const anim_tracks_t* timeline,
+                       scene_timeline_blocks_t* blocks, uint8_t* transforms) {
     for (int i = 0; i < timeline->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(timeline, i, &binding);
-        if (binding.component == ANIM_COMPONENT_CONSTRAINT) {
-            const int field = constraint_step_field(&binding);
-            if (field >= 0) {
-                blocks->time_keys += binding.curve.count;
-                if (field < CONSTRAINT_TARGET_COUNT) {
-                    blocks->target_keys += binding.curve.count;
-                }
-            }
-        } else if (binding.component == ANIM_COMPONENT_ANIMATOR) {
+        const timeline_storage_t storage = timeline_storage(blocks->locations[i]);
+        if (storage != TIMELINE_FIELD) {
             blocks->time_keys += binding.curve.count;
-            if (binding.type == ANIM_VALUE_NAME) {
-                blocks->drivers++;
-                blocks->clip_keys += binding.curve.count;
-            }
+        }
+        if (blocks->locations[i].component == SCENE_COMPONENT_ENTY) {
+            blocks->enabled_tracks++;
+        }
+        if (storage == TIMELINE_TARGET_KEYS) {
+            blocks->target_keys += binding.curve.count;
+        } else if (storage == TIMELINE_CLIP_KEYS) {
+            blocks->drivers++;
+            blocks->clip_keys += binding.curve.count;
         }
     }
-    const char* clip = asset->timeline == NULL ? "" : asset->timeline->clip;
-    if (blocks->target_keys != 0 || asset->constraint_count != 0) {
-        const size_t defaults = asset->constraint_count * CONSTRAINT_TARGET_COUNT;
-        if (blocks->target_keys > SIZE_MAX / sizeof *blocks->targets - defaults) {
+    const char* clip = asset->timeline->clip;
+    if (blocks->target_keys != 0) {
+        if (blocks->target_keys > SIZE_MAX / sizeof *blocks->targets) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, clip);
         }
-        blocks->targets = memory_alloc((defaults + blocks->target_keys) * sizeof *blocks->targets, MEMORY_APP);
+        blocks->targets = memory_alloc(blocks->target_keys * sizeof *blocks->targets, MEMORY_APP);
         if (blocks->targets == NULL) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, clip);
-        }
-        const scene_failure_t result = scene_constraint_resolve(asset, writes, blocks->targets);
-        if (result.status != SCENE_OK) {
-            return result;
         }
     }
     if (blocks->time_keys > (SIZE_MAX - blocks->clip_keys) / sizeof *blocks->times_ms) {
@@ -264,48 +253,36 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
     uint32_t* times_ms = blocks->times_ms;
     uint8_t* slots = blocks->slots;
     scene_row_t* target_keys = blocks->targets;
-    if (target_keys != NULL) {
-        target_keys += asset->constraint_count * CONSTRAINT_TARGET_COUNT;
-    }
     const uint32_t end = timeline->clip.duration_ms;
     for (int i = 0; i < timeline->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(timeline, i, &binding);
-        const bool animator = binding.component == ANIM_COMPONENT_ANIMATOR;
-        if (!animator && binding.component != ANIM_COMPONENT_CONSTRAINT) {
+        const anim_binding_location_t location = blocks->locations[i];
+        const timeline_storage_t storage = timeline_storage(location);
+        if (storage == TIMELINE_FIELD) {
             continue;
         }
-        anim_binding_location_t location;
-        if (anim_bind_locate(&binding, targets->targets, targets->count, ANIM_BIND_NO_SELF, &location)
-            != ANIM_BIND_OK) {
-            return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
-        }
+        const bool animator = location.component == SCENE_COMPONENT_ANIMATOR;
         const scene_row_t entity = (scene_row_t)location.target;
-        if (!animator) {
-            if (location.field >= CONSTRAINT_STEP_COUNT) {
-                continue;
-            }
+        if (storage == TIMELINE_TARGET_KEYS) {
             for (int key = 0; key < binding.curve.count; key++) {
-                if (location.field < CONSTRAINT_TARGET_COUNT) {
-                    name_hash_t hash;
-                    (void)anim_name_decode(binding.curve.values + key * ANIM_NAME_WIDTH, &hash);
-                    const scene_failure_t result =
-                        scene_constraint_target(asset, writes, &binding, hash, target_keys++);
-                    if (result.status != SCENE_OK) {
-                        return result;
-                    }
-                } else if (!(binding.curve.values[key] >= 0.0F)) {
-                    return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
+                name_hash_t hash;
+                (void)anim_name_decode(binding.curve.values + key * ANIM_NAME_WIDTH, &hash);
+                const scene_failure_t result =
+                    scene_constraint_target(asset, transforms, &binding, entity, hash, target_keys++);
+                if (result.status != SCENE_OK) {
+                    return result;
                 }
             }
-        } else if (location.field == ANIMATOR_FIELD_CLIP) {
+        } else if (storage == TIMELINE_CLIP_KEYS) {
             const scene_failure_t result = resolve_block_slots(asset, entity, &binding, slots);
             if (result.status != SCENE_OK) {
                 return result;
             }
             slots += binding.curve.count;
-        } else if (!(writes[entity] & scene_field_bit(location.component, ANIMATOR_FIELD_CLIP))
-                   || !block_controls_fit(&binding.curve, location.field)) {
+        } else if (animator
+                   && (!(claims->writes[entity] & scene_field_bit(location.component, ANIMATOR_FIELD_CLIP))
+                       || !block_controls_fit(&binding.curve, location.field))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         uint32_t previous = 0;
@@ -316,7 +293,7 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
                 return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
             }
             const uint32_t ms = (uint32_t)rounded;
-            if (ms > end || (animator && location.field == ANIMATOR_FIELD_CLIP && ms == end)
+            if (ms > end || (storage == TIMELINE_CLIP_KEYS && ms == end)
                 || ((!animator || location.field != ANIMATOR_FIELD_BLEND_MS) && key > 0 && ms == previous)) {
                 return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
             }
@@ -324,32 +301,47 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
             previous = ms;
         }
     }
-    return validate_block_blends(timeline, blocks->times_ms, clip);
+    return validate_block_blends(timeline, blocks, clip);
+}
+
+static void
+layout_transform_fields(scene_t* scene, const anim_binding_location_t* locations) {
+    scene_timeline_t* timeline = scene->timeline;
+    for (int i = 0; i < timeline->tracks.count; i++) {
+        const anim_binding_location_t location = locations[i];
+        if (location.component == SCENE_COMPONENT_TRANSFORM) {
+            timeline->row_fields[location.target].count++;
+        }
+    }
+    for (int row = 0; row < scene->asset.entity_count; row++) {
+        scene_timeline_fields_t* range = &timeline->row_fields[row];
+        range->first = (uint16_t)timeline->field_count;
+        timeline->field_count += range->count;
+        range->count = 0;
+    }
 }
 
 static bool
-timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets) {
+timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets, const anim_binding_location_t* locations) {
     scene_timeline_t* timeline = scene->timeline;
     const uint8_t* slots = timeline->slots;
     const uint32_t* times_ms = timeline->times_ms;
     const scene_row_t* target_keys = timeline->target_keys;
+    layout_transform_fields(scene, locations);
     for (int i = 0; i < timeline->tracks.count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(&timeline->tracks, i, &binding);
-        anim_binding_location_t location;
-        if (anim_bind_locate(&binding, targets->targets, targets->count, ANIM_BIND_NO_SELF, &location)
-            != ANIM_BIND_OK) {
-            return false;
-        }
+        const anim_binding_location_t location = locations[i];
+        const timeline_storage_t storage = timeline_storage(location);
         const anim_target_t* target = &targets->targets[location.target];
-        if (binding.component == ANIM_COMPONENT_ANIMATOR) {
+        if (location.component == SCENE_COMPONENT_ANIMATOR) {
             scene_animator_t* a = &scene->animators[location.target];
             if (a->timeline_driver == 0) {
                 a->timeline_driver = (uint16_t)++timeline->driver_count;
             }
             scene_timeline_driver_t* driver = &timeline->drivers[a->timeline_driver - 1];
             driver->entity = (scene_row_t)location.target;
-            if (location.field == ANIMATOR_FIELD_CLIP) {
+            if (storage == TIMELINE_CLIP_KEYS) {
                 driver->blocks.starts_ms = times_ms;
                 driver->blocks.slots = slots;
                 driver->blocks.count = binding.curve.count;
@@ -360,30 +352,40 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets) {
                 *curve = (anim_block_curve_t){times_ms, binding.curve.values, binding.curve.count};
             }
             times_ms += binding.curve.count;
-        } else if (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field < CONSTRAINT_STEP_COUNT) {
+        } else if (location.component == SCENE_COMPONENT_ENTY) {
+            timeline->enabled[timeline->enabled_count++] = (scene_timeline_enabled_t){
+                .curve = {times_ms, binding.curve.values, binding.curve.count}, .row = location.target};
+            times_ms += binding.curve.count;
+        } else if (storage != TIMELINE_FIELD) {
             scene_constraint_t* constraint = scene_constraint_find(scene, (scene_row_t)location.target);
             scene_constraint_curve_t* curve = &constraint->curves[location.field];
             *curve = (scene_constraint_curve_t){
                 .times = times_ms, .values = binding.curve.values, .count = binding.curve.count};
-            if (location.field < CONSTRAINT_TARGET_COUNT) {
+            if (storage == TIMELINE_TARGET_KEYS) {
                 curve->targets = target_keys;
                 target_keys += binding.curve.count;
             }
             times_ms += binding.curve.count;
-        } else if (binding.component == ANIM_COMPONENT_ENTITY) {
-            const int index = timeline->tracks.count - ++timeline->enabled_count;
-            timeline->fields[index] = (anim_bound_t){.curve = binding.curve, .dirty = target->dirty};
-        } else if (anim_bind_field(&binding, &target->components[location.component], 1, target->dirty,
-                                   target->dirty_bit, &timeline->fields[timeline->field_count++])
-                   != ANIM_BIND_OK) {
-            return false;
+        } else {
+            int index;
+            if (binding.component == ANIM_COMPONENT_TRANSFORM) {
+                scene_timeline_fields_t* range = &timeline->row_fields[location.target];
+                index = range->first + range->count++;
+            } else {
+                index = timeline->field_count++;
+            }
+            if (anim_bind_field(&binding, &target->components[location.component], 1, target->dirty, target->dirty_bit,
+                                &timeline->fields[index])
+                != ANIM_BIND_OK) {
+                return false;
+            }
         }
     }
     return true;
 }
 
 scene_failure_t
-scene_timeline_bind(scene_t* scene) {
+scene_timeline_bind(scene_t* scene, const anim_binding_location_t* locations) {
     scene_timeline_t* timeline = scene->timeline;
     const char* clip = scene->asset.timeline->clip;
     if (timeline->tracks.count != 0) {
@@ -391,7 +393,7 @@ scene_timeline_bind(scene_t* scene) {
         if (targets.block == NULL) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, clip);
         }
-        const bool bound = timeline_bind_tracks(scene, &targets);
+        const bool bound = timeline_bind_tracks(scene, &targets, locations);
         memory_free(targets.block);
         if (!bound) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
@@ -433,13 +435,11 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     scene_timeline_t* timeline = scene->timeline;
     anim_playhead_seek(&timeline->clock, &timeline->tracks.clip, t_ms);
     timeline->dirty = true;
-    scene_timeline_step(scene, 0);
-    scene_constraint_step(scene);
+    scene_constraint_step(scene, scene_timeline_step(scene, 0));
     scene_hinge_step(scene);
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }
-    /* A seek can activate skins without passing through scene_animation_step(). */
     scene_skins_settle(scene);
     scene_animation_repose(scene, 0);
     timeline_camera_cut(scene);

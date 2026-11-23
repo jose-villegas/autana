@@ -1,8 +1,7 @@
 /*
- * transform: the transform component, which every entity has. Its local
- * (position, rotation, scale) is stored, in its parent's frame; its world is
- * derived from its parents', a scene root's included. transformf_t is the
- * value; this is the component.
+ * transform: each entity's position, rotation and scale in its parent's
+ * frame. The world pose includes its ancestors and the scene root.
+ * Constraints and hinges reapply their driven transforms after app writes.
  */
 #pragma once
 

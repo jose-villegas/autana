@@ -157,8 +157,8 @@ scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t 
 static bool
 constraint_fits(const scene_asset_t* scene, const scene_asset_constraint_t* c) {
     return c->entity < scene->entity_count && c->pad == 0 && c->bind <= SCENE_ASSET_BIND_TARGET_YAW
-           && vector_finite(c->offset) && vector_finite(c->look_offset) && nonnegative(c->lag_ms)
-           && nonnegative(c->handoff_ms) && c->weight >= 0.0F && c->weight <= 1.0F;
+           && vector_finite(c->offset) && vector_finite(c->look_offset) && scene_constraint_duration_fits(c->lag_ms)
+           && scene_constraint_duration_fits(c->handoff_ms) && c->weight >= 0.0F && c->weight <= 1.0F;
 }
 
 static bool

@@ -79,7 +79,7 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
         for (int c = 0; c < old->layer.clip_count; c++) {
             const scene_animator_clip_t* clip = &old->clips[c];
             const scene_failure_t result =
-                scene_animation_claim_clip(claims, targets, &clip->tracks, clip->id, owner, owned);
+                scene_animation_claim_clip(claims, targets, &clip->tracks, clip->id, owner, owned, NULL);
             if (result.status != SCENE_OK) {
                 return result;
             }
@@ -93,7 +93,8 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
         for (int c = 0; c < count; c++) {
             anim_tracks_t tracks;
             (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks, NULL);
-            const scene_failure_t result = scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned);
+            const scene_failure_t result =
+                scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned, NULL);
             if (result.status != SCENE_OK) {
                 return result;
             }
@@ -163,7 +164,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
         }
         memset(writes, 0, 2 * bytes);
-        scene_claims_t claims = {.asset = &scene->asset, .writes = writes};
+        scene_claims_t claims = {.asset = &scene->asset, .writes = writes, .protected_rows = scene->flags};
         result = claim_replacement(&claims, &targets, scene, a, ids, count, row, writes + scene->asset.entity_count);
     }
     if (result.status == SCENE_OK) {

@@ -214,20 +214,25 @@ scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t
 }
 
 static bool
-lens_keys_fit(const anim_track_t* curve) {
+scalar_keys_fit(const anim_track_t* curve, bool (*fits)(float)) {
     for (int key = 0; key < curve->count; key++) {
         float value[ANIM_WIDTH_MAX];
         anim_track_sample(curve, curve->times[key], value);
-        if (!lens_value_fits(value[0])) {
+        if (!fits(value[0])) {
             return false;
         }
     }
     return true;
 }
 
+static bool
+weight_fits(float value) {
+    return value >= 0.0F && value <= 1.0F;
+}
+
 scene_failure_t
 scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
-                           const char* clip, int self, scene_field_mask_t* owned) {
+                           const char* clip, int self, scene_field_mask_t* owned, anim_binding_location_t* locations) {
     for (int i = 0; i < tracks->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(tracks, i, &binding);
@@ -235,22 +240,31 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
+        if (locations != NULL) {
+            locations[i] = location;
+        }
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
-        const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
+        const bool hinged = targets->targets[entity].components[SCENE_COMPONENT_HNGE].fields != NULL;
+        const bool protected_transform =
+            binding.component == ANIM_COMPONENT_TRANSFORM && scene_constraint_covers(claims->protected_rows, entity)
+            && (hinged ? ANIM_POSE_TRANSFORM_FIELDS.fields[location.field].offset != offsetof(transformf_t, scale)
+                       : owned != NULL);
         if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT
               || binding.component == ANIM_COMPONENT_HINGE || binding.component == ANIM_COMPONENT_ENTITY)
              && owned != NULL)
-            || (property_transform && (claims->writes[entity] & SCENE_PROTECTED_TRANSFORM))
-            || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
+            || protected_transform
+            || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
+            || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
+                && !scalar_keys_fit(&binding.curve, weight_fits))
+            || (binding.component == ANIM_COMPONENT_CONSTRAINT
+                && (location.field == CONSTRAINT_FIELD_LAG_MS || location.field == CONSTRAINT_FIELD_HANDOFF_MS)
+                && !scalar_keys_fit(&binding.curve, scene_constraint_duration_fits))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         if (owned != NULL) {
             owned[entity] |= bit;
-            if (property_transform) {
-                claims->writes[entity] |= SCENE_PROPERTY_TRANSFORM;
-            }
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, clip);
@@ -436,10 +450,25 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 }
 
 void
+scene_hinge_step(scene_t* scene) {
+    for (int i = 0; i < scene->asset.hinge_count; i++) {
+        const scene_row_t row = scene->asset.hinges[i].entity;
+        const scene_hinge_t* hinge = &scene->hinges[i];
+        const transformf_t* local = &scene->locals[row];
+        transformf_t pose = hinge_pose(&hinge->joint, hinge->angle);
+        if (memcmp(&local->rotation, &pose.rotation, sizeof pose.rotation) != 0
+            || memcmp(&local->position, &pose.position, sizeof pose.position) != 0) {
+            pose.scale = local->scale;
+            scene_row_set_local(scene->root, row, pose);
+        }
+    }
+}
+
+void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
-    scene_timeline_step(scene, dt_ms);
+    const bool applied = scene_timeline_step(scene, dt_ms);
     scene_skins_settle(scene);
-    scene_constraint_step(scene);
+    scene_constraint_step(scene, applied);
     scene_hinge_step(scene);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
