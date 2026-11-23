@@ -49,7 +49,7 @@ typedef struct {
     const char* pack;
     const char* entity;
     const capybara_take_t* take;
-    bool textured; /* a baked scene's TEXTURES setting on: its row and take read SCENE_BAKED_TEXTURES_COMMAND */
+    bool textured; /* render_lab.textures on: its row and take read TEXTURED_TAKE */
     perf_budget_t quarters[LAB_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
@@ -74,6 +74,9 @@ static const profile_scenario_t profile_scenarios[] = {
 };
 
 static const char* TAG = "render_lab_profile";
+
+/* The row suffix and take of a scenario drawn with render_lab.textures on, as its baselines name them. */
+#define TEXTURED_TAKE            "textures"
 
 /* The steps capture: a line per FRAME_PROFILE_LINE_FRAMES frames of one
  * scenario at one ladder step, then each frame's whole:draw:upscale us and
@@ -110,9 +113,7 @@ static void
 release_fixture(void) {
     frame_profile_trace_free(&played);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
-    if (scenario->textured) {
-        send(SCENE_BAKED_TEXTURES_COMMAND " off");
-    }
+    TEST_ASSERT_TRUE(render_lab_textures_set_on(false));
     lab_test_exit(&saved);
 }
 
@@ -126,13 +127,13 @@ scenario_row(void) {
     if (!scenario->textured) {
         return scenario->scene->key;
     }
-    (void)snprintf(textured_row, sizeof textured_row, "%s-%s", scenario->scene->key, SCENE_BAKED_TEXTURES_COMMAND);
+    (void)snprintf(textured_row, sizeof textured_row, "%s-%s", scenario->scene->key, TEXTURED_TAKE);
     return textured_row;
 }
 
 static const char*
 scenario_take(void) {
-    return scenario->take != NULL ? scenario->take->name : scenario->textured ? SCENE_BAKED_TEXTURES_COMMAND : NULL;
+    return scenario->take != NULL ? scenario->take->name : scenario->textured ? TEXTURED_TAKE : NULL;
 }
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
@@ -189,7 +190,8 @@ enter_scenario(void) {
         entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
     TEST_ASSERT_FALSE(handle_is_none(entity));
     if (scenario->textured) {
-        send(SCENE_BAKED_TEXTURES_COMMAND " on");
+        TEST_ASSERT_TRUE(render_lab_textures_set_on(true));
+        lab_test_frame(false, NULL); /* the frame that opens them, before any timed */
     }
     const capybara_take_t* take = scenario->take;
     if (take != NULL) {

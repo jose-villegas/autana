@@ -40,7 +40,7 @@ The BOOT menu has a SCENE dropdown of scene families (`family` in
 `lab_scene_t`), then a VARIANT dropdown when the family has several scenes (the herd's
 sizes, from `variant`), then the rows the showing scene declares in its
 `controls` (Capybara's CLIP and BLEND; TEXTURES on a bake whose pack mesh has textures,
-also `autana render textures on|off`). Order in `scenes[]` is the order of every list, and
+the setting `render_lab.textures`). Order in `scenes[]` is the order of every list, and
 index 0 (Sponza) is the scene a start with no key shows.
 
 ### Water
@@ -730,7 +730,7 @@ matching reference views.
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
 `SPONZA_PERF_POSE_EVERY_MS`: the showcase bake with culling on and off, and
-the full bake placed by a moving model. Each frame-cost row reports mean,
+the bake placed by a moving model. Each frame-cost row reports mean,
 worst, median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.

@@ -99,12 +99,14 @@ def shade_unlit(src, material, mp, mt):
 
 
 def fidelity_poses(scene, object_name, frames, dt):
-    """frames + 1 poses of the scene camera's path, dt ms apart from time zero,
-    at the pose size of OBJECT_fitted's `fit.poses.size`, so the traced reference matches the
-    one that renderer was fitted against."""
+    """frames + 1 poses of the scene camera's path, dt ms apart from time zero, at the fit size of
+    `object_name`'s fitted renderer, so the traced reference matches the one it was fitted against."""
     from anim import track_host
+    from r3d.import_settings import SettingsError
     from r3d.poses import flight_camera
-    job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
+    job = next((item for item in scene.renderers if item.object.name == object_name), None)
+    if job is None or not job.renderer.fit:
+        raise SettingsError(f"{scene.path}: {object_name} is not a fitted renderer")
     camera = flight_camera(scene)
     return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.fit.size,
                             camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,

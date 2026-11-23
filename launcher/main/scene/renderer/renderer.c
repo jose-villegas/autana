@@ -186,6 +186,13 @@ copy_texels(renderer_texturing_t* block) {
 }
 
 /* The textures another renderer of `scene` opened for renderer `i`'s pack mesh, or NULL. */
+/* The UV asset beside renderer `i`'s pack mesh, the one its textures open from. */
+static asset_status_t
+open_uvs(const scene_t* scene, int i, asset_view_t* uvs) {
+    return r3d_lit_mesh_open_sibling(scene->pack, scene->asset.renderers[i].mesh, R3D_TEXTURE_UVS_NAME_SUFFIX,
+                                     R3D_TEXTURE_UVS_ASSET, false, uvs);
+}
+
 static renderer_texturing_t*
 shared_texturing(const scene_t* scene, int i) {
     const char* mesh_id = scene->asset.renderers[i].mesh;
@@ -212,8 +219,7 @@ open_texturing(scene_t* scene, int i, scene_failure_t* why) {
         return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
     }
     asset_view_t uvs;
-    asset_status_t status = r3d_lit_mesh_open_sibling(scene->pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX,
-                                                      R3D_TEXTURE_UVS_ASSET, false, &uvs);
+    asset_status_t status = open_uvs(scene, i, &uvs);
     if (status != ASSET_OK || uvs.data == NULL) {
         return scene_report(why, SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_NOT_FOUND : status, mesh_id);
     }
@@ -273,10 +279,7 @@ renderer_has_textures(entity_t entity) {
         return true;
     }
     asset_view_t uvs;
-    return r3d_lit_mesh_open_sibling(scene->pack, scene->asset.renderers[i].mesh, R3D_TEXTURE_UVS_NAME_SUFFIX,
-                                     R3D_TEXTURE_UVS_ASSET, false, &uvs)
-               == ASSET_OK
-           && uvs.data != NULL;
+    return open_uvs(scene, i, &uvs) == ASSET_OK && uvs.data != NULL;
 }
 
 /* Whether `r`'s opened textures cut. */

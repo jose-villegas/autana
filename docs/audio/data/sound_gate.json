@@ -558,6 +558,46 @@
       ],
       "verdict": "no change"
     },
+    "run_sponza_perf_suite/atrium quarter=landscape": {
+      "a": 40107.5,
+      "b": 40316.25,
+      "ratio": 1.0052047622015832,
+      "interval": [
+        1.0032606580291552,
+        1.0071523939088765
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium quarter=portrait": {
+      "a": 42856.5,
+      "b": 42960.875,
+      "ratio": 1.0024354531984647,
+      "interval": [
+        1.0006181995848087,
+        1.004255765635728
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted quarter=landscape": {
+      "a": 31805.625,
+      "b": 31950.0,
+      "ratio": 1.004539291398927,
+      "interval": [
+        1.0019364465284797,
+        1.0071484319400028
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted quarter=portrait": {
+      "a": 34271.25,
+      "b": 34422.875,
+      "ratio": 1.0044242623189992,
+      "interval": [
+        1.0024805603264388,
+        1.0063713172407327
+      ],
+      "verdict": "no change"
+    },
     "run_sponza_perf_suite/atrium_fitted_full quarter=landscape": {
       "a": 41124.25,
       "b": 41325.75,
@@ -575,6 +615,66 @@
       "interval": [
         1.002379801088821,
         1.0054390556126604
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat quarter=landscape": {
+      "a": 32064.0,
+      "b": 32209.5,
+      "ratio": 1.0045377994011977,
+      "interval": [
+        1.0023113786468474,
+        1.0067689265497568
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat quarter=portrait": {
+      "a": 32663.75,
+      "b": 32779.25,
+      "ratio": 1.0035360300026788,
+      "interval": [
+        1.0012878225050645,
+        1.0057897807765008
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat_fitted quarter=landscape": {
+      "a": 30968.625,
+      "b": 31199.75,
+      "ratio": 1.0074631986405596,
+      "interval": [
+        1.0054307340524369,
+        1.0094998109596178
+      ],
+      "verdict": "regressed"
+    },
+    "run_sponza_perf_suite/atrium_flat_fitted quarter=portrait": {
+      "a": 32577.875,
+      "b": 32710.625,
+      "ratio": 1.0040748514137279,
+      "interval": [
+        1.0013524555491475,
+        1.0068038064098719
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_lite quarter=landscape": {
+      "a": 32602.875,
+      "b": 32749,
+      "ratio": 1.0044819666977223,
+      "interval": [
+        1.003120830872138,
+        1.0058449624736603
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_lite quarter=portrait": {
+      "a": 34765.0,
+      "b": 34888.25,
+      "ratio": 1.0035452322738387,
+      "interval": [
+        1.0016374301470041,
+        1.0054572275731763
       ],
       "verdict": "no change"
     },

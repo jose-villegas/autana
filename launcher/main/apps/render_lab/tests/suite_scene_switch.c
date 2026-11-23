@@ -13,6 +13,7 @@
 #include "apps/render_lab/herd/scene_herd.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "lab/lab_scene.h"
 #include "lab/test/lab_test.h"
@@ -23,7 +24,7 @@ static lab_test_t saved;
 
 static void
 release_fixture(void) {
-    (void)app_render_lab.console->handle(SCENE_BAKED_TEXTURES_COMMAND " off");
+    (void)render_lab_textures_set_on(false);
 #if TUNE_ENABLED
     (void)render_lab_dynres_set_on(false);
 #endif
@@ -87,7 +88,7 @@ test_scene_switches_keep_the_arena_flat(void) {
     for (int lap = 0; lap < LAPS; lap++) {
         show_scene(scene_sponza.key);
         show_scene(scene_bistro.key);
-        TEST_ASSERT_TRUE(app_render_lab.console->handle(SCENE_BAKED_TEXTURES_COMMAND " on"));
+        TEST_ASSERT_TRUE(render_lab_textures_set_on(true));
         lab_test_frame(false, NULL);
         show_scene(scene_capybara.key);
         for (int n = 0; n < HERD_SIZE_COUNT; n++) {

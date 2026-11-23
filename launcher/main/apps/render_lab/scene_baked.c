@@ -15,7 +15,6 @@
 
 #include "esp_log.h"
 
-#include "console/console_words.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "image/pixel/rgb565.h"
@@ -26,6 +25,7 @@
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
 #include "scene/scene.h"
+#include "ui/render_lab_settings.h"
 #include "ui/ui.h"
 
 static const char* TAG = "scene_baked";
@@ -33,9 +33,9 @@ static const char* TAG = "scene_baked";
 static const scene_baked_t* shown_family;
 static entity_t loaded;
 static entity_t bake;
-/* The TEXTURES setting, kept across scenes; drawn only where the bake has textures. */
-static bool textured;
+/* Whether the bake has textures, and whether they are drawn: render_lab.textures as last applied. */
 static bool texturable;
+static bool textured;
 
 /* What the panel says in place of the triangle count when the scene could not
  * load; empty when it could. */
@@ -72,9 +72,25 @@ scene_baked_path(void) {
     return (lab_path_t){.scene = loaded, .entity = handle_is_none(loaded) ? ENTITY_NONE : camera_entity()};
 }
 
+/* Draws the bake with its textures when render_lab.textures turns on, plain when it turns off; a bake
+ * without textures, or loaded with the setting off, is left as it loaded. */
+static void
+apply_textures(void) {
+    const bool on = render_lab_textures_on();
+    if (!texturable || on == textured) {
+        return;
+    }
+    textured = on;
+    scene_failure_t why;
+    if (!renderer_set_textured(bake, on, &why)) {
+        record_failure(&why);
+    }
+}
+
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
+    apply_textures();
     if (!handle_is_none(loaded)) {
         (void)render_lab_apply_camera_settings(camera_entity());
     }
@@ -95,15 +111,6 @@ scene_baked_find(entity_t root, const scene_baked_t* family, char* failure, size
     return bake;
 }
 
-/* Draws the bake with its textures when the setting is on and it has them. */
-static void
-apply_textures(void) {
-    scene_failure_t why;
-    if (texturable && !renderer_set_textured(bake, textured, &why)) {
-        record_failure(&why);
-    }
-}
-
 static void
 scene_baked_enter(const lab_scene_t* self) {
     const scene_baked_t* family = self->data;
@@ -121,7 +128,7 @@ scene_baked_enter(const lab_scene_t* self) {
     }
     bake = scene_baked_find(loaded, family, failure, sizeof failure);
     texturable = !handle_is_none(bake) && renderer_has_textures(bake);
-    apply_textures();
+    textured = false;
     (void)camera_activate(camera_entity());
     (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
@@ -133,6 +140,7 @@ scene_baked_exit(void) {
     loaded = ENTITY_NONE;
     bake = ENTITY_NONE;
     texturable = false;
+    textured = false;
 }
 
 /* The shell has already drawn the scene into the framebuffer. */
@@ -162,29 +170,11 @@ scene_baked_controls(int width) {
     if (!texturable) {
         return;
     }
+    bool on = render_lab_textures_on();
     ui_row_centre(width, UI_ROW_HEIGHT);
-    if (ui_toggle(ui_next(), SCENE_BAKED_TEXTURES_LABEL, &textured)) {
-        apply_textures();
+    if (ui_toggle(ui_next(), RENDER_LAB_TEXTURES_LABEL, &on)) {
+        (void)render_lab_textures_set_on(on);
     }
-}
-
-/* "textures on|off" sets the TEXTURES setting, as its row does; a bake without textures keeps drawing plain. */
-static inline bool
-scene_baked_console(const char* args, console_reply_fn reply) {
-    const char* value;
-    if (!console_word_match(args, SCENE_BAKED_TEXTURES_COMMAND, &value)) {
-        return false;
-    }
-    const bool on = console_name_cmp(value, "on") == 0;
-    if (!on && console_name_cmp(value, "off") != 0) {
-        reply("RENDER_ERR textures on|off");
-        return true;
-    }
-    textured = on;
-    apply_textures();
-    reply("RENDER textures ok");
-    reply("RENDER_END");
-    return true;
 }
 
 /* A family's scene: titled and listed as `name_`, keyed `key_`, drawing `family_`'s bake. */
@@ -199,7 +189,6 @@ scene_baked_console(const char* args, console_reply_fn reply) {
      .status = LAB_SCENE_DEV(scene_baked_status),                                                                      \
      .controls = scene_baked_controls,                                                                                 \
      .generates_frames = true,                                                                                         \
-     .console = LAB_SCENE_DEV(scene_baked_console),                                                                    \
      .path = scene_baked_path}
 
 const lab_scene_t scene_sponza = SCENE_BAKED_ENTRY("Sponza", "sponza", &baked_sponza);

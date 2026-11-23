@@ -3,8 +3,8 @@
  *
  * The shell advances the camera and draws it. A family is data
  * (baked_families.h): its scene, its renderer's name and its camera. A bake
- * whose pack mesh has textures gets a TEXTURES setting
- * (renderer_set_textured()).
+ * whose pack mesh has textures gets a TEXTURES row for render_lab.textures
+ * (render_lab_view.h).
  */
 #pragma once
 
@@ -12,10 +12,6 @@
 
 #include "baked_families.h"
 #include "lab/lab_scene.h"
-
-/* The settings row and the console word that turn a bake's textures on and off. */
-#define SCENE_BAKED_TEXTURES_LABEL   "TEXTURES"
-#define SCENE_BAKED_TEXTURES_COMMAND "textures"
 
 /* `family`'s bake under `root`; ENTITY_NONE, with `failure` naming it, when
  * the scene lacks it. */

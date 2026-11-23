@@ -432,9 +432,9 @@ test_sponza_frame_cost_along_the_flythrough(void) {
 void
 test_sponza_frame_cost_placed(void) {
     open_the_meshes();
-    /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
-     * 2124, + 1%; per quarter, portrait then landscape. */
-    static const perf_budget_t placed_budget[LAB_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
+    /* Worst of a 5-run capture on 20E8, + 1%; per quarter, portrait then
+     * landscape. */
+    static const perf_budget_t placed_budget[LAB_PERF_QUARTER_COUNT] = {{39512, 49324}, {36129, 42843}};
     transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&bake_mesh, &model, NULL, NULL};

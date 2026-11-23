@@ -24,7 +24,7 @@ class DocImageFailureTest(unittest.TestCase):
     def test_scene_poses_equal_track_host_for_the_video_frame_count(self):
         from anim import track_host
         from anim_probe import write_camera_clip
-        from r3d.import_settings import load_scene
+        from r3d.import_settings import SettingsError, load_scene
         from r3d.mesh_import import fidelity_poses
         from test_r3d_import import FIT, HEAD, SIMPLIFY, VARIANT, VARIANT_OUTPUT, renderer, sun_object, write_import
         with tempfile.TemporaryDirectory() as directory:
@@ -33,9 +33,8 @@ class DocImageFailureTest(unittest.TestCase):
             write_import(work, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
             scene_path = work / "gallery.scene.toml"
             scene_path.write_text(HEAD + sun_object() + renderer(name="painting", extra=
-                'variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [16, 12] }\n') +
-                renderer(name="painting_fitted", extra=
                 'variant = "mesh"\nbake = true\n' + FIT.replace('[184, 224]', '[8, 6]')) +
+                renderer(name="frame", extra='variant = "mesh"\nbake = true\n') +
                 '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'
                 'path = { animation = "orbit.anim.toml", node = "orbit_view" }\n')
             scene = load_scene(scene_path)
@@ -45,6 +44,8 @@ class DocImageFailureTest(unittest.TestCase):
                                                        "--poses", "orbit_view", 8, 6, "0.62", "6"])
                     self.assertEqual(fidelity_poses(scene, "painting", frames, 250).encode(), expected.encode())
                     self.assertTrue(expected.startswith("size 8 6\nlens 0.62 6\n"), expected)
+            with self.assertRaisesRegex(SettingsError, "gallery.scene.toml: frame is not a fitted renderer"):
+                fidelity_poses(scene, "frame", 2, 250)
 
     def test_import_examples_use_the_callers_scene_object_pack_and_timing(self):
         import importlib.util
