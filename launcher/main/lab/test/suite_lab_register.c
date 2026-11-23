@@ -162,6 +162,13 @@ test_pose_and_play_reach_the_scene(void) {
     TEST_ASSERT_EQUAL_INT(1, calls.plays);
 }
 
+/* A key finds its scene's index; a key no scene has finds none. */
+static void
+test_a_scene_key_finds_its_index_and_an_unknown_one_none(void) {
+    TEST_ASSERT_EQUAL_INT(0, lab_scene_index(&probe_lab, "probe"));
+    TEST_ASSERT_EQUAL_INT(-1, lab_scene_index(&probe_lab, "no-such-scene"));
+}
+
 /* The open menu draws the lab's settings rows for the scene showing; a
  * closed one draws none. */
 static void
@@ -187,6 +194,7 @@ run_lab_register_suite(void) {
     RUN_TEST(test_a_seek_path_has_its_own_length);
     RUN_TEST(test_a_seek_wraps_to_the_path_and_reaches_the_scene);
     RUN_TEST(test_pose_and_play_reach_the_scene);
+    RUN_TEST(test_a_scene_key_finds_its_index_and_an_unknown_one_none);
     RUN_TEST(test_menu_hands_settings_the_showing_scene);
 }
 

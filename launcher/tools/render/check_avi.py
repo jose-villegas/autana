@@ -9,6 +9,8 @@ checks that the frame count, frame size, rate and idx1 entries it finds are
 mutually consistent, and that the RIFF/LIST size fields match what is
 actually there. Exits nonzero on the first mismatch. Standard library only.
 """
+import mmap
+import os
 import struct
 import sys
 from dataclasses import dataclass
@@ -59,29 +61,46 @@ class Avi:
     frames: object
 
 
+def _mapped(path):
+    """The file's bytes, mapped rather than read: a video may reach 4 GB, and
+    a comparison holds two."""
+    with open(path, "rb") as handle:
+        if os.fstat(handle.fileno()).st_size == 0:
+            raise AviError("empty file")
+        return mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
+
+
 def read_avi(path):
     """The Avi in a render_video.c file, its frames read lazily, or AviError.
 
     Trusts nothing beyond the structure; check_file() is the validator.
     """
-    with open(path, "rb") as handle:
-        data = handle.read()
-    if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
-        raise AviError("not a RIFF AVI file")
-    hdrl_s, hdrl_e = find_list(data, 12, len(data), b"hdrl")
-    avih_s, _ = find_chunk(data, hdrl_s, hdrl_e, b"avih")
-    width, height = struct.unpack_from("<2I", data, avih_s + 32)
-    strl_s, strl_e = find_list(data, hdrl_s, hdrl_e, b"strl")
-    strh_s, _ = find_chunk(data, strl_s, strl_e, b"strh")
-    scale, rate = struct.unpack_from("<2I", data, strh_s + 20)
-    movi_s, movi_e = find_list(data, 12, len(data), b"movi")
-    frame_bytes = (width * 3 + 3) // 4 * 4 * height
+    data = _mapped(path)
+    try:
+        if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
+            raise AviError("not a RIFF AVI file")
+        hdrl_s, hdrl_e = find_list(data, 12, len(data), b"hdrl")
+        avih_s, _ = find_chunk(data, hdrl_s, hdrl_e, b"avih")
+        width, height = struct.unpack_from("<2I", data, avih_s + 32)
+        strl_s, strl_e = find_list(data, hdrl_s, hdrl_e, b"strl")
+        strh_s, _ = find_chunk(data, strl_s, strl_e, b"strh")
+        scale, rate = struct.unpack_from("<2I", data, strh_s + 20)
+        movi_s, movi_e = find_list(data, 12, len(data), b"movi")
+        frame_bytes = (width * 3 + 3) // 4 * 4 * height
+    except BaseException:
+        data.close()
+        raise
 
+    # Each frame is copied out of the map, and the map closes once the frames
+    # are done or dropped: Windows deletes no file a live map still holds.
     def frames():
-        for fourcc, start, end in read_chunks(data, movi_s, movi_e):
-            if fourcc != b"00dc" or end - start != frame_bytes:
-                raise AviError("not a 24-bit frame chunk")
-            yield memoryview(data)[start:end]
+        try:
+            for fourcc, start, end in read_chunks(data, movi_s, movi_e):
+                if fourcc != b"00dc" or end - start != frame_bytes:
+                    raise AviError("not a 24-bit frame chunk")
+                yield data[start:end]
+        finally:
+            data.close()
 
     return Avi(width, height, rate / scale, frames())
 
@@ -102,9 +121,14 @@ def read_video(path):
 
 
 def check_file(path):
-    with open(path, "rb") as f:
-        data = f.read()
+    data = _mapped(path)
+    try:
+        return _check_mapped(path, data)
+    finally:
+        data.close()
 
+
+def _check_mapped(path, data):
     if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
         raise AviError("not a RIFF AVI file")
     riff_size = struct.unpack_from("<I", data, 4)[0]

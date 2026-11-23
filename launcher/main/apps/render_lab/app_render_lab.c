@@ -23,23 +23,9 @@
 #define HERD_SCENE_ENTRY(id_, ...)   &scene_herd[HERD_##id_],
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
-static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
-                                            &scene_sponza[SCENE_BAKED_FITTED],
-                                            &scene_sponza[SCENE_BAKED_FULL],
-                                            &scene_sponza[SCENE_BAKED_LITE],
-                                            &scene_sponza[SCENE_BAKED_FLAT],
-                                            &scene_sponza[SCENE_BAKED_FLAT_FITTED],
-                                            &scene_capybara,
-                                            &scene_capybara_sponza,
-                                            &scene_water,
-                                            &scene_bistro[SCENE_BAKED_FITTED_FULL],
-                                            &scene_bistro_textured,
-                                            &scene_bistro[SCENE_BAKED_FITTED],
-                                            &scene_bistro[SCENE_BAKED_FULL],
-                                            &scene_bistro[SCENE_BAKED_LITE],
-                                            &scene_bistro[SCENE_BAKED_FLAT],
-                                            &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-                                            STRESS_PRESETS(STRESS_SCENE_ENTRY) HERD_SIZES(HERD_SCENE_ENTRY)};
+static const lab_scene_t* const scenes[] = {
+    &scene_sponza, &scene_capybara, &scene_capybara_sponza,
+    &scene_water,  &scene_bistro,   STRESS_PRESETS(STRESS_SCENE_ENTRY) HERD_SIZES(HERD_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 
 static void

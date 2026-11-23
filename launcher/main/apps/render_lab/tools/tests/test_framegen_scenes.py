@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover - the tool tests' environment has it
 FRAMES = 12
 DT_MS = 33
 UNSUPPORTED = ("water", "capybara")
-SUPPORTED = "bistro-fitted-full"
+SUPPORTED = "bistro"
 
 
 @unittest.skipIf(read_video is None, "Pillow and numpy are not installed")
