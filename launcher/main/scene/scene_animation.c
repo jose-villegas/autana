@@ -195,20 +195,31 @@ scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t
 }
 
 static bool
-lens_keys_fit(const anim_track_t* curve) {
+scalar_keys_fit(const anim_track_t* curve, bool (*fits)(float)) {
     for (int key = 0; key < curve->count; key++) {
         float value[ANIM_WIDTH_MAX];
         anim_track_sample(curve, curve->times[key], value);
-        if (!lens_value_fits(value[0])) {
+        if (!fits(value[0])) {
             return false;
         }
     }
     return true;
 }
 
+static bool
+weight_fits(float value) {
+    return value >= 0.0F && value <= 1.0F;
+}
+
+static bool
+transform_protected(const scene_claims_t* claims, scene_row_t row) {
+    return claims->transforms == NULL ? scene_constraint_protects(claims->scene, row)
+                                      : (claims->transforms[row] & SCENE_PROTECTED_TRANSFORM) != 0;
+}
+
 scene_failure_t
 scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
-                           const char* clip, int self, scene_field_mask_t* owned) {
+                           const char* clip, int self, scene_field_mask_t* owned, anim_binding_location_t* locations) {
     for (int i = 0; i < tracks->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(tracks, i, &binding);
@@ -216,20 +227,25 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
+        if (locations != NULL) {
+            locations[i] = location;
+        }
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
         const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
         if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT)
              && owned != NULL)
-            || (property_transform && (claims->writes[entity] & SCENE_PROTECTED_TRANSFORM))
-            || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
+            || (property_transform && transform_protected(claims, entity))
+            || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
+            || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
+                && !scalar_keys_fit(&binding.curve, weight_fits))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
         if (owned != NULL) {
             owned[entity] |= bit;
-            if (property_transform) {
-                claims->writes[entity] |= SCENE_PROPERTY_TRANSFORM;
+            if (property_transform && claims->transforms != NULL) {
+                claims->transforms[entity] |= SCENE_PROPERTY_TRANSFORM;
             }
         }
     }
@@ -418,8 +434,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
-    scene_timeline_step(scene, dt_ms);
-    scene_constraint_step(scene);
+    scene_constraint_step(scene, scene_timeline_step(scene, dt_ms));
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

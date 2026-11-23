@@ -426,8 +426,8 @@ is valid SCNE syntax. `scene_load()` reports hinge rows as unsupported.
 
 ```toml
 [objects.constraint]
-follow = "butterfly_blue"
-look_at = "capybara"
+follow = "follow_target"
+look_at = "look_target"
 offset = [0, 60, 180]
 look_offset = [0, 30, 0]
 bind = "target_yaw"
@@ -447,8 +447,8 @@ Offsets and times default to zero, weight defaults to one, and bind
 defaults to `"world"`. The other bind values are `"target"` and `"target_yaw"`.
 
 Prefix a field with `CNST.` in a [track-form keys file](../animation/Animation-Tracks.md#keys-files).
-This camera returns to its own position at 2 seconds and follows a new
-target at 4 seconds.
+This camera starts returning to its own position at 2 seconds and starts
+following a new target at 4 seconds.
 
 ```toml
 animation = "camera_path"
@@ -457,15 +457,15 @@ animation = "camera_path"
 object = "camera"
 field = "CNST.follow"
 interp = "step"
-keys = [{ t = 0.0, v = "butterfly_blue" }, { t = 2.0, v = "" }, { t = 4.0, v = "butterfly_green" }]
+keys = [{ t = 0.0, v = "follow_target" }, { t = 2.0, v = "" }, { t = 4.0, v = "next_target" }]
 ```
 
 | Field | Time rule |
 |---|---|
-| `follow`, `look_at` | Step name. A change starts a hand-off from the preceding target. |
+| `follow`, `look_at` | Step name. A change starts a [hand-off](Constraint.md) at the key. |
 | `lag_ms`, `handoff_ms` | Step float. A nonnegative value rounds to whole milliseconds. |
 | `offset`, `look_offset` | Vector curve. Follow uses `bind` axes and look-at uses the target's frame. |
-| `weight` | Float curve. Zero uses the input pose and one uses the constrained pose. |
+| `weight` | Float curve from zero (input pose) to one (constrained pose). |
 | `bind` | Scene row only. |
 
 A hinge takes a unit axis and ordered bounds in radians.

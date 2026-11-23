@@ -71,6 +71,7 @@ typedef struct {
 
 /* Last key at or before seconds, or -1 if none. */
 int anim_track_key_at(const anim_track_t* track, float seconds);
+/* Last key at or before ms, or -1 if none. */
 int anim_track_key_at_ms(const uint32_t* times, int count, uint32_t ms);
 void anim_name_encode(name_hash_t name, float parts[ANIM_NAME_WIDTH]);
 bool anim_name_decode(const float parts[ANIM_NAME_WIDTH], name_hash_t* out);
