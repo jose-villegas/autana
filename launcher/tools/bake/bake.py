@@ -947,7 +947,7 @@ def request_bakes(branch="<branch>"):
 def bake_again(bake):
     if bake.stages and bake.stages.get("reason"):
         return ("run bake.py lock on a host with a C compiler (track_host.py builds the device sampler), "
-                "or the CI Bakes check")
+                f"or the CI Bakes run ({REQUEST.format(branch='<branch>')})")
     if bake.key is None and bake.kind == "levels":
         return "lock its fit first: bake.py lock --from-run N with the Bakes GPU run that made it"
     if bake.key is None and bake.kind == "texture":
@@ -1056,7 +1056,7 @@ def check_poses(found, held):
     for item in found:
         if item.job is not None and item.scene is not None:
             stage_keys(item.job, item.scene, tools, poses=poses)
-    problems = [f"{reason}; run bake.py lock on a host with a C compiler or the CI Bakes check"
+    problems = [f"{reason}; run bake.py lock on a host with a C compiler or the CI Bakes run ({REQUEST.format(branch='<branch>')})"
                 for reason in poses.missing.values()]
     for key, row in sorted(poses.used.items()):
         previous = held.get(key)
@@ -1215,8 +1215,8 @@ def run_status(run):
 
 def refuse_unfinished(runs):
     """Raises naming each run in `runs` that has not finished. The run this process runs in (GITHUB_RUN_ID) is
-    exempt: its CPU job locks its own bakes on its runner and never pushes that lock. Pushing a lock taken from any
-    other run still going would cancel that run (a branch keeps one Bakes run) before it uploads the rest."""
+    exempt: its CPU job locks its own bakes on its runner and never pushes that lock. Any other run still going has
+    uploaded only part of its bakes, so a lock taken from it would lack the rest."""
     current = os.environ.get("GITHUB_RUN_ID")
     going = [f"run {run} is {status}" for run in runs
              if str(run) != current and (status := run_status(run)) != "completed"]

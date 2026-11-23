@@ -1150,7 +1150,7 @@ class PosesTests(FittedBakeCase):
                     bake.fetch_all(missing, lock, self.cache, offline=True)
                 message = str(raised.exception)
                 for text in (str(self.scene.camera.component.path.animation), "node", "every_ms", "size",
-                             "bake.py lock", "C compiler", "track_host.py", "CI Bakes check"):
+                             "bake.py lock", "C compiler", "track_host.py", "gh workflow run bakes.yml"):
                     self.assertIn(text, message)
                 self.assertNotIn(str(failure), message)
                 skipped = []
