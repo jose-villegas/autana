@@ -352,19 +352,29 @@ class RunSuiteTest(unittest.TestCase):
 
 
 class ListingConsole(LiveConsole):
-    """An image that lists its suites, completes each RUNSUITE, and answers every heartbeat."""
+    """An image that lists its suites and a suite's tests, completes each RUNSUITE, and answers every heartbeat."""
 
-    def __init__(self, listing):
+    def __init__(self, listing, tests=()):
         super().__init__(answers=math.inf)
-        self.listing = listing
+        self.listing, self.tests = listing, tests
 
     def send(self, line):
         super().send(line)
+        words = line.split()
         if line == "RUNSUITE ?":
             self._lines = ["RUNSUITE_SUITE name=%s on_request=%d" % entry for entry in self.listing]
             self._lines.append("RUNSUITE_END count=%d" % len(self.listing))
-        elif line.startswith("RUNSUITE "):
-            self._lines = ["RUNSUITE_COMPLETE name=%s found=1 selected=1 unmatched=0" % line.split()[1]]
+        elif words[0] == "RUNSUITE":
+            listing = words[2:] == [qemu_run.NO_TEST]
+            self._lines = ["SUITE_TEST name=%s selected=0" % name for name in self.tests if listing]
+            self._lines.append("RUNSUITE_COMPLETE name=%s found=1 selected=1 unmatched=0" % words[1])
+
+    def runs(self):
+        return [line[len("RUNSUITE "):] for line in self.sent
+                if line.startswith("RUNSUITE ") and line != "RUNSUITE ?" and not line.endswith(" -")]
+
+
+PROFILE = "test_real_time_frame_profile"
 
 
 class SpreadTest(unittest.TestCase):
@@ -374,19 +384,47 @@ class SpreadTest(unittest.TestCase):
 
     def test_the_image_lists_what_runs_and_the_unmeasured_then_the_longest_go_first(self):
         console = ListingConsole([("short", 0), ("asked_for", 1), ("long", 0), ("new", 0)])
-        spread = qemu_run.Spread([], {"short": 1.0, "long": 9.0, "asked_for": 99.0})
+        spread = qemu_run.Spread([], {"short": 1.0, "long": 9.0, "asked_for": 99.0}, jobs=1)
         self.assertTrue(self.drive(console, spread))
-        runs = [line.split()[1] for line in console.sent if line.startswith("RUNSUITE ") and line != "RUNSUITE ?"]
-        self.assertEqual(["new", "long", "short"], runs)
-        self.assertEqual({"new", "long", "short"}, set(spread.ran))
+        self.assertEqual(["new", "long", "short"], console.runs())
+        self.assertEqual({("new", None), ("long", None), ("short", None)}, set(spread.ran))
 
     def test_a_given_list_is_shared_without_asking_the_image(self):
         console = ListingConsole([])
-        spread = qemu_run.Spread(["a", "b"], {})
+        spread = qemu_run.Spread([("a", None), ("b", None)], {}, jobs=2)
         self.assertTrue(self.drive(console, spread))
         self.assertNotIn("RUNSUITE ?", console.sent)
-        self.assertEqual(["a", "b"], sorted(spread.ran))
+        self.assertEqual(["a", "b"], console.runs())
         self.assertIsNone(spread.take())
+
+    def test_a_suite_longer_than_an_instances_share_runs_as_requests_for_its_tests(self):
+        tests = [PROFILE + "/sponza/portrait", PROFILE + "/bistro/portrait", PROFILE + "/bistro/textures/portrait"]
+        console = ListingConsole([("profile", 0), ("quick", 0)], tests)
+        spread = qemu_run.Spread([], {"profile": 30.0, "quick": 10.0}, jobs=2)
+        self.assertTrue(self.drive(console, spread))
+        self.assertEqual(["profile e_frame_profile/sponza/portrait",
+                          "profile e_frame_profile/bistro/portrait,rofile/bistro/textures/portrait", "quick"],
+                         console.runs())
+
+
+class TestRequestsTest(unittest.TestCase):
+    def test_each_test_runs_once_and_a_pattern_picking_another_shares_its_request(self):
+        names = [PROFILE + "/bistro/portrait", PROFILE + "/sponza/portrait", PROFILE + "/bistro/textures/portrait"]
+        requests = qemu_run.test_requests(names)
+        # The function's part is cut from the left to fit SUITE_FILTER_LEN.
+        self.assertEqual(["e_frame_profile/bistro/portrait,rofile/bistro/textures/portrait",
+                          "e_frame_profile/sponza/portrait"], requests)
+        for name in names:
+            picked = [r for r in requests if any(qemu_run.test_matches(p, name) for p in r.split(","))]
+            self.assertEqual(1, len(picked), name)
+
+    def test_a_short_name_is_its_own_pattern(self):
+        self.assertEqual(["test_a", "test_b"], qemu_run.test_requests(["test_a", "test_b"]))
+
+    def test_a_request_past_the_images_limits_is_none(self):
+        self.assertIsNone(qemu_run.test_requests(["f/" + "x" * qemu_run.FILTER_LEN]))
+        crowd = ["f/a"] + ["f/a/%d" % i for i in range(qemu_run.FILTER_MAX)]
+        self.assertIsNone(qemu_run.test_requests(crowd))
 
 
 class DriveFrameTest(unittest.TestCase):

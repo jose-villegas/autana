@@ -62,12 +62,12 @@ jobs:
       # No --icount: it puts both emulated cores on one host thread, doubling
       # the run, and a QEMU image reports every measured time rather than
       # enforcing it, so instruction counting buys a pass/fail run nothing.
-      # Instances share the suites, one per two CPUs: each emulates two cores,
-      # and a test that reads the clock fails when its cores wait for the host.
+      # One instance per CPU shares the suites; a suite longer than its share
+      # last run is shared test by test.
       - uses: ./.github/actions/patched-qemu
         with:
           command: >-
-            sh test/run_qemu_tests.sh --jobs "$(($(nproc) / 2))" --workdir build.qemu.jobs --timeout 4500
+            sh test/run_qemu_tests.sh --jobs "$(nproc)" --workdir build.qemu.jobs --timeout 4500
 
       - if: ${{ !cancelled() }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
