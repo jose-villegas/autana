@@ -51,9 +51,8 @@ class OneRunPerBranch(unittest.TestCase):
 
 RUNNER = ["self-hosted", "linux", "gpu-legion"]
 VENV = '-m venv --system-site-packages "$RUNNER_TEMP/venv"'
-# A bake.py command that makes bakes or plans them, and the join, which packs traced shards and traces nothing.
-MAKES = re.compile(r"bake\.py (bake|shards)\b")
-JOINS = re.compile(r"bake\.py bake --kind reference --shards ")
+# A bake.py command that makes bakes.
+MAKES = re.compile(r"bake\.py bake\b")
 
 
 def runs(job):
@@ -63,11 +62,10 @@ def runs(job):
 class OneRunnerMakesTheBakes(unittest.TestCase):
     def setUp(self):
         self.jobs = yaml.safe_load((ROOT / ".github/workflows/bakes.yml").read_text())["jobs"]
-        self.making = {name: job for name, job in self.jobs.items()
-                       if MAKES.search(runs(job)) and not JOINS.search(runs(job))}
+        self.making = {name: job for name, job in self.jobs.items() if MAKES.search(runs(job))}
 
     def test_every_job_that_makes_a_bake_runs_on_the_bakes_runner(self):
-        self.assertEqual(set(self.making), {"cpu", "reference-plan", "reference-shard"})
+        self.assertEqual(set(self.making), {"cpu", "reference"})
         for name, job in self.making.items():
             with self.subTest(job=name):
                 self.assertEqual(job["runs-on"], RUNNER)

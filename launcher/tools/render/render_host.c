@@ -627,7 +627,7 @@ open_host(const frame_provider_t* provider, int argc, char** argv, int* exit_cod
         if (host.frame.count > fits) {
             const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
             fprintf(stderr,
-                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
+                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 4 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
                     host.provider->name, host.frame.count, host.out_w, host.out_h, (long long)(total / (1024 * 1024)),
                     host.frame.dt_ms, (long long)fits);
@@ -661,6 +661,11 @@ open_host(const frame_provider_t* provider, int argc, char** argv, int* exit_cod
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
         release();
         return false;
+    }
+    /* On stderr, as stdout may carry the image: what a caller covering the
+     * whole camera path reads, 0 for a scene without one. */
+    if (host.provider->path_ms != NULL) {
+        fprintf(stderr, "RENDER path_ms=%u\n", (unsigned)host.provider->path_ms());
     }
     if (settings_set && !render_host_apply_settings(&settings)) {
         fprintf(stderr, "%s: --set render.FIELD needs the renderer linked (autana::render_host)\n",
