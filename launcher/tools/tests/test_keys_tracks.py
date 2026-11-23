@@ -179,6 +179,22 @@ def test_track_field_discovery():
     assert scene_fields.fields() == expected
 
 
+def test_discovery_reads_a_field_list_macro(tmp_path):
+    path = component(tmp_path, "TEST", "TEST_FIELD_LIST")
+    header = tmp_path / "TEST.h"
+    header.write_text(header.read_text() + "#define TEST_FIELD_LIST \\n"
+                      "    ANIM_FIELD(test_t, amount, ANIM_VALUE_VEC2), \\n"
+                      "    ANIM_FIELD_STEP(test_t, enabled, ANIM_VALUE_FLOAT)\n")
+    tag = int.from_bytes(b"TEST", "little")
+    assert scene_fields.discover(tmp_path) == {
+        (tag, "amount"): (scene_fields.VALUE_VEC2, False),
+        (tag, "enabled"): (scene_fields.VALUE_FLOAT, True),
+    }
+    path.write_text(path.read_text().replace("TEST_FIELD_LIST", "MISSING_FIELD_LIST"))
+    with pytest.raises(ValueError, match="unsupported animation field declaration"):
+        scene_fields.discover(tmp_path)
+
+
 def test_fields_resolve_by_component_and_pointer_node(tmp_path, monkeypatch):
     component(tmp_path, "TEST", """ANIM_FIELD(test_t, amount, ANIM_VALUE_VEC2),
         ANIM_FIELD(test_t, other, ANIM_VALUE_FLOAT)""")
