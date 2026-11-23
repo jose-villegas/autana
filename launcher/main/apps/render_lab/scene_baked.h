@@ -1,76 +1,22 @@
 /*
- * scene_baked: a scene file whose baked renderers are shown one at a time.
+ * scene_baked: a scene file drawn by its one fitted renderer.
  *
- * Every scene of a family loads the same scene file and enables one of its
- * renderers; the shell advances the camera and draws it. A family is data
- * (baked_families.h): its scene, its renderers' names and its camera.
+ * The shell advances the camera and draws it. A family is data
+ * (baked_families.h): its scene, its renderer's name and its camera. A bake
+ * whose pack mesh has textures gets a TEXTURES row for render_lab.textures
+ * (render_lab_view.h).
  */
 #pragma once
 
 #include <stddef.h>
-#include <stdint.h>
 
 #include "baked_families.h"
 #include "lab/lab_scene.h"
 
-/* What a family's scene shows: its family, which of its bakes, and whether
- * that bake draws its textures (renderer_set_textured()). */
-typedef struct {
-    const scene_baked_t* family;
-    scene_baked_variant_t variant;
-    bool textured;
-} scene_baked_shown_t;
+/* `family`'s bake under `root`; ENTITY_NONE, with `failure` naming it, when
+ * the scene lacks it. */
+entity_t scene_baked_find(entity_t root, const scene_baked_t* family, char* failure, size_t size);
 
-/* Enables `family`'s `shown` bake under `root` and disables the others;
- * false, with `failure` saying which, when a bake is missing. */
-bool scene_baked_show(entity_t root, const scene_baked_t* family, scene_baked_variant_t shown, char* failure,
-                      size_t size);
-/* `self->data` is a scene_baked_shown_t. Loads its family's scene and enables
- * that bake alone. */
-void scene_baked_enter(const lab_scene_t* self);
-void scene_baked_frame(uint32_t dt_ms);
-void scene_baked_exit(void);
-/* The camera the scene follows, flying its clip. */
-lab_path_t scene_baked_path(void);
-
-/* One variant's rows of SCENE_BAKED_FAMILY, with its family's fields as `f_`:
- * (shown table, family, name, key prefix). */
-#define SCENE_BAKED_FIELD_SHOWN(shown_, family_, name_, key_prefix_)  shown_
-#define SCENE_BAKED_FIELD_FAMILY(shown_, family_, name_, key_prefix_) family_
-#define SCENE_BAKED_FIELD_NAME(shown_, family_, name_, key_prefix_)   name_
-#define SCENE_BAKED_FIELD_KEY(shown_, family_, name_, key_prefix_)    key_prefix_
-#define SCENE_BAKED_SHOWN(f_, id_, title_, key_, label_)              {SCENE_BAKED_FIELD_FAMILY f_, SCENE_BAKED_##id_, false},
-/* A baked scene: titled `name_`, keyed `key_`, in menu family `family_` as
- * `label_`, showing `shown_`. */
-#define SCENE_BAKED_ENTRY(name_, key_, family_, label_, shown_)                                                        \
-    {.name = name_,                                                                                                    \
-     .key = key_,                                                                                                      \
-     .family = family_,                                                                                                \
-     .variant = label_,                                                                                                \
-     .data = shown_,                                                                                                   \
-     .enter = scene_baked_enter,                                                                                       \
-     .frame = scene_baked_frame,                                                                                       \
-     .exit = scene_baked_exit,                                                                                         \
-     .status = LAB_SCENE_DEV(scene_baked_status),                                                                      \
-                                                                                                                       \
-     .generates_frames = true,                                                                                         \
-     .path = scene_baked_path}
-#define SCENE_BAKED_SCENE(f_, id_, title_, key_, label_)                                                               \
-    [SCENE_BAKED_##id_] =                                                                                              \
-        SCENE_BAKED_ENTRY(SCENE_BAKED_FIELD_NAME f_ title_, SCENE_BAKED_FIELD_KEY f_ key_, SCENE_BAKED_FIELD_NAME f_,  \
-                          label_, &SCENE_BAKED_FIELD_SHOWN f_[SCENE_BAKED_##id_]),
-
-/* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
- * `name_`, each titled `name_` and its variant and keyed `key_prefix_` and its
- * variant; `shown_` names the table of what each shows. */
-#define SCENE_BAKED_FAMILY(id, shown_, family_, name_, key_prefix_)                                                    \
-    static const scene_baked_shown_t shown_[SCENE_BAKED_VARIANT_COUNT] = {                                             \
-        SCENE_BAKED_VARIANTS(SCENE_BAKED_SHOWN, (shown_, family_, name_, key_prefix_))};                               \
-    const lab_scene_t id[SCENE_BAKED_VARIANT_COUNT] = {                                                                \
-        SCENE_BAKED_VARIANTS(SCENE_BAKED_SCENE, (shown_, family_, name_, key_prefix_))}
-
-/* The families render_lab shows, each a scene per variant. */
-extern const lab_scene_t scene_sponza[SCENE_BAKED_VARIANT_COUNT];
-extern const lab_scene_t scene_bistro[SCENE_BAKED_VARIANT_COUNT];
-/* Bistro's fitted-full bake drawn with its textures. */
-extern const lab_scene_t scene_bistro_textured;
+/* The families render_lab shows. */
+extern const lab_scene_t scene_sponza;
+extern const lab_scene_t scene_bistro;
