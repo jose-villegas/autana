@@ -23,18 +23,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import HAVE_MITSUBA, needs_mitsuba  # noqa: E402
-
-
-def have_llvm():
-    if not HAVE_MITSUBA:
-        return False
-    import drjit as dr
-
-    return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
-
-
-needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
+from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
 
 SKY = {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
 

@@ -78,6 +78,18 @@ camera_set_present(entity_t camera, camera_present_t present) {
 }
 
 bool
+camera_set_projection(entity_t camera, float half_fov_short_tan, float near_z) {
+    lens_t* found = camera_of(camera);
+    if (found == NULL || !isfinite(half_fov_short_tan) || half_fov_short_tan <= 0.0F || !isfinite(near_z)
+        || near_z <= 0.0F) {
+        return false;
+    }
+    found->half_fov_short_tan = half_fov_short_tan;
+    found->near_z = near_z;
+    return true;
+}
+
+bool
 camera_set_shift(entity_t camera, vec2f_t shift) {
     lens_t* found = camera_of(camera);
     if (found == NULL || !isfinite(shift.x) || !isfinite(shift.y)) {
