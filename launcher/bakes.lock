@@ -1,8 +1,5 @@
 # Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
 
-# mesh_cpu_vendor: the CPU vendor the meshes were made on; a mesh bake's bytes differ between vendors.
-mesh_cpu_vendor = "AuthenticAMD"
-
 [[bake]]
 output = "bistro.ground.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"

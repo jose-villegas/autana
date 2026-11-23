@@ -160,6 +160,14 @@ def affected(workflow, jobs, pull, base_ref, request=call):
                             capped=capped, request=request)
 
 
+def pushed(workflow, jobs, root, base_ref, request=call):
+    """A push's decisions: its changes are the tree diff from its merge base with base_ref, whose files are the base's."""
+    base = os.fsdecode(git(root, 'merge-base', f'origin/{base_ref}', 'HEAD')).strip()
+    changes = changes_from_name_status(os.fsdecode(git(root, 'diff', '--name-status', '-z', '--no-renames', base, 'HEAD')))
+    base_files = {name for name in os.fsdecode(git(root, 'ls-tree', '-r', '-z', '--name-only', base)).split('\0') if name}
+    return affected_changes(workflow, jobs, changes, base_ref, base_files, request=request)
+
+
 def changes_from_name_status(text):
     """Normalize git's NUL-delimited name-status output to the PR-files shape."""
     if not text:
@@ -225,7 +233,10 @@ def main(argv=None):
         output({'name': f'{ARTIFACT_PREFIX}{stem}-{args.job[0]}', 'path': temporary / MANIFEST_NAME})
     else:
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
-        output(affected(stem, args.job, event['pull_request']['number'], os.environ['GITHUB_BASE_REF']))
+        if 'pull_request' in event:
+            output(affected(stem, args.job, event['pull_request']['number'], os.environ['GITHUB_BASE_REF']))
+        else:
+            output(pushed(stem, args.job, root, event['repository']['default_branch']))
 
 
 if __name__ == '__main__':
