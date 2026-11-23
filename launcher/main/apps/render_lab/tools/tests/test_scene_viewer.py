@@ -4,6 +4,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 from PIL import Image
@@ -12,6 +13,12 @@ import host_render
 ROOT = pathlib.Path(__file__).resolve().parents[6]
 VIEWER = ROOT / "launcher/tools/render/scenes/scene_viewer_render_host.sh"
 SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
+
+
+def baked_object():
+    """The scene's one fitted renderer, the bake the app draws."""
+    objects = tomllib.loads(SCENE.read_text())["objects"]
+    return next(item["name"] for item in objects if "fit" in item.get("mesh_renderer", {}))
 
 
 class SceneViewerEquivalence(unittest.TestCase):
@@ -28,7 +35,7 @@ class SceneViewerEquivalence(unittest.TestCase):
                 with self.subTest(frames=frames, dt=dt, quarter=quarter, view=view):
                     common = ["--frames", str(frames), "--dt", str(dt), "--quarter", str(quarter), "--view", view]
                     for binary, options, target in ((app, ["--scene", "sponza", "--no-hud"], "app.bmp"),
-                                                    (viewer, ["--scene", "sponza", "--object", "atrium"], "viewer.bmp")):
+                                                    (viewer, ["--scene", "sponza", "--object", baked_object()], "viewer.bmp")):
                         rendered = subprocess.run([str(binary), *options, *common, "-o", str(out / target)],
                                                   capture_output=True, text=True, timeout=120)
                         self.assertEqual(rendered.returncode, 0, rendered.stderr[-3000:])
