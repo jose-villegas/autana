@@ -544,7 +544,7 @@ its scene by name rather than through the menu:
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
-| `autana tune render_lab.orbit_zoom <n>` | where the Capybara and Herd scenes' camera starts, in hundredths of the distance that fits the subject from every angle: below 100 starts closer; taken at the next scene enter |
+| `autana tune render_lab.orbit_zoom <n>` | where the Capybara and Herd scenes' camera starts, in hundredths of the distance that fits the subject from every angle: below 100 starts closer; taken at the next enter or scene switch |
 
 ### Flying the camera
 
