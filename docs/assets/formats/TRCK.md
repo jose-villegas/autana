@@ -74,6 +74,6 @@ A row's `component` and `field` name what it drives. The components a scene bind
 |---|---|---|
 | `TRNS` | `ANIM_COMPONENT_TRANSFORM`, `anim/anim_tracks_format.h` | `position` vec3, `rotation` quaternion, `scale` vec3 (`anim/pose/anim_pose.c`) |
 | `CAMR` | `ANIM_COMPONENT_CAMERA`, `scene/camera/lens.h` | `half_fov_short_tan` float, `near_z` float (`LENS_FIELDS` in `scene/camera/lens.c`); the glTF bake writes only `half_fov_short_tan` |
-| `ANMR` | `ANIM_COMPONENT_ANIMATOR`, `scene/animator/animator.h` | `clip` name, `speed` float, `blend_ms` float. All require step interpolation. |
+| `ANMR` | `ANIM_COMPONENT_ANIMATOR`, [animator.h](../../../launcher/main/scene/animator/animator.h) | `clip` name, `speed` float, `blend_ms` float. All require step interpolation. |
 
 [Binding any field](../../render/animation/Animation-Tracks.md#binding-any-field) adds a component.

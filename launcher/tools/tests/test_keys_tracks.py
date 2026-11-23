@@ -160,16 +160,23 @@ def test_track_field_discovery():
     names = re.findall(r"^    (ANIM_VALUE_\w+),", header, re.M)
     assert scene_fields.VALUE_TYPES == dict(zip(names, range(len(names))))
     assert scene_fields.WIDTHS == tuple(map(int, re.search(r"ANIM_VALUE_WIDTHS\s+\{([^}]+)", header)[1].split(",")))
-    assert scene_fields.fields() == {
-        (scene_fields.TRANSFORM, "position"): (scene_fields.VALUE_VEC3, False),
-        (scene_fields.TRANSFORM, "rotation"): (scene_fields.VALUE_QUAT, False),
-        (scene_fields.TRANSFORM, "scale"): (scene_fields.VALUE_VEC3, False),
-        (scene_fields.CAMERA, "half_fov_short_tan"): (scene_fields.VALUE_FLOAT, False),
-        (scene_fields.CAMERA, "near_z"): (scene_fields.VALUE_FLOAT, False),
-        (scene_fields.ANIMATOR, "clip"): (scene_fields.VALUE_NAME, True),
-        (scene_fields.ANIMATOR, "speed"): (scene_fields.VALUE_FLOAT, True),
-        (scene_fields.ANIMATOR, "blend_ms"): (scene_fields.VALUE_FLOAT, True),
-    }
+    headers = "\n".join(path.read_text(encoding="utf-8") for path in main.rglob("*.h"))
+    tags = {name: int.from_bytes("".join(re.findall(r"'(.)'", value)).encode(), "little")
+            for name, value in re.findall(r"#define (ANIM_COMPONENT_\w+)\s+ASSET_TYPE\(([^)]+)\)", headers)}
+    field_pattern = r"ANIM_FIELD(_STEP)?\(\w+,\s*(\w+),\s*(ANIM_VALUE_\w+)\)"
+    field_lists = dict(re.findall(r"^#define[ \t]+(\w+)[ \t]+([^\n]+)", headers.replace("\\" + "\n", " "), re.M))
+    expected = {}
+    for path in main.rglob("*.c"):
+        source = path.read_text(encoding="utf-8")
+        for tag, table in re.findall(r"anim_component_fields_t\s+\w+\s*=\s*\{\s*(ANIM_COMPONENT_\w+),\s*(\w+),", source):
+            body = re.search(rf"anim_field_t\s+{table}\[\]\s*=\s*\{{([^}}]+)\}}", source)[1].strip()
+            fields = field_lists.get(body, body)
+            entries = re.findall(field_pattern, fields)
+            assert entries, table
+            expected.update({(tags[tag], field): (names.index(kind), bool(step))
+                             for step, field, kind in entries})
+    assert any(step for _, step in expected.values())
+    assert scene_fields.fields() == expected
 
 
 def test_fields_resolve_by_component_and_pointer_node(tmp_path, monkeypatch):
@@ -454,7 +461,7 @@ def test_name_key_round_trip(hash_value):
 
 @pytest.mark.parametrize("extra", [[], [dict(object="rig", field="speed", interp="step", keys=[dict(t=0.5, v=2)])]])
 def test_clip_blocks_expand_and_merge(extra):
-    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", tracks=[BLOCK_TRACK, *extra])))
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1, tracks=[BLOCK_TRACK, *extra])))
     tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
     decoded, _ = tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))
     clip, speed, blend = decoded
@@ -477,3 +484,50 @@ def test_clip_blocks_expand_and_merge(extra):
 def test_bad_clip_blocks(tracks, message):
     with pytest.raises(ValueError, match=message):
         keys_file.build(dict(animation="path", tracks=tracks))
+
+
+@pytest.mark.parametrize("blocks", [
+    [dict(t=0, clip="idle", speed=0)],
+    [dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)],
+    [dict(t=0, clip="idle"), dict(t=1, clip="idle")],
+])
+def test_block_only_duration_keeps_the_last_block(blocks, tmp_path):
+    values = dict(animation="path", duration=1.5, tracks=[dict(BLOCK_TRACK, blocks=blocks)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(values))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    decoded, stored_duration = tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))
+    assert stored_duration == 1500
+    assert decoded[0]["times"] == [block["t"] for block in blocks]
+
+    if len(blocks) == 2 and blocks[-1]["clip"] == "walk" and has_compiler():
+        clip = clip_of(tmp_path, """
+animation = "path"
+duration = 1.5
+[[tracks]]
+object = "rig"
+field = "clip"
+blocks = [{t = 0, clip = "idle"}, {t = 1, clip = "walk", blend = 250}]
+""")
+        args = ["--from", 1000, "--every", 499, "--until", 2000]
+        for mode, last in (([], "idle"), (["--clamp"], "walk")):
+            output = track_host.sample(clip, args + mode)
+            names = [scene_fields.decode_name(tuple(map(float, hi_lo)))
+                     for _, field, *hi_lo in map(str.split, output.splitlines()) if field == "rig:ANMR.clip"]
+            assert names == [keys_file.name_hash(name) for name in ("walk", "walk", last)]
+
+
+@pytest.mark.parametrize("duration, blocks, message", [
+    (None, [dict(t=0, clip="idle")], "duration"),
+    (1, [dict(t=0, clip="idle"), dict(t=1, clip="walk")], "duration"),
+    (1.1, [dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)], "blend"),
+    (2, [dict(t=0, clip="idle", blend=250)], "first block"),
+    (2, [dict(t=0, clip="idle"), dict(t=0, clip="walk")], "strictly"),
+    (2, [dict(t=0, clip="idle"), dict(t=1, clip="walk"), dict(t=0.5, clip="idle")], "strictly"),
+    (2, [dict(t=0, clip="")], "nonempty name"),
+])
+def test_block_only_duration_validation(duration, blocks, message):
+    values = dict(animation="path", tracks=[dict(BLOCK_TRACK, blocks=blocks)])
+    if duration is not None:
+        values["duration"] = duration
+    with pytest.raises(ValueError, match=message):
+        keys_file.build(values)

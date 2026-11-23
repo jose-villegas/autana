@@ -15,16 +15,16 @@
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
-enum { SCENE_COMPONENT_TRANSFORM, SCENE_COMPONENT_LENS, SCENE_COMPONENT_ANIMATOR, SCENE_COMPONENT_COUNT };
-
+#define SCENE_COMPONENT_TABLE(name, table, count, prior) [SCENE_COMPONENT_##name] = &table,
 static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COUNT] = {
-    [SCENE_COMPONENT_TRANSFORM] = &ANIM_POSE_TRANSFORM_FIELDS,
-    [SCENE_COMPONENT_LENS] = &LENS_FIELDS,
-    [SCENE_COMPONENT_ANIMATOR] = &ANIMATOR_FIELDS,
-};
+    SCENE_COMPONENT_LIST(SCENE_COMPONENT_TABLE)};
 
-_Static_assert(SCENE_ANIMATOR_FIRST_FIELD + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
-               "scene animation fields fit in the claim mask");
+scene_field_mask_t
+scene_field_bit(int component, int field) {
+#define SCENE_COMPONENT_BASE(name, table, count, prior) [SCENE_COMPONENT_##name] = SCENE_FIELD_BASE_##name,
+    static const uint8_t bases[SCENE_COMPONENT_COUNT] = {SCENE_COMPONENT_LIST(SCENE_COMPONENT_BASE)};
+    return (scene_field_mask_t)(1U << (bases[component] + field));
+}
 
 scene_anim_targets_t
 scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
@@ -215,13 +215,14 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         (void)anim_tracks_binding_at(tracks, i, &binding);
         anim_binding_location_t location;
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
+            if (binding.component == ANIM_COMPONENT_ANIMATOR) {
+                scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
+                (void)snprintf(failure.what, sizeof failure.what, "%s.%s", binding.path, binding.field);
+                return failure;
+            }
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
         }
-        int field = location.field;
-        for (int c = 0; c < location.component; c++) {
-            field += SCENE_COMPONENTS[c]->field_count;
-        }
-        const scene_field_mask_t bit = 1U << field;
+        const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
         if ((binding.component == ANIM_COMPONENT_ANIMATOR && owned != NULL)
             || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))

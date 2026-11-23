@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <limits.h>
+
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
 #include "asset/asset_store.h"
@@ -129,21 +131,40 @@ enum {
     ANIMATOR_FIELD_SPEED,
     ANIMATOR_FIELD_BLEND_MS,
     ANIMATOR_FIELD_COUNT,
-    SCENE_ANIMATOR_FIRST_FIELD = ANIM_POSE_TRANSFORM_FIELD_COUNT + LENS_FIELD_COUNT,
-    SCENE_ANIMATOR_CLIP_BIT = 1U << (SCENE_ANIMATOR_FIRST_FIELD + ANIMATOR_FIELD_CLIP),
 };
 
 extern const anim_component_fields_t ANIMATOR_FIELDS;
 
+#define SCENE_COMPONENT_LIST(X)                                                                                        \
+    X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
+    X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
+    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)
+
+#define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
+
+enum { SCENE_COMPONENT_LIST(SCENE_COMPONENT_ID) SCENE_COMPONENT_COUNT };
+
+#define SCENE_COMPONENT_RANGE(name, table, count, prior)                                                               \
+    SCENE_FIELD_BASE_##name = SCENE_FIELD_END_##prior, SCENE_FIELD_END_##name = SCENE_FIELD_BASE_##name + count,
+
+enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
+
+typedef uint16_t scene_field_mask_t;
+
+_Static_assert(SCENE_FIELD_BASE_ANIMATOR + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+               "scene animation fields fit in the claim mask");
+
+scene_field_mask_t scene_field_bit(int component, int field);
+
 typedef struct {
-    anim_track_t curves[ANIMATOR_FIELD_COUNT];
-    const uint8_t* slots;
+    anim_blocks_t blocks;
     scene_row_t entity;
 } scene_timeline_driver_t;
 
 typedef struct {
     int drivers;
-    size_t keys;
+    size_t clip_keys, time_keys;
+    uint32_t* times_ms;
     uint8_t* slots;
 } scene_timeline_blocks_t;
 
@@ -154,6 +175,7 @@ typedef struct {
     uint32_t applied_ms;
     int field_count, driver_count;
     scene_timeline_driver_t* drivers;
+    const uint32_t* times_ms;
     const uint8_t* slots;
     bool dirty;
     anim_bound_t fields[];
@@ -165,8 +187,6 @@ typedef struct {
     void* block; /* Owns targets and their component references. */
     int count;
 } scene_anim_targets_t;
-
-typedef uint16_t scene_field_mask_t;
 
 typedef struct {
     const scene_asset_t* asset;

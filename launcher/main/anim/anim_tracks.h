@@ -29,6 +29,16 @@ typedef struct {
 } anim_binding_t;
 
 asset_status_t anim_tracks_open(asset_view_t entry, anim_tracks_t* out);
+
+typedef struct {
+    const char* path;
+    const char* field;
+    uint32_t component;
+} anim_track_error_t;
+
+/* An invalid curve can report its binding if the binding's strings are valid. */
+asset_status_t anim_tracks_from_pack_diagnostic(const asset_pack_t* pack, const char* id, anim_tracks_t* out,
+                                                anim_track_error_t* out_error);
 asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out);
 asset_status_t anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* out);
 asset_status_t anim_tracks_find(const anim_tracks_t* tracks, name_hash_t path, uint32_t component, name_hash_t field,

@@ -70,7 +70,8 @@ Other clips use `SCENE` and paths name scene nodes.
 
 A **clip** is the tracks of one animation, on one timeline as in glTF: a
 track's key times are clip seconds, so tracks that start or end at different
-times stay in step, and the clip's duration is the last key of any of them.
+times stay in step. A clip ends at the last key unless its keys file sets
+an explicit duration.
 
 ## The pack entry
 
@@ -141,7 +142,8 @@ Curves and strings point into the pack, so the pack must outlive them.
 Nothing is allocated, and the sampler normalizes quaternion keys.
 
 `anim_bind()` returns a distinct `anim_bind_status_t` for a missing path,
-component or field, a type mismatch, too little storage and a skeleton root.
+component or field, a type or interpolation mismatch, too little storage
+and a skeleton root.
 Apply only a set that resolved.
 
 Its failed index is -1 on success and for root or storage errors, otherwise
@@ -233,6 +235,7 @@ Each block starts at `t` seconds and names an entry in the animator's
 
 ```toml
 animation = "performance"
+duration = 10
 
 [[tracks]]
 object = "subject"
@@ -253,6 +256,15 @@ keys = [{ t = 9, v = 1.25 }]
 Each block adds a step key to `ANMR.clip`, `ANMR.speed` and
 `ANMR.blend_ms`. The defaults are speed 1 and a blend of 0 ms. An extra
 step speed track can key between block starts. Duplicate speed times fail.
+Block times resolve to the nearest millisecond. The first block starts
+without a blend.
+
+`duration` is the clip end in seconds and applies to every track. A block-only
+clip requires it. Each block must start before that end and finish blending
+by it. Other keys files can omit it to end at the last track key.
+
+Block blending re-samples the preceding block. Runtime `anim_layer_play()`
+freezes the shown pose when interrupted.
 
 See the [scene animator](../scene/Scene-Files.md#animator) for how block time
 and blends are sampled.
@@ -294,10 +306,10 @@ pieces make that work:
    field, and the value types must match. `anim_bind_field()` does those last
    two steps for a caller that finds the object some other way. Resolution is
    the only place names are compared; the result is a pointer to the field.
-3. **Failure.** An unknown path, component or field, a type mismatch or an interpolation mismatch
-   returns its own `anim_bind_status_t` with the binding's index, and the
-   caller fails the load, naming the binding with `anim_binding_describe()`.
-   Nothing is skipped.
+3. **Failure.** Unknown paths, components and fields and mismatched types
+   and interpolation modes each have an `anim_bind_status_t`. The caller
+   uses the returned index to name the failed binding with
+   `anim_binding_describe()`.
 
 Each frame, `anim_apply()` then samples every resolved curve straight into
 its field.

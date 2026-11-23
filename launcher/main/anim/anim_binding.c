@@ -19,7 +19,7 @@ locate_field(const anim_binding_t* binding, const anim_component_ref_t* componen
             if (field->type != binding->type) {
                 return ANIM_BIND_ERR_TYPE;
             }
-            if ((field->step_only || field->type == ANIM_VALUE_NAME) && binding->curve.interp != ANIM_STEP) {
+            if (field->step_only && binding->curve.interp != ANIM_STEP) {
                 return ANIM_BIND_ERR_INTERP;
             }
             out->component = c;

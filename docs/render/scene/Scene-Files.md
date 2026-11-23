@@ -382,20 +382,19 @@ animator's clips. `default_clip` names one of those clips; absent, nothing plays
 rest pose. Each component occurs once per entity.
 
 A timeline [clip block track](../animation/Animation-Tracks.md#clip-blocks)
-owns `ANMR.clip` on its skinned entity and selects clips by name. A missing
-clip fails scene load with the object name and clip hash.
+selects clips by name and owns the animator's clip table and playback controls.
+A missing clip fails scene load with the object name and clip hash.
 
-For a block starting at millisecond `s`, local clip time at `t` is
-`floor(?(segment_ms ? speed_q16) / ANIM_PLAYHEAD_SPEED_ONE)`, wrapped or
-clamped by the animator. Each segment is part of `[s, t)` with one step speed.
+| Sample | Rule |
+|---|---|
+| Local clip time | From block start `s` to time `t`, take $`\left\lfloor \frac{\sum(\mathrm{segment\_ms} \times \mathrm{speed\_q16})}{\texttt{ANIM\_PLAYHEAD\_SPEED\_ONE}} \right\rfloor`$ and apply the animator's wrap mode. Each segment has one step speed. |
+| Blend-in weight | Divide elapsed time since the block start by the blend length, up to 1. |
+| Preceding block during blend | Sample from its own start with the same speed integration. |
+| Interrupted blend | Use the immediately preceding block as the blend source. |
 
-During blend-in, the preceding block advances by the same rule from its
-own start. The new block's weight is elapsed time divided by its blend
-length. An interrupted blend uses the immediately preceding block.
-
-The clip track is the animator's only playback writer. The timeline owns
-the clip table and playback controls while that track exists. Pose tiers
-still schedule when the skin samples the two slots.
+Before the first block, the skin uses its rest pose. At each millisecond, seek
+matches the timeline's written values and playback layer state. Seek poses
+immediately. The skin palette matches play on frames when its pose tier poses.
 
 A clip may animate the scale of an entity with children only if its three axes
 stay equal (within the scale tolerance) at every key and every cubic tangent.

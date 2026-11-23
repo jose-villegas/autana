@@ -106,8 +106,8 @@ check_row(const anim_tracks_t* tracks, const uint8_t* row) {
     return ASSET_OK;
 }
 
-asset_status_t
-anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
+static asset_status_t
+tracks_open(asset_view_t entry, anim_tracks_t* out, anim_track_error_t* rejected) {
     *out = (anim_tracks_t){0};
     if (entry.size < sizeof(uint16_t) || entry.data == NULL) {
         return ASSET_ERR_BOUNDS;
@@ -142,8 +142,15 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
         }
     }
     for (int i = 0; i < tracks.count; i++) {
-        const asset_status_t status = check_row(&tracks, row_at(&tracks, i));
+        const uint8_t* row = row_at(&tracks, i);
+        const asset_status_t status = check_row(&tracks, row);
         if (status != ASSET_OK) {
+            if (rejected != NULL && row_fields_valid(&tracks, row)) {
+                const char* names = (const char*)entry.data + strings;
+                *rejected = (anim_track_error_t){.path = names + asset_read_u16(row + ANIM_TRACKS_ROW_PATH),
+                                                 .field = names + asset_read_u16(row + ANIM_TRACKS_ROW_FIELD),
+                                                 .component = asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT)};
+            }
             return status;
         }
     }
@@ -152,14 +159,28 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
 }
 
 asset_status_t
-anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out) {
+anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
+    return tracks_open(entry, out, NULL);
+}
+
+asset_status_t
+anim_tracks_from_pack_diagnostic(const asset_pack_t* pack, const char* id, anim_tracks_t* out,
+                                 anim_track_error_t* out_error) {
+    if (out_error != NULL) {
+        *out_error = (anim_track_error_t){0};
+    }
     asset_view_t entry;
     const asset_status_t status = asset_pack_find(pack, id, ANIM_TRACKS_ASSET, &entry);
     if (status != ASSET_OK) {
         *out = (anim_tracks_t){0};
         return status;
     }
-    return anim_tracks_open(entry, out);
+    return tracks_open(entry, out, out_error);
+}
+
+asset_status_t
+anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out) {
+    return anim_tracks_from_pack_diagnostic(pack, id, out, NULL);
 }
 
 asset_status_t

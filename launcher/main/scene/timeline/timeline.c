@@ -2,9 +2,11 @@
 #include "scene/timeline/timeline.h"
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "math/scalar/units.h"
 #include "scene/scene_internal.h"
 
 static scene_t*
@@ -27,16 +29,11 @@ timeline_camera_cut(const scene_t* scene) {
 static void
 timeline_apply_blocks(scene_t* scene) {
     const scene_timeline_t* timeline = scene->timeline;
-    const float seconds = anim_playhead_sample_seconds(&timeline->clock, &timeline->tracks.clip);
     for (int i = 0; i < timeline->driver_count; i++) {
         const scene_timeline_driver_t* driver = &timeline->drivers[i];
         scene_animator_t* a = &scene->animators[driver->entity];
-        const anim_track_t* speed = &driver->curves[ANIMATOR_FIELD_SPEED];
-        const anim_track_t* blend = &driver->curves[ANIMATOR_FIELD_BLEND_MS];
-        const anim_blocks_t blocks = {&driver->curves[ANIMATOR_FIELD_CLIP], speed->count == 0 ? NULL : speed,
-                                      blend->count == 0 ? NULL : blend, driver->slots};
         const anim_block_sample_t sample =
-            anim_blocks_sample(&blocks, a->layer.clips, a->wrap, timeline->clock.t_ms, seconds);
+            anim_blocks_sample(&driver->blocks, a->layer.clips, a->wrap, timeline->clock.t_ms);
         anim_layer_set(&a->layer, &sample);
         a->timeline_pose_pending = true;
     }
@@ -73,9 +70,6 @@ resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_t
     }
     const int count = animator == NULL ? 0 : animator->clip_count;
     const char* entity_name = asset->names[entity].name;
-    if (count > ANIM_LAYER_CLIP_NONE) {
-        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, entity_name);
-    }
     for (int key = 0; key < curve->count; key++) {
         name_hash_t hash;
         (void)anim_name_decode(curve->values + key * ANIM_NAME_WIDTH, &hash);
@@ -102,11 +96,11 @@ resolve_block_slots(const scene_asset_t* asset, scene_row_t entity, const anim_t
 
 static bool
 block_controls_fit(const anim_track_t* curve, int field) {
-    anim_playhead_t rate;
+    uint32_t rate;
     for (int key = 0; key < curve->count; key++) {
         const float value = curve->values[key];
-        if (field == ANIMATOR_FIELD_SPEED ? !anim_playhead_set_speed(&rate, value)
-                                          : !(value >= 0.0F && (double)value <= UINT32_MAX)) {
+        if (field == ANIMATOR_FIELD_SPEED ? !anim_playhead_speed_q16(value, &rate)
+                                          : !(value >= 0.0F && value <= (float)ANIMATOR_BLEND_MS_MAX)) {
             return false;
         }
     }
@@ -120,19 +114,28 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
     for (int i = 0; i < timeline->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(timeline, i, &binding);
-        if (binding.component == ANIM_COMPONENT_ANIMATOR && binding.type == ANIM_VALUE_NAME) {
-            blocks->drivers++;
-            blocks->keys += binding.curve.count;
+        if (binding.component == ANIM_COMPONENT_ANIMATOR) {
+            blocks->time_keys += binding.curve.count;
+            if (binding.type == ANIM_VALUE_NAME) {
+                blocks->drivers++;
+                blocks->clip_keys += binding.curve.count;
+            }
         }
     }
     const char* clip = asset->timeline->clip;
-    if (blocks->keys != 0) {
-        blocks->slots = memory_alloc(blocks->keys, MEMORY_APP);
-        if (blocks->slots == NULL) {
+    if (blocks->time_keys > (SIZE_MAX - blocks->clip_keys) / sizeof *blocks->times_ms) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, clip);
+    }
+    if (blocks->time_keys != 0) {
+        blocks->times_ms = memory_alloc(blocks->time_keys * sizeof *blocks->times_ms + blocks->clip_keys, MEMORY_APP);
+        if (blocks->times_ms == NULL) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, clip);
         }
+        blocks->slots = (uint8_t*)(blocks->times_ms + blocks->time_keys);
     }
+    uint32_t* times_ms = blocks->times_ms;
     uint8_t* slots = blocks->slots;
+    const uint32_t end = timeline->clip.duration_ms;
     for (int i = 0; i < timeline->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(timeline, i, &binding);
@@ -151,10 +154,15 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* t
                 return result;
             }
             slots += binding.curve.count;
-        } else if (!(writes[entity] & SCENE_ANIMATOR_CLIP_BIT) || !block_controls_fit(&binding.curve, location.field)) {
+        } else if (!(writes[entity] & scene_field_bit(location.component, ANIMATOR_FIELD_CLIP))
+                   || !block_controls_fit(&binding.curve, location.field)) {
             scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
             (void)snprintf(failure.what, sizeof failure.what, "%s.%s", asset->names[entity].name, binding.field);
             return failure;
+        }
+        for (int key = 0; key < binding.curve.count; key++) {
+            const float ms = roundf(binding.curve.times[key] * (float)MATH_MS_PER_S);
+            *times_ms++ = ms <= 0.0F ? 0 : ms >= (float)end ? end : (uint32_t)ms;
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, clip);
@@ -164,6 +172,7 @@ static bool
 timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets) {
     scene_timeline_t* timeline = scene->timeline;
     const uint8_t* slots = timeline->slots;
+    const uint32_t* times_ms = timeline->times_ms;
     for (int i = 0; i < timeline->tracks.count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(&timeline->tracks, i, &binding);
@@ -180,11 +189,17 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets) {
             }
             scene_timeline_driver_t* driver = &timeline->drivers[a->timeline_driver - 1];
             driver->entity = (scene_row_t)location.target;
-            driver->curves[location.field] = binding.curve;
             if (location.field == ANIMATOR_FIELD_CLIP) {
-                driver->slots = slots;
+                driver->blocks.starts_ms = times_ms;
+                driver->blocks.slots = slots;
+                driver->blocks.count = binding.curve.count;
                 slots += binding.curve.count;
+            } else {
+                anim_block_curve_t* curve =
+                    location.field == ANIMATOR_FIELD_SPEED ? &driver->blocks.speed : &driver->blocks.blend;
+                *curve = (anim_block_curve_t){times_ms, binding.curve.values, binding.curve.count};
             }
+            times_ms += binding.curve.count;
         } else if (anim_bind_field(&binding, &target->components[location.component], 1, target->dirty,
                                    target->dirty_bit, &timeline->fields[timeline->field_count++])
                    != ANIM_BIND_OK) {

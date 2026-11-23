@@ -27,6 +27,7 @@ from gltf import gltf_read  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 from anim import scene_fields  # noqa: E402
+from anim.keys_file import DURATION_EXTRA, MS_PER_S  # noqa: E402
 from anim.scene_fields import (CAMERA, TRANSFORM, VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR, VALUE_NAME,
                                WIDTHS)  # noqa: E402
 
@@ -46,7 +47,8 @@ ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_PATH_HASH, ROW_FIELD_HASH, ROW_TIMES, RO
     for name in ("PATH", "FIELD", "COMPONENT", "PATH_HASH", "FIELD_HASH", "TIMES", "VALUES", "KEYS", "TYPE", "INTERP")]
 ALIGNMENT, CUBIC_RUNS = [read_define(OWNER, "ANIM_TRACKS_" + name) for name in ("ALIGNMENT", "CUBIC_RUNS")]
 STRING_MAX = read_define(OWNER, "ANIM_BINDING_STRING_MAX")
-STRINGS_MAX, COUNT_MAX, DURATION_MAX, GROUND_MAX = 65535, 65535, 0xFFFFFFFF, 65535
+STRINGS_MAX, COUNT_MAX, GROUND_MAX = 65535, 65535, 65535
+DURATION_MAX = read_define(OWNER, "ANIM_TRACKS_DURATION_MAX")
 # Poses a second the ground speed is measured at: fine enough that a stance's
 # slide reads as a straight line between samples.
 GROUND_SAMPLES_PER_S = 120
@@ -218,6 +220,14 @@ def clip_tracks(document, binary, animation):
                 joints = skin["joints"]
                 break
         tracks = []
+        fields = scene_fields.fields()
+        duration_ms = round(gltf_read.animation_duration(channels) * MS_PER_S)
+        extras = animation.get("extras")
+        if isinstance(extras, dict) and DURATION_EXTRA in extras:
+            end = extras[DURATION_EXTRA]
+            if type(end) is not int or not duration_ms <= end <= DURATION_MAX:
+                raise TracksError("invalid authored duration")
+            duration_ms = end
         for channel in channels:
             path, component, field, value_type, camera = channel_binding(document, channel, joint_paths)
             name = binding_name(path, component, field)
@@ -232,19 +242,20 @@ def clip_tracks(document, binary, animation):
                 aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
                 channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
                     channel["values"], channel["interpolation"], aspect))
-            if scene_fields.fields()[component, field][1] and channel["interpolation"] != "STEP":
+            _, step_only = fields[component, field]
+            if step_only and channel["interpolation"] != "STEP":
                 raise TracksError(f"{name}: field requires step interpolation")
             if value_type == VALUE_NAME:
                 check_name_values(name, channel["values"], channel["interpolation"])
-            if component != scene_fields.ANIMATOR and value_type != VALUE_NAME:
+            if not step_only:
                 channel = collapse_constant(channel)
             tracks.append({"path": path, "component": component, "field": field, "type": value_type,
                            "name": name, "times": list(channel["times"]), "values": list(channel["values"]),
                            "interpolation": channel["interpolation"], "quaternion": value_type == VALUE_QUAT})
         if joint_paths:
-            return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SKELETON, ground_mm_s(
+            return tracks, duration_ms, ROOT_SKELETON, ground_mm_s(
                 document, channels, joints)
-        return tracks, round(gltf_read.animation_duration(channels) * 1000), ROOT_SCENE, 0
+        return tracks, duration_ms, ROOT_SCENE, 0
     except (ValueError, OverflowError) as error:
         raise TracksError("clip %r: %s" % (animation.get("name", ""), error)) from error
 

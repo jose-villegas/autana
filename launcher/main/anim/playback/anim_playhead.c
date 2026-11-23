@@ -11,12 +11,17 @@ anim_playhead_init(anim_playhead_t* out, anim_wrap_t wrap) {
 }
 
 bool
-anim_playhead_set_speed(anim_playhead_t* p, float speed) {
-    if (!isfinite(speed) || speed < 0.0F || speed > (float)UINT16_MAX) {
+anim_playhead_speed_q16(float speed, uint32_t* out_q16) {
+    if (!isfinite(speed) || speed < 0.0F || speed > (float)ANIM_PLAYHEAD_SPEED_MAX) {
         return false;
     }
-    p->speed_q16 = (uint32_t)(speed * (float)ANIM_PLAYHEAD_SPEED_ONE);
+    *out_q16 = (uint32_t)(speed * (float)ANIM_PLAYHEAD_SPEED_ONE);
     return true;
+}
+
+bool
+anim_playhead_set_speed(anim_playhead_t* p, float speed) {
+    return anim_playhead_speed_q16(speed, &p->speed_q16);
 }
 
 static uint32_t
@@ -46,36 +51,6 @@ anim_playhead_advance(anim_playhead_t* p, const anim_clip_t* clip, uint32_t dt_m
 float
 anim_playhead_seconds(const anim_playhead_t* p) {
     return (float)p->t_ms * SECONDS_PER_MILLISECOND;
-}
-
-/* Place a key on the first millisecond whose sample can reach it. */
-uint32_t
-anim_playhead_key_ms(float seconds) {
-    if (seconds <= 0.0F) {
-        return 0;
-    }
-    const float ms = seconds / SECONDS_PER_MILLISECOND;
-    const uint32_t estimate = ms < (float)UINT32_MAX ? (uint32_t)ms : UINT32_MAX;
-    anim_playhead_t clock = {.t_ms = estimate};
-    const bool reached = anim_playhead_seconds(&clock) >= seconds;
-    uint32_t lo = reached ? 0 : estimate;
-    uint32_t hi = reached ? estimate : UINT32_MAX;
-    clock.t_ms = reached ? estimate - 1 : estimate + 1;
-    if (hi - lo <= 1) {
-        return hi;
-    }
-    if ((anim_playhead_seconds(&clock) >= seconds) != reached) {
-        return reached ? estimate : clock.t_ms;
-    }
-    while (hi - lo > 1) {
-        clock.t_ms = lo + (hi - lo) / 2;
-        if (anim_playhead_seconds(&clock) < seconds) {
-            lo = clock.t_ms;
-        } else {
-            hi = clock.t_ms;
-        }
-    }
-    return hi;
 }
 
 float

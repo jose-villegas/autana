@@ -77,7 +77,7 @@ def discover(root=MAIN):
                 if (tag, field) in fields:
                     code = tag_text(tag)
                     raise ValueError(f"{path}: duplicate animation field {code}.{field}")
-                fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro] or value_type == "ANIM_VALUE_NAME")
+                fields[tag, field] = (VALUE_TYPES[value_type], FIELD_MACROS[macro])
         if sum(matched.values()) != len(re.findall(FIELD_CALL, source)):
             raise ValueError(f"{path}: animation field declaration outside a resolved component table")
     return fields

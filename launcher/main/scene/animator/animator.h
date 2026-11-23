@@ -10,6 +10,8 @@
 #include "asset/asset_pack.h"
 #include "scene/scene.h"
 
+/* The greatest float32 blend value that fits in uint32_t. */
+#define ANIMATOR_BLEND_MS_MAX   4294967040U
 #define ANIM_COMPONENT_ANIMATOR ASSET_TYPE('A', 'N', 'M', 'R')
 
 typedef enum { ANIMATOR_CURRENT, ANIMATOR_PREVIOUS } animator_slot_t;

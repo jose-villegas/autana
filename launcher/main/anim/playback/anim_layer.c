@@ -80,61 +80,64 @@ anim_layer_pose(anim_layer_t* layer, const anim_skeleton_t* skeleton, const anim
     return &layer->shown;
 }
 
+static int
+block_key_at(const uint32_t* times_ms, int count, uint32_t t_ms) {
+    int lo = -1;
+    int hi = count;
+    while (hi - lo > 1) {
+        const int mid = (lo + hi) / 2;
+        if (times_ms[mid] <= t_ms) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
 static uint64_t
-speed_integral(const anim_track_t* speed, float start, uint32_t t_ms) {
-    uint32_t from = anim_playhead_key_ms(start);
-    if (from >= t_ms) {
-        return 0;
-    }
-    if (speed == NULL) {
-        return (uint64_t)(t_ms - from) * ANIM_PLAYHEAD_SPEED_ONE;
-    }
-    anim_playhead_t rate;
-    anim_playhead_init(&rate, ANIM_CLAMP);
-    int key = anim_track_key_at(speed, start);
+speed_integral(const anim_block_curve_t* speed, uint32_t from, uint32_t t_ms) {
+    int key = block_key_at(speed->times_ms, speed->count, from);
+    uint32_t rate = ANIM_PLAYHEAD_SPEED_ONE;
     uint64_t ticks = 0;
     while (from < t_ms) {
         if (key >= 0) {
-            (void)anim_playhead_set_speed(&rate, speed->values[key]);
+            (void)anim_playhead_speed_q16(speed->values[key], &rate);
         }
-        const uint32_t next = ++key < speed->count ? anim_playhead_key_ms(speed->times[key]) : t_ms;
+        const uint32_t next = ++key < speed->count ? speed->times_ms[key] : t_ms;
         const uint32_t to = next < t_ms ? next : t_ms;
-        ticks += (uint64_t)(to - from) * rate.speed_q16;
+        ticks += (uint64_t)(to - from) * rate;
         from = to;
     }
     return ticks;
 }
 
 static void
-sample_block_slot(const anim_blocks_t* blocks, const anim_clip_t* clips, int key, uint32_t t_ms, anim_slot_t* slot,
-                  name_hash_t* name) {
+sample_block_slot(const anim_blocks_t* blocks, const anim_clip_t* clips, int key, uint32_t t_ms, anim_slot_t* slot) {
     slot->clip = blocks->slots[key];
-    (void)anim_name_decode(blocks->clip->values + key * ANIM_NAME_WIDTH, name);
-    const uint64_t ticks = speed_integral(blocks->speed, blocks->clip->times[key], t_ms);
+    const uint64_t ticks = speed_integral(&blocks->speed, blocks->starts_ms[key], t_ms);
     anim_playhead_seek(&slot->playhead, &clips[slot->clip], ticks >> ANIM_PLAYHEAD_SPEED_SHIFT);
     slot->playhead.fraction = (uint16_t)(ticks & (ANIM_PLAYHEAD_SPEED_ONE - 1U));
 }
 
 anim_block_sample_t
-anim_blocks_sample(const anim_blocks_t* blocks, const anim_clip_t* clips, anim_wrap_t wrap, uint32_t t_ms,
-                   float seconds) {
+anim_blocks_sample(const anim_blocks_t* blocks, const anim_clip_t* clips, anim_wrap_t wrap, uint32_t t_ms) {
     anim_block_sample_t sample = {.current.clip = ANIM_LAYER_CLIP_NONE, .previous.clip = ANIM_LAYER_CLIP_NONE};
     anim_playhead_init(&sample.current.playhead, wrap);
     anim_playhead_init(&sample.previous.playhead, wrap);
-    const int key = anim_track_key_at(blocks->clip, seconds);
+    const int key = block_key_at(blocks->starts_ms, blocks->count, t_ms);
     if (key < 0) {
         return sample;
     }
-    sample_block_slot(blocks, clips, key, t_ms, &sample.current, &sample.current_name);
-    const float start = blocks->clip->times[key];
-    const int blend_key = blocks->blend == NULL ? -1 : anim_track_key_at(blocks->blend, start);
+    sample_block_slot(blocks, clips, key, t_ms, &sample.current);
+    const uint32_t start = blocks->starts_ms[key];
+    const int blend_key = block_key_at(blocks->blend.times_ms, blocks->blend.count, start);
     if (key > 0 && blend_key >= 0) {
-        sample.blend_ms = (uint32_t)blocks->blend->values[blend_key];
-        const uint32_t began = anim_playhead_key_ms(start);
-        const uint32_t elapsed = t_ms > began ? t_ms - began : 0;
+        sample.blend_ms = (uint32_t)blocks->blend.values[blend_key];
+        const uint32_t elapsed = t_ms - start;
         sample.blended_ms = elapsed < sample.blend_ms ? elapsed : sample.blend_ms;
         if (sample.blended_ms < sample.blend_ms) {
-            sample_block_slot(blocks, clips, key - 1, t_ms, &sample.previous, &sample.previous_name);
+            sample_block_slot(blocks, clips, key - 1, t_ms, &sample.previous);
         }
     }
     return sample;

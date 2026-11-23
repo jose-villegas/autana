@@ -65,7 +65,7 @@ typedef struct {
  * are in clip seconds, so tracks starting or ending at different times stay
  * in step. */
 typedef struct {
-    uint32_t duration_ms; /* the last key of any track */
+    uint32_t duration_ms;
     uint16_t ground_mm_s; /* how fast a skeleton clip's planted foot slides back under it at playback 1; 0 for none */
 } anim_clip_t;
 

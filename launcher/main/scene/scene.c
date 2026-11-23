@@ -121,13 +121,14 @@ scene_set_take(memory_take_fn take) {
 static scene_t*
 instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline, const scene_timeline_blocks_t* blocks) {
     size_t total = place(asset, NULL);
-    size_t timeline_at = 0, drivers_at = 0, slots_at = 0;
+    size_t timeline_at = 0, drivers_at = 0, times_at = 0, slots_at = 0;
     if (asset->timeline_count != 0) {
         timeline_at = mem_carve(&total, sizeof(scene_timeline_t) + timeline->count * sizeof(anim_bound_t),
                                 alignof(scene_timeline_t));
         drivers_at =
             mem_carve(&total, blocks->drivers * sizeof(scene_timeline_driver_t), alignof(scene_timeline_driver_t));
-        slots_at = mem_carve(&total, blocks->keys, alignof(uint8_t));
+        times_at = mem_carve(&total, blocks->time_keys * sizeof(uint32_t), alignof(uint32_t));
+        slots_at = mem_carve(&total, blocks->clip_keys, alignof(uint8_t));
     }
     uint8_t* block = scene_allocate_kept(total);
     if (block == NULL) {
@@ -143,9 +144,10 @@ instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline, const sce
         scene->timeline = (scene_timeline_t*)(void*)(block + timeline_at);
         scene->timeline->tracks = *timeline;
         scene->timeline->drivers = (scene_timeline_driver_t*)(void*)(block + drivers_at);
+        scene->timeline->times_ms = (const uint32_t*)(const void*)(block + times_at);
         scene->timeline->slots = block + slots_at;
-        if (blocks->keys != 0) {
-            memcpy(block + slots_at, blocks->slots, blocks->keys);
+        if (blocks->time_keys != 0) {
+            memcpy(block + times_at, blocks->times_ms, blocks->time_keys * sizeof(uint32_t) + blocks->clip_keys);
         }
         anim_playhead_init(&scene->timeline->clock, (anim_wrap_t)asset->timeline->wrap);
         scene->timeline->clock.paused = true;
@@ -550,25 +552,31 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
     anim_tracks_t timeline = {0};
     if (asset.timeline_count != 0) {
         const char* clip = asset.timeline->clip;
-        const asset_status_t status = scene_animator_read_clip(pack, clip, ANIM_ROOT_SCENE, &timeline);
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, clip);
+        anim_track_error_t rejected;
+        const asset_status_t status = anim_tracks_from_pack_diagnostic(pack, clip, &timeline, &rejected);
+        if (status != ASSET_OK || timeline.root != ANIM_ROOT_SCENE) {
+            scene_failure_t failure =
+                scene_failure_make(SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_FORMAT : status, clip);
+            if (rejected.component == ANIM_COMPONENT_ANIMATOR) {
+                (void)snprintf(failure.what, sizeof failure.what, "%s.%s", rejected.path, rejected.field);
+            }
+            return failure;
         }
     }
     scene_field_mask_t* writes;
     scene_timeline_blocks_t blocks = {0};
     const scene_failure_t writers = check_writers(&asset, pack, &timeline, record->id, &writes, &blocks);
     if (writers.status != SCENE_OK) {
-        memory_free(blocks.slots);
+        memory_free(blocks.times_ms);
         return writers;
     }
     if (!scene_world_issue_rows(record, asset.entity_count)) {
-        memory_free(blocks.slots);
+        memory_free(blocks.times_ms);
         memory_free(writes);
         return scene_failure_make(SCENE_ERR_FULL, ASSET_OK, record->id);
     }
     *opened = instantiate(&asset, &timeline, &blocks);
-    memory_free(blocks.slots);
+    memory_free(blocks.times_ms);
     if (*opened != NULL && writes != NULL) {
         memcpy((*opened)->writes, writes, asset.entity_count * sizeof *writes);
     }

@@ -10,6 +10,7 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
+/* Field offsets describe the bindings; the timeline samples them without a target instance. */
 typedef struct {
     float clip[ANIM_NAME_WIDTH], speed, blend_ms;
 } animator_fields_t;
@@ -216,11 +217,6 @@ animator_of(scene_t* scene, scene_row_t entity) {
     return &scene->animators[entity];
 }
 
-static bool
-timeline_owns_clip(const scene_t* scene, scene_row_t row) {
-    return scene->timeline != NULL && (scene->writes[row] & SCENE_ANIMATOR_CLIP_BIT);
-}
-
 static anim_slot_t*
 slot_of(scene_animator_t* a, animator_slot_t slot) {
     if (slot == ANIMATOR_CURRENT) {
@@ -246,7 +242,7 @@ settled_playhead(entity_t entity, animator_slot_t slot) {
     scene_row_t row;
     scene_t* scene = scene_entity_row(entity, &row);
     scene_animator_t* a = scene == NULL ? NULL : animator_of(scene, row);
-    if (a != NULL && timeline_owns_clip(scene, row)) {
+    if (a != NULL && a->timeline_driver != 0) {
         return NULL;
     }
     if (a != NULL) {
@@ -288,7 +284,7 @@ scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_i
     if (row >= scene->asset.entity_count || !clip_count_fits(count, skeleton_id)) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->root->id);
     }
-    if (replace && timeline_owns_clip(scene, row)) {
+    if (replace && scene->animators[row].timeline_driver != 0) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[row].name);
     }
     scene_animator_t a = {.root = skeleton_id == NULL ? ANIM_ROOT_SCENE : ANIM_ROOT_SKELETON, .wrap = ANIM_LOOP};
@@ -347,7 +343,7 @@ animator_play(entity_t entity, int clip, uint32_t blend_ms) {
         return false;
     }
     scene_animator_t* a = animator_of(scene, row);
-    if (a == NULL || timeline_owns_clip(scene, row) || clip < 0 || clip >= a->layer.clip_count
+    if (a == NULL || a->timeline_driver != 0 || clip < 0 || clip >= a->layer.clip_count
         || (a->root == ANIM_ROOT_SCENE && blend_ms != 0)) {
         return false;
     }
@@ -446,7 +442,7 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
     }
     scene_animator_t* a = animator_of(scene, row);
     anim_slot_t* selected = a == NULL ? NULL : slot_of(a, slot);
-    if (selected == NULL || timeline_owns_clip(scene, row) || selected->clip == ANIM_LAYER_CLIP_NONE) {
+    if (selected == NULL || a->timeline_driver != 0 || selected->clip == ANIM_LAYER_CLIP_NONE) {
         return false;
     }
     scene_animator_settle(a);

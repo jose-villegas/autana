@@ -217,6 +217,12 @@ static void
 test_key_at_includes_exact_keys(void) {
     const float times[] = {0.25F, 0.5F, 1.0F};
     const anim_track_t track = {.times = times, .count = sizeof times / sizeof *times};
+    const anim_track_t empty = {0};
+    const anim_track_t single = {.times = times, .count = 1};
+    TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&empty, 0.0F));
+    TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&single, 0.0F));
+    TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&single, times[0]));
+    TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&single, times[2]));
     TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&track, 0.0F));
     TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&track, times[0]));
     TEST_ASSERT_EQUAL_INT(1, anim_track_key_at(&track, 0.75F));
