@@ -799,6 +799,20 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
 
     @needs_mitsuba
+    def test_a_fitted_renderer_without_a_gpu_writes_its_cpu_start(self):
+        objects = (renderer(extra='bake = true\nvariant = "mesh"\n' + FIT) + sun_object()
+                   + camera(path=True, region=False))
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+            path = write_scene(root, objects, HEAD, name="hall.scene.toml")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(mesh_import.main([str(path)]), 0)
+            lit = read_lit_mesh(root / "hall.mesh.bundle")
+        self.assertLessEqual(len(lit.tris), 10)
+        self.assertIn("CUDA", err.getvalue())
+
+    @needs_mitsuba
     def test_a_lit_bake_welds_on_its_own_position_scale_so_a_small_model_keeps_its_triangles(self):
         size = 0.01  # model units far below one: a centimetre cube modelled in metres
         scale = 65536

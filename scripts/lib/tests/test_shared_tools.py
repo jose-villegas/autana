@@ -237,9 +237,9 @@ class SuiteFailureSignTests(unittest.TestCase):
                          ['test name reported twice: test_one', 'test name reported twice: test_two/x/portrait'])
 
     def test_case_names_are_results_of_their_own(self):
-        text = 'C:/w/f.c:12:test_profile/capybara/front/portrait:PASS\n:13:test_profile/sponza-fitted:FAIL: slow\n'
+        text = 'C:/w/f.c:12:test_profile/capybara/front/portrait:PASS\n:13:test_profile/bistro:FAIL: slow\n'
         self.assertEqual([(r['name'], r['status']) for r in capture.results(text)],
-                         [('test_profile/capybara/front/portrait', 'PASS'), ('test_profile/sponza-fitted', 'FAIL')])
+                         [('test_profile/capybara/front/portrait', 'PASS'), ('test_profile/bistro', 'FAIL')])
         self.assertEqual(capture.suite_failure_signs(text, 1), [])
 
     def test_lines_that_only_look_like_results_are_not_results(self):

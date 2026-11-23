@@ -99,12 +99,14 @@ def shade_unlit(src, material, mp, mt):
 
 
 def fidelity_poses(scene, object_name, frames, dt):
-    """frames + 1 poses of the scene camera's path, dt ms apart from time zero,
-    at the pose size of OBJECT_fitted's `fit.poses.size`, so the traced reference matches the
-    one that renderer was fitted against."""
+    """frames + 1 poses of the scene camera's path, dt ms apart from time zero, at the fit size of
+    `object_name`'s fitted renderer, so the traced reference matches the one it was fitted against."""
     from anim import track_host
+    from r3d.import_settings import SettingsError
     from r3d.poses import flight_camera
-    job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
+    job = next((item for item in scene.renderers if item.object.name == object_name), None)
+    if job is None or not job.renderer.fit:
+        raise SettingsError(f"{scene.path}: {object_name} is not a fitted renderer")
     camera = flight_camera(scene)
     return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.fit.size,
                             camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,
@@ -500,12 +502,16 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
 
 
 def bake(job, scene, out_dir):
-    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted variant is made by
-    fitted_variant.py on a CUDA GPU, which bake/bake.py runs."""
-    if job.renderer.fit:
-        log(f"{job.asset_name}: a fit, made by fitted_variant.py on a CUDA GPU (bake/bake.py bake --kind fit)")
-        return
+    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted renderer's fit needs a CUDA
+    GPU (bake/bake.py bake --kind fit runs fitted_variant.py), so here it gets the CPU method: its start, the
+    import simplified to the fit's budget, with levels."""
     mesh = write_baked(job, scene, out_dir, job.asset_name)
+    if job.renderer.fit:
+        from r3d.lod.levels_stage import levels
+
+        path = pathlib.Path(out_dir) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
+        path.write_bytes(levels(path.read_bytes(), job.asset_name, job.settings.lod, job.settings.meshlet_triangles))
+        log(f"{job.asset_name}: its CPU start with levels; the fit needs a CUDA GPU (bake/bake.py bake --kind fit)")
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 
