@@ -160,6 +160,43 @@ class JobInputsTests(unittest.TestCase):
             self.assertEqual(job_inputs.affected('ci', ['build'], 7, 'main',
                 mock.Mock(return_value=archive.getvalue())), {'build': 'false'})
 
+    def test_a_push_diffs_from_its_merge_base_with_the_base_branch(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, 'w') as output:
+            output.writestr(job_inputs.MANIFEST_NAME, json.dumps(
+                {'files': ['src/read.c', 'src/gone.c'], 'directories': []}))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def commit(message, files):
+                for name, text in files.items():
+                    path = root / name
+                    if text is None:
+                        path.unlink()
+                    else:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text(text)
+                job_inputs.git(root, 'add', '-A')
+                job_inputs.git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', message)
+
+            job_inputs.git(root, 'init', '-q', '-b', 'main')
+            commit('base', {'src/read.c': '1', 'src/gone.c': '1', 'docs/a.md': '1'})
+            job_inputs.git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+            job_inputs.git(root, 'checkout', '-qb', 'feature/x')
+            commit('docs only', {'docs/a.md': '2'})
+            # Main moves on after the branch: its change is no change of the push.
+            job_inputs.git(root, 'checkout', '-q', 'main')
+            commit('main moves', {'src/read.c': '2'})
+            job_inputs.git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+            job_inputs.git(root, 'checkout', '-q', 'feature/x')
+            request = mock.Mock(return_value=archive.getvalue())
+            with mock.patch.object(job_inputs, 'pages', return_value=iter([])),                     mock.patch.object(job_inputs, 'latest_job_artifact', return_value={'id': 5}):
+                self.assertEqual(job_inputs.pushed('ci', ['build'], root, 'main', request), {'build': 'false'})
+            commit('removes a read file', {'src/gone.c': None})
+            with mock.patch.object(job_inputs, 'pages', return_value=iter([])),                     mock.patch.object(job_inputs, 'latest_job_artifact', return_value={'id': 5}),                     mock.patch('sys.stdout', new_callable=io.StringIO) as log:
+                self.assertEqual(job_inputs.pushed('ci', ['build'], root, 'main', request), {'build': 'true'})
+            self.assertIn('src/gone.c', log.getvalue())
+
     def test_record_rejects_broken_atime(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
