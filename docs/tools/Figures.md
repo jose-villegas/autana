@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 46 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 125 | 26 | 0 |
+| [render](#render) | 124 | 26 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -304,7 +304,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-indirect.png"><img src="../images/render/sponza-indirect.png" width="160" alt=""></a> | Mean and p95 error and SSIM of the direct and indirect bakes | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/sponza-instances.png"><img src="../images/render/sponza-instances.png" width="160" alt=""></a> | Detected repeated shapes in the atrium | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/sponza-meshlets.gif"><img src="figure-thumbnails/render/sponza-meshlets.gif" width="160" alt=""></a> | The meshlets view along a flythrough | [render/frame/Attachments](../render/frame/Attachments.md) | not declared yet |
-| <a href="../images/render/sponza-meshlets.png"><img src="../images/render/sponza-meshlets.png" width="160" alt=""></a> | Clusters painted by the meshlets debug view | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/render/sponza-present-double.gif"><img src="figure-thumbnails/render/sponza-present-double.gif" width="160" alt=""></a> | Doubled presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 | <a href="../images/render/sponza-present-nearest.gif"><img src="figure-thumbnails/render/sponza-present-nearest.gif" width="160" alt=""></a> | Nearest presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 | <a href="../images/render/sponza-present-scanline.gif"><img src="figure-thumbnails/render/sponza-present-scanline.gif" width="160" alt=""></a> | Scanline presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
@@ -320,7 +319,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-view-copies.png"><img src="../images/render/sponza-view-copies.png" width="160" alt=""></a> | The copies view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-cull.png"><img src="../images/render/sponza-view-cull.png" width="160" alt=""></a> | The cull view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-depth.png"><img src="../images/render/sponza-view-depth.png" width="160" alt=""></a> | The depth view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
-| <a href="../images/render/sponza-view-meshlets.png"><img src="../images/render/sponza-view-meshlets.png" width="160" alt=""></a> | The meshlets view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
+| <a href="../images/render/sponza-view-meshlets.png"><img src="../images/render/sponza-view-meshlets.png" width="160" alt=""></a> | The meshlets view | [render/frame/View-Modes](../render/frame/View-Modes.md), [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/render/sponza-view-overdraw.png"><img src="../images/render/sponza-view-overdraw.png" width="160" alt=""></a> | The overdraw view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-shaded.png"><img src="../images/render/sponza-view-shaded.png" width="160" alt=""></a> | A baked atrium: the sun's hard shadow on the right, sky and bounce in the shade | [render/Lighting](../render/Lighting.md), [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-tiles.png"><img src="../images/render/sponza-view-tiles.png" width="160" alt=""></a> | The tiles view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |

@@ -1150,7 +1150,7 @@ class PosesTests(FittedBakeCase):
                     bake.fetch_all(missing, lock, self.cache, offline=True)
                 message = str(raised.exception)
                 for text in (str(self.scene.camera.component.path.animation), "node", "every_ms", "size",
-                             "bake.py lock", "C compiler", "track_host.py", "CI Bakes check"):
+                             "bake.py lock", "C compiler", "track_host.py", "gh workflow run bakes.yml"):
                     self.assertIn(text, message)
                 self.assertNotIn(str(failure), message)
                 skipped = []
@@ -1725,6 +1725,25 @@ class LockTests(unittest.TestCase):
         self.assertEqual(len(problems), 2)
         self.assertIn("n" * 64, problems[0])
         self.assertIn("nothing needs it", problems[1])
+
+    def test_a_branch_push_names_the_run_to_request_and_a_bake_run_names_itself(self):
+        found = [bake_of("n" * 64, self.tree)]
+        cases = {
+            "push to a branch": ({"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/feature/x",
+                                  "GITHUB_REF_NAME": "feature/x"}, "gh workflow run bakes.yml --ref feature/x"),
+            "requested on a branch": ({"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/feature/x",
+                                       "GITHUB_REF_NAME": "feature/x"}, "bake.py lock --from-run 7, then commit"),
+            "push to main": ({"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main",
+                              "GITHUB_REF_NAME": "main"}, "bake.py lock --from-run 7, then commit"),
+        }
+        for case, (env, says) in cases.items():
+            with self.subTest(case), \
+                    mock.patch.dict("os.environ", {"GITHUB_RUN_ID": "7", **env}), \
+                    mock.patch.object(bake, "bakes", return_value=found), \
+                    mock.patch.object(bake, "read_lock_tables", return_value={"bake": {}, "poses": {}}), \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(bake.main(["check"]), 1)
+                self.assertIn(says, err.getvalue())
 
     def test_a_cached_file_with_the_locked_bytes_is_used_without_the_network(self):
         bake.store(self.tree, self.row, bake.BUNDLE_SUFFIX, self.cache)
