@@ -14,12 +14,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import PackError
 from r3d import lcol_asset, mesh_asset, mesh_bundle, mesh_source, ray_query, reference_render
 from r3d.cards import (CARD_COVERED_MIN, CARD_MAX_SIDE, CARD_MASK_TEXELS, CARD_MIP_LEVELS,
-                       CARD_SEE_THROUGH_MIN, decide, emit)
+                       CARD_SEE_THROUGH_MIN, PROBE_WEIGHT_FLOOR, decide, emit)
 from r3d.cards.choose import card_from, probe_weights, split_cards, VISIBILITY_MARGIN
 from r3d.cards.pages import pack_pages, PAGE_SIDE
 from r3d.fit.copies import hidden_materials
 from r3d.import_settings import load_geometry, SettingsError
-from r3d.light import AlphaTest
+from r3d.light import AlphaTest, triangle_alpha
 from r3d.lit_mesh import bake_lit_mesh, build_lit_mesh, bundle_entries
 from r3d.obj import Texture
 from r3d.ray_query import RayQuery
@@ -28,6 +28,10 @@ from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
 
+
+# A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
+PROBE_FACE = np.array([0., 0., 10., 0., 0., -1.])
+CLEAR = NS(first_hits=lambda o, d: (np.zeros(len(o), bool), np.zeros(len(o)), np.zeros(len(o), int)))
 
 class SharedOwnerTests(unittest.TestCase):
     def setUp(self):
@@ -67,15 +71,19 @@ class SharedOwnerTests(unittest.TestCase):
 
     def test_make_shape_reuses_samples_and_view_lens(self):
         source = self.source
-        sampled = (np.eye(3), np.eye(3), np.ones(3))
-        views = ProbeViews([], [], {}, face_lens=2.)
-        with patch.object(emit, 'samples', return_value=sampled) as sample, \
-                patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'):
+        drawn = (np.eye(3), np.eye(3), np.ones(3), np.ones(3, bool))
+        rng = np.random.default_rng(0)
+        views = ProbeViews([], [], {'spacing': 40.}, face_lens=2.)
+        with patch.object(emit, 'material_samples', return_value=(source, rng, drawn)) as sample, \
+                patch.object(emit, 'choose_cards', return_value=[]) as choose, patch.object(emit, 'RayQuery'),                 patch.object(emit, 'probe_weights', return_value=np.ones(3)) as weigh:
             emit.make_shape(source, 0, NS(epsilon=1., area_cost=0.), 0, .5, views=views, query=None)
         sample.assert_called_once()
-        self.assertIs(choose.call_args.args[0], sampled)
-        self.assertIs(choose.call_args.args[1], sample.call_args.args[1])
-        self.assertEqual(choose.call_args.kwargs['face_lens'], views.face_lens)
+        for chosen, sampled in zip(choose.call_args.args[0], drawn):
+            np.testing.assert_array_equal(chosen, sampled)
+        self.assertIs(choose.call_args.args[1], rng, "the fit draws on from the samples' generator")
+        self.assertEqual(weigh.call_args.args[3], views.face_lens)
+        self.assertEqual(weigh.call_args.kwargs['near_floor'], PROBE_WEIGHT_FLOOR * views.record['spacing'])
+        self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
 
     def test_reference_sets_accept_materials_once(self):
@@ -133,28 +141,35 @@ class CardContractTests(unittest.TestCase):
 
     def test_probe_weights_visibility_distance_lens_and_accumulation(self):
         points = np.array([[0., 0., 0.], [0., 0., -5.], [12., 0., 0.]])
-        face = np.array([0., 0., 10., 0., 0., -1.])
-        clear = NS(first_hits=lambda o, d: (np.zeros(len(o), bool), np.zeros(len(o)), np.zeros(len(o), int)))
-        weights = probe_weights(points, [face], clear, 1.0)
+        weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
         self.assertGreater(weights[0], 0)
         self.assertGreater(weights[0], weights[1])
         self.assertEqual(weights[2], 0)
         self.assertAlmostEqual(weights[weights > 0].mean(), 1)
         self.assertAlmostEqual(weights[0] / weights[1], (15/10)**2)
-        self.assertGreater(probe_weights(points, [face], clear, 2.0)[2], 0)
+        self.assertGreater(probe_weights(points, [PROBE_FACE], CLEAR, 2.0, near_floor=0.)[2], 0)
         second = np.array([0., 0., -10., 0., 0., 1.])
-        combined = probe_weights(points[:2], [face, second], clear, 1.0)
+        combined = probe_weights(points[:2], [PROBE_FACE, second], CLEAR, 1.0, near_floor=0.)
         self.assertLess(combined[0], combined[1])
         self.assertAlmostEqual(combined[0] / combined[1], (1/100 + 1/100) / (1/225 + 1/25))
         for z, visible in ((0.5, True), (2., False)):
             self.assertEqual(z < VISIBILITY_MARGIN, visible)
             wall = np.array([[-20., -20., z], [20., -20., z], [0., 20., z]])
             query = RayQuery(wall, np.array([[0, 1, 2]]), 'scalar_rgb')
-            weight = probe_weights(points[:1], [face], query, 1.0)
+            weight = probe_weights(points[:1], [PROBE_FACE], query, 1.0, near_floor=0.)
             self.assertEqual(bool(weight[0]), visible)
         surface = RayQuery(np.array([[-20., -20., 0.], [20., -20., 0.], [0., 20., 0.]]),
                            np.array([[0, 1, 2]]), 'scalar_rgb')
-        self.assertGreater(probe_weights(points[:1], [face], surface, 1.0)[0], 0)
+        self.assertGreater(probe_weights(points[:1], [PROBE_FACE], surface, 1.0, near_floor=0.)[0], 0)
+
+    def test_probe_weight_floor_bounds_a_sample_close_to_the_probe(self):
+        floor = 5.
+        points = np.array([[0., 0., 9.9], [0., 0., 10. - floor], [0., 0., 10. - 2 * floor]])
+        weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=floor)
+        self.assertAlmostEqual(weights[0], weights[1], msg="nearer than the floor weighs as at the floor")
+        self.assertAlmostEqual(weights[1] / weights[2], 4, msg="past the floor the weight still falls as 1/z^2")
+        unbounded = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
+        self.assertAlmostEqual(unbounded[0] / unbounded[1], (floor / .1) ** 2)
 
     def test_split_caps_a_huge_card_among_small_cards(self):
         sizes = [CARD_MAX_SIDE / 2, CARD_MASK_TEXELS / 16, CARD_MASK_TEXELS / 16]
@@ -174,7 +189,7 @@ class CardContractTests(unittest.TestCase):
                     names=['leaf'], textures=[None], materials={}, uv=np.zeros((4, 2)))
         def plane(*args, epsilon, **kwargs):
             return [card_from(np.zeros(3), np.array([0., 0., 1.]), p * [1, 1, 0], epsilon)]
-        views = ProbeViews([], [], {})
+        views = ProbeViews([], [], {'spacing': 1.})
         with patch.object(emit, 'choose_cards', side_effect=plane), patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
             for epsilon, kept in ((1., False), (3., True)):
                 shape, report = emit.make_shape(source, 0, NS(epsilon=epsilon, area_cost=0.), 0, .5,
@@ -182,10 +197,29 @@ class CardContractTests(unittest.TestCase):
                 self.assertEqual(shape is not None, kept)
                 self.assertEqual(report['cards'] > 0, kept)
 
+    def test_candidates_count_the_surface_alpha_cuts_not_mean_alpha_per_triangle(self):
+        # A quad whose texture is cut in thin stripes: each triangle's mean alpha is at least keep_alpha,
+        # so only the samples the alpha test cuts tell a tight-cut leaf from a hedge.
+        p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [1., 1., 0.]])
+        t = np.array([[0, 1, 2], [2, 1, 3]])
+        settings = NS(cards=NS(never=[], always=[]), meshes=[], thin=None, alpha_keep=.5, seed=1)
+        for cut, candidate in ((.4, True), (.1, False)):
+            rgba = np.ones((8, 64, 4))
+            rgba[:, (np.arange(64) % 10) >= int(round(10 * (1 - cut))), 3] = 0.
+            source = NS(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(2, int), tri_o=np.zeros(2, int), names=['leaf'],
+                        object_names=['leaf_object'], uv=p[:, :2], textures=[Texture.from_levels([rgba])])
+            with self.subTest(cut=cut):
+                means = triangle_alpha(source.uv, source.tri_t, source.textures[0])
+                self.assertTrue((means >= settings.alpha_keep).all(), "every triangle is opaque on average")
+                found = decide.candidates(source, settings)
+                self.assertEqual([material for material, _ in found], [0] if candidate else [])
+                if candidate:
+                    self.assertAlmostEqual(found[0][1], cut, delta=.1)
+
     def test_candidate_exclusions_and_inclusive_thresholds(self):
         source = NS(names=['leaf'], tri_m=np.array([0]), tri_o=np.array([0]), object_names=['leaf_object'],
                     textures=[Texture.from_levels([np.zeros((1, 1, 4))])])
-        settings = NS(cards=NS(never=[], always=[]), meshes=[], thin=None, alpha_keep=.5)
+        settings = NS(cards=NS(never=[], always=[]), meshes=[], thin=None, alpha_keep=.5, seed=1)
         with patch.object(decide, 'see_through_share', return_value=CARD_SEE_THROUGH_MIN):
             self.assertEqual(decide.candidates(source, settings), [(0, CARD_SEE_THROUGH_MIN)])
             accepted, _ = decide.carded(source, settings, lambda m: ({}, {'covered': CARD_COVERED_MIN}))
