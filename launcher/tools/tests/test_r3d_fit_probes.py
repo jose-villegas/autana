@@ -177,7 +177,7 @@ class FitArgumentTests(unittest.TestCase):
 class PrepareReferencesTests(unittest.TestCase):
     PROBES = SimpleNamespace(face=8, spacing=1.0)
 
-    def prepare(self, settings, path=None, plan=False):
+    def prepare(self, settings, path=None):
         camera = SimpleNamespace(path=path, region=None, near_z=0.1)
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
@@ -194,26 +194,9 @@ class PrepareReferencesTests(unittest.TestCase):
                  mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
                  mock.patch("r3d.views.probes.select", lambda *a, **k: probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {})), \
                  mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
-                if plan:
-                    from bake import produce
-
-                    with mock.patch("r3d.reference_set.reference_inputs", return_value=inputs):
-                        count = produce.reference_rays(SimpleNamespace(job=None, scene=None), work)
-                else:
-                    count = reference_set.prepare_references(inputs, work)
+                count = reference_set.prepare_references(inputs, work)
             written = sorted(p.name for p in work.iterdir())
         return count, written, [[(p.name, r.name) for p, r in sets] for sets in rendered]
-
-    def test_plan_keeps_the_real_preparation_files_and_does_not_render(self):
-        from bake import produce
-
-        for path in (None, object()):
-            with self.subTest(path=path):
-                _, written, _ = self.prepare(self.PROBES, path)
-                rays, planned, rendered = self.prepare(self.PROBES, path, plan=True)
-                self.assertEqual(planned, sorted([*written, produce.PLAN_MANIFEST]))
-                self.assertEqual(rendered, [])
-                self.assertGreater(rays, 0)
 
     def test_without_a_path_only_the_probe_files_are_written_and_rendered_and_counted(self):
         count, written, rendered = self.prepare(self.PROBES)

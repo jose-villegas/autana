@@ -469,6 +469,30 @@ class BounceReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', workers=2, denoise=True)
 
+    def test_each_finished_pose_tells_the_stage_guard_it_progressed_in_this_process_and_from_a_pool(self):
+        from unittest.mock import patch
+        from r3d import reference_render as reference
+
+        class Pool:
+            """A pose pool that maps in this process, as the forked one maps in its workers."""
+            def __init__(self, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def map(self, function, items):
+                return map(function, items)
+
+        source = SimpleNamespace(bounce=None)
+        for workers in (1, 2):
+            with self.subTest(workers=workers),                     patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3),                     patch.object(reference, 'progressed') as progressed,                     patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']),                     patch.object(reference.multiprocessing, 'get_context'),                     patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', Pool):
+                reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', workers=workers)
+                self.assertEqual(progressed.call_count, 3)
+
     def test_a_reference_set_traces_at_its_inputs_samples_and_denoising(self):
         for denoise in (False, True):
             with self.subTest(denoise=denoise):

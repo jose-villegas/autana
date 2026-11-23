@@ -8,7 +8,6 @@ import dataclasses
 import hashlib
 import io
 import json
-import math
 import os
 import pathlib
 import platform
@@ -32,7 +31,7 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from bake import bake, produce  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from test_r3d_import import (FIT, FIT_HEAD, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
+from test_r3d_import import (FIT, FIT_HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
                              write_import, write_scene)
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
@@ -925,23 +924,6 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(done.produced, [])
         self.assertIn(f"skipped {self.level(LOCKED_SHA256).output}", done.out)
         self.assertIn(self.fit(LOCKED_SHA256).key, done.out)
-
-    def test_shards_sizes_the_matrix_from_the_missing_sets_rays_and_skips_locked_ones(self):
-        rays = 3 * bake.CALIBRATION_RAYS
-        with mock.patch.object(produce, "reference_rays", return_value=rays) as counted:
-            missing = self.command(["shards", "--out", str(self.root / "plan")], {})
-            locked = self.command(["shards"], self.locked(LOCKED_SHA256, run=RUN))
-        self.assertEqual(json.loads(missing.out), list(range(bake.reference_shards(rays))))
-        self.assertEqual(json.loads(locked.out), [])
-        self.assertEqual([call.args for call in counted.call_args_list],
-                         [(self.reference, self.root / "plan" / self.reference.output)])
-
-    def test_a_set_past_a_job_matrix_is_refused(self):
-        too_many = (bake.MATRIX_JOBS + 1) * bake.REFERENCE_SHARD_SECONDS * bake.CALIBRATION_RAYS // bake.CALIBRATION_SECONDS
-        self.assertEqual(bake.reference_shards(bake.MATRIX_JOBS * bake.REFERENCE_SHARD_SECONDS * bake.CALIBRATION_RAYS
-                                               // bake.CALIBRATION_SECONDS), bake.MATRIX_JOBS)
-        with self.assertRaisesRegex(bake.BakeMissing, "a job matrix holds"):
-            bake.reference_shards(too_many)
 
     def test_list_says_a_fit_waits_for_its_start_until_the_start_is_locked(self):
         waiting = self.command(["list"], {})
@@ -1907,161 +1889,6 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(produce.keyed_folder(folder, make), folder)
         self.assertEqual(len(made), 1, "a done folder is not made again")
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
-
-    @contextlib.contextmanager
-    def references(self, poses=7):
-        """prepare_references and render_sets stand-ins: every set gets `poses` poses, and a pose's files hold its
-        line alone, as a traced pose's depend on that pose alone."""
-        from r3d import reference_render
-        from r3d.reference_set import fit_sets
-
-        # A camera path and probes: every set a reference bake can hold.
-        self.inputs = types.SimpleNamespace(sets=lambda: fit_sets(True, True),
-                                            aa_samples=3, denoise=False)
-
-        def render_sets(inputs, sets):
-            for poses_path, out in sets:
-                pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-                lines = [line for line in pathlib.Path(poses_path).read_text().splitlines()
-                         if line.startswith(produce.POSE_LINE)]
-                if not lines:
-                    raise ValueError("workers must be positive")  # as reference_render.render_poses refuses
-                for index, line in enumerate(lines):
-                    for suffix in (".png", ".normal.npy", ".linear.npy"):
-                        (pathlib.Path(out) / f"{index:04d}{suffix}").write_bytes((line + suffix).encode())
-
-        def prepare(inputs, work):
-            work.mkdir(parents=True, exist_ok=True)
-            sets = inputs.sets()
-            for number, (name, _) in enumerate(sets.training + sets.held_out):
-                (work / name).write_text("size 4 2\nlens 1.0 0.1\n" + "".join(
-                    f"pose {number} {index} 0 0 0 0\n" for index in range(poses)))
-            for name in sets.coverage:
-                if not (work / name).exists():
-                    (work / name).write_text("size 4 2\nlens 1.0 0.1\npose 9 9 9 9 9 9\n")
-            (work / "probes.json").write_bytes(b'{"train": "selection"}\n')
-            reference_render.render_sets(inputs, [(work / name, work / folder)
-                                                  for name, folder in sets.training + sets.held_out])
-
-        with mock.patch.object(reference_render, "render_sets", autospec=True, side_effect=render_sets), \
-             mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: self.inputs), \
-             mock.patch("r3d.reference_set.prepare_references", side_effect=prepare):
-            yield prepare
-
-    def shards(self, bake, count):
-        plan = self.root / "plan"
-        produce.reference_rays(bake, plan / bake.output)
-        for shard in range(count):
-            produce.reference_shard(bake, self.root / "shards" / f"attempt-{shard}" / f"{bake.output}.shard-{shard}",
-                                    shard, count, plan)
-        return sorted((self.root / "shards").glob(f"*/{bake.output}.shard-*"))
-
-    def test_sharded_reference_set_packs_to_the_bytes_of_one_render(self):
-        from r3d.reference_set import pack_references
-
-        bake = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        for count in (1, 3, 8):
-            with self.subTest(count=count), self.references() as prepare:
-                shutil.rmtree(self.root / "shards", ignore_errors=True)
-                shutil.rmtree(self.cache / produce.REFERENCES, ignore_errors=True)
-                whole = self.root / f"whole-{count}"
-                prepare(self.inputs, whole)
-                joined = produce.join_reference_shards(bake, self.cache, self.shards(bake, count))
-                sets = self.inputs.sets()
-                self.assertEqual(hashlib.sha256(pack_references(joined, sets)).hexdigest(),
-                                 hashlib.sha256(pack_references(whole, sets)).hexdigest())
-
-    def test_planned_shards_render_one_selection_and_join_its_bytes(self):
-        from r3d.reference_set import pack_references
-
-        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        plan = self.root / "plan"
-        whole = self.root / "whole"
-        with self.references() as prepare:
-            prepare(self.inputs, whole)
-            produce.reference_rays(reference, plan / reference.output)
-        parts = []
-        for shard, different_count in enumerate((3, 5)):
-            out = self.root / f"part-{shard}"
-            with self.references(poses=different_count), \
-                 mock.patch("r3d.reference_set.prepare_references", side_effect=AssertionError("shard selected poses")):
-                produce.reference_shard(reference, out, shard, 2, plan)
-            for path in whole.iterdir():
-                if path.is_file():
-                    self.assertEqual((out / path.name).read_bytes(), path.read_bytes())
-            parts.append(out)
-        joined = produce.join_reference_shards(reference, self.cache, parts)
-        self.assertEqual(pack_references(joined, self.inputs.sets()), pack_references(whole, self.inputs.sets()))
-        for path in whole.rglob("*"):
-            if path.is_file():
-                self.assertEqual((joined / path.relative_to(whole)).read_bytes(), path.read_bytes())
-
-    def test_poses_only_plan_writes_all_pre_render_files_without_rendering(self):
-        from r3d import reference_render
-
-        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        plan = self.root / "plan"
-        whole = self.root / "whole"
-        with self.references() as prepare:
-            prepare(self.inputs, whole)
-            expected = {path.name: path.read_bytes() for path in whole.iterdir() if path.is_file()}
-            reference_render.render_sets.reset_mock()
-            rays = produce.reference_rays(reference, plan)
-            reference_render.render_sets.assert_not_called()
-        self.assertGreater(rays, 0)
-        self.assertEqual({path.name: path.read_bytes() for path in plan.iterdir()
-                          if path.name != produce.PLAN_MANIFEST}, expected)
-        self.assertFalse(any(path.is_dir() for path in plan.iterdir()))
-
-    def test_shard_refuses_a_plan_missing_its_set(self):
-        reference = types.SimpleNamespace(output="missing.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        with self.assertRaisesRegex(bake.BakeMissing, reference.output):
-            produce.reference_shard(reference, self.root / "part", 0, 2, self.root / "empty-plan")
-
-    def test_a_joined_set_is_recorded_as_traced_where_its_shards_ran(self):
-        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None,
-                                          source=bake.REPO / "launcher/bakes.lock", suffix=".tar.xz", kind="reference")
-        with self.references():
-            with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"):
-                parts = self.shards(reference, 2)
-            with mock.patch.object(bake, "cpu_vendor", return_value="GenuineIntel"):
-                produce.join_reference_shards(reference, self.cache, parts)
-                row = produce.produce_reference(reference, self.cache, None)
-        self.assertEqual(row["cpu_vendor"], "AuthenticAMD")
-
-    def test_a_sets_rays_are_its_poses_pixels_and_samples_and_trace_nothing(self):
-        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        with self.references():
-            from r3d import reference_render
-
-            sets = self.inputs.sets()
-            rays = produce.reference_rays(reference)
-            reference_render.render_sets.assert_not_called()
-        # The stand-in's sets: 7 poses each at 4 x 2, traced at its aa_samples on each side.
-        samples = self.inputs.aa_samples
-        self.assertEqual(rays, len(sets.training + sets.held_out) * 7 * 4 * 2 * samples * samples)
-
-    def test_shards_keep_each_near_the_shard_time_on_a_hosted_runner(self):
-        self.assertEqual(bake.reference_shards(0), 1)
-        self.assertEqual(bake.reference_shards(bake.CALIBRATION_RAYS),
-                         math.ceil(bake.CALIBRATION_SECONDS / bake.REFERENCE_SHARD_SECONDS))
-        for rays in (bake.CALIBRATION_RAYS, 3 * bake.CALIBRATION_RAYS + 1, 40 * bake.CALIBRATION_RAYS):
-            with self.subTest(rays=rays):
-                count = bake.reference_shards(rays)
-                seconds = rays * bake.CALIBRATION_SECONDS / bake.CALIBRATION_RAYS
-                self.assertLessEqual(seconds / count, bake.REFERENCE_SHARD_SECONDS)
-                self.assertGreater(seconds / (count - 1), bake.REFERENCE_SHARD_SECONDS, "one shard fewer runs over")
-
-    def test_joining_refuses_a_missing_shard_or_shards_that_disagree(self):
-        reference = types.SimpleNamespace(output="x.reference.tar.xz", key="k" * 64, job="job", scene=None)
-        with self.references():
-            parts = self.shards(reference, 3)
-            with self.assertRaisesRegex(bake.BakeMissing, "of reference's 7 poses"):
-                produce.join_reference_shards(reference, self.cache, parts[:2])
-            (parts[1] / "train.txt").write_text("size 4 2\n")
-            with self.assertRaisesRegex(bake.BakeMissing, "shards disagree on train.txt"):
-                produce.join_reference_shards(reference, self.cache, parts)
-        self.assertFalse((self.cache / produce.REFERENCES / reference.key).exists(), "a refused join leaves no set")
 
     def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
         renders = []

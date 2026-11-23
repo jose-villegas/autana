@@ -25,6 +25,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/lib"))
 
 from r3d import mesh_source, mitsuba_reference
 from r3d.cards import emit as card_emit
@@ -35,6 +36,7 @@ from r3d.light import (AlphaTest, albedo_from_uv, coincident_faces, light, open_
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
+from process_tree import progressed  # noqa: E402  (the stage guard's progress contract)
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -269,7 +271,8 @@ def budget_pose_capacity(budget, rss, estimate, cores):
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False,
                  denoise=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Every pose's rays are fixed, so the output matches a serial run.
+    Every pose's rays are fixed, so the output matches a serial run. Each finished pose tells the stage's guard it
+    progressed, so a set tracing for hours is never taken for hung.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
@@ -311,12 +314,14 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
             for item in enumerate(poses):
                 pid, peak = _write_pose(item)
                 pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                progressed()
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
                     mp_context=multiprocessing.get_context("fork"),
                     initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
                 for pid, peak in pool.map(_write_pose, enumerate(poses)):
                     pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                    progressed()
     finally:
         POSE_STATE = None
     return sum(pose_peaks.values()), workers
