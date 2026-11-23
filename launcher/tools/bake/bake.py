@@ -157,9 +157,9 @@ TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
 # A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
 # shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
-# cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
+# cost more than the calibration's. The rate is bistro.street_fitted_full's primary rays over its hosted trace time.
 REFERENCE_SHARD_SECONDS = 90 * 60
-CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
+CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted_full: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
 CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
 MATRIX_JOBS = 256  # GitHub Actions' most jobs one matrix makes
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
@@ -992,9 +992,14 @@ def download(row, suffix, cache):
 
 def locked_fit(scene_path, object_name):
     """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    return locked_bake(scene_path, object_name, "fit")
+
+
+def locked_bake(scene_path, object_name, kind):
+    """The renderer's bake of the given kind, keyed by the lock."""
     tables = read_lock_tables()
     found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
-    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+    return next(item for item in found if item.kind == kind and item.job.object.name == object_name)
 
 
 def fetch(bake, cache=None):

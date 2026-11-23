@@ -30,6 +30,10 @@ typedef struct {
 /* Whether a camera needs a frame pass, including a paused expanded picture. */
 bool scene_has_active_camera(void);
 void scene_render(uint32_t dt_ms, int quarter, int width, int height);
+#ifndef ESP_PLATFORM
+/* Calls setup after animation and before drawing. False skips the draw. */
+bool scene_render_with_setup(uint32_t dt_ms, int quarter, int width, int height, bool (*before_draw)(void));
+#endif
 bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 
 /* The two above on the panel's pictures and orientation. Compose marks an

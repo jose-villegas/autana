@@ -83,8 +83,7 @@ bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 meshlet still; its normal run also writes that image beside the view GIFs.
 Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
-name of the scene's full renderer; the scene must also place `OBJECT_lite`,
-`OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
+name of the scene's fitted renderer.
 The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
 `tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
@@ -162,8 +161,9 @@ the WSL CUDA environment; the board stage consumes a board capture. Both use
 this writer.
 
 `--stage board` takes one `--capture PATH` per board run of
-`run_sponza_bakes_suite`, all from the same diagnostics image, and uses their median; `--check` reports without writing.
-It rejects missing variants, missing or repeated per-pose timings, failed
+`run_sponza_perf_suite`, all from the same diagnostics image, and uses the
+median of the bake's row; `--check` reports without writing.
+It rejects a capture without that row, missing or repeated per-pose timings, failed
 suites and mismatched build identities, and rewrites the board tables and
 `launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
 weights change. `--build-commit SHA` accepts a capture from that commit while
@@ -193,7 +193,7 @@ and lists every input.
 The fingerprint decides whether the stage runs, not what it remakes. Each
 start, reference set, fit and bake is kept in the bake cache under a key of its
 own inputs, so a run remakes only what changed. A key the run asks for twice is
-made once: the three fitted variants read one reference set.
+made once.
 
 | Result | Key | Folder in the bake cache |
 |---|---|---|
@@ -413,7 +413,8 @@ stateDiagram-v2
     Close --> [*]: give back the scene, pack and framebuffer
 ```
 
-If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+If [`render_host_open()`](../../launcher/tools/render/render_host.c) returns false,
+`exit_code` carries the command's result.
 
 `render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
 retain frame history in host and development builds. Saving can return NULL
@@ -561,6 +562,14 @@ unchanged alongside `--video`, or on its own.
 stands: `frame,ms`, its world position and rotation quaternion. A `--video`
 run writes them to `PATH.poses.csv` and refuses `--poses`, so every video can
 be held to the poses of the reference it is scored against.
+
+`--ids DIR` saves each frame's ID map and `entries.json` from an ID view such
+as `--view triangles`. It writes the pose log to `DIR/capture.poses.csv`, also
+when recording video, and refuses an explicit `--poses`.
+
+`--camera-poses FILE` drives the active camera from a source-frame poses file.
+Its size must match the upright raster size. Each pose supplies one frame.
+When provided, `--frames` must equal the pose count.
 
 ```sh
 ./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
