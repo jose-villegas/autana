@@ -409,7 +409,10 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertEqual(self.pixels(*args).size, (368, 448))
         video = self.root / "clip.avi"
         self.pixels("--object", "card", "--video", str(video))
-        self.assertEqual(video.read_bytes()[:4], b"RIFF")
+        # Every size and index offset render_video.c counted matches the bytes it wrote.
+        check = subprocess.run([sys.executable, str(TOOLS / "render/check_avi.py"), str(video)],
+                               capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
         with open(str(video) + ".poses.csv") as handle:
             poses = list(csv.DictReader(handle))
         # The video's two frames, where they stood: the rows --poses writes for the same run.

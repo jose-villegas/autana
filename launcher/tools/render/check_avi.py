@@ -9,6 +9,8 @@ checks that the frame count, frame size, rate and idx1 entries it finds are
 mutually consistent, and that the RIFF/LIST size fields match what is
 actually there. Exits nonzero on the first mismatch. Standard library only.
 """
+import mmap
+import os
 import struct
 import sys
 from dataclasses import dataclass
@@ -59,13 +61,21 @@ class Avi:
     frames: object
 
 
+def _mapped(path):
+    """The file's bytes, mapped rather than read: a video may reach 4 GB, and
+    a comparison holds two."""
+    with open(path, "rb") as handle:
+        if os.fstat(handle.fileno()).st_size == 0:
+            raise AviError("empty file")
+        return mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
+
+
 def read_avi(path):
     """The Avi in a render_video.c file, its frames read lazily, or AviError.
 
     Trusts nothing beyond the structure; check_file() is the validator.
     """
-    with open(path, "rb") as handle:
-        data = handle.read()
+    data = _mapped(path)
     if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
         raise AviError("not a RIFF AVI file")
     hdrl_s, hdrl_e = find_list(data, 12, len(data), b"hdrl")
@@ -102,8 +112,7 @@ def read_video(path):
 
 
 def check_file(path):
-    with open(path, "rb") as f:
-        data = f.read()
+    data = _mapped(path)
 
     if data[0:4] != b"RIFF" or data[8:12] != b"AVI ":
         raise AviError("not a RIFF AVI file")
