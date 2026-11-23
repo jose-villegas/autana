@@ -207,8 +207,8 @@ def prune_references(cache, now=None):
 def poses_progress(folder):
     """While the block runs, tells the stage's guard each time `folder` holds more files than before: a reference set
     traces for hours and writes each pose's files as it finishes it, so a set still tracing is never taken for hung.
-    The pose pool forks beside this thread safely: a child takes none of its locks, and the parent already runs the
-    pool's manager thread and Dr.Jit's workers when it forks."""
+    The pose pool forks beside this thread safely: a child takes none of its locks, and the parent already runs
+    Dr.Jit's worker threads when it forks."""
     from process_tree import progressed
 
     stop = threading.Event()

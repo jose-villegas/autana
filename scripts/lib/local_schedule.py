@@ -51,8 +51,11 @@ GPU_STAGE_PROGRESS_SECONDS = 4 * 60 * 60
 # set in one stage, which takes many hours when every scene's sets re-key.
 GPU_STAGE_HANG_SECONDS = {DOC_IMAGES_WORKFLOW: 14 * 60 * 60, BAKES_WORKFLOW: 9 * 60 * 60, CPU_BAKES_WORKFLOW: 23 * 60 * 60}
 # Doc images reserve WSL_MEMORY_REQUIRED_BYTES and render for hours: they wait for the boards and hold heavy.
-# A fit and a CPU bake run beside builds and board jobs, on every CPU at idle priority (idle_priority).
+# A fit and a CPU bake run beside builds and board jobs on every CPU. A CPU bake takes idle priority (idle_priority),
+# so other work in its Linux host (the WSL VM) pre-empts it; Windows processes, the board runner among them, share
+# the VM's CPUs as ordinary load. A fit keeps normal priority: its CPU feeds the GPU.
 QUIET_HOST_WORKFLOWS = (DOC_IMAGES_WORKFLOW,)
+IDLE_WORKFLOWS = (CPU_BAKES_WORKFLOW,)
 NIGHT_STEP_HANG_SECONDS = 23 * 60 * 60
 # The lowest nice value, the priority a stage takes where SCHED_IDLE is refused.
 IDLE_NICE = 19
@@ -186,8 +189,8 @@ def quiet_host(workflow):
 
 
 def idle_priority():
-    """Runs this process and all it starts on CPU time nothing else wants, so builds and board tooling pre-empt it
-    on every CPU: SCHED_IDLE, else nice 19. Names the one it took; None where neither exists (Windows)."""
+    """Runs this process and all it starts on CPU time nothing else in this OS wants: SCHED_IDLE, else nice 19.
+    Names the one it took; None where neither exists (Windows)."""
     if hasattr(os, "SCHED_IDLE"):
         try:
             os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
@@ -245,7 +248,7 @@ def main():
     if not command:
         parser.error("start needs -- <command...>")
     output({"rendered": True})
-    if not quiet_host(workflow) and (priority := idle_priority()):
+    if workflow in IDLE_WORKFLOWS and (priority := idle_priority()):
         print(f"beside board work on every CPU at {priority}", flush=True)
     started, code = clock.now(), EXIT_HUNG
     # Only a night's stage leaves a record, under its marker's key, for the night's timeline; any other keeps its

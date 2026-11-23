@@ -195,7 +195,7 @@ class LocalScheduleTests(unittest.TestCase):
                     raise AttributeError(name)
                 return getattr(os, name)
         with tempfile.TemporaryDirectory() as root:
-            with patch.dict(os.environ, GPU_WORKFLOW=schedule.BAKES_WORKFLOW, MARKER='',
+            with patch.dict(os.environ, GPU_WORKFLOW=schedule.CPU_BAKES_WORKFLOW, MARKER='',
                             GITHUB_OUTPUT='', _AUTANA_HEAVY_LOCK_ROOT=root), \
                     patch.object(schedule, 'os', WindowsOs()), \
                     patch.object(schedule, 'quiet_host', return_value=False), \

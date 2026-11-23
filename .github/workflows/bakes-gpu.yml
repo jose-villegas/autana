@@ -19,7 +19,7 @@ name: Bakes GPU
 # `gpu-legion` is the runner that makes the CPU bakes too (bakes.yml). Any runner makes a fit's locked
 # bytes; each lock row names the GPU that made it. Runs on different runners do
 # not wait for each other. A fit waits for no board and takes no heavy lock: it
-# runs beside builds and board jobs on its host, on every CPU at idle priority
+# runs beside builds and board jobs on its host, on every CPU at normal priority
 # (scripts/ci/gpu_stage.sh).
 #
 # Each fit is kept the moment it is made: in the runner's cache, where a later
