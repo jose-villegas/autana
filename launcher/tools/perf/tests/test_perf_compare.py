@@ -318,28 +318,36 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
 
     def test_impossible_setup_is_refused_before_any_flash(self):
         from shell_job import replay
-        for option, value, diagnostic in (
-            ('--send-a', 'SET render.cull 1', 'tunable command'),
-            ('--send-b', ' Set  render.cull 1', 'tunable command'),
-            ('--send-a', 'reset render.cull', 'tunable command'),
-            ('--send-b', 'GET render.cull', 'tunable command'),
-            ('--send-b', 'tune', 'tunable command'),
-            ('--send-a', 'sound stop all\nversion', 'expected one console line'),
-            ('--send-b', 'sound stop all\r', 'expected one console line'),
-            ('--send-a', '   ', 'empty console line'),
-            ('--set-b', 'render.cull', 'expected NAME=VALUE'),
-            ('--set-b', 'render.cull=nope', 'expected a decimal, octal or hexadecimal integer'),
-            ('--set-b', 'render.cull=2147483648', 'value must fit int32'),
-            ('--set-b', 'render.cull=0b1', 'expected a decimal, octal or hexadecimal integer'),
-            ('--set-b', 'render.cull=1_000', 'expected a decimal, octal or hexadecimal integer'),
-        ):
-            for mode in ((), ('--validate-plan',)):
-                with self.subTest(value=value, mode=mode):
-                    result, calls = replay(self, 'compare', extra=(*mode, option, value))
-                    self.assertEqual(result.returncode, 2)
-                    self.assertIn(repr(value) if option.startswith('--send') else value, result.stderr)
-                    self.assertIn(diagnostic, result.stderr)
-                    self.assertEqual(calls, [])
+        cases_by_diagnostic = {
+            'tunable command': (
+                ('--send-a', 'SET render.cull 1'),
+                ('--send-b', ' Set  render.cull 1'),
+                ('--send-a', 'reset render.cull'),
+                ('--send-b', 'GET render.cull'),
+                ('--send-b', 'tune'),
+            ),
+            'expected one console line': (
+                ('--send-a', 'sound stop all\nversion'),
+                ('--send-b', 'sound stop all\r'),
+            ),
+            'empty console line': (('--send-a', '   '),),
+            'expected NAME=VALUE': (('--set-b', 'render.cull'),),
+            'expected a decimal, octal or hexadecimal integer': (
+                ('--set-b', 'render.cull=nope'),
+                ('--set-b', 'render.cull=0b1'),
+                ('--set-b', 'render.cull=1_000'),
+            ),
+            'value must fit int32': (('--set-b', 'render.cull=2147483648'),),
+        }
+        for mode in ((), ('--validate-plan',)):
+            for diagnostic, cases in cases_by_diagnostic.items():
+                for option, value in cases:
+                    with self.subTest(value=value, mode=mode):
+                        result, calls = replay(self, 'compare', extra=(*mode, option, value))
+                        self.assertEqual(result.returncode, 2)
+                        self.assertIn(repr(value) if option.startswith('--send') else value, result.stderr)
+                        self.assertIn(diagnostic, result.stderr)
+                        self.assertEqual(calls, [])
 
     def test_first_refused_set_stops_the_comparison(self):
         with tempfile.TemporaryDirectory() as root:
