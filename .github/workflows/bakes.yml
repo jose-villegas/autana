@@ -2,19 +2,17 @@ name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py), run for every push to a branch of this repository and by hand.
 # On a branch, the CPU job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for, and the
-# reference plan job selects each missing reference set's poses once; shard jobs render that plan, and the reference
-# job joins and packs their files (as many as bake.py reference_shards sizes from their rays); both upload the files;
-# the lock job then fails until the author runs `bake.py lock --from-run N` with that run and commits the lock. A run
-# that makes levels runs the sky-through-walls flythrough on them in the CPU job, so a fit that opens holes fails
-# before it is locked. A mesh's and a reference set's bytes differ between CPU models, so every job that makes a bake
+# reference job traces and packs every missing reference set in one job; both upload the files; the lock job then
+# fails until the author runs `bake.py lock --from-run N` with that run and commits the lock. A run that makes levels
+# runs the sky-through-walls flythrough on them in the CPU job, so a fit that opens holes fails before it is locked. A mesh's and a reference set's bytes differ between CPU models, so every job that makes a bake
 # runs on the one self-hosted runner that makes the fits, gpu-legion (docs/assets/Bakes.md). One runner, so these jobs
 # and the fits queue behind each other. No pull request starts this workflow: a self-hosted runner never takes a pull
 # request's code (scripts/gates/check_workflows.py), and only a branch of this repository is pushed here. The checks
 # a pull request needs are this push run's, on its head commit; a fork's pull request gets them only once its branch
 # is pushed here, and bakes-fork.yml fails it when it changes a bake. Each runner job installs into a venv of its own
 # over the fit environment ~/gpu/env, so what it installs stays there (only a Bakes GPU dispatch installs into the
-# fit environment), and its tracing steps run on the share of the machine's CPUs scripts/lib/local_schedule.py
-# leaves board work.
+# fit environment), and its tracing steps run on every CPU at the idle priority scripts/lib/local_schedule.py gives
+# a CPU bake: work in the WSL VM pre-empts them, Windows processes share the CPUs as ordinary load.
 # A fit needs the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked start and reference
 # set, started by hand on the branch. On main, publish uploads each locked file the `bakes` release lacks, taking it
 # from the run that made it. No branch writes the release.
@@ -69,7 +67,7 @@ jobs:
     if: ${{ !cancelled() && (needs.inputs.result != 'success' || needs.inputs.outputs.cpu != 'false') }}
     name: Bake missing exports and meshes
     runs-on: [self-hosted, linux, gpu-legion]
-    timeout-minutes: 600
+    timeout-minutes: 1440
     # actions: read lets a rerun take what its earlier attempts uploaded.
     permissions:
       contents: read
@@ -175,22 +173,20 @@ jobs:
         if: ${{ !cancelled() }}
         with: {step: record}
 
-  reference-plan:
+  # Every missing reference set in one job: it selects each set's probe faces, traces all its poses and packs it.
+  reference:
     needs: inputs
     if: ${{ !cancelled() && (needs.inputs.result != 'success' || needs.inputs.outputs.cpu != 'false') }}
-    name: Plan the reference shards
+    name: Trace and pack the missing reference sets
     runs-on: [self-hosted, linux, gpu-legion]
-    timeout-minutes: 600
+    timeout-minutes: 1440
+    # actions: read lets a rerun take what its earlier attempts uploaded.
     permissions:
       contents: read
       actions: read
     defaults:
       run:
         shell: bash
-    outputs:
-      shards: ${{ steps.plan.outputs.shards }}
-      artifact: ${{ steps.plan.outputs.artifact }}
-      count: ${{ steps.plan.outputs.count }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -206,7 +202,6 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind reference | tee "$RUNNER_TEMP/reference.txt"
           echo "count=$(wc -l < "$RUNNER_TEMP/reference.txt")" >> "$GITHUB_OUTPUT"
 
-      # Choosing probe faces traces visibility; all shards render this one selection.
       - name: Fetch source files
         if: steps.missing.outputs.count != '0'
         run: git lfs pull --exclude=""
@@ -219,98 +214,21 @@ jobs:
         if: steps.missing.outputs.count != '0'
         run: python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
 
-      - name: The shards that trace the missing reference sets
-        id: plan
+      - name: Trace and pack each set
         if: steps.missing.outputs.count != '0'
         env:
-          ARTIFACT: reference-plan-${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          shards=$(python scripts/lib/local_schedule.py start -- python launcher/tools/bake/bake.py shards --out "$RUNNER_TEMP/reference-plan" | tail -1)
-          echo "shards=$shards" >> "$GITHUB_OUTPUT"
-          echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
-          echo "count=$(python -c 'import json, sys; print(len(json.loads(sys.argv[1])))' "$shards")" >> "$GITHUB_OUTPUT"
+          # A rerun first takes the sets its earlier attempts finished.
+          earlier=()
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
+          python scripts/lib/local_schedule.py start -- \
+              python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: steps.missing.outputs.count != '0'
+        if: ${{ always() && steps.missing.outputs.count != '0' }}
         with:
-          name: ${{ steps.plan.outputs.artifact }}
-          path: ${{ runner.temp }}/reference-plan
-          if-no-files-found: error
-
-  # Each shard traces a share of every missing set's poses; the shards queue on the one runner, one after another.
-  reference-shard:
-    needs: reference-plan
-    if: ${{ !cancelled() && needs.reference-plan.outputs.shards != '' && needs.reference-plan.outputs.shards != '[]' }}
-    name: Trace reference shard ${{ matrix.shard }}
-    runs-on: [self-hosted, linux, gpu-legion]
-    timeout-minutes: 600
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.reference-plan.outputs.shards) }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Use a venv over the runner's environment
-        run: |
-          "$HOME/gpu/env/bin/python" -m venv --system-site-packages "$RUNNER_TEMP/venv"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-          echo "GPU_WORKFLOW=bakes.yml" >> "$GITHUB_ENV"
-
-      - name: Fetch source files
-        run: git lfs pull --exclude=""
-
-      - name: Initialize only meshoptimizer
-        run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
-
-      - name: Install the r3d requirements
-        run: python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: ${{ needs.reference-plan.outputs.artifact }}
-          path: ${{ runner.temp }}/reference-plan
-
-      - name: Trace this shard
-        run: |
-          python scripts/lib/local_schedule.py start -- python launcher/tools/bake/bake.py bake --kind reference --shard "${{ matrix.shard }}/${{ needs.reference-plan.outputs.count }}" --plan "$RUNNER_TEMP/reference-plan" --out "$RUNNER_TEMP/shard"
-
-      # Not a bakes-* name: a shard is no bake, so a lock never reads it.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: reference-shard-${{ matrix.shard }}-${{ github.run_attempt }}-of-${{ needs.reference-plan.outputs.artifact }}
-          path: ${{ runner.temp }}/shard
-
-  reference:
-    needs: [reference-plan, reference-shard]
-    if: ${{ !cancelled() && needs.reference-shard.result == 'success' }}
-    name: Join and pack the reference sets
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: ./.github/actions/host-tools
-
-      - name: Install the r3d requirements
-        run: pip install -r launcher/tools/r3d/requirements.txt
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          pattern: reference-shard-*-of-${{ needs.reference-plan.outputs.artifact }}
-          path: ${{ runner.temp }}/shards
-
-      - name: Join the shards and pack each set
-        run: |
-          python launcher/tools/bake/bake.py bake --kind reference --shards "$RUNNER_TEMP/shards" --out "$RUNNER_TEMP/bakes"
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
+          # The attempt last: a lock takes a key two attempts made from the later one.
           name: bakes-reference-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bakes
           if-no-files-found: ignore
@@ -319,7 +237,7 @@ jobs:
     name: Lock is current
     # Also after a failed bake: a skipped required check would pass, and the check fails on the row it lacks.
     if: ${{ !cancelled() && (needs.inputs.result != 'success' || needs.inputs.outputs.lock != 'false') }}
-    needs: [inputs, cpu, reference-plan, reference-shard, reference]
+    needs: [inputs, cpu, reference]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -340,8 +258,8 @@ jobs:
     name: Sky through walls
     # Not after a failed bake either: a skipped lock is no failure, and the bakes this run did not make cannot
     # be fetched, so this would only fail beside the job that failed.
-    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference-plan.result != 'failure' && needs.reference-shard.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls != 'false') }}
-    needs: [inputs, cpu, reference-plan, reference-shard, reference, lock]
+    if: ${{ !cancelled() && needs.cpu.result != 'failure' && needs.reference.result != 'failure' && needs.lock.result != 'failure' && (needs.inputs.result != 'success' || needs.inputs.outputs.sky-through-walls != 'false') }}
+    needs: [inputs, cpu, reference, lock]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
