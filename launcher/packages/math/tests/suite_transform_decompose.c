@@ -1,3 +1,5 @@
+#include <float.h>
+
 #include "math/linear/transformf.h"
 #include "testkit/suite.h"
 #include "unity.h"
@@ -96,6 +98,19 @@ test_relative_undoes_compose_under_an_even_parent(void) {
     TEST_ASSERT_FALSE(transformf_scale_is_even(&parent));
 }
 
+/* Firmware may fuse a product into its add (one rounding fewer than the host's
+ * -ffp-contract=off build), so an interior weight holds to this many ulps. */
+#define BLEND_FUSED_ULPS 1.0F
+
+static void
+assert_vec3f_within_ulps(vec3f_t expected, vec3f_t got) {
+    const float e[] = {expected.x, expected.y, expected.z};
+    const float g[] = {got.x, got.y, got.z};
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_FLOAT_WITHIN(BLEND_FUSED_ULPS * FLT_EPSILON * fabsf(e[i]), e[i], g[i]);
+    }
+}
+
 static void
 test_blend_clamps_and_interpolates_trs(void) {
     transformf_t a = {.position = {-3.7F, 0.3F, -4.9F},
@@ -120,8 +135,8 @@ test_blend_clamps_and_interpolates_trs(void) {
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         const transformf_t got = transformf_blend(&a, &b, cases[i].weight);
         const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, cases[i].weight);
-        TEST_ASSERT_EQUAL_MEMORY(&cases[i].position, &got.position, sizeof got.position);
-        TEST_ASSERT_EQUAL_MEMORY(&cases[i].scale, &got.scale, sizeof got.scale);
+        assert_vec3f_within_ulps(cases[i].position, got.position);
+        assert_vec3f_within_ulps(cases[i].scale, got.scale);
         TEST_ASSERT_EQUAL_MEMORY(&rotation, &got.rotation, sizeof rotation);
         TEST_ASSERT_FALSE(got.cached);
     }
