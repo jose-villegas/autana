@@ -14,7 +14,6 @@ quantize_weights, for generated_blocks.py --tables.
 launcher/tools/render/render_doc_images.sh runs it.
 """
 
-import colorsys
 import math
 import pathlib
 import sys
@@ -24,15 +23,11 @@ from PIL import ImageDraw
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-from docs.figures import save_png  # noqa: E402
+from docs.figures import index_hue, save_png  # noqa: E402
 from r3d import gltf_preview, skin_asset  # noqa: E402
 from r3d.skin.skin_frame import DEFAULT_POSITION_SCALE, INFLUENCES, EngineSkin  # noqa: E402
 from r3d.skin_light.skin_light_sheet import TILE, VIEW, grid, heat, label, parse_clip  # noqa: E402
 
-# Joint colours step round the hue circle by the golden angle, so neighbours differ.
-GOLDEN_ANGLE = 0.381966
-JOINT_SATURATION = 0.75
-JOINT_VALUE = 0.95
 JOINT_RADIUS = 3
 BONE_WIDTH = 2
 BONE = (20, 20, 20)
@@ -52,8 +47,7 @@ MOVE = (220, 30, 30)
 
 
 def joint_colour(index):
-    r, g, b = colorsys.hsv_to_rgb((index * GOLDEN_ANGLE) % 1.0, JOINT_SATURATION, JOINT_VALUE)
-    return int(255 * r), int(255 * g), int(255 * b)
+    return index_hue(index, byte=True)
 
 
 def blended_colours(asset):
