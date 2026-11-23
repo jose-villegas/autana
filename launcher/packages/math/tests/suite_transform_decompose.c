@@ -96,8 +96,48 @@ test_relative_undoes_compose_under_an_even_parent(void) {
     TEST_ASSERT_FALSE(transformf_scale_is_even(&parent));
 }
 
+static void
+test_blend_clamps_and_interpolates_trs(void) {
+    transformf_t a = {.position = {-3.7F, 0.3F, -4.9F},
+                      .rotation = quatf_normalize((quatf_t){1, -2, 3, 4}),
+                      .scale = {1.3F, -0.9F, 7.2F}};
+    const transformf_t b = {.position = {-0.2F, -16.7F, 0.3F},
+                            .rotation = quatf_normalize((quatf_t){-4, 3, -2, -1}),
+                            .scale = {-9.1F, 0.3F, 0.2F}};
+    (void)transformf_matrix(&a);
+
+    static const struct {
+        float weight;
+        vec3f_t position, scale;
+    } cases[] = {
+        {0.3F, {-0x1.533332p+1F, -0x1.333334p+2F, -0x1.ab8520p+1F}, {-0x1.d1eb8ap+0F, -0x1.147ae0p-1F, 0x1.466666p+2F}},
+        {1.0F / 3.0F,
+         {-0x1.444442p+1F, -0x1.57777ap+2F, -0x1.955556p+1F},
+         {-0x1.155558p+1F, -0x1.fffffcp-2F, 0x1.377776p+2F}},
+        {0.999F, {-0x1.a0c496p-3F, -0x1.0aed94p+4F, 0x1.2de012p-2F}, {-0x1.22de02p+3F, 0x1.31f8a2p-2F, 0x1.a7ef92p-3F}},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const transformf_t got = transformf_blend(&a, &b, cases[i].weight);
+        const quatf_t rotation = quatf_nlerp(a.rotation, b.rotation, cases[i].weight);
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].position, &got.position, sizeof got.position);
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].scale, &got.scale, sizeof got.scale);
+        TEST_ASSERT_EQUAL_MEMORY(&rotation, &got.rotation, sizeof rotation);
+        TEST_ASSERT_FALSE(got.cached);
+    }
+    const transformf_t before = transformf_blend(&a, &b, -1.0F);
+    const transformf_t after = transformf_blend(&a, &b, 2.0F);
+    TEST_ASSERT_EQUAL_MEMORY(&a.position, &before.position, sizeof a.position);
+    TEST_ASSERT_EQUAL_MEMORY(&a.scale, &before.scale, sizeof a.scale);
+    TEST_ASSERT_EQUAL_MEMORY(&b.position, &after.position, sizeof b.position);
+    TEST_ASSERT_EQUAL_MEMORY(&b.scale, &after.scale, sizeof b.scale);
+    TEST_ASSERT_FALSE(before.cached);
+    TEST_ASSERT_FALSE(after.cached);
+}
+
 void
 suite_transform_decompose(void) {
+    RUN_TEST(test_blend_clamps_and_interpolates_trs);
     RUN_TEST(test_relative_undoes_compose_under_an_even_parent);
     RUN_TEST(test_trs_matrix_decomposition_and_refusals);
     RUN_TEST(test_compose_under_an_evenly_scaled_parent_is_the_matrix_product);

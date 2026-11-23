@@ -1234,6 +1234,26 @@ test_mathf_lerp(void) {
 /* Flat past each edge, half way at the middle, and level at both edges:
  * its slope there is 0. */
 static void
+test_ease_smooth_is_monotonic_for_large_durations(void) {
+    const uint32_t durations[] = {134217728u, 134217727u, UINT32_MAX};
+    const uint32_t regression_elapsed = 120177527u;
+    const uint32_t radius = 128u;
+    TEST_ASSERT_TRUE(ease_smooth(regression_elapsed, durations[0])
+                     <= ease_smooth(regression_elapsed + 1, durations[0]));
+    for (size_t i = 0; i < sizeof durations / sizeof durations[0]; i++) {
+        const uint32_t over = durations[i];
+        const uint32_t centers[] = {radius, over / 10, over / 2, over - over / 10, over - radius};
+        for (size_t j = 0; j < sizeof centers / sizeof centers[0]; j++) {
+            const uint32_t first = centers[j] - radius;
+            const uint32_t last = centers[j] + radius;
+            for (uint32_t elapsed = first; elapsed < last; elapsed++) {
+                TEST_ASSERT_TRUE(ease_smooth(elapsed, over) <= ease_smooth(elapsed + 1, over));
+            }
+        }
+    }
+}
+
+static void
 test_ease_smoothstep(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 1.0F));
     TEST_ASSERT_EQUAL_FLOAT(0.0F, ease_smoothstep(2.0F, 6.0F, 2.0F));
@@ -2160,6 +2180,7 @@ suite_math_numbers(void) {
 #endif
     RUN_TEST(test_mathf_lerp);
     RUN_TEST(test_ease_smoothstep);
+    RUN_TEST(test_ease_smooth_is_monotonic_for_large_durations);
     RUN_TEST(test_mathi_lerp);
     RUN_TEST(test_mathi_lerp_u8);
     RUN_TEST(test_maths_lerp);
