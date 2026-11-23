@@ -27,7 +27,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
+from c_comments import HEADER_EXTENSIONS, SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
 from c_constants import DEFINE  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
@@ -343,6 +343,7 @@ INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
 ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
+@functools.lru_cache(maxsize=None)
 def include_roots(root):
     launcher = pathlib.Path(root) / "launcher"
     try:
@@ -484,18 +485,23 @@ def _layer_dirs_match(root):
             "docs/firmware/Layers.md) before this rule can trust its own order.")
 
 
-def _main_include_layers(root, path, text):
-    """(line, include, target layer) for each include of `text` that resolves
-    to a folder of launcher/main/, quoted or angled."""
+def _main_includes(root, path, text):
+    """(line, include, target file) for each include of `text`, quoted or
+    angled and outside comments, that resolves to a file of launcher/main/."""
     main_dir = (pathlib.Path(root) / "launcher/main").resolve()
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(blank_comments(text, cpp=is_cpp(path)).splitlines(), 1):
         m = ANY_INCLUDE.match(line)
-        if not m:
-            continue
-        resolved = resolve_include(root, path, m.group(1))
-        if resolved is None or not resolved.resolve().is_relative_to(main_dir):
-            continue
-        yield number, m.group(1), layer_of(resolved.resolve().relative_to(main_dir).parts)
+        resolved = resolve_include(root, path, m.group(1)) if m else None
+        target = resolved.resolve() if resolved is not None else None
+        if target is not None and target.is_relative_to(main_dir):
+            yield number, m.group(1), target
+
+
+def _main_include_layers(root, path, text):
+    """(line, include, target layer) for each of _main_includes()."""
+    main_dir = (pathlib.Path(root) / "launcher/main").resolve()
+    for number, inc, target in _main_includes(root, path, text):
+        yield number, inc, layer_of(target.relative_to(main_dir).parts)
 
 
 @c_line_rule("INCLUDE-DIRECTION")
@@ -522,6 +528,91 @@ def rule_include_direction(root, path, text):
         yield number, (f'"{inc}" reaches from {source_layer}/ (tier {source_tier}) into {target_layer}/ '
                        f"(tier {LAYER_TIER[target_layer]}) - move the shared piece down a tier, or add an "
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
+
+
+# RULE: under launcher/main/, folders include each other one way, and so
+# do headers. Every folder is a node wherever it sits, and an include from a
+# file in one folder of a file in another is an edge; an edge on a cycle
+# (in a strongly connected component of more than one folder) is reported
+# at its include line. FOLDER-CYCLE warns until the tree has none, then
+# fails; a cycle between headers fails. No folder is named: a module's
+# layers are the levels of the graph the includes draw, so there is no
+# table to keep in step. An include inside a comment is no include.
+
+
+def _components(graph):
+    """Each node's strongly connected component in `graph`, {node: its root},
+    by Tarjan's algorithm, iterative so a deep graph needs no deep stack."""
+    index, low, component, stack, on_stack = {}, {}, {}, [], set()
+
+    def enter(node):
+        index[node] = low[node] = len(index)
+        stack.append(node)
+        on_stack.add(node)
+        return node, iter(graph.get(node, ()))
+
+    for start in graph:
+        if start in index:
+            continue
+        work = [enter(start)]
+        while work:
+            node, children = work[-1]
+            for child in children:
+                if child not in index:
+                    work.append(enter(child))
+                    break
+                if child in on_stack:
+                    low[node] = min(low[node], index[child])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                if low[node] == index[node]:
+                    while True:
+                        member = stack.pop()
+                        on_stack.discard(member)
+                        component[member] = node
+                        if member == node:
+                            break
+    return component
+
+
+@functools.lru_cache(maxsize=None)
+def _main_include_cycles(root):
+    """{source file: [(line, include, target file)]} for each include between
+    two files of launcher/main/, and the folder and header components."""
+    root_path = pathlib.Path(root)
+    by_source, folders, headers = {}, {}, {}
+    for rel in tracked_files(root, ("launcher/main",)):
+        if not rel.endswith(SOURCE_EXTENSIONS) or rel.startswith(excluded()):
+            continue
+        path = (root_path / rel).resolve()
+        for number, inc, target in _main_includes(root, path, path.read_text(encoding="utf-8", errors="replace")):
+            by_source.setdefault(path, []).append((number, inc, target))
+            folders.setdefault(path.parent, set()).add(target.parent)
+            if path.suffix in HEADER_EXTENSIONS and target.suffix in HEADER_EXTENSIONS:
+                headers.setdefault(path, set()).add(target)
+    return by_source, _components(folders), _components(headers)
+
+
+@c_line_rule("FOLDER-CYCLE", severity=WARN)
+def rule_folder_cycle(root, path, text):
+    by_source, folders, _headers = _main_include_cycles(str(root))
+    source = path.resolve()
+    for number, inc, target in by_source.get(source, ()):
+        if source.parent != target.parent and folders.get(source.parent) == folders.get(target.parent):
+            yield number, (f'"{inc}" reaches from {relpath(root, source.parent)}/ into '
+                           f"{relpath(root, target.parent)}/, which reaches back - move what both need "
+                           "into a folder below them")
+
+
+@c_line_rule("HEADER-CYCLE")
+def rule_header_cycle(root, path, text):
+    by_source, _folders, headers = _main_include_cycles(str(root))
+    source = path.resolve()
+    for number, inc, target in by_source.get(source, ()):
+        if source in headers and source != target and headers.get(source) == headers.get(target):
+            yield number, f'"{inc}" is a header that includes {relpath(root, source)} back, directly or not'
 
 
 # RULE: an app (a folder of the top row, launcher/main/apps/) uses the engine, the platform, the lab shell and the app
@@ -1161,6 +1252,8 @@ def run_audit(root, rule_filter=None, file_filter=None, files=None):
     returning (findings, files_scanned)."""
     _BACKEND_REACH.clear()
     _backend_headers.cache_clear()
+    _main_include_cycles.cache_clear()
+    include_roots.cache_clear()
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
     findings = []
     scanned = set()

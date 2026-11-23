@@ -3,8 +3,7 @@
 
     python launcher/tools/bake/bake.py list [PATH ...] [--missing] [--kind mesh|reference|fit|levels|texture|sound]
     python launcher/tools/bake/bake.py bake [PATH ...] [--kind KIND ...] [--only OUTPUT ...] [--again] [--out DIR]
-                                            [--from-run N ...] [--shard K/N --plan DIR | --shards DIR]
-    python launcher/tools/bake/bake.py shards [PATH ...] [--out DIR]
+                                            [--from-run N ...]
     python launcher/tools/bake/bake.py lock [PATH ...] [--from-run N ... [--partial] | --seed] [--cache DIR]
     python launcher/tools/bake/bake.py check [PATH ...]
     python launcher/tools/bake/bake.py fetch [PATH ...] [--cache DIR] [--offline]
@@ -17,11 +16,9 @@ renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
 each key the SHA-256 of the bytes made for it.
-A bake that traces rays (a mesh, a reference set) is byte-reproducible only on hosts of one CPU vendor:
-r3d/isa.py pins the ray tracer to AVX2, whose reciprocal estimates AMD and Intel each
-define their own way. LOCK's `mesh_cpu_vendor` names the vendor its meshes and reference sets
-were made on; a run records its host's, and `lock --from-run` refuses a run
-that made one on another, as `bake --out` does on such a host.
+A bake that traces rays (a mesh, a reference set) makes other bytes on another CPU vendor, so the
+Bakes workflow makes them all on one self-hosted runner (docs/assets/Bakes.md); a run records each
+row's host and CPU vendor, and a rerun adopts only what an earlier attempt made on a matching one.
 
 A fitted renderer has a CPU start (`<entry>.start.bundle`), a CPU reference set
 (`<entry>.reference.tar.xz`, reference_set.pack_references), a GPU fit without rest levels
@@ -40,8 +37,8 @@ host like this one into the cache, so a rerun makes only what is left; `--only` 
 `--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one, or with `--partial` only names them;
-`--from-run N` adds the rows CI run N made, from its uploads, and is the only
-way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
+`--from-run N` adds the rows CI run N made, from its uploads; a run still going is refused unless `lock` runs
+in it. It is the only way a new bake row is written. Sound bakes use the CPU Bakes run. It repeats, so the meshes of a Bakes run
 and the fits of a Bakes GPU run lock together, so every locked file can be published; `--seed`
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
@@ -53,10 +50,6 @@ missing, unneeded or different, exactly.
 LOCK's `[[poses]]` rows hold the digest and count of each camera-path sampling, keyed on its clip bytes,
 sampling arguments and sampler code. `lock` samples and writes them. A key computed from a held row needs
 no host C compiler.
-
-`shards --out DIR` chooses each missing reference set's poses once, writes them and its render calls to DIR,
-and prints the shard matrix. Every `bake --kind reference --shard K/N --plan DIR` renders that plan's poses
-and copies its pose files byte for byte; shards never select poses. A local unsharded bake selects its own.
 
 `fetch` puts every
 locked file in the cache, from the release when it is not there; `--offline`
@@ -76,7 +69,6 @@ import functools
 import hashlib
 import io
 import json
-import math
 import multiprocessing
 import os
 import pathlib
@@ -157,26 +149,9 @@ FOLLOWING_KINDS = ("levels", "texture")
 # A textured renderer's texture bake: its materials' LTEX entries and its mesh's LUVS (r3d/texture/), as a pack.
 TEXTURE_SUFFIX = ".texture.pack"
 WAITS = {"levels": "waits for its fit", "texture": "waits for its mesh"}
-# The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
-TRACED_KINDS = ("mesh", "reference", "sh_probes")
-# A run traces its missing reference sets in shards that each take a share of every set's poses, as many as keep a
-# shard near REFERENCE_SHARD_SECONDS on a hosted 4-CPU runner: a quarter of the 6 h cap, room for a scene whose rays
-# cost more than the calibration's. The rate is bistro.street_fitted's primary rays over its hosted trace time.
-REFERENCE_SHARD_SECONDS = 90 * 60
-CALIBRATION_RAYS = 158_269_440  # bistro.street_fitted: 240 poses at 184 x 224, 4 x 4 samples (produce.reference_rays)
-CALIBRATION_SECONDS = 5 * 60 * 60  # the same set on one hosted 4-CPU runner, CPU Bakes run 43016329421
-MATRIX_JOBS = 256  # GitHub Actions' most jobs one matrix makes
 # What a fit whose key waits for its inputs asks for, when the same run would make it.
 BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
-def reference_shards(rays):
-    """The shards that trace `rays` primary rays, each near REFERENCE_SHARD_SECONDS on a hosted runner; at least one,
-    and no more than a job matrix holds."""
-    seconds = rays * CALIBRATION_SECONDS / CALIBRATION_RAYS
-    count = max(1, math.ceil(seconds / REFERENCE_SHARD_SECONDS))
-    if count > MATRIX_JOBS:
-        raise BakeMissing(f"{rays} reference rays need {count} shards; a job matrix holds {MATRIX_JOBS}")
-    return count
 
 
 def entry_file(entry):
@@ -866,14 +841,12 @@ def relative(path):
 
 
 def read_lock_tables(path=LOCK):
-    """The bake and poses tables, each as {key: row}, empty when absent, and "mesh_cpu_vendor", None when
-    absent."""
+    """The bake and poses tables, each as {key: row}, empty when absent."""
     rows = {}
     if path.is_file():
         with path.open("rb") as source:
             rows = tomllib.load(source)
-    return {**{name: {row["key"]: row for row in rows.get(name, [])} for name in ("bake", "poses")},
-            "mesh_cpu_vendor": rows.get("mesh_cpu_vendor")}
+    return {name: {row["key"]: row for row in rows.get(name, [])} for name in ("bake", "poses")}
 
 
 def read_lock(path=LOCK, table="bake"):
@@ -887,13 +860,9 @@ def toml_value(value):
     return json.dumps(value) if isinstance(value, str) else str(value)
 
 
-def write_lock(rows, path=LOCK, poses=(), mesh_cpu_vendor=None):
+def write_lock(rows, path=LOCK, poses=()):
     """LOCK from `rows`, one table per key sorted by output then key, then the `poses` rows sorted by key."""
     lines = ["# Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.", ""]
-    if mesh_cpu_vendor is not None:
-        lines += ["# mesh_cpu_vendor: the CPU vendor the meshes were made on; a mesh bake's bytes differ between "
-                  "vendors.",
-                  f"mesh_cpu_vendor = {toml_value(mesh_cpu_vendor)}", ""]
     for row in sorted(rows, key=lambda row: (row["output"], row["key"])):
         lines.append("[[bake]]")
         lines += [f"{name} = {toml_value(row[name])}" for name in ROW_FIELDS
@@ -1002,9 +971,14 @@ def download(row, suffix, cache):
 
 def locked_fit(scene_path, object_name):
     """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    return locked_bake(scene_path, object_name, "fit")
+
+
+def locked_bake(scene_path, object_name, kind):
+    """The renderer's bake of the given kind, keyed by the lock."""
     tables = read_lock_tables()
     found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
-    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+    return next(item for item in found if item.kind == kind and item.job.object.name == object_name)
 
 
 def fetch(bake, cache=None):
@@ -1169,9 +1143,7 @@ def github_get(url, token):
 def run_files(run, folder):
     """Downloads what CI run `run` uploaded (its bakes-* artifacts) into `folder`, with the standard
     library and GitHub's API, so a runner without gh can too; artifacts need a token even when public."""
-    token = github_token()
-    if token is None:
-        raise BakeMissing(f"reading run {run}'s uploads needs a GitHub token: GH_TOKEN, or gh signed in")
+    token = run_token(run)
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
@@ -1203,41 +1175,34 @@ def gpu_name():
     return names[0].strip() if names and names[0].strip() else None
 
 
-def rerun_on(mesh_cpu_vendor):
-    return (f"the lock's meshes are {mesh_cpu_vendor}'s: re-run the failed Bakes job until it lands on a "
-            f"{mesh_cpu_vendor} runner")
-
-
-def wrong_vendor(mesh_cpu_vendor, cpu):
-    """Why a host whose CPU is `cpu` may not trace for a lock of `mesh_cpu_vendor`; None when it may."""
-    if mesh_cpu_vendor and cpu != mesh_cpu_vendor:
-        return f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}"
-    return None
-
-
 def from_made(bake, lock, made):
     """Whether `bake`'s row comes from a run's make: the lock has none for it, or only a seeded one."""
     held = lock.get(bake.key)
     return bake.key in (made or {}) and (held is None or bool(held.get("seeded")))
 
 
-def runs_mesh_cpu_vendor(found, lock, made, mesh_cpu_vendor):
-    """The vendor the lock's meshes are from once the meshes in `made` are taken; a lock that names none takes
-    theirs. Fails naming each mesh a run made on another vendor, or without saying which, since its bytes
-    would not be the lock's."""
-    wrong = []
-    for bake in found:
-        if bake.kind not in TRACED_KINDS or not from_made(bake, lock, made):
-            continue
-        row = made[bake.key]
-        if mesh_cpu_vendor is None:
-            mesh_cpu_vendor = row.get("cpu_vendor")
-        elif row.get("cpu_vendor") != mesh_cpu_vendor:
-            wrong.append(f"  run {row['run']} made {bake.output} on {row.get('cpu_vendor') or 'a CPU it does not name'}")
-    if wrong:
-        raise BakeMissing("cannot lock meshes made on another CPU vendor:\n" + "\n".join(wrong) + "\n"
-                          + rerun_on(mesh_cpu_vendor) + ", then lock from that run")
-    return mesh_cpu_vendor
+def run_token(run):
+    """The GitHub token reading CI run `run` needs; raises naming the run without one."""
+    token = github_token()
+    if token is None:
+        raise BakeMissing(f"reading run {run} needs a GitHub token: GH_TOKEN, or gh signed in")
+    return token
+
+
+def run_status(run):
+    """CI run `run`'s status as GitHub's API gives it: `completed` once finished, else queued, in_progress, waiting ..."""
+    return json.loads(github_get(f"{API_URL}/actions/runs/{run}", run_token(run)))["status"]
+
+
+def refuse_unfinished(runs):
+    """Raises naming each run in `runs` that has not finished. The run this process runs in (GITHUB_RUN_ID) is
+    exempt: its CPU job locks its own bakes on its runner and never pushes that lock. Pushing a lock taken from any
+    other run still going would cancel that run (a branch keeps one Bakes run) before it uploads the rest."""
+    current = os.environ.get("GITHUB_RUN_ID")
+    going = [f"run {run} is {status}" for run in runs
+             if str(run) != current and (status := run_status(run)) != "completed"]
+    if going:
+        raise BakeMissing("; ".join(going) + ": lock from a run once it has finished")
 
 
 def runs_made(runs, cache):
@@ -1370,12 +1335,12 @@ def _mesh_rows(found, cache, lock, blender, again, keep):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("list", "bake", "shards", "lock", "check", "fetch", "path", "publish", "tool"))
+    parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "path", "publish", "tool"))
     parser.add_argument("paths", nargs="*", help="what build_pack.py takes; launcher/main when omitted")
     parser.add_argument("--cache", help="the cache directory; the user cache when omitted")
     parser.add_argument("--seed", action="store_true", help="lock: lock the tree's own files")
     parser.add_argument("--from-run", type=int, action="append", metavar="N",
-                        help="lock: add the rows CI run N made; bake: reuse those made on a host like this; repeatable")
+                        help="lock: add the rows finished CI run N made; bake: reuse those made on a host like this; repeatable")
     parser.add_argument("--kind", choices=KINDS, action="append", help="list, bake: only this kind; repeatable")
     parser.add_argument("--partial", action="store_true", help="lock: name the bakes still to lock without failing")
     parser.add_argument("--blender", help="bake: the Blender to export with; `blender` on PATH when omitted")
@@ -1383,9 +1348,6 @@ def main(argv=None):
     parser.add_argument("--out", help="bake: also copy what was made here, for a CI run to upload")
     parser.add_argument("--only", action="append", metavar="OUTPUT", help="bake: only this output; repeatable")
     parser.add_argument("--again", action="store_true", help="bake: make them even when locked, and compare")
-    parser.add_argument("--shard", metavar="K/N", help="bake --kind reference: trace shard K of N of each set into --out")
-    parser.add_argument("--plan", metavar="DIR", help="bake --shard: render the poses from shards --out DIR")
-    parser.add_argument("--shards", metavar="DIR", help="bake --kind reference: join the shards in DIR, then pack")
     parser.add_argument("--offline", action="store_true", help="fetch: never download")
     args = parser.parse_intermixed_args(argv)  # paths may follow options, as a shell user types them
     from r3d.build_pack import DEFAULT_SEARCH
@@ -1407,19 +1369,13 @@ def main(argv=None):
         lock, held = tables["bake"], tables["poses"]
         # The keys a run made: a seeded row's bytes were carried over, so a run makes its key again.
         made_keys = {key for key, row in lock.items() if not row.get("seeded")}
+        if args.command == "lock" and args.from_run:
+            refuse_unfinished(args.from_run)
         made = runs_made(args.from_run, cache) if args.command == "lock" and args.from_run else {}
         starts = locked_starts(lock, made)
         poses = Poses(held, resample=args.command == "lock")
         found = [] if args.command == "path" else bakes(paths, starts, poses)
-        if args.command == "shards":
-            # The shard numbers a run traces its missing reference sets in, as a JSON list for a job matrix.
-            from bake import produce
-
-            rays = [produce.reference_rays(bake, pathlib.Path(args.out) / bake.output) if args.out
-                    else produce.reference_rays(bake)
-                    for bake in found if bake.kind == "reference" and bake.key not in made_keys]
-            print(json.dumps(list(range(reference_shards(sum(rays)))) if rays else []))
-        elif args.command == "list":
+        if args.command == "list":
             for bake in found:
                 if (args.missing and bake.key in made_keys) or not of_kind(bake.kind):
                     continue
@@ -1444,34 +1400,6 @@ def main(argv=None):
                 return (bake.kind == kind and of_kind(kind) and (args.again or bake.key not in made_keys)
                         and not (args.only and bake.output not in args.only))
 
-            # Joined shards are traced already, where the shards ran: packing them traces nothing here.
-            joined = set()
-            if args.shards:
-                for bake in found:
-                    parts = sorted(pathlib.Path(args.shards).glob(f"*/{bake.output}.shard-*"))
-                    if to_make(bake, "reference") and parts:
-                        produce.join_reference_shards(bake, cache, parts)
-                        joined.add(bake.output)
-                        print(f"joined {len(parts)} shards of {bake.output}", flush=True)
-            # What is made for a run to upload must be lockable: a mesh only on the lock's CPU vendor.
-            mesh_cpu_vendor, cpu = tables.get("mesh_cpu_vendor"), cpu_vendor()
-            if args.out:
-                print(f"this host's CPU vendor: {cpu or 'not named'}; "
-                      f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
-                refusal = wrong_vendor(mesh_cpu_vendor, cpu)
-                if refusal and any(to_make(bake, kind) and bake.output not in joined
-                                   for bake in found for kind in TRACED_KINDS):
-                    raise BakeMissing(refusal)
-            if args.shard:
-                shard, count = (int(part) for part in args.shard.split("/"))
-                if args.kind != ["reference"] or not args.out or not args.plan or not 0 <= shard < count:
-                    parser.error("--shard K/N takes --kind reference, --out DIR, --plan DIR and 0 <= K < N")
-                for bake in found:
-                    if to_make(bake, "reference"):
-                        produce.reference_shard(bake, pathlib.Path(args.out) / f"{bake.output}.shard-{shard}",
-                                                shard, count, args.plan)
-                        print(f"traced shard {shard}/{count} of {bake.output}", flush=True)
-                return 0
             for run in args.from_run or ():
                 # Each upload apart: two attempts of one run may have made one key on different hosts.
                 with tempfile.TemporaryDirectory() as folder:
@@ -1524,14 +1452,13 @@ def main(argv=None):
             if args.again and differ:
                 raise BakeMissing("made again with other bytes than the lock's:\n" + "\n".join(differ))
         elif args.command == "lock":
-            mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
             if args.seed:
                 rows = seed(found, cache, lock, made)
             else:
                 # A fit waits for its start's row: what is made locks now, and the rest is named.
                 missing = []
                 rows = lock_rows(found, lock, made, missing)
-            write_lock(rows, path=LOCK, poses=poses.used.values(), mesh_cpu_vendor=mesh_cpu_vendor)
+            write_lock(rows, path=LOCK, poses=poses.used.values())
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
             if not args.seed and missing:
                 if not args.partial:

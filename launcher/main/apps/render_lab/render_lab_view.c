@@ -13,6 +13,7 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
+TUNE_SETTING(render_lab, textures, 0, 0, 1);
 
 int
 render_lab_debug_view(void) {
@@ -121,6 +122,16 @@ render_lab_framegen_on(void) {
 bool
 render_lab_framegen_set_on(bool on) {
     return TUNE_SETTING_SET(framegen, on ? 1 : 0);
+}
+
+bool
+render_lab_textures_on(void) {
+    return textures != 0;
+}
+
+bool
+render_lab_textures_set_on(bool on) {
+    return TUNE_SETTING_SET(textures, on ? 1 : 0);
 }
 
 int

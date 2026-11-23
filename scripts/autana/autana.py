@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
-from console_protocol import reply_prefix
+from console_protocol import parse_assignment, reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -1053,13 +1053,10 @@ def suite(args):
     settings = []
     while "--set" in rest:
         value, rest = pop_value(rest, "--set")
-        name, equals, number = value.partition("=")
         try:
-            int(number, 0)
-        except ValueError:
-            equals = ""
-        if not name or not equals:
-            sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
+            parse_assignment(value)
+        except ValueError as error:
+            sys.exit(f"usage: --set {error}")
         settings.append(value)
     console_lines = []
     while "--send" in rest:

@@ -56,6 +56,9 @@
 # --reference-frames with --reference and --poses alone makes (or finds) that
 # cache and prints its directory, for a caller that scores the frames itself.
 #
+#   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
+# See ../r3d/README.md#material-id-differences.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu

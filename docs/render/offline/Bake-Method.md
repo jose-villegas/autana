@@ -76,6 +76,9 @@ $K$ where the next bounce is negligible beside the direct light.
 
 The paths' noise falls as $1/\sqrt{R}$.
 
+Only static meshes are baked. A skinned mesh takes its sky and bounce light
+at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
+
 ![The light each of three bounces adds along the floor, and the relative error against the ray count](../../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |
@@ -102,11 +105,9 @@ alpha below `keep_alpha`; the importer's triangle drop applies to drawn geometry
 How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,
 shadows and tone map, at the device render size and supersampled, for the
-poses of the scene's camera path. A host render of any variant, smooth, lite
-or flat, is scored against it. Flat and full beside their fitted variants at
-two poses, each with its ΔE heatmap on one colour scale:
-
-![Reference, flat, flat fitted, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-sheet.png)
+poses of the scene's camera path. A host render of any bake is scored against
+it. The fit's start beside the fitted bake at two poses, each with its ΔE
+heatmap on one colour scale:
 
 ![Reference, full, fitted full, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-full-sheet.png)
 

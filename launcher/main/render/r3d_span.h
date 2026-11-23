@@ -47,7 +47,7 @@ typedef struct r3d_span_target {
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
     /* The draw's render_texture_settings_t: divide_px, affine_bend in
-     * 1/R3D_SPAN_BEND_STEPS texel, affine_level and far_level, the two levels
+     * 1/RENDER_TEXTURE_BEND_STEPS texel, affine_level and far_level, the two levels
      * sharing a byte so the target keeps its size. */
     uint8_t texture_divide_px;
     uint8_t texture_bend_steps;
@@ -66,10 +66,8 @@ typedef struct r3d_span_target {
 #define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
     ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
-/* Steps per texel in which texture_bend_steps holds texture.affine_bend, rounded. */
-#define R3D_SPAN_BEND_STEPS 16
 _Static_assert(RENDER_TEXTURE_DIVIDE_PX_MAX <= UINT8_MAX, "texture.divide_px fits its byte");
-_Static_assert(RENDER_TEXTURE_BEND_MAX* R3D_SPAN_BEND_STEPS <= UINT8_MAX, "texture.affine_bend fits its byte");
+_Static_assert(RENDER_TEXTURE_BEND_MAX* RENDER_TEXTURE_BEND_STEPS <= UINT8_MAX, "texture.affine_bend fits its byte");
 _Static_assert(RENDER_TEXTURE_LEVEL_MAX < (1 << R3D_SPAN_LEVEL_BITS),
                "texture.affine_level and far_level fit their bits");
 
@@ -77,7 +75,7 @@ _Static_assert(RENDER_TEXTURE_LEVEL_MAX < (1 << R3D_SPAN_LEVEL_BITS),
 static inline void
 r3d_span_set_texture(r3d_span_target_t* target, const render_texture_settings_t* texture) {
     target->texture_divide_px = (uint8_t)texture->divide_px;
-    target->texture_bend_steps = (uint8_t)((texture->affine_bend * (float)R3D_SPAN_BEND_STEPS) + 0.5F);
+    target->texture_bend_steps = (uint8_t)((texture->affine_bend * (float)RENDER_TEXTURE_BEND_STEPS) + 0.5F);
     target->texture_affine_level = (uint8_t)texture->affine_level;
     target->texture_far_level = (uint8_t)texture->far_level;
 }

@@ -415,7 +415,7 @@ stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose) {
 }
 
 bool
-stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
+stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_mesh_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
     if (!make(p, b, &m)) {
         return false;
@@ -427,7 +427,7 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         }
         texture_uvs(p, m.vertex_count, b);
     }
-    *out = (r3d_dynamic_source_t){
+    *out = (r3d_mesh_source_t){
         .positions = b->positions,
         .colors = (const uint8_t (*)[3])b->colors,
         .vertex_count = m.vertex_count,

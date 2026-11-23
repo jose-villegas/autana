@@ -45,7 +45,7 @@ typedef struct {
 typedef struct {
     note_head_t head; /* the built positions */
     int position_scale;
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     bool fitted;
     bool fresh; /* built since the last recorded frame */
 } noted_built_t;
@@ -170,7 +170,7 @@ frame_record_note_skin(const r3d_lit_mesh_t* posed, const r3d_lit_mesh_t* bind, 
 }
 
 void
-frame_record_note_built(const r3d_lit_mesh_t* mesh, const r3d_dynamic_source_t* source, bool fitted) {
+frame_record_note_built(const r3d_lit_mesh_t* mesh, const r3d_mesh_source_t* source, bool fitted) {
     if (notes != NULL) {
         noted_built_t* note = note_stamp(NOTE_TABLE(built), mesh->positions, mesh->vertex_count);
         note->position_scale = mesh->position_scale;
@@ -318,7 +318,7 @@ record_built(int index, noted_built_t* b, bool keyframe) {
     if (!keyframe && !b->fresh) {
         return;
     }
-    const r3d_dynamic_source_t* s = &b->source;
+    const r3d_mesh_source_t* s = &b->source;
     const size_t positions = (size_t)s->vertex_count * sizeof s->positions[0];
     const size_t colours = (size_t)s->vertex_count * sizeof s->colors[0];
     const size_t triangles = (size_t)s->triangle_count * sizeof s->triangles[0];
@@ -496,8 +496,8 @@ frame_record_counts(void) {
 
 /* The frame's own records: FRAME, VIEW, CHOICE, a pending CHECK, the tunables. */
 static void
-record_frame_head(const render_context_t* context, const raster_t* raster, uint32_t dt_ms, bool keyframe) {
-    const bool generated = context->frame.generated;
+record_frame_head(const frame_record_context_t* context, const raster_t* raster, uint32_t dt_ms, bool keyframe) {
+    const bool generated = context->frame->generated;
     const frame_record_frame_t frame = {
         .index = rec->index,
         .dt_ms = dt_ms,
@@ -507,15 +507,15 @@ record_frame_head(const render_context_t* context, const raster_t* raster, uint3
         .batches = generated ? 0U : (uint16_t)raster->batch_count,
     };
     record(FRAME_RECORD_FRAME, &frame, sizeof frame);
-    record(FRAME_RECORD_VIEW, &context->frame_view, sizeof context->frame_view);
-    const frame_record_choice_t choice = {(int16_t)context->frame.step,    generated,
+    record(FRAME_RECORD_VIEW, context->view, sizeof *context->view);
+    const frame_record_choice_t choice = {(int16_t)context->frame->step,   generated,
                                           (uint8_t)context->scale_percent, raster->clear,
-                                          (uint16_t)context->frame.width,  (uint16_t)context->frame.height};
+                                          (uint16_t)context->frame->width, (uint16_t)context->frame->height};
     record(FRAME_RECORD_CHOICE, &choice, sizeof choice);
     if (rec->checked) {
         record(FRAME_RECORD_CHECK, &rec->check, sizeof rec->check);
     }
-    const render_settings_t* settings = &context->settings;
+    const render_settings_t* settings = context->settings;
     if (keyframe || memcmp(settings, &rec->settings, sizeof *settings) != 0) {
         record(FRAME_RECORD_SETTINGS, settings, sizeof *settings);
         rec->settings = *settings;
@@ -591,24 +591,24 @@ keyframe_due(void) {
 }
 
 static void
-snapshot_lod_state(const render_context_t* context) {
-    frame_record_lodstate_t state = {.pick_round = context->raster.pick_round};
-    memcpy(&state.steer, &context->steer, sizeof state.steer);
+snapshot_lod_state(const frame_record_context_t* context, const raster_t* raster) {
+    frame_record_lodstate_t state = {.pick_round = raster->pick_round};
+    memcpy(&state.steer, context->steer, sizeof state.steer);
     memcpy(rec->lod_state, &state, sizeof state);
 }
 
 void
-frame_record_before_draw(const render_context_t* context, const r3d_instance_t* instances, int count) {
+frame_record_before_draw(const frame_record_context_t* context, const raster_t* raster, const r3d_instance_t* instances,
+                         int count) {
     if (rec == NULL || !keyframe_due()) {
         return;
     }
-    const raster_t* raster = &context->raster;
     const size_t header_bytes = sizeof(frame_record_lodstate_t);
     const size_t bytes = header_bytes + snapshot_lod_meshes(NULL, raster, instances, count);
     if (!reserve_lod_state(bytes)) {
         return;
     }
-    snapshot_lod_state(context);
+    snapshot_lod_state(context, raster);
     rec->lod_size = header_bytes + snapshot_lod_meshes(rec->lod_state + header_bytes, raster, instances, count);
 }
 
@@ -624,17 +624,17 @@ record_lod_state(void) {
 }
 
 void
-frame_record_frame(const render_context_t* context, const raster_t* raster, uint32_t dt_ms) {
+frame_record_frame(const frame_record_context_t* context, const raster_t* raster, uint32_t dt_ms) {
     if (rec == NULL) {
         return;
     }
-    if (context->frame.generated && (rec->after_drop || rec->counts.frames == 0)) {
+    if (context->frame->generated && (rec->after_drop || rec->counts.frames == 0)) {
         rec->index++;
         settle(false, true, false);
         return;
     }
     FRAME_COST_BEGIN(recorded_from);
-    const bool generated = context->frame.generated;
+    const bool generated = context->frame->generated;
     const bool due = keyframe_due();
     /* A generated frame draws no meshes, so it cannot be a keyframe: the next drawn frame is. */
     const bool keyframe = due && !generated;
