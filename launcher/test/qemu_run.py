@@ -75,6 +75,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "device"))
@@ -499,7 +500,6 @@ def run_spread(args, qemu, flash, efuse, workdir):
         with open(times_path, encoding="utf-8") as fh:
             times = json.load(fh)
     spread = Spread(args.suite, times)
-    workers, results = [], [None] * args.jobs
 
     def work(k):
         own = os.path.join(workdir, "qemu-%d" % k)
@@ -512,13 +512,10 @@ def run_spread(args, qemu, flash, efuse, workdir):
         log, output = os.path.join(own, "qemu_serial.log"), os.path.join(own, "qemu_output.log")
         finished, stopped = run_qemu(cmd, port, log, output, args.timeout, None,
                                      lambda console: drive_spread(console, spread, args.test))
-        results[k] = (log, finished, stopped, output)
+        return log, finished, stopped, output
 
-    for k in range(args.jobs):
-        workers.append(threading.Thread(target=work, args=(k,)))
-        workers[-1].start()
-    for worker in workers:
-        worker.join()
+    with ThreadPoolExecutor(args.jobs) as pool:
+        results = list(pool.map(work, range(args.jobs)))
 
     status = 0
     for k, (log, finished, stopped, output) in enumerate(results):
@@ -700,7 +697,7 @@ def parse_args(argv):
     parser.add_argument("--screenshot", default=None, metavar="PNG",
                         help="capture the screen once the suites and touches "
                              "are done")
-    parser.add_argument("--jobs", type=int, default=0, metavar="N",
+    parser.add_argument("--jobs", type=int, default=None, metavar="N",
                         help="share the --suite list, or every suite the image "
                              "runs without a request, among N instances")
     parser.add_argument("--workdir", default=None,
@@ -712,8 +709,8 @@ def parse_args(argv):
     args = parser.parse_args(argv)
     if args.test and not args.suite:
         parser.error("--test narrows a --suite; give one")
-    if args.jobs and (args.touch or args.do or args.screenshot or args.log):
-        parser.error("--jobs runs suites only")
+    if args.jobs is not None and (args.jobs < 1 or args.touch or args.do or args.screenshot or args.log):
+        parser.error("--jobs takes a count of 1 or more and runs suites only")
     if args.icount_ratchet:
         args.icount = True
         try:
