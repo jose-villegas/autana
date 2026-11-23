@@ -155,7 +155,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
         }
     }
-    const size_t bytes = scene->asset.entity_count * sizeof *scene->writes;
+    const size_t bytes = scene->asset.entity_count * sizeof(scene_field_mask_t);
     scene_field_mask_t* writes = needs_claims ? memory_alloc(2 * bytes, MEMORY_APP) : NULL;
     scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, failed);
     if (needs_claims) {
@@ -176,7 +176,9 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
                 scene_free_kept(a->storage);
                 result = scene_failure_make(SCENE_ERR_ASSET, status, failed);
             } else if (needs_claims) {
-                memcpy(scene->writes, writes, bytes);
+                for (int e = 0; e < scene->asset.entity_count; e++) {
+                    scene->writes[e] = (uint16_t)writes[e];
+                }
             }
         }
     }

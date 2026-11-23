@@ -164,12 +164,15 @@ enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
 typedef uint32_t scene_field_mask_t;
 
+#define SCENE_PROPERTY_FIELDS ((1U << SCENE_FIELD_END_LENS) - 1U)
+
 enum {
     SCENE_PROPERTY_TRANSFORM = 1U << 0,
     SCENE_CONSTRAINT_TRANSFORM = 1U << 1,
     SCENE_HINGE_TRANSFORM = 1U << 2,
 };
 
+_Static_assert(SCENE_FIELD_END_LENS <= sizeof(uint16_t) * CHAR_BIT, "property animator fields fit in kept claims");
 _Static_assert(SCENE_FIELD_END_ENTY <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
@@ -206,6 +209,7 @@ typedef struct {
 typedef struct {
     anim_block_curve_t curve;
     scene_row_t row;
+    bool authored;
 } scene_timeline_enabled_t;
 
 /* Separate from property animators so the scene root has one shared clock. */
@@ -346,7 +350,7 @@ struct scene {
     const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
-    scene_field_mask_t* writes;
+    uint16_t* writes;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
@@ -480,8 +484,8 @@ scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_c
                                        uint8_t* transforms);
 scene_failure_t scene_timeline_bind(scene_t* scene, const anim_binding_location_t* locations);
 bool scene_timeline_step(scene_t* scene, uint32_t dt_ms);
-transformf_t scene_timeline_local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time,
-                                     transformf_t local);
+void scene_timeline_sample_local(const scene_t* scene, scene_row_t row, const anim_playhead_t* time,
+                                 transformf_t* local);
 transformf_t scene_timeline_world_at(const scene_t* scene, scene_row_t row, uint32_t ms);
 vec3f_t scene_row_sample_point(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time, vec3f_t point);
 transformf_t scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time);
@@ -518,7 +522,12 @@ scene_constraint_covers(const uint8_t* protected_rows, scene_row_t row) {
 scene_constraint_t* scene_constraint_find(const scene_t* scene, scene_row_t row);
 void scene_constraint_open(scene_t* scene);
 void scene_constraint_step(scene_t* scene, bool applied);
-void scene_hinge_step(scene_t* scene);
+void scene_hinge_open(scene_t* scene);
+int scene_hinge_index(const scene_asset_t* asset, scene_row_t row);
+void scene_hinge_apply_pose(const scene_hinge_t* hinge, float angle, transformf_t* local);
+void scene_hinge_step(scene_t* scene, bool applied);
+void scene_drivers_step(scene_t* scene, bool applied);
+bool scene_hierarchy_lights_changed(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

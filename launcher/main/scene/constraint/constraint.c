@@ -101,8 +101,8 @@ scene_constraint_open(scene_t* scene) {
 
 static uint32_t
 control_ms(const scene_constraint_curve_t* curve, float fallback, uint32_t now) {
-    const int key = anim_track_key_at_ms(curve->times, curve->count, now);
-    return (uint32_t)roundf(key < 0 ? fallback : curve->values[key]);
+    const anim_block_curve_t keys = {curve->times, curve->values, curve->count};
+    return (uint32_t)roundf(anim_block_curve_step(&keys, now, fallback));
 }
 
 static float
@@ -246,7 +246,10 @@ blend_local(transformf_t* local, const transformf_t* frame, const transformf_t* 
 static void
 apply_constraint(scene_t* scene, const scene_constraint_t* c, const anim_playhead_t* time) {
     const scene_row_t row = c->values.entity;
-    transformf_t local = time == NULL ? c->own : scene_timeline_local_at(scene, row, time, c->own);
+    transformf_t local = c->own;
+    if (time != NULL) {
+        scene_timeline_sample_local(scene, row, time, &local);
+    }
     if (c->values.weight > 0.0F) {
         const float weight = fminf(c->values.weight, 1.0F);
         const scene_row_t parent = scene_row_parent(scene, row);

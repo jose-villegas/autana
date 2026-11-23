@@ -1,7 +1,8 @@
 /*
- * transform: each entity's position, rotation and scale in its parent's
- * frame. The world pose includes its ancestors and the scene root.
- * Constraints and hinges reapply their driven transforms after app writes.
+ * Local TRS is in the parent's frame. The world pose includes every ancestor.
+ * On the next driver step, a hinge reapplies position and rotation, preserving
+ * scale. A constraint rewrites the local from its authored or timeline pose,
+ * applying follow to position and look-at to rotation.
  */
 #pragma once
 

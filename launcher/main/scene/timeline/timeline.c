@@ -10,7 +10,7 @@
 static scene_t*
 timeline_scene(entity_t root) {
     scene_row_t row;
-    scene_root_t* record = scene_entity_peek(root, &row);
+    scene_root_t* record = scene_entity_lookup(root, &row);
     return record != NULL && row == SCENE_ROW_ROOT && record->scene != NULL && record->scene->timeline != NULL
                ? record->scene
                : NULL;
@@ -45,8 +45,7 @@ timeline_apply_enabled(scene_t* scene) {
     const scene_timeline_t* timeline = scene->timeline;
     for (int i = 0; i < timeline->enabled_count; i++) {
         const scene_timeline_enabled_t* track = &timeline->enabled[i];
-        const int key = anim_track_key_at_ms(track->curve.times_ms, track->curve.count, timeline->clock.t_ms);
-        const bool enabled = track->curve.values[key < 0 ? 0 : key] != 0.0F;
+        const bool enabled = anim_block_curve_step(&track->curve, timeline->clock.t_ms, track->authored) != 0.0F;
         if (enabled != ((scene->flags[track->row] & SCENE_FLAG_ENABLED) != 0)) {
             scene_row_set_enabled(scene->root, track->row, enabled);
         }
@@ -76,20 +75,29 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     return applied;
 }
 
-transformf_t
-scene_timeline_local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time, transformf_t local) {
+void
+scene_timeline_sample_local(const scene_t* scene, scene_row_t row, const anim_playhead_t* time, transformf_t* local) {
     const scene_timeline_t* timeline = scene->timeline;
     const float seconds = anim_playhead_sample_seconds(time, &timeline->tracks.clip);
     const scene_timeline_fields_t range = timeline->row_fields[row];
+    const int joint = (scene->flags[row] & SCENE_PROTECTED_TRANSFORM) ? scene_hinge_index(&scene->asset, row) : -1;
+    const scene_hinge_t* hinge = joint >= 0 ? &scene->hinges[joint] : NULL;
+    float angle = hinge == NULL ? 0.0F : scene->asset.hinges[joint].angle;
     for (int i = range.first; i < range.first + range.count; i++) {
-        anim_bound_t sample = timeline->fields[i];
-        const ptrdiff_t offset = (const uint8_t*)sample.target - (const uint8_t*)&scene->locals[row];
-        sample.target = (float*)(void*)((uint8_t*)&local + offset);
-        sample.dirty = NULL;
-        anim_apply(&sample, 1, seconds);
-        local.cached = false;
+        const anim_bound_t* sample = &timeline->fields[i];
+        float value[ANIM_WIDTH_MAX];
+        anim_track_sample(&sample->curve, seconds, value);
+        if (hinge != NULL && sample->target == &hinge->angle) {
+            angle = value[0];
+        } else {
+            const ptrdiff_t offset = (const uint8_t*)sample->target - (const uint8_t*)&scene->locals[row];
+            memcpy((uint8_t*)local + offset, value, sample->curve.width * sizeof *value);
+            local->cached = false;
+        }
     }
-    return local;
+    if (hinge != NULL) {
+        scene_hinge_apply_pose(hinge, angle, local);
+    }
 }
 
 transformf_t
@@ -305,11 +313,11 @@ scene_timeline_resolve(const scene_asset_t* asset, const scene_claims_t* claims,
 }
 
 static void
-layout_transform_fields(scene_t* scene, const anim_binding_location_t* locations) {
+layout_row_fields(scene_t* scene, const anim_binding_location_t* locations) {
     scene_timeline_t* timeline = scene->timeline;
     for (int i = 0; i < timeline->tracks.count; i++) {
         const anim_binding_location_t location = locations[i];
-        if (location.component == SCENE_COMPONENT_TRANSFORM) {
+        if (location.component == SCENE_COMPONENT_TRANSFORM || location.component == SCENE_COMPONENT_HNGE) {
             timeline->row_fields[location.target].count++;
         }
     }
@@ -327,7 +335,7 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets, const 
     const uint8_t* slots = timeline->slots;
     const uint32_t* times_ms = timeline->times_ms;
     const scene_row_t* target_keys = timeline->target_keys;
-    layout_transform_fields(scene, locations);
+    layout_row_fields(scene, locations);
     for (int i = 0; i < timeline->tracks.count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(&timeline->tracks, i, &binding);
@@ -353,8 +361,10 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets, const 
             }
             times_ms += binding.curve.count;
         } else if (location.component == SCENE_COMPONENT_ENTY) {
-            timeline->enabled[timeline->enabled_count++] = (scene_timeline_enabled_t){
-                .curve = {times_ms, binding.curve.values, binding.curve.count}, .row = location.target};
+            timeline->enabled[timeline->enabled_count++] =
+                (scene_timeline_enabled_t){.curve = {times_ms, binding.curve.values, binding.curve.count},
+                                           .row = location.target,
+                                           .authored = (scene->flags[location.target] & SCENE_FLAG_ENABLED) != 0};
             times_ms += binding.curve.count;
         } else if (storage != TIMELINE_FIELD) {
             scene_constraint_t* constraint = scene_constraint_find(scene, (scene_row_t)location.target);
@@ -368,7 +378,7 @@ timeline_bind_tracks(scene_t* scene, const scene_anim_targets_t* targets, const 
             times_ms += binding.curve.count;
         } else {
             int index;
-            if (binding.component == ANIM_COMPONENT_TRANSFORM) {
+            if (location.component == SCENE_COMPONENT_TRANSFORM || location.component == SCENE_COMPONENT_HNGE) {
                 scene_timeline_fields_t* range = &timeline->row_fields[location.target];
                 index = range->first + range->count++;
             } else {
@@ -435,8 +445,7 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     scene_timeline_t* timeline = scene->timeline;
     anim_playhead_seek(&timeline->clock, &timeline->tracks.clip, t_ms);
     timeline->dirty = true;
-    scene_constraint_step(scene, scene_timeline_step(scene, 0));
-    scene_hinge_step(scene);
+    scene_drivers_step(scene, scene_timeline_step(scene, 0));
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }

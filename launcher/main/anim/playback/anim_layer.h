@@ -24,6 +24,8 @@ typedef struct {
     uint16_t count;
 } anim_block_curve_t;
 
+float anim_block_curve_step(const anim_block_curve_t* curve, uint32_t ms, float fallback);
+
 typedef struct {
     const uint32_t* starts_ms;
     const uint8_t* slots;

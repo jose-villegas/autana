@@ -29,7 +29,7 @@ const char* entity_name(entity_t entity);
 /* A disabled entity is not drawn or animated, nor are its descendants;
  * every entity starts enabled. */
 bool entity_enabled(entity_t entity);
-/* A timeline's ENTY.enabled track takes precedence on its next apply. */
+/* A timeline that keys ENTY.enabled overwrites this the next time it samples. */
 void entity_set_enabled(entity_t entity, bool enabled);
 
 /* Drawn and animated: enabled, and every ancestor enabled. */

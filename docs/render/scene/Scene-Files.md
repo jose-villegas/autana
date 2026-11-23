@@ -393,8 +393,8 @@ A missing clip fails scene load with the object name and clip hash.
 | Interrupted blend | Use the immediately preceding block as the blend source. |
 
 Before the first block, the skin uses its rest pose. At each millisecond, seek
-matches the timeline's written values and playback layer state. Seek poses
-immediately. The skin palette matches play on frames when its pose tier poses.
+matches the timeline's written values and playback layer state.
+Seek poses immediately and matches play's palette on tier-due frames and enable frames.
 
 A clip may animate the scale of an entity with children only if its three axes
 stay equal (within the scale tolerance) at every key and every cubic tangent.
@@ -406,7 +406,8 @@ refuse clips that break this rule.
 
 The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
 path relative to the scene file. The clip travels in the scene's pack and
-addresses transforms, camera lenses, skinned animators and constraints by object name.
+addresses transforms, camera lenses, skinned animators, constraints, hinge angles
+and enabled flags by object name.
 
 ```toml
 [timeline]
@@ -482,6 +483,12 @@ object = "joint"
 field = "HNGE.angle"
 interp = "linear"
 keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.2 }, { t = 1.0, v = 0.0 }]
+
+[[tracks]]
+object = "prop"
+field = "ENTY.enabled"
+interp = "step"
+keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.0 }]
 ```
 
 ### Light options

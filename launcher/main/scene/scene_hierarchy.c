@@ -57,10 +57,33 @@ scene_hierarchy_release(scene_t* scene) {
 }
 
 static bool
-changed(const scene_t* scene, scene_row_t entity) {
+changed(const scene_t* scene, scene_row_t entity, uint8_t local) {
     const scene_row_t parent = parent_of(scene, entity);
-    return (scene->flags[entity] & SCENE_FLAG_DIRTY) != 0
+    return (scene->flags[entity] & local) != 0
            || (parent != SCENE_ROW_NONE && (scene->flags[parent] & SCENE_FLAG_MOVED) != 0);
+}
+
+bool
+scene_hierarchy_lights_changed(scene_t* scene) {
+    if (scene->light_count == 0) {
+        return false;
+    }
+    const uint8_t local = SCENE_FLAG_SKIN_DIRTY | SCENE_FLAG_RELIGHT;
+    for (int i = 0; i < scene->world_count; i++) {
+        const scene_row_t row = scene->world_entities[i];
+        if (changed(scene, row, local)) {
+            scene->flags[row] |= SCENE_FLAG_MOVED;
+        }
+    }
+    bool dirty = false;
+    for (int i = 0; i < scene->staged_count && !dirty; i++) {
+        const scene_row_t row = scene->staged[i];
+        dirty = scene->lights[row].kind != SCENE_LIGHT_NONE && changed(scene, row, local);
+    }
+    for (int i = 0; i < scene->world_count; i++) {
+        scene->flags[scene->world_entities[i]] &= (uint8_t)~SCENE_FLAG_MOVED;
+    }
+    return dirty;
 }
 
 /* The parent's kept world, or the root's, times the entity's own transform. */
@@ -131,14 +154,14 @@ scene_resolve(scene_t* scene) {
     }
     for (int i = 0; i < scene->world_count; i++) {
         const scene_row_t e = scene->world_entities[i];
-        if (changed(scene, e)) {
+        if (changed(scene, e, SCENE_FLAG_DIRTY)) {
             scene->worlds[i] = world_from_parent(scene, e);
             scene->flags[e] |= SCENE_FLAG_MOVED;
         }
     }
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-        if (changed(scene, r->entity)) {
+        if (changed(scene, r->entity, SCENE_FLAG_DIRTY)) {
             const uint16_t slot = scene->world_slots[r->entity];
             r->model = slot != SCENE_WORLD_SLOT_NONE ? scene->worlds[slot] : world_from_parent(scene, r->entity);
             r->placed = !scene_transform_is_identity(&r->model);
@@ -150,8 +173,7 @@ scene_resolve(scene_t* scene) {
     }
 }
 
-/* Entity `e` stops being ACTIVE: its skin gives its buffers back, and a
- * skin or renderer starved for memory may try again at its next activation. */
+/* A static renderer retries a failed take at its next activation. */
 static void
 deactivate(scene_t* scene, scene_row_t e) {
     scene_skin_deactivate(scene, e);
@@ -173,8 +195,7 @@ scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
             scene->flags[e] ^= SCENE_FLAG_ACTIVE;
             scene->flags[e] |= SCENE_FLAG_CHANGED;
             scene->active_renderers_stale = true;
-            /* A skin holds its buffers only while ACTIVE. */
-            scene->skins_pending |= active && scene->skinned_renderers[e].bound;
+            scene->skins_pending |= scene->skinned_renderers[e].bound;
             if (!active) {
                 deactivate(scene, (scene_row_t)e);
             }
@@ -222,7 +243,11 @@ scene_row_local(const scene_root_t* root, scene_row_t row) {
 
 static transformf_t
 local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time) {
-    return time == NULL ? scene->locals[row] : scene_timeline_local_at(scene, row, time, scene->locals[row]);
+    transformf_t local = scene->locals[row];
+    if (time != NULL) {
+        scene_timeline_sample_local(scene, row, time, &local);
+    }
+    return local;
 }
 
 transformf_t

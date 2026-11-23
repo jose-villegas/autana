@@ -133,6 +133,6 @@ the parent's frame; a world is the parent's world times the local, an exact
 | draw | after the resolve | the raster reads the renderers' worlds ([Each frame](Scene-Frame.md#each-frame)) |
 
 Property clips move an entity's own transform, so a clip on a parent carries
-its children in the same frame. A camera, light or skinned renderer sits
-directly under the scene root: the entry check refuses one with a parent,
-and a light or skin does not attach under one.
+its children in the same frame. Cameras and skinned renderers sit directly
+under the scene root. The runtime supports directional lights under parents.
+The TOML scene writer requires authored lights to be top-level objects.

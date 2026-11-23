@@ -80,20 +80,25 @@ anim_layer_pose(anim_layer_t* layer, const anim_skeleton_t* skeleton, const anim
     return &layer->shown;
 }
 
+float
+anim_block_curve_step(const anim_block_curve_t* curve, uint32_t ms, float fallback) {
+    const int key = anim_track_key_at_ms(curve->times_ms, curve->count, ms);
+    return key < 0 ? fallback : curve->values[key];
+}
+
 static uint64_t
 speed_integral(const anim_block_curve_t* speed, uint32_t from, uint32_t t_ms) {
-    int key = anim_track_key_at_ms(speed->times_ms, speed->count, from);
+    int next = anim_track_key_at_ms(speed->times_ms, speed->count, from) + 1;
     uint32_t rate = ANIM_PLAYHEAD_SPEED_ONE;
+    (void)anim_playhead_speed_q16(anim_block_curve_step(speed, from, 1.0F), &rate);
     uint64_t ticks = 0;
-    while (from < t_ms) {
-        if (key >= 0) {
-            (void)anim_playhead_speed_q16(speed->values[key], &rate);
-        }
-        const uint32_t next = ++key < speed->count ? speed->times_ms[key] : t_ms;
-        const uint32_t to = next < t_ms ? next : t_ms;
+    while (next < speed->count && speed->times_ms[next] < t_ms) {
+        const uint32_t to = speed->times_ms[next];
         ticks += (uint64_t)(to - from) * rate;
+        (void)anim_playhead_speed_q16(speed->values[next++], &rate);
         from = to;
     }
+    ticks += (uint64_t)(t_ms - from) * rate;
     return ticks;
 }
 

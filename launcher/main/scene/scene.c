@@ -558,6 +558,7 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     uint8_t* transforms = (uint8_t*)scratch + transforms_at;
     blocks->protected_rows = transforms;
     scene_claims_t claims = {.asset = asset, .writes = scratch, .protected_rows = transforms};
+    /* Mark hinges before timeline claims and constraints after, so the timeline can key a constrained local. */
     for (int h = 0; h < asset->hinge_count; h++) {
         transforms[asset->hinges[h].entity] |= SCENE_PROTECTED_TRANSFORM | SCENE_HINGE_TRANSFORM;
     }
@@ -633,7 +634,9 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened, s
         if (scene_world_issue_rows(record, asset.entity_count)) {
             *opened = instantiate(&asset, &timeline, blocks, defaults);
             if (*opened != NULL && *scratch != NULL) {
-                memcpy((*opened)->writes, *scratch, asset.entity_count * sizeof **scratch);
+                for (int row = 0; row < asset.entity_count; row++) {
+                    (*opened)->writes[row] = (uint16_t)((*scratch)[row] & SCENE_PROPERTY_FIELDS);
+                }
             }
             if (*opened == NULL) {
                 result.status = SCENE_ERR_MEMORY;
@@ -645,17 +648,6 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened, s
     memory_free(blocks->times_ms);
     memory_free(blocks->targets);
     return result;
-}
-
-static void
-scene_hinge_open(scene_t* scene) {
-    for (int i = 0; i < scene->asset.hinge_count; i++) {
-        const scene_asset_hinge_t* row = &scene->asset.hinges[i];
-        scene->hinges[i] = (scene_hinge_t){
-            .joint = {.rest = scene->locals[row->entity], .axis = row->axis, .min = row->min, .max = row->max},
-            .angle = row->angle,
-        };
-    }
 }
 
 /* Opens the record's scene from `pack`: its columns, rows and components. */
@@ -699,8 +691,7 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     memory_free(scratch);
     if (done.status == SCENE_OK) {
-        scene_constraint_step(scene, true);
-        scene_hinge_step(scene);
+        scene_drivers_step(scene, true);
     }
     if (done.status != SCENE_OK) {
         record->scene = NULL;

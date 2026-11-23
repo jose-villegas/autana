@@ -42,8 +42,10 @@ false for a non-camera entity or an invalid value.
 component.
 
 A new light starts white with zero intensity. Its world direction is its
-entity's rotated +Y axis; moving its rotation changes skin shading next frame,
-including while the pose is paused. Scene ambient and tone map are private;
+entity's +Y axis rotated into world space. Rotation of the light or an
+ancestor changes skin shading on the next frame, even with the pose paused.
+
+Scene ambient and tone map are private;
 SCNE settings apply ambient and tone map before authored lights attach.
 All lit skins share world-space lights. Their normal palettes include entity
 and joint scale through an inverse-transpose transform. Skin dirty bits are
@@ -63,11 +65,10 @@ Each skinned renderer reads its lighting mode from SKIN, direct by default;
 
 A timeline can key any named object's enabled flag with `ENTY.enabled`.
 Use step interpolation and float values. Zero disables the entity and any
-other value enables it. A child is active only when every ancestor is enabled.
+other value enables it. The authored flag holds before the first key.
 
 The timeline reapplies its value the next time it samples the track, including
-on seek. Seeking to an active skinned copy takes its skin buffers and poses it
-for the frame.
+on seek. Skin buffers go to active entities in scene row order as memory permits.
 
 ## Hinge
 
@@ -75,9 +76,26 @@ A hinge turns around a rest-frame axis using the object's authored local pose
 as its rest pose. The SCNE angle applies unless the timeline keys
 `HNGE.angle`. Both use radians and clamp to the authored bounds.
 
-The hinge applies after constraints. Its position and rotation are reserved
-for the hinge, so timeline and property animator tracks cannot write them.
+The hinge reserves position and rotation. Scale remains writable.
 Constraint owners, targets and their ancestors require unhinged transforms.
 
 See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
 [Scene Files](Scene-Files.md#constraint-and-hinge) for authoring.
+
+## Timeline step and seek
+
+```mermaid
+flowchart LR
+    subgraph Step["Playback step"]
+        direction LR
+        Advance["Sample timeline"] --> Settle["Settle skins"]
+        Settle --> Drive["Apply constraints, then hinges"]
+        Drive --> Pose["Pose due skins"]
+    end
+    subgraph Seek["Seek"]
+        direction LR
+        Sample["Sample requested time"] --> Drivers["Apply constraints, then hinges"]
+        Drivers --> Buffers["Settle skins"]
+        Buffers --> Repose["Pose immediately"]
+    end
+```
