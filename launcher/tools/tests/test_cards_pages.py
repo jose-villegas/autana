@@ -1,9 +1,12 @@
 """Card atlases keep independent masks through packing, mip generation and LUVS encoding."""
+import pathlib
+import sys
 import unittest
 
 import numpy as np
 
-from soup import Soup
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from soup import Soup  # noqa: E402
 from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
 from r3d.mesh_source import with_triangles

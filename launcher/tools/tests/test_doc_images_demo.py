@@ -254,12 +254,13 @@ class DocImageFailureTest(unittest.TestCase):
             function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
             script = (ROOT / "scripts/lib/run.sh").read_text() + \
                 'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\nFIDELITY_FRAMES=5\nFIDELITY_DT=5000\n' + \
-                function + 'bake_and_render scratch gallery.paint painting\n'
+                function + 'bake_and_render gallery.scene.toml scratch gallery.paint painting\n'
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             # The scratch folder sits inside the repository, where the importer
             # writes only into a folder it is given.
             imported = (root / "import.argv").read_text().splitlines()
+            self.assertEqual(imported[0], "gallery.scene.toml")
             self.assertEqual(imported[imported.index("--out") + 1], "scratch")
             self.assertEqual((root / "pack.argv").read_text().splitlines(),
                              ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.bundle"])
@@ -268,30 +269,42 @@ class DocImageFailureTest(unittest.TestCase):
             self.assertEqual(args[args.index("--object") + 1], "painting")
             self.assertEqual((root / "assets.env").read_text().strip(), "scratch/assets")
 
-    def test_look_scene_keeps_its_import_dependency(self):
+    def test_every_scratch_bake_gets_a_scene_with_its_import_and_animations_beside_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            meshes = root / DEMO_SCENE.parent.relative_to(ROOT)
-            shutil.copytree(DEMO_SCENE.parent, meshes,
-                            ignore=shutil.ignore_patterns("*.bundle", "*.c", "*.h"))
-            importer = root / "launcher/tools/r3d/mesh_import.py"
-            importer.parent.mkdir(parents=True)
-            importer.write_text(
-                f'test -f "$(dirname "$1")/{DEMO_IMPORT.name}" || exit 7\n'
-                'echo import_dependency_ready\nexit 8\n', encoding="utf-8")
+            # The stand-in for R3D_PYTHON: as mesh_import.py it checks the scene it is
+            # given ($2) has its import beside it and reaches every animation it names;
+            # anything else (physical_scene.py) runs.
+            stand_in = root / "r3d_python.sh"
+            stand_in.write_text(
+                '#!/bin/sh\n'
+                'case "$1" in *mesh_import.py) ;; *) exec "$REAL_PYTHON" "$@" ;; esac\n'
+                'folder=$(dirname "$2")\n'
+                f'test -f "$folder/{DEMO_IMPORT.name}" || {{ echo "no import beside $2"; exit 7; }}\n'
+                'for clip in $(sed -n \'s/.*animation = "\\([^"]*\\)".*/\\1/p\' "$2"); do\n'
+                '    case "$clip" in /*|?:/*) path=$clip ;; *) path=$folder/$clip ;; esac\n'
+                '    test -f "$path" || { echo "missing $clip"; exit 7; }\n'
+                'done\n'
+                'echo scene_ready\n', encoding="utf-8")
+            stand_in.chmod(0o755)
             source = APP_SCRIPT.read_text(encoding="utf-8")
-            helper = (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8")
-            functions = source.split("bake_and_render() {", 1)[1].split("\nlook_bake smooth", 1)[0]
-            functions = "\n".join(line for line in functions.splitlines() if "physical_scene.py" not in line)
+            functions = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\nlook_bake smooth", 1)[0]
+            start = 'run mkdir -p "$W/start"' + source.split('run mkdir -p "$W/start"', 1)[1].split("\n#", 1)[0]
+            work = root / "work"
             script = root / "stage.sh"
             script.write_text(
-                'set -e\nW=work\nID=sponza\nFULL=atrium_fitted_full\nMESH=sponza.atrium_fitted_full\nR3D_PYTHON=sh\nmkdir -p work\n'
-                f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
-                + helper + 'bake_and_render() {' + functions + "\nlook_bake direct direct\n", encoding="utf-8")
-            result = subprocess.run(["sh", script.as_posix()], cwd=root, capture_output=True, text=True)
-            log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
-            self.assertEqual(result.returncode, 8, result.stderr + log)
-            self.assertIn("import_dependency_ready", log)
+                f'set -e\nW={work.as_posix()}\nID=sponza\nFULL=atrium_fitted_full\nMESH=sponza.atrium_fitted_full\n'
+                f'R3D_PYTHON={stand_in.as_posix()}\nPYTHON=true\nHOST=true\nREAL_PYTHON={pathlib.Path(sys.executable).as_posix()}\n'
+                f'export REAL_PYTHON\nDEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
+                f'SCENE={DEMO_SCENE.relative_to(ROOT).as_posix()}\n'
+                + (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8")
+                + functions + "\nlook_bake direct direct\n" + start + "\n", encoding="utf-8")
+            result = subprocess.run(["sh", script.as_posix()], cwd=ROOT, capture_output=True, text=True)
+            for bake in ("indirect-direct", "start"):
+                log = work / bake / "bake.log"
+                text = log.read_text(encoding="utf-8") if log.exists() else "no bake.log"
+                self.assertIn("scene_ready", text, f"{bake}: {text}\n{result.stderr}")
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class PhysicalSceneTests(unittest.TestCase):

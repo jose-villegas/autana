@@ -493,7 +493,7 @@ scene with no lit mesh, an unknown name or no value fails the run.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
 cluster a flat hue, with disjoint IDs across instances.
 
-![The meshlets view of the fitted bake](../../../../../docs/images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../../../../docs/images/render/sponza-view-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
@@ -544,6 +544,7 @@ its scene by name rather than through the menu:
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
+| `autana tune render_lab.orbit_zoom <n>` | where the Capybara and Herd scenes' camera starts, in hundredths of the distance that fits the subject from every angle: below 100 starts closer; taken at the next enter or scene switch |
 
 ### Flying the camera
 
@@ -612,7 +613,7 @@ be checked to have measured the same thing.
 | Image | Shows |
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
+| `render-lab-herd.gif` | the biggest herd (`herd-8`) walking for 12 s, each clip at the pace of its ground speed, as the camera turns a fifth of the way round it from closer than its home view (`render_lab.orbit_zoom`) |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
 
 Run the app shots from the repository root with Python, Pillow and numpy:
