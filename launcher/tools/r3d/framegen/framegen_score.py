@@ -34,6 +34,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 TOOLS = HERE.parents[1]
 sys.path[:0] = [str(TOOLS), str(TOOLS / "render"), str(TOOLS / "device"), str(HERE)]
 import render_compare  # noqa: E402
+from gfx_color import rgb888_array_of_rgb565  # noqa: E402
+from video_encode import VideoWriter  # noqa: E402
 import warp  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from docs.figures import save_gif  # noqa: E402
@@ -89,14 +91,14 @@ def filled(fill, colour, depth, written, previous_colour):
 def score(frame_path, lens, poses, frame, ahead):
     """Rows (holes %, fill, stats) for frame `frame` warped `ahead` steps."""
     colour, depth = warp.read_dump(frame_path(frame))
-    truth = Image.fromarray(warp.rgb_of(warp.read_dump(frame_path(frame + ahead))[0]))
+    truth = Image.fromarray(rgb888_array_of_rgb565(warp.read_dump(frame_path(frame + ahead))[0]))
     pose = poses[frame + FRAME_POSE_LAG]
     moved, moved_depth, written = warp.warp(colour, depth, lens, pose, poses[frame + ahead + FRAME_POSE_LAG])
     holes = (100.0 * float((~written).mean()), 100.0 * float(warp.pinholes(written).mean()))
-    rows = [(holes, "repeat", render_compare.reference_measure(Image.fromarray(warp.rgb_of(colour)), truth))]
+    rows = [(holes, "repeat", render_compare.reference_measure(Image.fromarray(rgb888_array_of_rgb565(colour)), truth))]
     for fill in FILLS:
         out = filled(fill, moved, moved_depth, written, colour)
-        rows.append((holes, fill, render_compare.reference_measure(Image.fromarray(warp.rgb_of(out)), truth)))
+        rows.append((holes, fill, render_compare.reference_measure(Image.fromarray(rgb888_array_of_rgb565(out)), truth)))
     return rows
 
 
@@ -104,11 +106,11 @@ def generated(frame_path, lens, poses, frame):
     """(true, generated, warped with holes in red, hole share) for frame
     `frame`, generated from the one before it."""
     colour, depth = warp.read_dump(frame_path(frame - 1))
-    truth = warp.rgb_of(warp.read_dump(frame_path(frame))[0])
+    truth = rgb888_array_of_rgb565(warp.read_dump(frame_path(frame))[0])
     moved, _, written = warp.warp(colour, depth, lens, poses[frame - 1 + FRAME_POSE_LAG],
                                   poses[frame + FRAME_POSE_LAG])
-    shown = warp.rgb_of(warp.fill_previous(moved, written, colour))
-    holes = np.where(written[..., None], warp.rgb_of(moved), np.array(HOLE_RED, dtype=np.uint8))
+    shown = rgb888_array_of_rgb565(warp.fill_previous(moved, written, colour))
+    holes = np.where(written[..., None], rgb888_array_of_rgb565(moved), np.array(HOLE_RED, dtype=np.uint8))
     return truth, shown, holes, float((~written).mean())
 
 
@@ -124,7 +126,7 @@ def video_frame(frame_path, lens, poses, frame, zoom=VIDEO_ZOOM):
 
 
 def write_video(frame_path, lens, poses, frames, out):
-    video = render_compare.VideoWriter(str(out), MS_PER_SECOND / DISPLAY_STEP_MS)
+    video = VideoWriter(str(out), MS_PER_SECOND / DISPLAY_STEP_MS)
     for frame in range(1, frames):  # from the first frame with one before it
         video.add(Image.fromarray(video_frame(frame_path, lens, poses, frame)))
     video.close()

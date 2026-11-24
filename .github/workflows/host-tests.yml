@@ -68,6 +68,11 @@ jobs:
       - run: sh launcher/tools/render/render_all_scenes.sh
       # Every renderer fill path is reached by some stress preset, or this names the one no preset reaches.
       - run: sh launcher/main/apps/render_lab/tools/stress_path_hits.sh --check
+      - name: Render lab host-render tests
+        run: |
+          for test in test_orbit_zoom test_render_views test_fly; do
+            python3 -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p "$test.py"
+          done
 
       - name: Standalone package tests
         if: ${{ !cancelled() }}

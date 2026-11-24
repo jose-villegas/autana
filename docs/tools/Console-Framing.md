@@ -43,6 +43,13 @@ because the device keeps logging while it streams. It converts the BMP to PNG in
 the standard library only; opening the port is the caller's job, under the
 [device lock](../cli/Device-Lock.md).
 
+## Binary packet tags
+
+| Tag | Stream |
+|---|---|
+| `FRAMEREC` | [Render input](#binary-packets-framerec) |
+| `PANEL` | [Panel video](Panel-Video.md) |
+
 ## Binary packets: FRAMEREC
 
 `FRAMEREC START` streams each drawn frame's render input, in the
