@@ -26,7 +26,8 @@ def build_shared(name, cache, sources, compiler, flags=(), windows_flags=(), dep
     platform, `libraries` follow the sources; Windows also gets `windows_flags` and a static runtime, other
     systems position-independent code. `mode` is ctypes.CDLL's. The library is
     written under a name of this process's and renamed into place, so processes
-    building it at once never load a half-written file."""
+    building it at once never load a half-written file. On Windows a library another process has loaded cannot be
+    replaced; that process built it from the same sources, so this one drops its copy and loads that one."""
     cache.mkdir(exist_ok=True)
     windows = sys.platform == "win32"
     path = cache / f"{name}{'.dll' if windows else '.so'}"
@@ -37,5 +38,10 @@ def build_shared(name, cache, sources, compiler, flags=(), windows_flags=(), dep
         building = path.with_suffix(f".{os.getpid()}{path.suffix}")
         subprocess.run([compiler, "-O2", "-shared", *platform_flags, *flags, "-o", str(building), *map(str, sources),
                         *libraries], check=True)
-        os.replace(building, path)
+        try:
+            os.replace(building, path)
+        except PermissionError:
+            if not path.exists():
+                raise
+            building.unlink()
     return ctypes.CDLL(str(path), mode=mode)
