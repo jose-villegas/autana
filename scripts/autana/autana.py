@@ -1265,6 +1265,7 @@ def video(args):
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--fps", type=int)
     parser.add_argument("--seconds", type=float)
+    parser.add_argument("--probe")
     parsed = parser.parse_args(args)
     if refused_as_busy():
         return EXIT_BUSY
@@ -1273,6 +1274,8 @@ def video(args):
         command += ["--fps", str(parsed.fps)]
     if parsed.seconds is not None:
         command += ["--seconds", str(parsed.seconds)]
+    if parsed.probe is not None:
+        command += ["--probe", parsed.probe]
     return call_device(command)
 
 

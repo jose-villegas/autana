@@ -13,6 +13,9 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "esp_memory_utils.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/capture/panelcap.h"
 #include "gfx/present/gfx_internal.h"
@@ -22,6 +25,22 @@
 #define PANELCAP_STOP_WAIT_MS  10U
 /* Below the present and compute tasks on their core. */
 #define PANELCAP_TASK_PRIORITY 1U
+
+typedef enum {
+    PROBE_FULL,
+    PROBE_COPY,
+    PROBE_INTERNAL,
+    PROBE_READ,
+    PROBE_LOW,
+} probe_mode_t;
+
+#define PROBE_ROW_BYTES     (PANELCAP_WIDTH * PANELCAP_PIXEL_BYTES)
+#define PROBE_COPY_PRIORITY (JOB_CORE1_PRIORITY - 1)
+
+static const char* const probe_modes[] = {"full", "copy", "internal", "read", "low"};
+static probe_mode_t probe_mode;
+static uint8_t* probe_scratch;
+static bool probe_logged;
 
 bool console_panelcap_on;
 static panelcap_t capture;
@@ -83,14 +102,49 @@ console_panelcap_commit_active(void) {
     const uint32_t previous = capture.presents;
     panelcap_commit(&capture);
     if (capture.presents != previous) {
-        console_stream_wake(stream);
+        if (stream == NULL) {
+            panelcap_release(&capture, true);
+            sender.sent++;
+        } else {
+            console_stream_wake(stream);
+        }
+    }
+}
+
+static void
+probe_copy_internal(uint8_t* dst, const uint8_t* src, size_t bytes) {
+    (void)dst;
+    memcpy(probe_scratch, src, bytes);
+}
+
+static void
+probe_read_psram(uint8_t* dst, const uint8_t* src, size_t bytes) {
+    (void)src;
+    const volatile uint16_t* words = (const volatile uint16_t*)dst;
+    for (size_t i = 0; i < bytes / sizeof *words; i++) {
+        (void)words[i];
     }
 }
 
 void
 console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
     const int64_t started = timing_now_us();
+    const TaskHandle_t task = xTaskGetCurrentTaskHandle();
+    const UBaseType_t priority = uxTaskPriorityGet(task);
+    if (!probe_logged) {
+        printf("PANELCAP_CALLER task=%s core=%d priority=%u src_psram=%d dst_psram=%d\n", pcTaskGetName(task),
+               xPortGetCoreID(), (unsigned)priority, esp_ptr_external_ram(pixels),
+               esp_ptr_external_ram(capture.storage));
+        probe_logged = true;
+    }
+    const bool lower = probe_mode == PROBE_LOW && priority > PROBE_COPY_PRIORITY;
+    if (lower) {
+        vTaskPrioritySet(task, PROBE_COPY_PRIORITY);
+    }
     panelcap_window(&capture, x0, y0, x1, y1, pixels);
+    if (lower) {
+        vTaskPrioritySet(task, priority);
+    }
     present.window_us += (uint64_t)(timing_now_us() - started);
 }
 
@@ -129,13 +183,20 @@ stop(void) {
     gfx_present_drain();
     const int64_t stop_us = timing_now_us();
     console_panelcap_on = false;
-    console_stream_close(stream, ended, NULL);
+    if (stream != NULL) {
+        console_stream_close(stream, ended, NULL);
+    }
     /* The frame owner frees the app block after the sender's last read. */
-    while (!atomic_load_explicit(&sender_done, memory_order_acquire)) {
+    while (stream != NULL && !atomic_load_explicit(&sender_done, memory_order_acquire)) {
         timing_sleep_ms(PANELCAP_STOP_WAIT_MS);
     }
     memory_free(encoder);
     encoder = NULL;
+    if (probe_scratch != NULL) {
+        memory_free(probe_scratch);
+        probe_scratch = NULL;
+    }
+    stream = NULL;
     char line[PANELCAP_LINE_BYTES];
     (void)snprintf(line, sizeof line, "PANELCAP_STATS encode_us=%llu write_us=%llu link_failed=%lu",
                    (unsigned long long)sender.encode_us, (unsigned long long)sender.write_us,
@@ -213,14 +274,30 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
     const int core = configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1 : tskNO_AFFINITY;
-    stream =
-        console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch, PANELCAP_TASK_PRIORITY, core);
-    if (stream == NULL) {
-        memory_free(encoder);
-        encoder = NULL;
-        console_panelcap_leave_launcher();
-        reply(PANELCAP_NO_SENDER);
-        return;
+    probe_logged = false;
+    if (probe_mode == PROBE_INTERNAL) {
+        probe_scratch = memory_alloc(PROBE_ROW_BYTES, MEMORY_INTERNAL);
+        if (probe_scratch == NULL) {
+            memory_free(encoder);
+            encoder = NULL;
+            console_panelcap_leave_launcher();
+            reply("PANELCAP_REFUSED: no internal probe memory");
+            return;
+        }
+        capture.probe_copy = probe_copy_internal;
+    } else if (probe_mode == PROBE_READ) {
+        capture.probe_copy = probe_read_psram;
+    }
+    if (probe_mode == PROBE_FULL || probe_mode == PROBE_LOW) {
+        stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch,
+                                            PANELCAP_TASK_PRIORITY, core);
+        if (stream == NULL) {
+            memory_free(encoder);
+            encoder = NULL;
+            console_panelcap_leave_launcher();
+            reply(PANELCAP_NO_SENDER);
+            return;
+        }
     }
     console_panelcap_on = true;
     gfx_request_full_redraw();
@@ -228,23 +305,31 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     reply(line);
 }
 
+typedef struct {
+    unsigned fps;
+    probe_mode_t mode;
+} probe_request_t;
+
 static void
 answer(const void* payload) {
-    const unsigned fps = *(const unsigned*)payload;
-    if (fps == 0) {
+    const probe_request_t* request = payload;
+    if (request->fps == 0) {
         console_panelcap_stop();
     } else {
-        console_panelcap_start(fps, console_emit_line_bounded);
+        if (!console_panelcap_on) {
+            probe_mode = request->mode;
+        }
+        console_panelcap_start(request->fps, console_emit_line_bounded);
     }
 }
 
-CONSOLE_FRAME_SLOT(console_panelcap_slot, unsigned, 0, answer)
+CONSOLE_FRAME_SLOT(console_panelcap_slot, probe_request_t, 0, answer)
 
 static void
 console_verb_panelcap(const char* args, console_reply_fn reply) {
-    unsigned fps = PANELCAP_FPS_DEFAULT;
+    probe_request_t request = {.fps = PANELCAP_FPS_DEFAULT};
     if (strcasecmp(args, "stop") == 0) {
-        fps = 0;
+        request.fps = 0;
     } else if (strcasecmp(args, "start") != 0) {
         char* end;
         if (strncasecmp(args, "start ", sizeof "start " - 1) != 0) {
@@ -252,13 +337,26 @@ console_verb_panelcap(const char* args, console_reply_fn reply) {
             return;
         }
         unsigned long parsed = strtoul(args + sizeof "start " - 1, &end, 10);
-        if (*end != '\0' || parsed == 0 || parsed > PANELCAP_FPS_MAX) {
+        if ((*end != '\0' && *end != ' ') || parsed == 0 || parsed > PANELCAP_FPS_MAX) {
             reply("PANELCAP_REFUSED: bad fps");
             return;
         }
-        fps = (unsigned)parsed;
+        request.fps = (unsigned)parsed;
+        if (*end == ' ') {
+            size_t i = 0;
+            for (; i < sizeof probe_modes / sizeof probe_modes[0]; i++) {
+                if (strcmp(end + 1, probe_modes[i]) == 0) {
+                    break;
+                }
+            }
+            if (i == sizeof probe_modes / sizeof probe_modes[0]) {
+                reply("PANELCAP_REFUSED: bad probe mode");
+                return;
+            }
+            request.mode = (probe_mode_t)i;
+        }
     }
-    (void)console_frame_post(console_frame_slots(), &console_panelcap_slot, &fps);
+    (void)console_frame_post(console_frame_slots(), &console_panelcap_slot, &request);
 }
 
 CONSOLE_VERB(panelcap, PANELCAP_ARGS_MAX, console_verb_panelcap)

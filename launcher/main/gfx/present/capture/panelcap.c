@@ -126,7 +126,12 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
     size_t row_bytes = (x1 - x0) * PANELCAP_PIXEL_BYTES;
     capture->copied_bytes += row_bytes * (y1 - y0);
     for (unsigned y = y0; y < y1; y++) {
-        memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
+        uint8_t* dst = capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES);
+        if (capture->probe_copy != NULL) {
+            capture->probe_copy(dst, source, row_bytes);
+        } else {
+            memcpy(dst, source, row_bytes);
+        }
         source += row_bytes;
     }
     if (!recti_is_empty(capture->owed)) {

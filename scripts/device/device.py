@@ -2121,6 +2121,16 @@ def video(args, store, board, lines=None, log=None):
     fps = default if args.fps is None else args.fps
     if not 1 <= fps <= maximum:
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
+    probe = getattr(args, "probe", None)
+    if probe is not None:
+        parts = panel_video.Parts()
+        answer = capture_stream(args, store, board, "PANELCAP", parts.feed, lines, log,
+                                opening=f"PANELCAP START {fps} {probe}", packet_tag=panel_video.PACKET_TAG,
+                                on_packet_error=parts.corrupt, error_prefix=panel_video.ERROR_PREFIX,
+                                rx_bytes=VIDEO_RX_BUFFER_BYTES)
+        parts.abandon()
+        print(f"PROBE_HOST damaged={parts.dropped}", flush=True)
+        return int(not answer.startswith("PANELCAP_END"))
     with panel_video.Recording(args.out, log=log) as recording:
         answer = capture_stream(args, store, board, "PANELCAP", recording.stage, lines, log,
                                 opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
@@ -2542,6 +2552,7 @@ def main(argv=None):
     video_parser.add_argument("-o", "--out", required=True)
     video_parser.add_argument("--fps", type=int, metavar="N")
     video_parser.add_argument("--seconds", type=float)
+    video_parser.add_argument("--probe")
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",
