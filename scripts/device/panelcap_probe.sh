@@ -4,18 +4,17 @@ set -euo pipefail
 scene=$1
 shift
 commit=$(git rev-parse HEAD)
-printf 'SHIPPED_COMMIT %s\n' "$commit"
+printf 'SHIPPED_COMMIT %s BOARD_JOB_DIR %s\n' "$commit" "$PWD"
 autana status
 autana flash dev
+build_id=$(tr -d '\r\n' < launcher/build.dev/build_id.txt)
+[ -n "$build_id" ]
 verify() {
     autana status
     local id
     id=$(autana buildid)
     printf '%s\n' "$id"
-    case "$id" in
-        "BUILD_ID=${commit:0:12}-dev"*) ;;
-        *) return 1 ;;
-    esac
+    [ "$id" = "BUILD_ID=$build_id" ]
 }
 verify
 trap verify EXIT
@@ -28,7 +27,7 @@ for mode in "$@"; do
         sand) autana home; autana open sand ;;
         water|bistro)
             autana home
-            autana open render_lab
+            autana open "Render Lab"
             autana render scene "$scene"
             if [ "$scene" = water ]; then
                 autana render water tour
