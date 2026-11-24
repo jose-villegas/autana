@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "collections/bytes_write.h"
 #include "render/r3d_span.h"
 #include "render/texture/r3d_texture.h"
 
@@ -37,16 +38,6 @@ static const float FULL_LIGHT = 255.0F;
 static uint16_t color[HEIGHT][WIDTH];
 static uint16_t depth[HEIGHT][WIDTH];
 
-static void
-put_u16(uint8_t* at, uint16_t v) {
-    memcpy(at, &v, sizeof v);
-}
-
-static void
-put_u32(uint8_t* at, uint32_t v) {
-    memcpy(at, &v, sizeof v);
-}
-
 /* An INDEX4 texture whose level l is palette colour l throughout; colour
  * i's channels are spread apart so every colour lights to its own RGB565. */
 static uint8_t*
@@ -62,13 +53,13 @@ solid_levels_ltex(size_t* bytes) {
     if (b == NULL) {
         return NULL;
     }
-    put_u16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
-    put_u16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
+    bytes_write_u16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    bytes_write_u16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
     b[R3D_TEXTURE_AT_SIZE_LOG2] = SIZE_LOG2;
     b[R3D_TEXTURE_AT_LEVELS] = LEVELS;
     memset(b + R3D_TEXTURE_AT_TINT, UINT8_MAX, R3D_TEXTURE_TINT_RGB);
-    put_u32(b + R3D_TEXTURE_AT_PALETTE_OFF, (uint32_t)palette_off);
-    put_u32(b + R3D_TEXTURE_AT_TEXELS_OFF, (uint32_t)texels_off);
+    bytes_write_u32(b + R3D_TEXTURE_AT_PALETTE_OFF, (uint32_t)palette_off);
+    bytes_write_u32(b + R3D_TEXTURE_AT_TEXELS_OFF, (uint32_t)texels_off);
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
         uint8_t* rgb = b + palette_off + ((size_t)i * R3D_TEXTURE_PALETTE_STRIDE);
         rgb[0] = (uint8_t)(R3D_TEXTURE_ONE - (i * 7));
