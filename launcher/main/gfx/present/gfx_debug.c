@@ -36,13 +36,6 @@ int dev_strips_sent_full;
 int dev_strips_sent_gathered;
 int dev_strips_sent_partial;
 
-/* Actual panel-format bytes queued, every send path alike (full-fb gather/
- * strip, and GFX_LAYOUT_INDEXED's own whole-strip send), what the three
- * counts above cannot answer by themselves for a mode with no strip/gather
- * distinction at all. Exists for a device test comparing send cost across
- * pixel formats. Not reset by gfx_present(). */
-int64_t dev_bytes_sent;
-
 void
 gfx_reset_strip_send_counts(void) {
     dev_strips_sent_full = 0;
@@ -62,11 +55,6 @@ gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_bands) {
     if (partial_bands) {
         *partial_bands = dev_strips_sent_partial;
     }
-}
-
-int64_t
-gfx_get_bytes_sent(void) {
-    return dev_bytes_sent;
 }
 
 void
