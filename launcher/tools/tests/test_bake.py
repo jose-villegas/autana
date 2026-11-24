@@ -1233,6 +1233,15 @@ class CpuVendorTests(FittedBakeCase):
         self.assertNotIn("vendor", path.read_text())
 
 
+def adopted_keys(case, rows, sha256, suffix):
+    """The keys produce.adopt takes into case.cache from `rows` ({name: a row's host fields}, keyed by the name),
+    on an AuthenticAMD host with case.GPU."""
+    rows = [{"key": name * 8, "sha256": sha256, "suffix": suffix, **fields} for name, fields in rows.items()]
+    with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
+            mock.patch.object(bake, "gpu_name", return_value=case.GPU):
+        return [row["key"] for row in produce.adopt(rows, case.cache)]
+
+
 class GpuRowTests(FittedBakeCase):
     """A GPU bake's bytes differ between GPU models: a make on the GPU, a fit or a reference set traced on CUDA,
     names its GPU, and its lock row keeps it."""
@@ -1305,12 +1314,8 @@ class GpuRowTests(FittedBakeCase):
         here = {"host": f"{platform.system()} {platform.machine()}", "cpu_vendor": "AuthenticAMD"}
         rows = {"same": {**here, "gpu": self.GPU}, "other": {**here, "gpu": "NVIDIA GeForce RTX 2060"},
                 "cpu": here}
-        rows = [{"key": name * 8, "sha256": REFERENCE_SHA256, "suffix": bake.REFERENCE_SUFFIX, **fields}
-                for name, fields in rows.items()]
-        with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
-                mock.patch.object(bake, "gpu_name", return_value=self.GPU):
-            adopted = produce.adopt(rows, self.cache)
-        self.assertEqual(sorted(row["key"] for row in adopted), ["cpu" * 8, "same" * 8])
+        self.assertEqual(sorted(adopted_keys(self, rows, REFERENCE_SHA256, bake.REFERENCE_SUFFIX)),
+                         ["cpu" * 8, "same" * 8])
 
     def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
         fit = self.fit(MADE_SHA256)
@@ -1418,12 +1423,7 @@ class KeptWorkTests(FittedBakeCase):
         rows = {"like": here, "vendor": {**here, "cpu_vendor": "GenuineIntel"},
                 "host": {**here, "host": "Windows AMD64" if platform.system() != "Windows" else "Linux x86_64"},
                 "unnamed": {"host": here["host"]}}
-        rows = [{"key": name * 8, "sha256": FIT_SHA256, "suffix": bake.BUNDLE_SUFFIX, **fields}
-                for name, fields in rows.items()]
-        with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
-                mock.patch.object(bake, "gpu_name", return_value=self.GPU):
-            adopted = produce.adopt(rows, self.cache)
-        self.assertEqual([row["key"] for row in adopted], ["like" * 8])
+        self.assertEqual(adopted_keys(self, rows, FIT_SHA256, bake.BUNDLE_SUFFIX), ["like" * 8])
         self.assertEqual(sorted(path.stem for path in (self.cache / produce.KEY_INDEX).glob("*.json")), ["like" * 8])
 
     def test_a_bake_killed_mid_fit_leaves_every_finished_fit_uploadable(self):
