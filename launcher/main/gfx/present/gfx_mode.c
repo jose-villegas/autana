@@ -1,9 +1,11 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
+#include "gfx/present/gfx_panel.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/gfx_test.h"
@@ -610,8 +612,8 @@ gfx_band_submit(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
     const int row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, row0, GFX_WIDTH, row0 + current_mode.band_height,
-                                                    band_buf[band_current_slot]);
+    const esp_err_t err =
+        gfx_panel_send(0, row0, GFX_WIDTH, row0 + current_mode.band_height, band_buf[band_current_slot]);
     if (err != ESP_OK) {
         note_send_failure(err);
         sent = false;
@@ -638,6 +640,7 @@ gfx_band_run(gfx_band_draw_fn draw, gfx_band_overlay_fn overlay) {
     }
     assert(draw != NULL);
 
+    gfx_panel_capture_begin();
     gfx_band_frame_begin();
     while (gfx_band_next()) {
         if (!gfx_band_dirty()) {
@@ -653,6 +656,7 @@ gfx_band_run(gfx_band_draw_fn draw, gfx_band_overlay_fn overlay) {
         }
         gfx_band_submit();
     }
+    gfx_panel_capture_commit();
 }
 
 gfx_readback_t
@@ -662,7 +666,7 @@ gfx_readback_begin(void) {
     if (gfx_present_sent_frame_filled()) {
         return GFX_READBACK_UNAVAILABLE; /* the shown frame is already cleared away */
     }
-    if (!band_is_transient()) {
+    if (gfx_mode_keeps_picture(&current_mode)) {
         return GFX_READBACK_READY;
     }
     if (band_snapshot == NULL && !alloc_band_snapshot()) {
@@ -697,7 +701,7 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
 void
 gfx_readback_end(void) {
     GFX_PRESENT_GUARD();
-    if (!band_is_transient()) {
+    if (gfx_mode_keeps_picture(&current_mode)) {
         free_band_snapshot();
     }
 }

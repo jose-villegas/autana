@@ -10,6 +10,7 @@ line's two halves are joined around it. Standard library only: it runs
 under ESP-IDF's Python.
 """
 
+import re
 import zlib
 
 
@@ -22,10 +23,14 @@ class Packets:
     `tag`_BIN packets carry. feed() takes any chunk as it was read and
     returns ("line", bytes) and ("data", bytes) in arrival order; a line is
     returned once its newline has arrived, a packet once all its bytes have.
-    A packet whose bytes do not match its crc32 raises PacketError."""
+    A damaged packet raises PacketError with any events already split.
+    With recovery_end, resume at the next packet head or end reply."""
 
-    def __init__(self, tag):
+    def __init__(self, tag, recovery_end=None):
         self.prefix = tag.encode("ascii") + b"_BIN "
+        self.recovery_end = (re.compile(re.escape(recovery_end.encode("ascii")) + rb"[a-z_]+=\d+(?: [a-z_]+=\d+)*\r?\n")
+                             if recovery_end is not None else None)
+        self.seeking = False
         self.pending = bytearray()
         self.partial = bytearray()  # a line's text before a packet that cut into it
 
@@ -36,23 +41,62 @@ class Packets:
             end = self.pending.find(b"\n")
             if end < 0:
                 return out
-            start = self.pending.find(self.prefix, 0, end)
-            head = self.parse_head(start, end)
+            if self.recovery_end is not None:
+                reply = self.recovery_end.search(self.pending, 0, end + 1)
+                if reply is not None:
+                    out.append(("line", reply[0].rstrip(b"\r\n")))
+                    del self.pending[:end + 1]
+                    self.partial.clear()
+                    self.seeking = False
+                    continue
+            find_head = self.pending.rfind if self.recovery_end is not None else self.pending.find
+            start = find_head(self.prefix, 0, end)
+            try:
+                head = self.parse_head(start, end)
+            except PacketError as error:
+                if self.seeking:
+                    del self.pending[:end + 1]
+                    continue
+                del self.pending[:end + 1]
+                self.seeking = self.recovery_end is not None
+                error.events = out
+                raise
+            if self.seeking:
+                # A truncated payload can make its declared size overlap the next header.
+                if head is None:
+                    del self.pending[:end + 1]
+                    continue
+                del self.pending[:start]
+                self.seeking = False
+                continue
             if head is None:
-                line = bytes(self.partial + self.pending[:end]).rstrip(b"\r")
+                line = self.partial + self.pending[:end]
                 del self.pending[:end + 1]
                 self.partial.clear()
-                out.append(("line", line))
+                out.append(("line", bytes(line).rstrip(b"\r")))
                 continue
             count, crc = head
-            if len(self.pending) < end + 1 + count:
-                return out
-            data = bytes(self.pending[end + 1:end + 1 + count])
+            payload = end + 1
+            if len(self.pending) < payload + count:
+                reply = self.recovery_end.search(self.pending, payload) if self.recovery_end is not None else None
+                if reply is None:
+                    return out
+                error = PacketError(f"a {count}-byte packet arrived damaged: truncated before END")
+                error.events = out
+                error.packet = bytes(self.pending[payload:reply.start()])
+                del self.pending[:reply.start()]
+                raise error
+            data = bytes(self.pending[payload:payload + count])
             self.partial.extend(self.pending[:start])
-            del self.pending[:end + 1 + count]
             if zlib.crc32(data) != crc:
-                raise PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
-                                  f"the board sent {crc:08x}")
+                self.seeking = self.recovery_end is not None
+                del self.pending[:end + 1 if self.seeking else end + 1 + count]
+                error = PacketError(f"a {count}-byte packet arrived damaged: crc32 {zlib.crc32(data):08x}, "
+                                    f"the board sent {crc:08x}")
+                error.events = out
+                error.packet = data
+                raise error
+            del self.pending[:end + 1 + count]
             out.append(("data", data))
 
     def parse_head(self, start, end):
@@ -63,7 +107,10 @@ class Packets:
             return None
         try:
             count, crc = bytes(self.pending[start + len(self.prefix):end]).split()
-            return int(count), int(crc, 16)
+            count, crc = int(count), int(crc, 16)
+            if count < 0:
+                raise ValueError("packet size must be nonnegative")
+            return count, crc
         except ValueError as error:
             if start > 0 or self.partial:
                 return None
