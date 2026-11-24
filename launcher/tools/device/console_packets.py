@@ -10,6 +10,7 @@ line's two halves are joined around it. Standard library only: it runs
 under ESP-IDF's Python.
 """
 
+import re
 import zlib
 
 
@@ -27,7 +28,8 @@ class Packets:
 
     def __init__(self, tag, recovery_end=None):
         self.prefix = tag.encode("ascii") + b"_BIN "
-        self.recovery_end = recovery_end.encode("ascii") if recovery_end is not None else None
+        self.recovery_end = (re.compile(re.escape(recovery_end.encode("ascii")) + rb"[a-z_]+=\d+(?: [a-z_]+=\d+)*\r?\n")
+                             if recovery_end is not None else None)
         self.seeking = False
         self.pending = bytearray()
         self.partial = bytearray()  # a line's text before a packet that cut into it
@@ -39,7 +41,16 @@ class Packets:
             end = self.pending.find(b"\n")
             if end < 0:
                 return out
-            start = self.pending.rfind(self.prefix, 0, end)
+            if self.recovery_end is not None:
+                reply = self.recovery_end.search(self.pending, 0, end + 1)
+                if reply is not None:
+                    out.append(("line", reply[0].rstrip(b"\r\n")))
+                    del self.pending[:end + 1]
+                    self.partial.clear()
+                    self.seeking = False
+                    continue
+            find_head = self.pending.rfind if self.recovery_end is not None else self.pending.find
+            start = find_head(self.prefix, 0, end)
             try:
                 head = self.parse_head(start, end)
             except PacketError as error:
@@ -52,26 +63,30 @@ class Packets:
                 raise
             if self.seeking:
                 # A truncated payload can make its declared size overlap the next header.
-                boundary = start if head is not None else self.pending.find(self.recovery_end, 0, end)
-                if boundary < 0:
+                if head is None:
                     del self.pending[:end + 1]
                     continue
-                del self.pending[:boundary]
+                del self.pending[:start]
                 self.seeking = False
                 continue
             if head is None:
-                line = self.pending[:end]
-                # A lost console fragment must not hide an intact end reply.
-                if self.recovery_end is None or not line.startswith(self.recovery_end):
-                    line = self.partial + line
+                line = self.partial + self.pending[:end]
                 del self.pending[:end + 1]
                 self.partial.clear()
                 out.append(("line", bytes(line).rstrip(b"\r")))
                 continue
             count, crc = head
-            if len(self.pending) < end + 1 + count:
-                return out
-            data = bytes(self.pending[end + 1:end + 1 + count])
+            payload = end + 1
+            if len(self.pending) < payload + count:
+                reply = self.recovery_end.search(self.pending, payload) if self.recovery_end is not None else None
+                if reply is None:
+                    return out
+                error = PacketError(f"a {count}-byte packet arrived damaged: truncated before END")
+                error.events = out
+                error.packet = bytes(self.pending[payload:reply.start()])
+                del self.pending[:reply.start()]
+                raise error
+            data = bytes(self.pending[payload:payload + count])
             self.partial.extend(self.pending[:start])
             if zlib.crc32(data) != crc:
                 self.seeking = self.recovery_end is not None

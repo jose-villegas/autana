@@ -90,7 +90,7 @@ void expand_reset_for_test(void);
 /* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool
 band_is_transient(void) {
-    return current_mode.layout == GFX_LAYOUT_BANDS;
+    return !gfx_mode_keeps_picture(&current_mode);
 }
 
 /* Presentation state band mode reads. */

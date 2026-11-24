@@ -41,9 +41,9 @@ autana video -o run.mp4 --fps 5
 printf 'DRAG 20 40 200 240 500\n' | autana video -o drag.mp4 --fps 5
 ```
 
-The command holds the device lock and port through `PANELCAP_END`. Board
-text goes to stderr. EOF or Ctrl+C stops capture. With `--seconds` the
-command stops on its timer and leaves stdin unread.
+The device lock and port cover capture through `PANELCAP_END`. The command
+releases both before decoding and encoding. Board text goes to stderr.
+EOF, Ctrl+C, or the `--seconds` timer stops capture. Timed capture leaves stdin unread.
 
 | Recording rule | Effect |
 |---|---|

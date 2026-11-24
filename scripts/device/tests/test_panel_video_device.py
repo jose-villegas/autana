@@ -43,7 +43,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
 
         board = SlowEncoderBoard([b"PANELCAP_BEGIN fps=15 image=329728\n"],
                                  after_stop=[self.wire(1, 0) + self.wire(2, 100_000), end])
-        process = mock.Mock()
+        process = mock.Mock(_tree_job=None)
         process.wait.return_value = 0
 
         def wait_for_reader(_):
@@ -56,36 +56,55 @@ class PanelVideoDeviceTests(unittest.TestCase):
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=15, seconds=None)
             self.assertEqual(self.capture_with_encoder(args, board, process), 0)
 
-    def capture_with_encoder(self, args, board, process):
+    def capture_with_encoder(self, args, board, process, *, store=None, log=None, start=None):
         with mock.patch.object(device, "open_when_free", return_value=board), \
                 mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
-                mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
-            return device.video(args, mock_store(), BOARD, lines=[], log=io.StringIO())
+                mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process, side_effect=start):
+            return device.video(args, store or mock_store(), BOARD, lines=[], log=log or io.StringIO())
 
-    def test_encoder_finishes_before_lock_reaps_children(self):
-        packet = panel_video.PART.pack(1, 0, 1) + panel_video.PRESENT.pack(1, 0, 0, 0)
-        wire = b"PANEL_BIN %d %08x\n" % (len(packet), zlib.crc32(packet)) + packet
+    def test_encoder_starts_after_lock_release_and_waits_before_video_returns(self):
         board = PanelBoard([b"PANELCAP_BEGIN fps=5 image=329728\n"],
-                           after_stop=[wire, b"PANELCAP_END presents=1 dropped=0 bytes=16\n"])
-        process = mock.Mock()
+                           after_stop=[self.wire(1, 0), b"PANELCAP_END presents=1 dropped=0 bytes=16\n"])
+        store = mock_store()
+        process = mock.Mock(_tree_job=None)
         process.wait.return_value = 0
 
-        @device.contextlib.contextmanager
-        def reaping_lock(*args):
-            try:
-                yield
-            finally:
-                if not process.wait.called:
-                    process.kill()
-                    process.wait.return_value = 1
+        def start(*args, **kwargs):
+            store.release.assert_called_once_with(BOARD, "token")
+            return process
 
         with tempfile.TemporaryDirectory() as folder:
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=None)
-            with mock.patch.object(device, "HeldLock", reaping_lock):
-                self.assertEqual(self.capture_with_encoder(args, board, process), 0)
+            self.assertEqual(self.capture_with_encoder(args, board, process, store=store, start=start), 0)
         process.stdin.close.assert_called_once()
         process.wait.assert_called_once()
-        process.kill.assert_not_called()
+
+    def test_truncated_packet_before_end_counts_as_damaged_and_encodes_good_present(self):
+        damaged = self.wire(2, 100_000).split(b"\n", 1)[1][:16]
+        end = b"PANELCAP_END presents=1 dropped=0 bytes=16 stop_us=100000\n"
+        self.check_end_recovery([self.wire(1, 0), b"PANEL_BIN 512 00000000\n" + damaged + end[:8],
+                                 end[8:]], end, dropped=1)
+
+    def test_stats_missing_newline_does_not_hide_end(self):
+        end = b"PANELCAP_END presents=1 dropped=0 bytes=16 stop_us=100000\n"
+        self.check_end_recovery([self.wire(1, 0), b"PANELCAP_STATS redraws=1" + end], end, dropped=0)
+
+    def check_end_recovery(self, after_stop, end, dropped):
+        board = PanelBoard([b"PANELCAP_BEGIN fps=5 image=329728\n"], after_stop=after_stop)
+        process = mock.Mock(_tree_job=None)
+        process.wait.return_value = 0
+        log = io.StringIO()
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / "run.mp4"
+            args = Namespace(owner="agent", wait=0, out=out, fps=5, seconds=None)
+            with mock.patch.object(device, "RECORD_END_SECONDS", 0.2), \
+                    mock.patch.object(device, "STREAM_CHECK_SECONDS", 0.01):
+                self.assertEqual(self.capture_with_encoder(args, board, process, log=log), 0)
+            with out.with_suffix(".frames.csv").open() as source:
+                self.assertEqual([row["present_seq"] for row in csv.DictReader(source)], ["1"])
+        self.assertIn(end.decode().strip(), log.getvalue().splitlines())
+        self.assertIn(f"host_dropped={dropped}", log.getvalue())
+        process.wait.assert_called_once()
 
     def test_split_header_after_truncated_part_keeps_binary_off_log(self):
         wire = (Path(__file__).with_name("fixtures") / "panel_usb_gap.bin").read_bytes()
@@ -99,7 +118,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
         end = b"PANELCAP_END presents=2 dropped=0 bytes=16\n"
         board = PanelBoard([begin], after_stop=[wire[:split + 1], wire[split + 1:split + len(prefix)],
                                                wire[split + len(prefix):] + b"I" + good_wire + end])
-        process = mock.Mock()
+        process = mock.Mock(_tree_job=None)
         process.wait.return_value = 0
         log = io.StringIO()
         with tempfile.TemporaryDirectory() as folder:
@@ -137,7 +156,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
             out = Path(directory) / "run.mp4"
             args = Namespace(owner="agent", wait=0, out=out, fps=5, seconds=0.01 if timed else None)
             log = io.StringIO()
-            process = mock.Mock()
+            process = mock.Mock(_tree_job=None)
             process.stdin = mock.Mock()
             process.wait.return_value = 0
             with mock.patch.object(device, "open_when_free", return_value=board), \
@@ -193,7 +212,7 @@ class PanelVideoDeviceTests(unittest.TestCase):
             out = Path(folder) / "run.mp4"
             args = Namespace(owner="agent", wait=0, out=out, fps=5, seconds=None)
             log = io.StringIO()
-            process = mock.Mock()
+            process = mock.Mock(_tree_job=None)
             process.wait.return_value = 0
             with mock.patch.object(device, "open_when_free", return_value=board), \
                     mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
@@ -213,17 +232,18 @@ class PanelVideoDeviceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             args = Namespace(owner="agent", wait=0, out=Path(folder) / "run.mp4", fps=5, seconds=10)
             log = io.StringIO()
-            process = mock.Mock()
-            process.stdin.write.side_effect = BrokenPipeError("sink failed")
-            process.wait.return_value = 0
+            spool = io.BytesIO()
+            spool.write = mock.Mock(side_effect=OSError("spool write failed"))
             with mock.patch.object(device, "open_when_free", return_value=board), \
+                    mock.patch.object(panel_video.tempfile, "TemporaryFile", return_value=spool), \
                     mock.patch.object(panel_video.video_encode, "resolve", return_value="fake-ffmpeg"), \
-                    mock.patch.object(panel_video.video_encode, "open_encoder", return_value=process):
-                with self.assertRaisesRegex(BrokenPipeError, "sink failed"):
+                    mock.patch.object(panel_video.video_encode, "open_encoder") as start:
+                with self.assertRaisesRegex(OSError, "spool write failed"):
                     device.video(args, store, BOARD, log=log)
             self.assertEqual(board.writes, [b"PANELCAP START 5\n", b"PANELCAP STOP\n"])
             self.assertIn(end.decode().strip(), log.getvalue())
-            process.wait.assert_called_once()
+            spool.write.assert_called_once()
+            start.assert_not_called()
         store.release.assert_called_once_with(BOARD, "token")
 
     def test_short_app_memory_prints_refusal_and_exits_nonzero(self):

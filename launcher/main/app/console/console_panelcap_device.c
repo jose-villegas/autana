@@ -10,6 +10,7 @@
 #include "app/app_arena.h"
 #include "console/console_frame_request.h"
 #include "console/console_stream.h"
+#include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/present/capture/gfx_panel_capture.h"
@@ -17,8 +18,10 @@
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 
-#define PANELCAP_ARGS_MAX     32U
-#define PANELCAP_STOP_WAIT_MS 10U
+#define PANELCAP_ARGS_MAX      32U
+#define PANELCAP_STOP_WAIT_MS  10U
+/* Below the present and compute tasks on their core. */
+#define PANELCAP_TASK_PRIORITY 1U
 
 bool console_panelcap_on;
 static panelcap_t capture;
@@ -52,7 +55,7 @@ redraw(const void* payload) {
         if (recti_is_empty(box)) {
             return;
         }
-        if (redraw_full || panelcap_redraw_needs_app(gfx_mode_current()->layout)) {
+        if (redraw_full || !gfx_mode_keeps_picture(gfx_mode_current())) {
             present.redraw_pixels += PANELCAP_WIDTH * PANELCAP_HEIGHT;
             gfx_request_full_redraw();
         } else {
@@ -99,7 +102,7 @@ fill(void* arg, uint8_t* packet, size_t capacity, uint32_t write_us, bool sent) 
             sender.sent += sent;
             sender.failed += !sent;
             *encoder = (panelcap_encoder_t){0};
-            panelcap_release(source);
+            panelcap_release(source, sent);
             return 0;
         }
     }
@@ -208,7 +211,9 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     memset(&present, 0, sizeof present);
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
-    stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch);
+    const int core = configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1 : tskNO_AFFINITY;
+    stream =
+        console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch, PANELCAP_TASK_PRIORITY, core);
     if (stream == NULL) {
         memory_free(encoder);
         encoder = NULL;

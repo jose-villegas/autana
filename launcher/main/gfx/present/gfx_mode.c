@@ -666,7 +666,7 @@ gfx_readback_begin(void) {
     if (gfx_present_sent_frame_filled()) {
         return GFX_READBACK_UNAVAILABLE; /* the shown frame is already cleared away */
     }
-    if (!band_is_transient()) {
+    if (gfx_mode_keeps_picture(&current_mode)) {
         return GFX_READBACK_READY;
     }
     if (band_snapshot == NULL && !alloc_band_snapshot()) {
@@ -701,7 +701,7 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
 void
 gfx_readback_end(void) {
     GFX_PRESENT_GUARD();
-    if (!band_is_transient()) {
+    if (gfx_mode_keeps_picture(&current_mode)) {
         free_band_snapshot();
     }
 }

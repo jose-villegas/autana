@@ -55,8 +55,8 @@ take_image(panelcap_t* capture) {
     if (atomic_load_explicit(&capture->ready, memory_order_acquire)) {
         return false;
     }
-    if (capture->published) {
-        capture->published = false;
+    if (capture->sent) {
+        capture->sent = false;
         capture->windows = 0;
         capture->collapsed = false;
     }
@@ -75,11 +75,6 @@ panelcap_begin(panelcap_t* capture, uint64_t us) {
     }
     capture->redraw_pending = true;
     return true;
-}
-
-bool
-panelcap_redraw_needs_app(gfx_layout_t layout) {
-    return layout == GFX_LAYOUT_BANDS;
 }
 
 recti_t
@@ -170,13 +165,16 @@ panelcap_commit(panelcap_t* capture) {
         return;
     }
     capture->next_us = capture->present_us + (MATH_US_PER_S / capture->fps);
+    if (capture->presents != 0 && capture->seq == bytes_read_u32(capture->head + PANELCAP_HEAD_AT_SEQ)) {
+        /* The receiver may already have rejected the failed publication's sequence. */
+        capture->seq++;
+    }
     bytes_write_u32(capture->head + PANELCAP_HEAD_AT_SEQ, capture->seq);
     bytes_write_u64(capture->head + PANELCAP_HEAD_AT_US, capture->present_us);
     bytes_write_u16(capture->head + PANELCAP_HEAD_AT_WINDOWS, capture->windows);
     bytes_write_u16(capture->head + PANELCAP_HEAD_AT_DROPPED, capture->dropped_before);
     capture->dropped_before = 0;
     capture->presents++;
-    capture->published = true;
     atomic_store_explicit(&capture->ready, 1, memory_order_release);
 }
 
@@ -186,7 +184,8 @@ panelcap_peek(panelcap_t* capture) {
 }
 
 void
-panelcap_release(panelcap_t* capture) {
+panelcap_release(panelcap_t* capture, bool sent) {
+    capture->sent = sent;
     atomic_store_explicit(&capture->ready, 0, memory_order_release);
 }
 

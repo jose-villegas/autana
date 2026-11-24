@@ -56,7 +56,7 @@ typedef struct {
     bool writable;
     recti_t owed;
     bool redraw_pending;
-    bool published;
+    bool sent;
 } panelcap_t;
 
 bool panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps);
@@ -64,13 +64,11 @@ bool panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps);
 bool panelcap_begin(panelcap_t* capture, uint64_t us);
 /* Takes the lost windows' bounds after the frame owner drains the in-flight present. */
 recti_t panelcap_redraw_requested(panelcap_t* capture);
-/* True when `layout` keeps no picture the present can resend, so a lost box
- * costs the app a full redraw; otherwise marking the box dirty resends it. */
-bool panelcap_redraw_needs_app(gfx_layout_t layout);
 void panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels);
 void panelcap_commit(panelcap_t* capture);
 const uint8_t* panelcap_peek(panelcap_t* capture);
-void panelcap_release(panelcap_t* capture);
+/* A failed send keeps its dirty windows for the next publication. */
+void panelcap_release(panelcap_t* capture, bool sent);
 
 typedef struct {
     uint16_t part;

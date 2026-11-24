@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from espressif import pinned_tools_root
 from http_get import get
+import process_tree
 
 FETCH_TIMEOUT_SECONDS = 120
 STDERR_TAIL_BYTES = 4096
@@ -101,9 +102,8 @@ def command(binary, size, fps, out, live=False):
 
 def open_encoder(binary, size, fps, out, live=False, *, stderr=None):
     """Start an encoder accepting raw RGB frames on stdin."""
-    group = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32"
-             else {"start_new_session": True})
-    return subprocess.Popen(command(binary, size, fps, out, live), stdin=subprocess.PIPE, stderr=stderr, **group)
+    return process_tree.launch_process_tree(command(binary, size, fps, out, live), parent_lifetime=True,
+                                            stdin=subprocess.PIPE, stderr=stderr)
 
 
 class VideoWriter:
@@ -127,15 +127,25 @@ class VideoWriter:
     def add(self, picture):
         self.write(picture.size, picture.convert("RGB").tobytes())
 
-    def close(self):
+    def close(self, abort=False):
         if self.process is None:
             return
         with self.stderr as stderr:
             try:
-                self.process.stdin.close()
-            except BrokenPipeError:
-                pass
-            status = self.process.wait()
+                if abort:
+                    process_tree.stop_process_tree(self.process)
+                try:
+                    self.process.stdin.close()
+                except BrokenPipeError:
+                    pass
+                if abort:
+                    return
+                status = self.process.wait()
+            except KeyboardInterrupt:
+                process_tree.stop_process_tree(self.process)
+                raise
+            finally:
+                process_tree.close_process_tree(self.process)
             if status:
                 end = stderr.seek(0, io.SEEK_END)
                 stderr.seek(max(0, end - STDERR_TAIL_BYTES))

@@ -2,7 +2,6 @@
 #include "console/console_stream.h"
 
 #include "console/console.h"
-#include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 
@@ -11,11 +10,10 @@
 #include "freertos/task.h"
 
 /* Below the console task (4), above the frame loop (1). */
-#define STREAM_TASK_PRIORITY        2
-#define STREAM_SOURCE_TASK_PRIORITY 1
-#define STREAM_TASK_STACK           3072
+#define STREAM_TASK_PRIORITY 2
+#define STREAM_TASK_STACK    3072
 /* How often an idle task looks whether the stream was closed. */
-#define STREAM_IDLE_WAIT_MS         20
+#define STREAM_IDLE_WAIT_MS  20
 
 /* The task owns a stream from open until it frees it. The ring's own state
  * stays on chip, while a pull source lends its external buffers. */
@@ -104,7 +102,7 @@ stream_task(void* arg) {
 
 static console_stream_t*
 open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet,
-            bool bounded) {
+            bool bounded, unsigned priority, int core) {
     console_stream_t* stream = memory_alloc(sizeof *stream, MEMORY_INTERNAL);
     if (stream == NULL) {
         return NULL;
@@ -115,9 +113,6 @@ open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* ar
     if (fill == NULL && stream->storage != NULL) {
         stream->ring = xRingbufferCreateStatic(bytes, RINGBUF_TYPE_BYTEBUF, stream->storage, &stream->ring_state);
     }
-    const UBaseType_t priority = fill == NULL ? STREAM_TASK_PRIORITY : STREAM_SOURCE_TASK_PRIORITY;
-    /* The pull source runs below the present and compute tasks on their core. */
-    const BaseType_t core = fill != NULL && configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1 : tskNO_AFFINITY;
     if (stream->storage == NULL || stream->packet == NULL || (fill == NULL && stream->ring == NULL)
         || xTaskCreatePinnedToCore(stream_task, tag, STREAM_TASK_STACK, stream, priority, &stream->task, core)
                != pdPASS) {
@@ -129,12 +124,13 @@ open_stream(const char* tag, size_t bytes, console_stream_fill_fn fill, void* ar
 
 console_stream_t*
 console_stream_open(const char* tag, size_t ring_bytes) {
-    return open_stream(tag, ring_bytes, NULL, NULL, NULL, NULL, false);
+    return open_stream(tag, ring_bytes, NULL, NULL, NULL, NULL, false, STREAM_TASK_PRIORITY, tskNO_AFFINITY);
 }
 
 console_stream_t*
-console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet) {
-    return open_stream(tag, 0, fill, arg, storage, packet, true);
+console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage, uint8_t* packet,
+                           unsigned priority, int core) {
+    return open_stream(tag, 0, fill, arg, storage, packet, true, priority, core);
 }
 
 void

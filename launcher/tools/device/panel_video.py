@@ -6,8 +6,6 @@ import struct
 import sys
 import tempfile
 import time
-from array import array
-from functools import cache
 from pathlib import Path
 
 import gfx_color
@@ -40,12 +38,6 @@ STREAM_BYTES_MAX = (screenshot.PANEL_WIDTH * screenshot.PANEL_HEIGHT * (PIXEL_BY
                     + WINDOWS_MAX * WINDOW.size + PRESENT.size)
 CSV_FIELDS = ("present_seq", "device_us", "host_ns", "windows", "packed_bytes", "dropped_before")
 SPOOL_EVENT = struct.Struct("<QdI?")
-
-
-@cache
-def _rgb565_expansions():
-    red, green, blue = (range(256 // step) for step in gfx_color.STEP)
-    return tuple(bytes(gfx_color.expand(r, g, b)) for r in red for g in green for b in blue)
 
 
 def unpack(data, at, pixels):
@@ -153,11 +145,7 @@ class Canvas:
             pixels, end = unpack(stream, at, (x1 - x0) * (y1 - y0))
             packed += end - at
             at = end
-            codes = array("H", pixels)
-            if sys.byteorder == "little":
-                codes.byteswap()
-            rgb = b"".join(map(_rgb565_expansions().__getitem__, codes))
-            updates.append((x0, y0, x1, y1, rgb))
+            updates.append((x0, y0, x1, y1, gfx_color.rgb888_of_rgb565be(pixels)))
         if at != len(stream):
             raise ValueError("trailing panel bytes")
         # Validate every window before changing the persistent canvas.
@@ -283,6 +271,6 @@ class Recording:
 
     def __exit__(self, kind, value, trace):
         try:
-            self.writer.close()
+            self.writer.close(abort=kind is KeyboardInterrupt)
         finally:
             self.files.close()

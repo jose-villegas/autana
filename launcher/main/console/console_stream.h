@@ -27,7 +27,7 @@ typedef size_t (*console_stream_fill_fn)(void* arg, uint8_t* packet, size_t capa
 /* The caller lends CONSOLE_PACKET_BYTES_MAX bytes for fill and
  * CONSOLE_PACKET_MAX for framing through the end callback. */
 console_stream_t* console_stream_open_source(const char* tag, console_stream_fill_fn fill, void* arg, uint8_t* storage,
-                                             uint8_t* packet);
+                                             uint8_t* packet, unsigned priority, int core);
 
 /* Notify a pull source that data is ready without waiting on its sender. */
 void console_stream_wake(console_stream_t* stream);

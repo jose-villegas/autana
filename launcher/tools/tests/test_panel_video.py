@@ -130,10 +130,10 @@ class PanelVideoTests(unittest.TestCase):
     def test_csv_device_time_and_encoder_options(self):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory) / "run.mp4"
-            process = mock.Mock()
+            process = mock.Mock(_tree_job=None)
             process.wait.return_value = 0
             with mock.patch.object(video_encode, "resolve", return_value="fake-ffmpeg"), \
-                    mock.patch.object(video_encode.subprocess, "Popen", return_value=process) as popen:
+                    mock.patch("process_tree.launch_process_tree", return_value=process) as popen:
                 with video.Recording(out, log=io.StringIO()) as recording:
                     with mock.patch.object(video.time, "time_ns", side_effect=[123, 999_000_000_000]):
                         recording.packet(video.PART.pack(1, 0, 1) + present(1, 0))
@@ -147,18 +147,26 @@ class PanelVideoTests(unittest.TestCase):
                 self.assertEqual([command[i + 1] for i, arg in enumerate(command) if arg == "-pix_fmt"],
                                  ["rgb24", "yuv420p"])
                 self.assertEqual(process.stdin.write.call_count, 4)
-                if sys.platform == "win32":
-                    self.assertEqual(popen.call_args.kwargs["creationflags"], subprocess.CREATE_NEW_PROCESS_GROUP)
-                else:
-                    self.assertTrue(popen.call_args.kwargs["start_new_session"])
+                self.assertTrue(popen.call_args.kwargs["parent_lifetime"])
             with out.with_suffix(".frames.csv").open() as source:
                 rows = list(csv.reader(source))
             self.assertEqual(rows, [list(video.CSV_FIELDS), ["1", "0", "123", "1", "3", "2"],
                                     ["2", "100000", "999000000000", "1", "3", "2"]])
 
+    def test_encoder_interrupted_while_waiting_stops_its_tree(self):
+        process = mock.Mock(_tree_job=None)
+        process.wait.side_effect = KeyboardInterrupt
+        with mock.patch.object(video_encode, "resolve", return_value="fake-ffmpeg"):
+            writer = video_encode.VideoWriter("test.mp4", 30)
+        with mock.patch.object(video_encode, "open_encoder", return_value=process):
+            writer.write((2, 2), BLACK_RGB * 4)
+        with mock.patch("process_tree.stop_process_tree") as stop, self.assertRaises(KeyboardInterrupt):
+            writer.close()
+        stop.assert_called_once_with(process)
+
     def test_closing_broken_stdin_waits_and_reports_status(self):
         stderr = b"old error\n" + b"x" * 8192 + b"\n" + b"earlier line\n" * 20 + b"muxer refused output\n"
-        process = mock.Mock()
+        process = mock.Mock(_tree_job=None)
         process.stdin.close.side_effect = BrokenPipeError
         process.wait.return_value = 7
 

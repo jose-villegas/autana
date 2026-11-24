@@ -2032,7 +2032,7 @@ def record_frames(args, store, board, lines=None, out=None, log=None):
 
 
 def capture_stream(args, store, board, tag, on_data, lines=None, log=None, opening=None, packet_tag=None,
-                   on_packet_error=None, error_prefix=None, recording=None):
+                   on_packet_error=None, error_prefix=None, rx_bytes=None):
     """Steer a console capture, forwarding stdin and draining through its END reply."""
     log = sys.stderr if log is None else log
     timed = args.seconds is not None
@@ -2075,8 +2075,8 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
 
     def read(connection, stop, failed):
         try:
-            if recording is not None and hasattr(connection, "set_buffer_size"):
-                connection.set_buffer_size(rx_size=VIDEO_RX_BUFFER_BYTES)
+            if rx_bytes is not None and hasattr(connection, "set_buffer_size"):
+                connection.set_buffer_size(rx_size=rx_bytes)
             while not stop.is_set() and not ended.is_set():
                 chunk = connection.read(STREAM_READ_BYTES)
                 while True:
@@ -2107,13 +2107,9 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
         if consumer_failed:
             raise consumer_failed[0]
 
-    output = contextlib.nullcontext() if recording is None else recording
-    with HeldLock(store, board, args.owner, tag.lower(), args.wait), output:
+    with HeldLock(store, board, args.owner, tag.lower(), args.wait):
         steer(read, lines, opening=[opening or f"{tag} START"], closing=closing, done=done, interrupt_ends=True)
-        reply = answer[0] if answer else ""
-        if recording is not None:
-            recording.finish(reply)
-    return reply
+    return answer[0] if answer else ""
 
 
 def video(args, store, board, lines=None, log=None):
@@ -2125,11 +2121,12 @@ def video(args, store, board, lines=None, log=None):
     fps = default if args.fps is None else args.fps
     if not 1 <= fps <= maximum:
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
-    recording = panel_video.Recording(args.out, log=log)
-    answer = capture_stream(args, store, board, "PANELCAP", recording.stage, lines, log,
-                            opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
-                            on_packet_error=partial(recording.stage, damaged=True), error_prefix=panel_video.ERROR_PREFIX,
-                            recording=recording)
+    with panel_video.Recording(args.out, log=log) as recording:
+        answer = capture_stream(args, store, board, "PANELCAP", recording.stage, lines, log,
+                                opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
+                                on_packet_error=partial(recording.stage, damaged=True),
+                                error_prefix=panel_video.ERROR_PREFIX, rx_bytes=VIDEO_RX_BUFFER_BYTES)
+        recording.finish(answer)
     return int(not answer.startswith("PANELCAP_END"))
 
 

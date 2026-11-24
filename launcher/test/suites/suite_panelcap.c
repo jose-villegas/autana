@@ -72,7 +72,7 @@ test_busy_sender_drops_whole_present(void) {
     TEST_ASSERT_EQUAL(1, capture->presents);
     TEST_ASSERT_EQUAL(1, capture->dropped);
     TEST_ASSERT_EQUAL(1, capture->dropped_busy);
-    panelcap_release(capture);
+    panelcap_release(capture, true);
     TEST_ASSERT_TRUE(panelcap_begin(capture, 2 * MATH_US_PER_S));
     panelcap_commit(capture);
     TEST_ASSERT_NULL(panelcap_peek(capture));
@@ -91,14 +91,23 @@ test_busy_sender_drops_whole_present(void) {
     TEST_ASSERT_EQUAL(1, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
 }
 
-/* Indexed and framebuffer layouts resend a lost box from the picture they
- * keep; only bands, which keep none, need the app to draw it again. */
 static void
-test_lost_box_redraws_without_the_app_where_a_picture_is_kept(void) {
-    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_FULL_FB));
-    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_DOUBLE_FB));
-    TEST_ASSERT_FALSE(panelcap_redraw_needs_app(GFX_LAYOUT_INDEXED));
-    TEST_ASSERT_TRUE(panelcap_redraw_needs_app(GFX_LAYOUT_BANDS));
+test_failed_publication_keeps_pixels_and_gets_a_fresh_sequence(void) {
+    fixture();
+    const uint8_t pixel[] = {0x12, 0x34};
+    panelcap_begin(capture, 0);
+    panelcap_window(capture, 0, 0, 1, 1, pixel);
+    panelcap_commit(capture);
+    const uint32_t failed = bytes_read_u32(panelcap_peek(capture));
+    panelcap_release(capture, false);
+
+    TEST_ASSERT_FALSE(panelcap_begin(capture, MATH_US_PER_S));
+    panelcap_commit(capture);
+    const uint8_t* retry = panelcap_peek(capture);
+    TEST_ASSERT_NOT_NULL(retry);
+    TEST_ASSERT_EQUAL(failed + 1, bytes_read_u32(retry));
+    TEST_ASSERT_EQUAL(1, bytes_read_u16(retry + PANELCAP_HEAD_AT_WINDOWS));
+    TEST_ASSERT_EQUAL_MEMORY(pixel, capture->storage, sizeof pixel);
 }
 
 static void
@@ -110,7 +119,7 @@ test_window_after_sender_release_joins_current_present(void) {
     panelcap_commit(capture);
 
     TEST_ASSERT_FALSE(panelcap_begin(capture, MATH_US_PER_S));
-    panelcap_release(capture);
+    panelcap_release(capture, true);
     panelcap_window(capture, 2, 0, 3, 1, pixel);
     panelcap_commit(capture);
     TEST_ASSERT_NOT_NULL(panelcap_peek(capture));
@@ -146,7 +155,7 @@ test_fps_gate_counts_dropped_presents(void) {
     TEST_ASSERT_FALSE(panelcap_begin(capture, 0));
     panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
-    panelcap_release(capture);
+    panelcap_release(capture, true);
     TEST_ASSERT_FALSE(panelcap_begin(capture, 1));
     panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
@@ -308,7 +317,7 @@ test_throttled_cursor_leaves_no_ghost(void) {
         panelcap_window(capture, x, 0, x + 1, 1, cursor);
         panelcap_commit(capture);
         if (x == 0) {
-            panelcap_release(capture);
+            panelcap_release(capture, true);
         }
     }
     TEST_ASSERT_EQUAL_MEMORY(background, capture->storage, sizeof background);
@@ -324,7 +333,7 @@ test_drop_saturation_and_reset(void) {
     panelcap_begin(capture, 0);
     panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
-    panelcap_release(capture);
+    panelcap_release(capture, true);
     for (unsigned i = 0; i <= UINT16_MAX; i++) {
         panelcap_begin(capture, 1);
         panelcap_window(capture, 0, 0, 1, 1, pixel);
@@ -334,7 +343,7 @@ test_drop_saturation_and_reset(void) {
     panelcap_commit(capture);
     TEST_ASSERT_EQUAL(UINT16_MAX, bytes_read_u16(panelcap_peek(capture) + PANELCAP_HEAD_AT_DROPPED));
     TEST_ASSERT_EQUAL((unsigned)UINT16_MAX + 1, capture->dropped);
-    panelcap_release(capture);
+    panelcap_release(capture, true);
     panelcap_begin(capture, period + 1);
     panelcap_window(capture, 0, 0, 1, 1, pixel);
     panelcap_commit(capture);
@@ -409,7 +418,7 @@ suite_panelcap(void) {
     RUN_TEST(test_shared_packbits_wire);
     RUN_TEST(test_drop_saturation_and_reset);
     RUN_TEST(test_busy_sender_drops_whole_present);
-    RUN_TEST(test_lost_box_redraws_without_the_app_where_a_picture_is_kept);
+    RUN_TEST(test_failed_publication_keeps_pixels_and_gets_a_fresh_sequence);
     RUN_TEST(test_window_after_sender_release_joins_current_present);
     RUN_TEST(test_idle_present_does_not_consume_fps_slot);
     RUN_TEST(test_fps_gate_counts_dropped_presents);

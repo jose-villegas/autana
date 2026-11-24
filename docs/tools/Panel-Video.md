@@ -115,7 +115,7 @@ Recording adds redraw work and a PSRAM copy. Both can change frame timing.
 | Fields | Measurement |
 |---|---|
 | `encode_us`, `write_us` | Elapsed time in PackBits and in packet framing and USB queue writes. |
-| `link_failed` | Presents abandoned after a USB queue write timed out. |
+| `link_failed` | Publications interrupted by a USB queue write timeout. Their windows carry into the next publication. |
 | `fps_gate`, `image_busy`, `redraw_wait` | Dropped updates by first blocking reason. A present contributes at most one drop. |
 | `window_us`, `copy_bytes` | Elapsed time in the present-path capture hook and bytes copied to the capture image. |
-| `redraws`, `redraw_pixels` | Capture-driven redraw requests and the area they mark dirty. |
+| `redraws`, `redraw_pixels` | Capture-driven redraw requests and their dirty area in pixels. Strip transfers can cover a different area. |
