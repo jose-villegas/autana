@@ -1265,7 +1265,7 @@ def video(args):
     parser.add_argument("-o", "--out", required=True)
     parser.add_argument("--fps", type=int)
     parser.add_argument("--seconds", type=float)
-    parser.add_argument("--probe", choices=("full", "copy", "encode", "burst", "fast", "othercore"))
+    parser.add_argument("--probe", choices=("full", "copy", "encode", "burst", "fast", "othercore", "recover"))
     parsed = parser.parse_args(args)
     if refused_as_busy():
         return EXIT_BUSY

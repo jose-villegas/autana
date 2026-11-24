@@ -92,6 +92,35 @@ test_busy_sender_drops_whole_present(void) {
 }
 
 static void
+test_lost_rectangle_recovers_when_repainted_by_strips(void) {
+    fixture();
+    static const uint8_t previous[][PANELCAP_PIXEL_BYTES] = {{0x12, 0x34}, {0x56, 0x78}};
+    static const uint8_t current[][PANELCAP_PIXEL_BYTES] = {{0x9a, 0xbc}, {0xde, 0xf0}};
+    const unsigned height = sizeof previous / sizeof previous[0];
+
+    panelcap_begin(capture, 0);
+    panelcap_window(capture, 0, 0, 1, height, previous);
+    panelcap_commit(capture);
+    panelcap_begin(capture, MATH_US_PER_S);
+    panelcap_window(capture, 0, 0, 1, height, current);
+    panelcap_commit(capture);
+    panelcap_release(capture, true);
+
+    TEST_ASSERT_TRUE(panelcap_begin(capture, 2 * MATH_US_PER_S));
+    panelcap_window(capture, 0, 0, 1, 1, current[0]);
+    panelcap_commit(capture);
+    TEST_ASSERT_NULL(panelcap_peek(capture));
+
+    TEST_ASSERT_FALSE(panelcap_begin(capture, 3 * MATH_US_PER_S));
+    panelcap_window(capture, 0, 1, 1, height, current[1]);
+    panelcap_commit(capture);
+    TEST_ASSERT_NOT_NULL(panelcap_peek(capture));
+    TEST_ASSERT_TRUE(recti_is_empty(panelcap_redraw_requested(capture)));
+    TEST_ASSERT_EQUAL_MEMORY(current[0], storage, PANELCAP_PIXEL_BYTES);
+    TEST_ASSERT_EQUAL_MEMORY(current[1], storage + PANELCAP_WIDTH * PANELCAP_PIXEL_BYTES, PANELCAP_PIXEL_BYTES);
+}
+
+static void
 test_failed_publication_keeps_pixels_and_gets_a_fresh_sequence(void) {
     fixture();
     const uint8_t pixel[] = {0x12, 0x34};
@@ -418,6 +447,7 @@ suite_panelcap(void) {
     RUN_TEST(test_shared_packbits_wire);
     RUN_TEST(test_drop_saturation_and_reset);
     RUN_TEST(test_busy_sender_drops_whole_present);
+    RUN_TEST(test_lost_rectangle_recovers_when_repainted_by_strips);
     RUN_TEST(test_failed_publication_keeps_pixels_and_gets_a_fresh_sequence);
     RUN_TEST(test_window_after_sender_release_joins_current_present);
     RUN_TEST(test_idle_present_does_not_consume_fps_slot);

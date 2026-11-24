@@ -40,12 +40,13 @@ typedef enum {
     PROBE_BURST,
     PROBE_FAST,
     PROBE_OTHER_CORE,
+    PROBE_RECOVER,
 } probe_mode_t;
 
 static probe_mode_t probe_mode;
 static atomic_bool burst;
 static int64_t probe_start_us;
-static const char* const probe_modes[] = {"full", "copy", "encode", "burst", "fast", "othercore"};
+static const char* const probe_modes[] = {"full", "copy", "encode", "burst", "fast", "othercore", "recover"};
 
 static struct {
     uint64_t bytes;
@@ -75,10 +76,12 @@ redraw(const void* payload) {
         gfx_present_drain();
         present.drain_us += (uint64_t)(timing_now_us() - started);
         const recti_t box = panelcap_redraw_requested(&capture);
+        const bool force_full = redraw_full;
+        redraw_full = false;
         if (recti_is_empty(box)) {
             return;
         }
-        if (redraw_full || !gfx_mode_keeps_picture(gfx_mode_current())) {
+        if (force_full || !gfx_mode_keeps_picture(gfx_mode_current())) {
             present.redraw_pixels += PANELCAP_WIDTH * PANELCAP_HEIGHT;
             gfx_request_full_redraw();
         } else {
@@ -86,7 +89,6 @@ redraw(const void* payload) {
             gfx_mark_dirty(box.x, box.y, box.w, box.h);
         }
         present.redraws++;
-        redraw_full = false;
     }
 }
 
@@ -279,6 +281,7 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     uint8_t* scratch = packet + CONSOLE_PACKET_BYTES_MAX;
     (void)panelcap_init(&capture, image, fps);
     capture.probe_fast = probe_mode == PROBE_FAST;
+    capture.probe_recover = probe_mode == PROBE_RECOVER;
     redraw_full = false;
     memset(&sender, 0, sizeof sender);
     memset(&present, 0, sizeof present);

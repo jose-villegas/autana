@@ -43,7 +43,7 @@ panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps) {
     if (fps == 0 || fps > PANELCAP_FPS_MAX) {
         return false;
     }
-    *capture = (panelcap_t){.storage = storage, .fps = fps};
+    *capture = (panelcap_t){.storage = storage, .fps = fps, .probe_recover = true};
     atomic_init(&capture->ready, 0);
     memset(storage, 0, PANELCAP_IMAGE_BYTES);
     return true;
@@ -92,6 +92,28 @@ panelcap_redraw_requested(panelcap_t* capture) {
     return box;
 }
 
+static recti_t
+remove_repainted_edge(recti_t owed, recti_t window) {
+    const recti_t covered = recti_intersect(owed, window);
+    if (covered.w == owed.w) {
+        if (covered.y == owed.y) {
+            return recti_from_edges(owed.x, recti_bottom(covered), recti_right(owed), recti_bottom(owed));
+        }
+        if (recti_bottom(covered) == recti_bottom(owed)) {
+            return recti_from_edges(owed.x, owed.y, recti_right(owed), covered.y);
+        }
+    }
+    if (covered.h == owed.h) {
+        if (covered.x == owed.x) {
+            return recti_from_edges(recti_right(covered), owed.y, recti_right(owed), recti_bottom(owed));
+        }
+        if (recti_right(covered) == recti_right(owed)) {
+            return recti_from_edges(owed.x, owed.y, covered.x, recti_bottom(owed));
+        }
+    }
+    return owed;
+}
+
 void
 panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
     if (!capture->in_present || pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
@@ -113,6 +135,9 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
     for (unsigned y = y0; y < y1; y++) {
         memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
+    }
+    if (capture->probe_recover && !recti_is_empty(capture->owed)) {
+        capture->owed = remove_repainted_edge(capture->owed, box);
     }
     if (capture->collapsed) {
         capture->dirty[0] = recti_union(capture->dirty[0], box);
