@@ -8,8 +8,10 @@ A bake made on the GPU, a fit or a reference set traced there, names the GPU in 
 A fit's start is a mesh bake of its own and its reference set a reference bake; the fit reads the bytes its key
 names, from the lock or this cache, so any GPU host fits from the same inputs. A reference bake renders its set
 once per reference key into the cache's reference/ folder, where the doc stages read the held-out references
-too, and packs what the fit reads. A run made `again` renders each set once more, in a folder of its own; a set
-nothing has read for REFERENCE_KEEP_DAYS is deleted.
+too, and packs what the fit reads. Each pose of a set is traced once per pose key into reference-poses/ (PoseStore),
+so a set whose key changed traces only the poses whose own inputs changed. A run made `again` renders each set once
+more, in a folder of its own and tracing every pose; a set or pose nothing has read for REFERENCE_KEEP_DAYS is
+deleted.
 """
 
 import contextlib
@@ -30,6 +32,7 @@ from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
+REFERENCE_POSES = "reference-poses"
 # How often a reference set's render is looked at for the pose files it added: each is progress for a stage guard.
 POSE_PROGRESS_POLL_S = 60
 DONE = "done"
@@ -190,11 +193,11 @@ def read_references(folder):
 
 
 def prune_references(cache, now=None):
-    """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake runs it before
-    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done; one that
-    cannot be moved (a file held open) is left for a later bake."""
+    """Deletes each reference set or traced pose, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake
+    runs it before it reads any. Each is renamed aside first, so a delete cut short never leaves one that looks done;
+    one that cannot be moved (a file held open) is left for a later bake."""
     now = time.time() if now is None else now
-    for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
+    for folder in sorted(path for kind in (REFERENCES, REFERENCE_POSES) for path in (pathlib.Path(cache) / kind).glob("*")):
         pruned = folder if folder.name.endswith(PRUNED) else folder.with_name(folder.name + PRUNED)
         try:
             if now - folder.stat().st_mtime <= REFERENCE_KEEP_DAYS * DAY_S:
@@ -236,18 +239,48 @@ def poses_progress(folder):
         watcher.join()
 
 
-def reference_set(key, job, scene, cache, fresh=None):
+class PoseStore:
+    """Traced poses in this cache's reference-poses/, one folder per pose key: a digest of the pose's text (its
+    poses file's size and lens lines and its pose line) and `key`, everything else the pose's render reads
+    (bake.py, the stages' "reference_pose" key) with the variant and GPU it traces on. reference_render.render_sets
+    traces only the poses it does not hold."""
+
+    def __init__(self, cache, key):
+        from r3d.reference_render import reference_variant
+
+        self.root = pathlib.Path(cache) / REFERENCE_POSES
+        self.key = keys.digest([key, reference_variant(), keys.gpu_name()])
+
+    def folder(self, text):
+        return self.root / keys.digest(["reference pose", self.key, text])
+
+    @staticmethod
+    def holds(folder):
+        return (folder / DONE).is_file()
+
+    @staticmethod
+    def fill(folder, make):
+        keyed_folder(folder, make)
+
+    @staticmethod
+    def read(folder):
+        read_references(folder)
+
+
+def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
     given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
-    reading. The log says whether it was rendered or reused."""
+    reading. Given `pose_key` and no `fresh`, its poses come from this cache's PoseStore. The log says whether it
+    was rendered or reused."""
     from r3d.reference_set import prepare_references, reference_inputs
 
     folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
     reused = (folder / DONE).is_file()
+    store = PoseStore(cache, pose_key) if pose_key and not fresh else None
 
     def make(partial):
         with poses_progress(partial):
-            prepare_references(reference_inputs(job, scene), partial)
+            prepare_references(reference_inputs(job, scene), partial, store)
     keyed_folder(folder, make)
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
@@ -271,7 +304,7 @@ def produce_reference(bake, cache, fresh_references):
     from r3d.reference_render import reference_variant
     from r3d.reference_set import pack_references, reference_inputs
 
-    folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
+    folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references, bake.stages.get("reference_pose"))
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))

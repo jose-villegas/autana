@@ -100,11 +100,11 @@ def reference_inputs(job, scene):
                            probes=job.settings.fit.probes)
 
 
-def prepare_references(inputs, work):
+def prepare_references(inputs, work, store=None):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
-    has only those) and the references of every training and held-out set with their normals.
-    Returns the training views."""
+    has only those) and the references of every training and held-out set with their normals, each pose taken
+    from or traced into the pose `store` when given (reference_render.render_sets). Returns the training views."""
     from r3d.mesh_source import camera_path_poses
     from r3d.reference_render import render_sets
 
@@ -126,7 +126,8 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
+                store=store)
     return count
 
 

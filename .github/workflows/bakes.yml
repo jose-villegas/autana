@@ -170,7 +170,7 @@ jobs:
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
   # Every missing reference set in one job: it selects each set's probe faces on the CPU, traces all its poses on
-  # Mitsuba's CUDA variant, one after another in one process, and packs it on the CPU.
+  # Mitsuba's CUDA variant, in worker processes side by side, and packs it on the CPU.
   reference:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     name: Trace and pack the missing reference sets

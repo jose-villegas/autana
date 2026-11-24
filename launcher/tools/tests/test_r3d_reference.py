@@ -419,6 +419,97 @@ def render_one_set(job, **patches):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class PoseStoreTests(unittest.TestCase):
+    """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone, in this
+    process or in CUDA workers alike."""
+
+    def render(self, poses_text, cache, out, key="render", workers=1):
+        """render_sets of one poses file holding `poses_text` with a PoseStore under `key`, its poses traced here or
+        by `workers` workers; returns the poses traced. A traced pose's files hold its pose line, so a set shows which
+        pose each index got."""
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from bake import produce
+        from r3d import reference_render
+
+        traced = []
+
+        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False):
+            for index, pose in enumerate(poses):
+                traced.append(list(pose))
+                for suffix in reference_render.POSE_SUFFIXES:
+                    (target / f"{index:04d}{suffix}").write_text(repr([float(value) for value in pose]))
+            return 0, 1
+
+        def fake_workers(inputs, plans, samples, count):
+            self.assertEqual(count, workers)
+            for _out, target, _folders, _missing, poses, size in plans:
+                fake_render(None, None, None, poses, *size, samples, target)
+
+        poses = out.parent / f"{out.name}.txt"
+        poses.write_text(poses_text)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        with patch.object(reference_render, "lit_source", return_value=object()), \
+                patch.object(reference_render, "render_poses", side_effect=fake_render), \
+                patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
+                patch.object(reference_render, "gpu_workers", return_value=workers), \
+                patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
+                patch.object(produce.keys, "gpu_name", return_value="GPU"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key))
+        return traced
+
+    def test_a_changed_pose_is_traced_again_and_the_rest_come_from_the_store(self):
+        import tempfile
+        from r3d.fitted_variant import poses_text
+        from r3d.reference_render import POSE_SUFFIXES
+
+        for workers in (1, 3):
+            with self.subTest(workers=workers):
+                poses = [[0.0, 0.0, float(z), 0.0, 0.0, -1.0] for z in (1, 2, 3)]
+                with tempfile.TemporaryDirectory() as directory:
+                    root = pathlib.Path(directory)
+                    cache = root / "cache"
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, poses), cache, root / "first", workers=workers), poses)
+                    moved = poses[:1] + [[0.0, 0.0, 9.0, 0.0, 0.0, -1.0]] + poses[2:]
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "second", workers=workers), [moved[1]])
+                    for index, pose in enumerate(moved):
+                        for suffix in POSE_SUFFIXES:
+                            self.assertEqual((root / "second" / f"{index:04d}{suffix}").read_text(), repr(pose))
+                    self.assertFalse((root / "second" / ".tracing").exists())
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "third"), [],
+                                     "every pose is held")
+                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "fourth", key="other")),
+                                     3, "another render key traces every pose")
+                    self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
+                                     "another pose size traces every pose")
+
+
+class GpuWorkerTests(unittest.TestCase):
+    """CUDA poses go to as many worker processes as host and GPU memory hold; off CUDA to this process."""
+
+    def workers(self, variant, poses, room):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        from r3d import reference_render
+        available = tuple(floor + room * cost for floor, cost in zip(budget.FLOORS, budget.REFERENCE_GPU_BYTES))
+        with patch.object(reference_render, "reference_variant", return_value=variant), \
+                patch.object(budget, "available_bytes", return_value=available), \
+                patch.object(budget, "cores_available", return_value=32):
+            return reference_render.gpu_workers(poses)
+
+    def test_cuda_takes_the_workers_memory_holds_and_no_more_than_the_poses(self):
+        self.assertEqual(self.workers("cuda_ad_rgb", 100, 3), 3)
+        self.assertEqual(self.workers("cuda_ad_rgb", 2, 3), 2)
+        self.assertEqual(self.workers("cuda_ad_rgb", 100, 0), 1, "one process even without room for a worker")
+
+    def test_off_cuda_or_for_one_pose_this_process_traces(self):
+        self.assertEqual(self.workers("llvm_ad_rgb", 100, 3), 1)
+        self.assertEqual(self.workers("cuda_ad_rgb", 1, 3), 1)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class RepeatTests(unittest.TestCase):
     """A reference set is the fit's target, and a fit magnifies a one-pixel change into a different mesh, so the set
     must repeat byte for byte however often its scene is built (ray_query.py: OptiX may build a different tree)."""

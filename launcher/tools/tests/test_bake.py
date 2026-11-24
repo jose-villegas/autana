@@ -1256,7 +1256,7 @@ class GpuRowTests(FittedBakeCase):
     def test_a_fit_and_a_reference_set_traced_on_cuda_name_the_gpu_and_a_cpu_trace_does_not(self):
         start = self.root / "start.bundle"
         start.write_bytes(b"start")
-        item = bake_of("r" * 64, self.root / "set.tar.xz", kind="reference")
+        item = dataclasses.replace(bake_of("r" * 64, self.root / "set.tar.xz", kind="reference"), stages={})
         fit = dataclasses.replace(bake_of("f" * 64, self.root / "fit.bundle", kind="fit"), stages={},
                                   scene=types.SimpleNamespace(path=self.root))
 
@@ -1975,7 +1975,7 @@ class ProduceTests(unittest.TestCase):
     def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
         renders = []
 
-        def prepare(inputs, partial):
+        def prepare(inputs, partial, store=None):
             renders.append(inputs)
             (partial / "frame.png").write_bytes(b"frame")
 
@@ -2008,8 +2008,13 @@ class ProduceTests(unittest.TestCase):
             os.utime(references / name, (age, age))
         produce.read_references(references / "read")
         produce.read_references(references / "absent")
+        poses = self.cache / produce.REFERENCE_POSES
+        for name, age in {"stale-pose": stale, "recent-pose": recent}.items():
+            (poses / name).mkdir(parents=True)
+            os.utime(poses / name, (age, age))
         produce.prune_references(self.cache, now)
         self.assertEqual(sorted(path.name for path in references.iterdir()), ["new", "read"])
+        self.assertEqual([path.name for path in poses.iterdir()], ["recent-pose"], "a traced pose ages like a set")
 
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()

@@ -346,14 +346,21 @@ recipe weight and a margin in each triangle's start edge scale;
 
 A reference set traces its rays and bounced light on the fastest variant the machine runs
 (`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
-On CUDA one process traces the poses one after another; a pool of processes would share the one GPU and only add
-memory. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
+A pose's trace is NumPy-bound on the CPU and leaves the GPU mostly idle, so on CUDA spawned worker processes trace
+the poses side by side (`reference_render.gpu_workers`), as many as free host and GPU memory hold at
+`process_budget.REFERENCE_GPU_BYTES` each. Each pose is traced alone with its own seeds, so its files do not depend
+on the worker. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
 
 OptiX does not promise the same acceleration structure from the same
 triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>, and a shadow ray grazing an edge hits or
 misses by the build, which the fit would turn into a different mesh. So a set is proven to repeat on the Bakes
 runner's GPU: two traces of one set there make the same bytes. Its bytes differ between GPU models, so its lock row
 names the `gpu`, as a fit's does.
+
+Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by its pose line
+and the `reference_pose` key: the set's recipe without what only picks the poses, the variant, the GPU and the code
+`render_sets` reaches. A set traces only the poses the store lacks and links the rest, so moving one camera pose
+re-traces that pose alone. The lock still records the packed set only.
 
 Since a set differs between GPU models, the bake locks it: the Bakes reference job chooses its poses, renders
 them and packs what the fit reads

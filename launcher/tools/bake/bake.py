@@ -135,6 +135,8 @@ STAGES = {
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
                   "r3d/reference_render.py:render_sets"),
+    # One traced pose of a reference set (produce.PoseStore): only the code its render reaches.
+    "reference_pose": ("r3d/reference_render.py:render_sets",),
     "fit": ("r3d/fit/stage.py:fit", "r3d/reference_set.py:unpack_references"),
     "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
@@ -687,6 +689,14 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
     return recipe
 
 
+def pose_recipe(recipe):
+    """What one traced pose of a reference set reads besides its own pose text: the reference recipe without what
+    only chooses the poses (their size and spacing, the sampled camera path and the probes)."""
+    camera = {name: value for name, value in recipe["camera"].items() if name != "poses"}
+    return {**{name: value for name, value in recipe.items() if name not in ("size", "poses", "probes")},
+            "camera": camera}
+
+
 def stage_keys(job, scene, tools, starts=None, poses=None):
     """A mesh key or the start, reference, fit and levels keys of a fitted renderer. `starts` maps
     dependency keys to locked byte digests; each later key waits while its inputs' bytes are unknown.
@@ -701,6 +711,8 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
 
         recipe = reference_recipe(reference_inputs(job, scene), tools, poses, unavailable)
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
+        reference_pose = None if unavailable else digest(["reference pose", pose_recipe(recipe),
+                                                          tools["reference_pose"]])
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
@@ -709,7 +721,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
-        keys = {"start": start, "start_sha256": start_sha256, "reference": reference,
+        keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "reference_pose": reference_pose,
                 "reference_sha256": reference_sha256, "fit": fit, "fit_sha256": fit_sha256, "levels": levels}
     if unavailable:
         keys["reason"] = poses.reason(unavailable)
@@ -822,7 +834,8 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                     output=f"{entry}{REFERENCE_MARKER}{REFERENCE_SUFFIX}", source=asker, holder=holder,
                     kind="reference", key=keys["reference"], suffix=REFERENCE_SUFFIX,
                     tree=source.with_name(f"{entry}{REFERENCE_MARKER}{REFERENCE_SUFFIX}"), job=job, scene=scene,
-                    stages={"reference": keys["reference"], **reason}, packed=False))
+                    stages={"reference": keys["reference"], "reference_pose": keys["reference_pose"], **reason},
+                    packed=False))
                 fitted = Bake(output=f"{entry}{FIT_MARKER}{suffix}", source=asker, holder=holder, kind="fit",
                               key=keys["fit"], suffix=suffix, tree=source.with_name(f"{entry}{FIT_MARKER}{suffix}"),
                               job=job, scene=scene, stages=keys, start=start, reference=reference, packed=False)
