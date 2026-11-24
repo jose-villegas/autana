@@ -34,9 +34,9 @@ set -eu
 
 # shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
-UNIT_DIR="$REPO_ROOT/launcher/test/build/run-tool-tests"
 BUILD_DIR="$REPO_ROOT/launcher/test/build"
+QUIET_LOG="$BUILD_DIR/run-tool-tests.log"
+UNIT_DIR="$BUILD_DIR/run-tool-tests"
 
 # One file, run by xargs below: its output, status and seconds go beside
 # the others under UNIT_DIR, named by its path.
@@ -123,7 +123,7 @@ case "$SHARD" in 1/1) TIMES="$BUILD_DIR/run-tool-tests.times" ;; *) TIMES="$BUIL
     awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
         { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
           load[least] += $1 > 1 ? $1 : 1; if (least == s[1]) print $3 }' >"$UNIT_DIR/order"
-xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
+[ ! -s "$UNIT_DIR/order" ] || xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
 units=$(sort "$UNIT_DIR/order")
 
 : >"$TIMES"

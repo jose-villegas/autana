@@ -55,9 +55,7 @@ Several instances run at once; give each its own build directory copy or
 from one shell image itself, each in workdir/qemu-<k>, and they share the
 --suite list, or with none every suite the image lists that runs without a
 request: each instance takes the next suite as it frees up, the longest by
-qemu_suite_times.json (what the last run beside it measured) first. A suite
-that took longer than an instance's share goes as --test requests that run
-each of its tests once.
+qemu_suite_times.json (what the last run beside it measured) first.
 """
 
 import argparse
@@ -93,11 +91,10 @@ import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
-                            crash_signs, results, suite_failure_signs, test_matches)  # (the board tool's own verdict)
+                            crash_signs, results, suite_failure_signs)  # (the board tool's own verdict)
 from console_protocol import ANSI  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
-from c_header import read_define  # noqa: E402
 
 MEBIBYTE_BYTES = 1024 * 1024
 ICOUNT_SHIFT = 0
@@ -432,12 +429,6 @@ def drive_shell(console, actions):
 
 SUITE_LISTED_RE = re.compile(r"RUNSUITE_SUITE name=(\w+) on_request=([01])")
 SUITE_LIST_END = "RUNSUITE_END"
-SUITE_TEST_RE = re.compile(r"SUITE_TEST name=(\S+) selected=")
-# No C function name holds a '-', so this pattern lists a suite's tests and runs none.
-NO_TEST = "-"
-SUITES_H = Path(__file__).resolve().parent / "suites.h"
-FILTER_MAX = read_define(SUITES_H, "SUITE_FILTER_MAX")
-FILTER_LEN = read_define(SUITES_H, "SUITE_FILTER_LEN")
 TIMES_FILE = "qemu_suite_times.json"
 
 
@@ -449,9 +440,9 @@ class Spread:
     """The suites several instances share: each takes the next as it frees up,
     unmeasured ones first, then the longest the times file records."""
 
-    def __init__(self, units, times, jobs):
+    def __init__(self, units, times):
         self.lock = threading.Lock()
-        self.times, self.jobs = times, jobs
+        self.times = times
         self.pending = None
         self.listed = []
         self.ran = {}  # (suite, tests): (passed, seconds)
@@ -480,60 +471,6 @@ def listed_suites(console):
     return None
 
 
-def listed_tests(console, suite):
-    """Every test name the suite runs, as a request that selects none lists them."""
-    console.send("RUNSUITE %s %s" % (suite, NO_TEST))
-    names = []
-    for line in console.lines():
-        listed, complete = SUITE_TEST_RE.search(line), SUITE_COMPLETE_RE.search(line)
-        if listed:
-            names.append(listed.group(1))
-        elif complete and complete.group("name") == suite:
-            break
-    return names
-
-
-def test_requests(names):
-    """The tests as --test requests that run each exactly once: a test whose
-    pattern also picks another goes in the same request. None when a pattern or
-    a request would pass the image's filter limits."""
-    patterns = []
-    for name in names:
-        function, _, rest = name.partition("/")
-        room = FILTER_LEN - 1 - len(rest) - bool(rest)  # the function's part is a substring of it
-        patterns.append(function[-room:] + "/" * bool(rest) + rest if room > 0 else None)
-    if None in patterns:
-        return None
-    group = list(range(len(names)))
-
-    def root(i):
-        while group[i] != i:
-            i = group[i]
-        return i
-
-    for i, pattern in enumerate(patterns):
-        for j, name in enumerate(names):
-            if test_matches(pattern, name):
-                group[root(j)] = root(i)
-    requests = {}
-    for i, pattern in enumerate(patterns):
-        requests.setdefault(root(i), []).append(pattern)
-    if any(len(request) > FILTER_MAX for request in requests.values()):
-        return None
-    return [",".join(request) for request in requests.values()]
-
-
-def split_long(console, suites, spread):
-    """Each suite as one unit, but one that took longer than an instance's
-    share last run as a unit per request for its tests."""
-    share = sum(spread.times.get(suite, 0) for suite in suites) / spread.jobs
-    units = []
-    for suite in suites:
-        requests = test_requests(listed_tests(console, suite)) if spread.times.get(suite, 0) > share else None
-        units += [(suite, request) for request in requests] if requests and len(requests) > 1 else [(suite, None)]
-    return units
-
-
 def drive_spread(console, spread, tests=None):
     if not drive_shell(console, []):
         return False
@@ -544,7 +481,7 @@ def drive_spread(console, spread, tests=None):
                 print("the image listed no suites")
                 spread.fill([])
                 return False
-            spread.fill([(name, tests) for name in names] if tests else split_long(console, names, spread))
+            spread.fill([(name, tests) for name in names])
     ok = True
     while (unit := spread.take()) is not None:
         started = time.monotonic()
@@ -566,7 +503,7 @@ def run_spread(args, qemu, flash, efuse, workdir):
     if os.path.exists(times_path):
         with open(times_path, encoding="utf-8") as fh:
             times = json.load(fh)
-    spread = Spread([(suite, args.test) for suite in args.suite], times, args.jobs)
+    spread = Spread([(suite, args.test) for suite in args.suite], times)
 
     def work(k):
         own = os.path.join(workdir, "qemu-%d" % k)
@@ -592,14 +529,11 @@ def run_spread(args, qemu, flash, efuse, workdir):
     for name in unrun:
         print("  NOT RUN %s" % name)
     failed = sorted(unit_key(unit) for unit, (passed, _) in spread.ran.items() if not passed)
-    print("%d suites and parts over %d instances: %d failed, %d not run%s" %
+    print("%d suites over %d instances: %d failed, %d not run%s" %
           (len(spread.ran), args.jobs, len(failed), len(unrun),
            "" if not failed else " (" + ", ".join(failed) + ")"))
-    totals = {}
     for unit, (_, seconds) in spread.ran.items():
         times[unit_key(unit)] = round(seconds, 1)
-        totals[unit[0]] = totals.get(unit[0], 0) + round(seconds, 1)
-    times.update(totals)
     with open(times_path, "w", encoding="utf-8") as fh:
         json.dump(times, fh, indent=1, sort_keys=True)
     return 1 if status or failed or unrun or spread.pending is None else 0

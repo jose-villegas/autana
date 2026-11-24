@@ -128,9 +128,8 @@ desktop it is, not on the runner.
 
 `run_qemu_tests.sh --jobs N` is that driver for a whole run: N instances of
 the shell image take the suites it lists one at a time, longest first by the
-last run's `qemu_suite_times.json`. A suite that took longer than an
-instance's share is split into `--test` requests, each test in exactly one.
-CI runs one instance per two CPUs, since each emulates two cores.
+last run's `qemu_suite_times.json`. CI runs one instance per two CPUs, since
+each emulates two cores.
 
 ## A QEMU with its bugs patched
 
