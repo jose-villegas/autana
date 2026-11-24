@@ -126,11 +126,6 @@ log; the build directory is only read. `run_qemu_tests.sh --build-only` builds
 once for a driver that launches several. How many at once depends on whose
 desktop it is, not on the runner.
 
-`run_qemu_tests.sh --jobs N` is that driver for a whole run: N instances of
-the shell image take the suites it lists one at a time, longest first by the
-last run's `qemu_suite_times.json`. CI runs one instance per two CPUs, since
-each emulates two cores.
-
 ## A QEMU with its bugs patched
 
 Espressif's prebuilt QEMU has races that fail a correct image, for example

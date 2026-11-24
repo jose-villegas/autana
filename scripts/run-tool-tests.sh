@@ -13,10 +13,13 @@
 #   scripts/run-tool-tests.sh --verbose
 #   scripts/run-tool-tests.sh --jobs N       (default: the CPU count)
 #   scripts/run-tool-tests.sh --shard K/N    (the Kth of N shares, for N runners)
+#   scripts/run-tool-tests.sh --list         (print every file a run covers)
 #
 # The list comes from git on every run, so a test is found wherever it
 # lives and build output is never searched. The files that took longest in recent
 # runs (run-tool-tests*.times beside the log) start first, then the largest.
+# The files a run took are in run-tool-tests.order, or run-tool-tests.K.order
+# for shard K, beside the log. A test_*.py file that runs no test fails.
 # Exits 1 if any file fails; keeps running the rest so one broken file does
 # not hide another. A missing interpreter skips its language's files with a
 # warning and still exits 1; unlike scripts/git-hooks/pre-commit, this
@@ -38,32 +41,58 @@ BUILD_DIR="$REPO_ROOT/launcher/test/build"
 QUIET_LOG="$BUILD_DIR/run-tool-tests.log"
 UNIT_DIR="$BUILD_DIR/run-tool-tests"
 
-# One file, run by xargs below: its output, status and seconds go beside
-# the others under UNIT_DIR, named by its path.
+# One file, run by xargs below: its output, status and seconds go under
+# UNIT_DIR/files at the file's own path.
 if [ "${1:-}" = --unit ]; then
-    key=$(printf '%s' "$2" | tr '/' '_')
+    out="$UNIT_DIR/files/$2"
+    mkdir -p "$(dirname -- "$out")"
     started=$(date +%s)
     case "$2" in
         *.mjs) node --test "$REPO_ROOT/$2" ;;
         *) "$PYTHON" -u -m unittest discover -s "$REPO_ROOT/$(dirname -- "$2")" -p "$(basename -- "$2")" ;;
-    esac >"$UNIT_DIR/$key.log" 2>&1 && rc=0 || rc=$?
-    echo "$rc" >"$UNIT_DIR/$key.status"
-    echo "$(($(date +%s) - started)) $2" >"$UNIT_DIR/$key.time"
+    esac >"$out.log" 2>&1 && rc=0 || rc=$?
+    # unittest before Python 3.12 passes a file in which it found no test.
+    if [ "$rc" -eq 0 ] && grep -aq '^Ran 0 tests' "$out.log"; then
+        echo "ERROR: $2 ran no tests" >>"$out.log"
+        rc=5
+    fi
+    echo "$rc" >"$out.status"
+    echo "$(($(date +%s) - started)) $2" >"$out.time"
     exit 0
 fi
 
 VERBOSE=0
+LIST=0
 SHARD=1/1
 JOBS=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
+        --list) LIST=1 ;;
         --jobs | --shard) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             if [ "$1" = --jobs ]; then JOBS=$2; else SHARD=$2; fi; shift ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+py_files=""
+for file in $(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py'); do
+    dir=$(dirname -- "$file")
+    [ ! -f "$REPO_ROOT/$dir/conftest.py" ] && [ ! -f "$REPO_ROOT/$dir/pytest.ini" ] || continue
+    py_files="$py_files $file"
+done
+mjs_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.mjs')
+if [ "$LIST" -eq 1 ]; then
+    # shellcheck disable=SC2086
+    printf '%s\n' $py_files $mjs_files | sort
+    exit 0
+fi
+
+if [ -z "$py_files" ] && [ -z "$mjs_files" ]; then
+    echo "git tracks no test_*.py or test_*.mjs anywhere in this repository." >&2
+    exit 1
+fi
 
 # shellcheck source=quiet.sh
 . "$REPO_ROOT/scripts/quiet.sh"
@@ -72,14 +101,6 @@ done
 . "$REPO_ROOT/scripts/lib/python.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 export PYTHON UNIT_DIR
-
-py_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sort)
-mjs_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.mjs' | sort)
-
-if [ -z "$py_files" ] && [ -z "$mjs_files" ]; then
-    echo "git tracks no test_*.py or test_*.mjs anywhere in this repository." >&2
-    exit 1
-fi
 
 quiet_begin "$QUIET_LOG"
 # Passing tests print fixture text ("test_clip:FAIL:", argparse "error:"); only
@@ -93,11 +114,7 @@ if [ -n "$py_files" ]; then
         echo "python 3 was not found on PATH (tried python3, python, py); skipping test_*.py suites." >&2
         QUIET_STATUS=1
     else
-        for file in $py_files; do
-            dir=$(dirname -- "$file")
-            [ ! -f "$REPO_ROOT/$dir/conftest.py" ] && [ ! -f "$REPO_ROOT/$dir/pytest.ini" ] || continue
-            units="$units $file"
-        done
+        units="$py_files"
     fi
 fi
 if [ -n "$mjs_files" ]; then
@@ -111,8 +128,9 @@ fi
 
 rm -rf "$UNIT_DIR"
 mkdir -p "$UNIT_DIR"
-# This run's seconds; a shard's go in a file of its own, and every file is read.
-case "$SHARD" in 1/1) TIMES="$BUILD_DIR/run-tool-tests.times" ;; *) TIMES="$BUILD_DIR/run-tool-tests.${SHARD%/*}.times" ;; esac
+# This run's seconds and files; a shard's go in files of its own, and every
+# seconds file is read.
+case "$SHARD" in 1/1) RUN="$BUILD_DIR/run-tool-tests" ;; *) RUN="$BUILD_DIR/run-tool-tests.${SHARD%/*}" ;; esac
 # Longest first: last run's seconds, then bytes, which order a first run. Of
 # N shards, each file goes to the one with the fewest seconds so far (a file
 # never timed counts one), and shard K runs its own.
@@ -128,27 +146,22 @@ case "$SHARD" in 1/1) TIMES="$BUILD_DIR/run-tool-tests.times" ;; *) TIMES="$BUIL
 [ -z "$PYTHON" ] || { echo "== native libraries =="; "$PYTHON" "$REPO_ROOT/launcher/tools/native/prebuild.py"; } \
     >>"$QUIET_LOG" 2>&1 || :
 [ ! -s "$UNIT_DIR/order" ] || xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
-units=$(sort "$UNIT_DIR/order")
+sort "$UNIT_DIR/order" >"$RUN.order"
 
 : >"$UNIT_DIR/times"
 unit_count=0
-for file in $units; do
+while IFS= read -r file; do
     unit_count=$((unit_count + 1))
-    key=$(printf '%s' "$file" | tr '/' '_')
+    out="$UNIT_DIR/files/$file"
     printf '== %s ==\n' "$file" >>"$QUIET_LOG"
-    cat "$UNIT_DIR/$key.log" >>"$QUIET_LOG" 2>/dev/null || true
-    cat "$UNIT_DIR/$key.time" >>"$UNIT_DIR/times" 2>/dev/null || true
-    rc=$(cat "$UNIT_DIR/$key.status" 2>/dev/null || echo 1)
-    if [ "$rc" -ne 0 ]; then
-        QUIET_STATUS=$rc
-        QUIET_FAILED_LABELS="${QUIET_FAILED_LABELS}${QUIET_FAILED_LABELS:+
-}$file"
-    fi
-done
+    cat "$out.log" >>"$QUIET_LOG" 2>/dev/null || true
+    cat "$out.time" >>"$UNIT_DIR/times" 2>/dev/null || true
+    quiet_record "$file" "$(cat "$out.status" 2>/dev/null || echo 1)"
+done <"$RUN.order"
 # A file's time depends on what ran beside it, so what is kept is the mean with
 # last run's, not this run's alone, or the shares swing from run to run.
 awk 'NR == FNR { known[$3] = $1; next } { print known[$2] ? int((known[$2] + $1 + 1) / 2) : $1, $2 }' \
-    "$UNIT_DIR/known" "$UNIT_DIR/times" >"$TIMES"
+    "$UNIT_DIR/known" "$UNIT_DIR/times" >"$RUN.times"
 [ "$VERBOSE" -eq 0 ] || cat "$QUIET_LOG"
 
 py_tests=$(grep -aoE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })

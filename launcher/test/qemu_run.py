@@ -51,11 +51,7 @@ docs/testing/QEMU.md covers repeatability and the limits of
 shared-core counts.
 
 Several instances run at once; give each its own build directory copy or
---workdir, since the flash image is written beside the log. --jobs N starts N
-from one shell image itself, each in workdir/qemu-<k>, and they share the
---suite list, or with none every suite the image lists that runs without a
-request: each instance takes the next suite as it frees up, the longest by
-qemu_suite_times.json (what the last run beside it measured) first.
+--workdir, since the flash image is written beside the log.
 """
 
 import argparse
@@ -64,18 +60,14 @@ import base64
 import binascii
 import glob
 import json
-import math
 import os
 from pathlib import Path
 import re
-import shutil
 import signal
 import socket
 import subprocess
 import sys
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "tools", "device"))
@@ -427,118 +419,6 @@ def drive_shell(console, actions):
     return ok
 
 
-SUITE_LISTED_RE = re.compile(r"RUNSUITE_SUITE name=(\w+) on_request=([01])")
-SUITE_LIST_END = "RUNSUITE_END"
-TIMES_FILE = "qemu_suite_times.json"
-
-
-def unit_key(unit):
-    return " ".join(part for part in unit if part)
-
-
-class Spread:
-    """The suites several instances share: each takes the next as it frees up,
-    unmeasured ones first, then the longest the times file records."""
-
-    def __init__(self, units, times):
-        self.lock = threading.Lock()
-        self.times = times
-        self.pending = None
-        self.listed = []
-        self.ran = {}  # (suite, tests): (passed, seconds)
-        if units:
-            self.fill(units)
-
-    def fill(self, units):
-        self.listed = list(units)
-        self.pending = sorted(units, key=lambda unit: -self.times.get(unit_key(unit), math.inf))
-
-    def take(self):
-        with self.lock:
-            return self.pending.pop(0) if self.pending else None
-
-
-def listed_suites(console):
-    """The suites the image runs without a request, as `runsuite ?` lists them."""
-    console.send("RUNSUITE ?")
-    names = []
-    for line in console.lines(HEARTBEAT_S):
-        listed = SUITE_LISTED_RE.search(line)
-        if listed and listed.group(2) == "0":
-            names.append(listed.group(1))
-        elif SUITE_LIST_END in line:
-            return names
-    return None
-
-
-def drive_spread(console, spread, tests=None):
-    if not drive_shell(console, []):
-        return False
-    with spread.lock:  # the first instance up lists the suites; the rest wait for it
-        if spread.pending is None:
-            names = listed_suites(console)
-            if not names:
-                print("the image listed no suites")
-                spread.fill([])
-                return False
-            spread.fill([(name, tests) for name in names])
-    ok = True
-    while (unit := spread.take()) is not None:
-        started = time.monotonic()
-        passed = run_suite(console, *unit)
-        alive = heartbeat(console)
-        spread.ran[unit] = (passed and alive, time.monotonic() - started)
-        ok = passed and ok
-        if not alive:
-            print("no heartbeat within %d s after %s - this instance stops; "
-                  "the others take the rest" % (HEARTBEAT_S, unit_key(unit)))
-            return False
-    return ok
-
-
-def run_spread(args, qemu, flash, efuse, workdir):
-    """--jobs instances against one image; 0 if every suite ran and passed."""
-    times_path = os.path.join(workdir, TIMES_FILE)
-    times = {}
-    if os.path.exists(times_path):
-        with open(times_path, encoding="utf-8") as fh:
-            times = json.load(fh)
-    spread = Spread([(suite, args.test) for suite in args.suite], times)
-
-    def work(k):
-        own = os.path.join(workdir, "qemu-%d" % k)
-        os.makedirs(own, exist_ok=True)
-        for image in (flash, efuse):
-            shutil.copy(image, own)
-        port = free_port()
-        cmd = qemu_command(args, qemu, psram_mib(), os.path.join(own, os.path.basename(flash)),
-                           os.path.join(own, os.path.basename(efuse)), port)
-        log, output = os.path.join(own, "qemu_serial.log"), os.path.join(own, "qemu_output.log")
-        finished, stopped = run_qemu(cmd, port, log, output, args.timeout, None,
-                                     lambda console: drive_spread(console, spread, args.test))
-        return log, finished, stopped, output
-
-    with ThreadPoolExecutor(args.jobs) as pool:
-        results = list(pool.map(work, range(args.jobs)))
-
-    status = 0
-    for k, (log, finished, stopped, output) in enumerate(results):
-        print("instance %d, console: %s" % (k, log))
-        status |= verdict(log, finished, ["spread"], stopped, output)
-    unrun = [unit_key(unit) for unit in spread.listed if unit not in spread.ran]
-    for name in unrun:
-        print("  NOT RUN %s" % name)
-    failed = sorted(unit_key(unit) for unit, (passed, _) in spread.ran.items() if not passed)
-    print("%d suites over %d instances: %d failed, %d not run%s" %
-          (len(spread.ran), args.jobs, len(failed), len(unrun),
-           "" if not failed else " (" + ", ".join(failed) + ")"))
-    for unit, (_, seconds) in spread.ran.items():
-        times[unit_key(unit)] = round(seconds, 1)
-    with open(times_path, "w", encoding="utf-8") as fh:
-        json.dump(times, fh, indent=1, sort_keys=True)
-    return 1 if status or failed or unrun or spread.pending is None else 0
-
-
 def summarise(log_path):
     with open(log_path, "rb") as fh:
         text = ANSI.sub("", fh.read().decode("utf-8", errors="replace"))
@@ -619,9 +499,9 @@ def verdict(log_path, finished, actions, stopped=None, qemu_output=None):
     return 0 if finished and not failures else 1
 
 
-def run_qemu(cmd, port, log_path, qemu_output, timeout, actions, drive=None):
-    """Start QEMU, follow its console to the sentinel, through `actions` or
-    by `drive(console)`, and stop it: (finished, why it stopped early or None)."""
+def run_qemu(cmd, port, log_path, qemu_output, timeout, actions):
+    """Start QEMU, follow its console to the sentinel or through `actions`,
+    and stop it: (finished, why it stopped early or None)."""
     # QEMU's own messages (an abort, an assertion) go to their own file: the
     # guest's console alone cannot say why QEMU stopped.
     with open(qemu_output, "wb") as output:
@@ -636,9 +516,7 @@ def run_qemu(cmd, port, log_path, qemu_output, timeout, actions, drive=None):
                     raise
                 return False, stop_text(QEMU_EXITED_UNCONNECTED, proc)
             try:
-                if drive:
-                    finished = drive(console)
-                elif actions:
+                if actions:
                     finished = drive_shell(console, actions)
                 else:
                     finished = console.wait_for(SENTINEL)
@@ -702,9 +580,6 @@ def parse_args(argv):
     parser.add_argument("--screenshot", default=None, metavar="PNG",
                         help="capture the screen once the suites and touches "
                              "are done")
-    parser.add_argument("--jobs", type=int, default=None, metavar="N",
-                        help="share the --suite list, or every suite the image "
-                             "runs without a request, among N instances")
     parser.add_argument("--workdir", default=None,
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
@@ -714,8 +589,6 @@ def parse_args(argv):
     args = parser.parse_args(argv)
     if args.test and not args.suite:
         parser.error("--test narrows a --suite; give one")
-    if args.jobs is not None and (args.jobs < 1 or args.touch or args.do or args.screenshot or args.log):
-        parser.error("--jobs takes a count of 1 or more and runs suites only")
     if args.icount_ratchet:
         args.icount = True
         try:
@@ -755,8 +628,6 @@ def main(argv):
     merge_flash(args.build_dir, flash, python)
     with open(efuse, "wb") as fh:
         fh.write(efuse_with_mac(default_efuse(args.idf_path)))
-    if args.jobs:
-        return run_spread(args, qemu, flash, efuse, workdir)
     if os.path.exists(log_path):
         os.remove(log_path)
 

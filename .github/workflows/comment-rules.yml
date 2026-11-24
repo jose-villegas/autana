@@ -268,12 +268,13 @@ jobs:
           path: |
             launcher/test/build/run-tool-tests.log
             launcher/test/build/run-tool-tests.${{ matrix.shard }}.times
+            launcher/test/build/run-tool-tests.${{ matrix.shard }}.order
           retention-days: 14
           if-no-files-found: ignore
 
-  # The required check: green when every shard is. It keeps the shards' seconds for the next run's shares and their
-  # logs as one artifact; the quiet run printed each failing suite's head, the whole log is what a fix is classified
-  # from.
+  # The required check: green when every shard is and the shards together ran each test file once. It keeps the
+  # shards' seconds for the next run's shares and their logs as one artifact; the quiet run printed each failing
+  # suite's head, the whole log is what a fix is classified from.
   tool-tests-windows:
     needs: [inputs, tool-tests-windows-shard]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
@@ -281,6 +282,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: tool-tests-windows-log-*
@@ -299,6 +301,9 @@ jobs:
           separate-directories: true
           delete-merged: true
           retention-days: 14
+      - name: The shards ran every test file once
+        if: ${{ !cancelled() }}
+        run: sh scripts/run-tool-tests.sh --list | diff - <(cat launcher/test/build/run-tool-tests.*.order | sort)
       - name: Every shard passed
         if: ${{ needs.tool-tests-windows-shard.result != 'success' }}
         run: exit 1
