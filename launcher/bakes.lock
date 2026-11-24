@@ -22,10 +22,10 @@ gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 [[bake]]
 output = "bistro.street_fitted_full.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "b011829a987c7ab27e14addf7806276572f892bdcc07cda7243bd12269617580"
+key = "f4b606f2b54dd6504dbc63921f92001fb3c6cde99fd7aca080321b9898397620"
 sha256 = "bee8e29a1b15155c17ce0fc73b96528b92515ea57ad26c4d0e35e46a54eabedd"
 size = 72100164
-run = 45407275514
+run = 45445585321
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
@@ -114,10 +114,10 @@ gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 [[bake]]
 output = "sponza.atrium_fitted_full.reference.tar.xz"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "62bbf6022b0841f7394683988b1e81e83f825a7890d4eb23642e59beff943d00"
+key = "0785eef5de3e2b7bf256c7aa5678879f00f37e814dc90e87d52e8fef705fc2db"
 sha256 = "3334acce21fcebcaf069e9ae4e8c7ea6e34e2cd86950916ba2dddc97e1ecf1a8"
 size = 182735544
-run = 45407275514
+run = 45445585321
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
