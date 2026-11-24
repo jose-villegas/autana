@@ -15,8 +15,8 @@
 #   scripts/run-tool-tests.sh --shard K/N    (the Kth of N shares, for N runners)
 #
 # The list comes from git on every run, so a test is found wherever it
-# lives and build output is never searched. The files that took longest last
-# run (run-tool-tests*.times beside the log) start first, then the largest.
+# lives and build output is never searched. The files that took longest in recent
+# runs (run-tool-tests*.times beside the log) start first, then the largest.
 # Exits 1 if any file fails; keeps running the rest so one broken file does
 # not hide another. A missing interpreter skips its language's files with a
 # warning and still exits 1; unlike scripts/git-hooks/pre-commit, this
@@ -119,21 +119,21 @@ case "$SHARD" in 1/1) TIMES="$BUILD_DIR/run-tool-tests.times" ;; *) TIMES="$BUIL
 # shellcheck disable=SC2086
 [ -z "$units" ] || { cat "$BUILD_DIR"/run-tool-tests*.times 2>/dev/null || :; (cd "$REPO_ROOT" && wc -c $units) | sed 's/^ */+ /'; } |
     awk '$1 != "+" { seconds[$2] = $1; next } $3 != "total" { print seconds[$3] + 0, $2, $3 }' |
-    sort -k1,1nr -k2,2nr |
+    sort -k1,1nr -k2,2nr | tee "$UNIT_DIR/known" |
     awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
         { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
           load[least] += $1 > 1 ? $1 : 1; if (least == s[1]) print $3 }' >"$UNIT_DIR/order"
 [ ! -s "$UNIT_DIR/order" ] || xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
 units=$(sort "$UNIT_DIR/order")
 
-: >"$TIMES"
+: >"$UNIT_DIR/times"
 unit_count=0
 for file in $units; do
     unit_count=$((unit_count + 1))
     key=$(printf '%s' "$file" | tr '/' '_')
     printf '== %s ==\n' "$file" >>"$QUIET_LOG"
     cat "$UNIT_DIR/$key.log" >>"$QUIET_LOG" 2>/dev/null || true
-    cat "$UNIT_DIR/$key.time" >>"$TIMES" 2>/dev/null || true
+    cat "$UNIT_DIR/$key.time" >>"$UNIT_DIR/times" 2>/dev/null || true
     rc=$(cat "$UNIT_DIR/$key.status" 2>/dev/null || echo 1)
     if [ "$rc" -ne 0 ]; then
         QUIET_STATUS=$rc
@@ -141,6 +141,10 @@ for file in $units; do
 }$file"
     fi
 done
+# A file's time depends on what ran beside it, so what is kept is the mean with
+# last run's, not this run's alone, or the shares swing from run to run.
+awk 'NR == FNR { known[$3] = $1; next } { print known[$2] ? int((known[$2] + $1 + 1) / 2) : $1, $2 }' \
+    "$UNIT_DIR/known" "$UNIT_DIR/times" >"$TIMES"
 [ "$VERBOSE" -eq 0 ] || cat "$QUIET_LOG"
 
 py_tests=$(grep -aoE '^Ran [0-9]+ tests? in' "$QUIET_LOG" | grep -oE '[0-9]+' | { sum=0; while read -r n; do sum=$((sum + n)); done; echo "$sum"; })
