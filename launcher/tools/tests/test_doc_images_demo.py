@@ -254,12 +254,13 @@ class DocImageFailureTest(unittest.TestCase):
             function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
             script = (ROOT / "scripts/lib/run.sh").read_text() + \
                 'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\nFIDELITY_FRAMES=5\nFIDELITY_DT=5000\n' + \
-                function + 'bake_and_render scratch gallery.paint painting\n'
+                function + 'bake_and_render gallery.scene.toml scratch gallery.paint painting\n'
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             # The scratch folder sits inside the repository, where the importer
             # writes only into a folder it is given.
             imported = (root / "import.argv").read_text().splitlines()
+            self.assertEqual(imported[0], "gallery.scene.toml")
             self.assertEqual(imported[imported.index("--out") + 1], "scratch")
             self.assertEqual((root / "pack.argv").read_text().splitlines(),
                              ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.bundle"])
@@ -292,6 +293,31 @@ class DocImageFailureTest(unittest.TestCase):
             log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
             self.assertEqual(result.returncode, 8, result.stderr + log)
             self.assertIn("import_dependency_ready", log)
+
+    def test_the_start_bake_reaches_every_animation_its_scene_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            # The stand-in importer gets mesh_import.py's arguments: $2 is the scene it bakes.
+            importer = root / "import.sh"
+            importer.write_text(
+                '#!/bin/sh\n'
+                'for clip in $(sed -n \'s/.*animation = "\\([^"]*\\)".*/\\1/p\' "$2"); do\n'
+                '    test -f "$(dirname "$2")/$clip" || { echo "missing $clip"; exit 7; }\n'
+                'done\necho animations_ready\nexit 8\n', encoding="utf-8")
+            importer.chmod(0o755)
+            source = APP_SCRIPT.read_text(encoding="utf-8")
+            function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
+            start = 'run mkdir -p "$W/start"' + source.split('run mkdir -p "$W/start"', 1)[1].split("\n#", 1)[0] + "\n"
+            script = root / "stage.sh"
+            script.write_text(
+                f'set -e\nW={(root / "work").as_posix()}\nID=sponza\nFULL=atrium_fitted_full\n'
+                f'MESH=sponza.atrium_fitted_full\nR3D_PYTHON={importer.as_posix()}\n'
+                f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\nSCENE={DEMO_SCENE.relative_to(ROOT).as_posix()}\n'
+                + (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8") + function + start, encoding="utf-8")
+            result = subprocess.run(["sh", script.as_posix()], cwd=ROOT, capture_output=True, text=True)
+            log = (root / "work/start/bake.log").read_text(encoding="utf-8")
+            self.assertEqual(result.returncode, 8, result.stderr + log)
+            self.assertIn("animations_ready", log)
 
 
 class PhysicalSceneTests(unittest.TestCase):

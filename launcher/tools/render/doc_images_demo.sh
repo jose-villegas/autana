@@ -153,13 +153,13 @@ run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames "$FIDELITY_FRAME
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
-# bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
-# import beside a link to the mesh source, pack MESH in place of the committed
-# one and render the fidelity poses to DIR.avi.
+# bake_and_render SCENE DIR MESH OBJECT: bake SCENE, whose import sits beside it
+# and may name the mesh source through DIR's link to it, into DIR, pack MESH in
+# place of the committed one and render the fidelity poses to DIR.avi.
 bake_and_render() {
-    dir=$1 mesh=$2 object=$3
+    scene=$1 dir=$2 mesh=$3 object=$4
     run ln -sfn "$PWD/$DEMO/source" "$dir/source"
-    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/$ID.scene.toml" --mesh "$mesh" --out "$dir" > "$dir/bake.log" 2>&1
+    run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$scene" --mesh "$mesh" --out "$dir" > "$dir/bake.log" 2>&1
     run "$PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" "$SCENE" --replace "$mesh=$dir/$mesh.bundle"
     AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
@@ -173,7 +173,7 @@ look_bake() {
     run mkdir -p "$W/indirect-$1"
     run cp "$DEMO/$ID.import.toml" "$W/indirect-$1/"
     run "$R3D_PYTHON" launcher/tools/render/physical_scene.py "$DEMO/$ID.scene.toml" "$W/indirect-$1/$ID.scene.toml" --look "$2"
-    bake_and_render "$W/indirect-$1" "$MESH" "$FULL"
+    bake_and_render "$W/indirect-$1/$ID.scene.toml" "$W/indirect-$1" "$MESH" "$FULL"
 }
 look_bake smooth smooth
 look_bake direct direct
@@ -206,10 +206,10 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-look.pn
     > "$W/indirect-look.log"
 
 # The simplifier against the fit: OBJECT's CPU start, the import simplified to
-# the fit's own budget, baked from the committed scene, beside the committed fit.
+# the fit's own budget, baked from the committed scene in place, so the paths it
+# names resolve, beside the committed fit.
 run mkdir -p "$W/start"
-run cp "$DEMO/$ID.import.toml" "$DEMO/$ID.scene.toml" "$W/start/"
-bake_and_render "$W/start" "$MESH" "$FULL"
+bake_and_render "$SCENE" "$W/start" "$MESH" "$FULL"
 #   against_reference <video> <heatmap image> <label>
 against_reference() {
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$2-unused.png" \
