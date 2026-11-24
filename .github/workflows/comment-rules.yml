@@ -250,7 +250,7 @@ jobs:
           npm ci --prefix scripts/gates
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: launcher/test/build/run-tool-tests.times
+          path: launcher/test/build/run-tool-tests.*.times
           key: tool-tests-windows-times-${{ github.run_id }}
           restore-keys: tool-tests-windows-times-
           enableCrossOsArchive: true
@@ -264,15 +264,16 @@ jobs:
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: tool-tests-windows-shard-${{ matrix.shard }}
+          name: tool-tests-windows-log-${{ matrix.shard }}
           path: |
             launcher/test/build/run-tool-tests.log
-            launcher/test/build/run-tool-tests.times
-          retention-days: 1
+            launcher/test/build/run-tool-tests.*.times
+          retention-days: 14
           if-no-files-found: ignore
 
-  # The required check: green when every shard is, with the shards' logs as one and their seconds kept for the
-  # next run's shares. The quiet run printed each failing suite's head; the whole log is what a fix is classified from.
+  # The required check: green when every shard is. It keeps the shards' seconds for the next run's shares and their
+  # logs as one artifact; the quiet run printed each failing suite's head, the whole log is what a fix is classified
+  # from.
   tool-tests-windows:
     needs: [inputs, tool-tests-windows-shard]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
@@ -282,27 +283,25 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: tool-tests-windows-shard-*
-      - name: One log and one table of seconds
-        run: |
-          mkdir -p launcher/test/build
-          cat tool-tests-windows-shard-*/run-tool-tests.log > launcher/test/build/run-tool-tests.log
-          cat tool-tests-windows-shard-*/run-tool-tests.times > launcher/test/build/run-tool-tests.times
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: tool-tests-windows-log
-          path: |
-            launcher/test/build/run-tool-tests.log
-            launcher/test/build/run-tool-tests.times
-          retention-days: 14
+          pattern: tool-tests-windows-log-*
+          path: launcher/test/build
+          merge-multiple: true
       - if: ${{ needs.tool-tests-windows-shard.result == 'success' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: launcher/test/build/run-tool-tests.times
+          path: launcher/test/build/run-tool-tests.*.times
           key: tool-tests-windows-times-${{ github.run_id }}
           enableCrossOsArchive: true
+      - uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tool-tests-windows-log
+          pattern: tool-tests-windows-log-*
+          separate-directories: true
+          delete-merged: true
+          retention-days: 14
       - name: Every shard passed
-        run: test "${{ needs.tool-tests-windows-shard.result }}" = success
+        if: ${{ needs.tool-tests-windows-shard.result != 'success' }}
+        run: exit 1
 
   # The generated-file sweep gets its own runner; banners define its inputs.
   generated-files:

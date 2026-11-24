@@ -16,7 +16,7 @@
 #
 # The list comes from git on every run, so a test is found wherever it
 # lives and build output is never searched. The files that took longest last
-# run (run-tool-tests.times beside the log) start first, then the largest.
+# run (run-tool-tests*.times beside the log) start first, then the largest.
 # Exits 1 if any file fails; keeps running the rest so one broken file does
 # not hide another. A missing interpreter skips its language's files with a
 # warning and still exits 1; unlike scripts/git-hooks/pre-commit, this
@@ -36,7 +36,7 @@ set -eu
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
 UNIT_DIR="$REPO_ROOT/launcher/test/build/run-tool-tests"
-TIMES="$REPO_ROOT/launcher/test/build/run-tool-tests.times"
+BUILD_DIR="$REPO_ROOT/launcher/test/build"
 
 # One file, run by xargs below: its output, status and seconds go beside
 # the others under UNIT_DIR, named by its path.
@@ -111,13 +111,14 @@ fi
 
 rm -rf "$UNIT_DIR"
 mkdir -p "$UNIT_DIR"
-[ -f "$TIMES" ] || : >"$TIMES"
+# This run's seconds; a shard's go in a file of its own, and every file is read.
+case "$SHARD" in 1/1) TIMES="$BUILD_DIR/run-tool-tests.times" ;; *) TIMES="$BUILD_DIR/run-tool-tests.${SHARD%/*}.times" ;; esac
 # Longest first: last run's seconds, then bytes, which order a first run. Of
 # N shards, each file goes to the one with the fewest seconds so far (a file
 # never timed counts one), and shard K runs its own.
 # shellcheck disable=SC2086
-[ -z "$units" ] || (cd "$REPO_ROOT" && wc -c $units) |
-    awk 'FILENAME == ARGV[1] { seconds[$2] = $1; next } $2 != "total" { print seconds[$2] + 0, $1, $2 }' "$TIMES" - |
+[ -z "$units" ] || { cat "$BUILD_DIR"/run-tool-tests*.times 2>/dev/null || :; (cd "$REPO_ROOT" && wc -c $units) | sed 's/^ */+ /'; } |
+    awk '$1 != "+" { seconds[$2] = $1; next } $3 != "total" { print seconds[$3] + 0, $2, $3 }' |
     sort -k1,1nr -k2,2nr |
     awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
         { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
