@@ -95,6 +95,7 @@ class SharedOwnerTests(unittest.TestCase):
                 patch.object(reference_render, 'load_source', return_value=source), \
                 patch.object(reference_render, 'RayQuery'), patch.object(reference_render, 'path_light_for'), \
                 patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [[0.] * 6])), \
+                patch.object(reference_render, 'gpu_workers', return_value=1), \
                 patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),
