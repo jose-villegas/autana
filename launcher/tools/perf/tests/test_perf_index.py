@@ -197,6 +197,9 @@ class Sync(Isolated):
             self.sync(self.dir / "store", "JV.local/user")
 
 
+HUNG_SECONDS = 5
+
+
 class RemoteCalls(unittest.TestCase):
     """network_git on a real git: aliases stand in for a remote that hangs, fails or answers late."""
 
@@ -226,11 +229,13 @@ class RemoteCalls(unittest.TestCase):
     def test_a_hung_call_is_stopped_with_its_children_and_tried_again(self):
         started = time.monotonic()
         with self.assertRaises(subprocess.TimeoutExpired):
-            self.call("echo started >> count; echo still connecting >&2; sleep 60", seconds=1)
+            # Each attempt's deadline leaves a loaded machine time to start git and its shell.
+            self.call("echo started >> count; echo still connecting >&2; sleep 60", seconds=HUNG_SECONDS)
         # The shell's sleep holds the output pipe: had only git been stopped, this would wait the full minute.
         self.assertLess(time.monotonic() - started, 30)
         self.assertEqual((self.dir / "count").read_text().split(), ["started"] * perf_index.NETWORK_ATTEMPTS)
-        self.assertIn(f"attempt 1 of {perf_index.NETWORK_ATTEMPTS}: no answer in 1 s: still connecting", self.said)
+        self.assertIn(f"attempt 1 of {perf_index.NETWORK_ATTEMPTS}: no answer in {HUNG_SECONDS} s: still connecting",
+                      self.said)
 
     def test_a_failing_call_is_tried_until_it_answers_on_the_last_attempt(self):
         self.assertEqual(self.call(self.answering_on(perf_index.NETWORK_ATTEMPTS)), "answered")

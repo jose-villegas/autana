@@ -10,6 +10,7 @@ from r3d import ray_query
 from r3d.geometry import corner_normals
 from r3d.light import LIGHT_GAMMA
 from r3d.ray_query import RayQuery
+from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
 
 # Every ray query the tests make, in the bake too, traces one ray at a time: no LLVM needed.
 ray_query.VARIANT = "scalar_rgb"
