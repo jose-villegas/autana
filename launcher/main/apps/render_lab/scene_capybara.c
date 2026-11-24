@@ -102,8 +102,8 @@ frame_subject(void) {
     const entity_t subject = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
     camera_entity = entity_find(capybara, camera);
     if (handle_is_none(subject) || handle_is_none(camera_entity) || renderer_mesh(subject) == NULL
-        || !lab_orbit_fit(&orbit, camera_entity, r3d_lit_mesh_bounding_sphere(renderer_mesh(subject)),
-                          &CAPYBARA_FRAME)) {
+        || !lab_orbit_fit(&orbit, camera_entity, r3d_lit_mesh_bounding_sphere(renderer_mesh(subject)), &CAPYBARA_FRAME,
+                          lab_view_orbit_zoom(&render_lab_view_tunables))) {
         fail("no capybara or camera");
         return false;
     }

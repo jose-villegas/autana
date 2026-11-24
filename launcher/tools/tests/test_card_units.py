@@ -27,6 +27,7 @@ from r3d.reference_render import camera_hidden, main
 from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
+from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
 
 
 # A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.

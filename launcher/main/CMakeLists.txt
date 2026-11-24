@@ -31,6 +31,7 @@ set(app_srcs
     "gfx/present/expand/gfx_quarter_select_pie.S"
     "gfx/present/gfx_mode.c"
     "gfx/present/modes/indexed/gfx_indexed.c"
+    "gfx/present/gfx_panel.c"
     "gfx/present/gfx_present.c"
     "input/touch/touch.c"
     "input/motion/imu_rest.c"
@@ -121,6 +122,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     launcher_glob(console_srcs
         "${CMAKE_CURRENT_LIST_DIR}/console/*.c"
         "${CMAKE_CURRENT_LIST_DIR}/*/console/*.c")
+    list(APPEND app_srcs "gfx/present/capture/panelcap.c")
     list(APPEND app_srcs ${console_srcs} "input/touch/touch_inject_fsm.c")
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs

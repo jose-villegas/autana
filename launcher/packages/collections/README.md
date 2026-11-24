@@ -15,6 +15,7 @@ headers and suites through `launcher/tools/build/packages.sh`.
 |---|---|
 | [include/collections/bits.h](include/collections/bits.h) | bits: one flag per index in caller-owned bytes or 32-bit words, bit 0 first; inline so an index folds into its caller. |
 | [include/collections/bytes.h](include/collections/bytes.h) | bytes: little-endian fields read from stored bytes at any alignment, the order every pack and wire format here uses. |
+| [include/collections/bytes_write.h](include/collections/bytes_write.h) | bytes_write: little-endian fields written at any alignment for pack and wire formats. |
 | [include/collections/flat_map.h](include/collections/flat_map.h) | flat_map: rows found by a 32-bit key the rows carry, kept in ascending key order by whoever wrote them, so a find is a binary search where the rows already sit and nothing is built or copied. |
 | [include/collections/mem.h](include/collections/mem.h) | mem: aligned slices of caller-owned storage. |
 | [include/collections/sort.h](include/collections/sort.h) | sort: stable in-place insertion sort of small arrays. |
