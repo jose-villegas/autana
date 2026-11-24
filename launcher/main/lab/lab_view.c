@@ -14,6 +14,7 @@ static const lab_view_spec_t specs[LAB_VIEW_COUNT] = {
     [LAB_VIEW_PRESENT] = {"present", CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_DOUBLE},
     [LAB_VIEW_LAYOUT] = {"layout", LAB_LAYOUT_FULL, LAB_LAYOUT_FULL, LAB_LAYOUT_COUNT - 1},
     [LAB_VIEW_ORBIT_MS] = {"orbit_ms", 0, 0, LAB_ORBIT_MAX_MS},
+    [LAB_VIEW_ORBIT_ZOOM] = {"orbit_zoom", LAB_ORBIT_ZOOM_UNIT, 1, LAB_ORBIT_ZOOM_MAX},
 };
 
 void
@@ -51,4 +52,9 @@ lab_view_layout(const lab_view_t* view) {
 int
 lab_view_orbit_ms(const lab_view_t* view) {
     return view->value[LAB_VIEW_ORBIT_MS];
+}
+
+float
+lab_view_orbit_zoom(const lab_view_t* view) {
+    return (float)view->value[LAB_VIEW_ORBIT_ZOOM] / (float)LAB_ORBIT_ZOOM_UNIT;
 }
