@@ -271,6 +271,17 @@ and blends are sampled.
 
 ### Exported animations
 
+A program can edit a keys file and keep its comments and layout:
+[`scene_edit.py`](../../../launcher/tools/scene/scene_edit.py) `read-keys`
+prints the keys as JSON, and `set-keys` writes a whole new list, each key as
+`FROM:T:EX,EY,EZ:LX,LY,LZ` (FROM is the key's index in the file, or `new`).
+The tool's `read` on a scene names each camera's keys file and whether a bake
+reads that path.
+
+```sh
+python launcher/tools/scene/scene_edit.py set-keys walk.keys.toml --key 0:0:0,1,5:0,1,0 --key new:1:3,1,3:0,1,0 --key 1:2.5:6,1,0:0,1,0
+```
+
 1. Animate in Blender and export glTF binary (`.glb`) with animation on. Name
    the action: the bake finds it by name. Blender exports keys as
    `LINEAR`, `STEP` or `CUBICSPLINE` per curve; a camera's field of view needs the

@@ -1,5 +1,6 @@
 """Runtime dependency checks for r3d tests that trace rays."""
 
+import atexit
 import ctypes
 import sys
 import unittest
@@ -23,7 +24,10 @@ try:
     from r3d import mitsuba_reference
 
     HAVE_MITSUBA = mitsuba_reference.import_mitsuba() is not None
+    # Dr.Jit loads LLVM on its first traced call, often after this import: pin it again at exit, which runs
+    # before Dr.Jit's own exit handler since that one was registered first.
     pin_llvm()
+    atexit.register(pin_llvm)
 except ImportError:
     HAVE_MITSUBA = False
 
