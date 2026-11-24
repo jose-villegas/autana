@@ -351,8 +351,8 @@ triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>.
 hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
 than the GPU, paid once per reference key: the fits that read a set share it.
 
-Since a set differs between CPU models, the bake locks it: the Bakes plan job chooses its poses once,
-its shards render those poses, and the join job packs what the fit reads
+Since a set differs between CPU models, the bake locks it: the Bakes reference job chooses its poses, renders
+them and packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.

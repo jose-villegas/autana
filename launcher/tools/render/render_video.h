@@ -4,9 +4,9 @@
  * at a time rather than held in memory. Pure C, host-only, see
  * render_host.c for the frame bytes each call is handed.
  *
- * RIFF AVI 1.0 stores its whole size in a 32-bit field, so callers must
- * check render_video_frames_that_fit() before opening a file: this module
- * does not refuse an oversized run itself.
+ * RIFF AVI 1.0 stores its whole size in a 32-bit field (4 GB), so callers
+ * must check render_video_frames_that_fit() before opening a file: this
+ * module does not refuse an oversized run itself.
  */
 #ifndef RENDER_VIDEO_H
 #define RENDER_VIDEO_H
