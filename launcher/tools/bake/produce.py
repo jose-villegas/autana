@@ -240,28 +240,22 @@ class PoseStore:
 
         return self.root / keys.digest(["reference pose", self.key, poses_text(width, height, lens, near, [pose])])
 
-    def keep(self, folder, make):
-        """keyed_folder(folder, make) for one traced pose, which is progress for the stage's guard: a set traces for
-        hours, and one still tracing is never taken for hung."""
-        from process_tree import progressed
-
-        keyed_folder(folder, make)
-        progressed()
-
 
 def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
     given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
     reading. Given `pose_key` and no `fresh`, its poses come from this cache's PoseStore; without one (a doc stage's
     or objects report's set, keyed apart from a bake's) every pose is traced. The log says whether it was rendered
-    or reused."""
+    or reused. Each pose traced is progress for the stage's guard: a set traces for hours, and one still tracing is
+    never taken for hung."""
+    from process_tree import progressed
     from r3d.reference_set import prepare_references, reference_inputs
 
     folder = pathlib.Path(fresh) / key if fresh else reference_folder(cache, key)
     reused = (folder / DONE).is_file()
     store = PoseStore(cache, pose_key) if pose_key and not fresh else None
 
-    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial, store))
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial, store, progressed))
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder

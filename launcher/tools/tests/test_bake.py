@@ -1972,10 +1972,11 @@ class ProduceTests(unittest.TestCase):
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
 
     def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
-        renders = []
+        renders, told = [], []
 
-        def prepare(inputs, partial, store=None):
+        def prepare(inputs, partial, store=None, progress=None):
             renders.append(inputs)
+            progress()  # one traced pose, with or without a pose store
             (partial / "frame.png").write_bytes(b"frame")
 
         def read(fresh=None):
@@ -1984,6 +1985,7 @@ class ProduceTests(unittest.TestCase):
         with mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
              mock.patch("r3d.reference_set.prepare_references", side_effect=prepare), \
              mock.patch.object(produce, "trace_machine", return_value=["cuda_ad_rgb", "GPU", "1.0"]), \
+             mock.patch("process_tree.progressed", side_effect=lambda: told.append(1)), \
              contextlib.redirect_stdout(io.StringIO()) as printed:
             read()
             read()
@@ -1992,6 +1994,7 @@ class ProduceTests(unittest.TestCase):
             read(self.root / "again")
             read(self.root / "again")
         self.assertEqual(len(renders), 2, "a set is rendered when missing, and once more in a run made again")
+        self.assertEqual(len(told), 2, "each traced pose of a set without a pose store tells the stage's guard")
         self.assertEqual(shared.stat().st_mtime_ns, made_at, "a run made again leaves the shared set alone")
         self.assertTrue((self.root / "again" / ("k" * 64) / produce.DONE).is_file())
         self.assertEqual(printed.getvalue().splitlines(),

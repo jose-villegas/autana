@@ -224,15 +224,16 @@ def link_or_copy(source, target):
         shutil.copyfile(source, target)
 
 
-def render_sets(inputs, sets, samples=4, store=None):
+def render_sets(inputs, sets, samples=4, store=None, progress=None):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
     reference_set.ReferenceInputs) on `reference_variant()`. Given a pose `store` (bake/produce.PoseStore), each pose
     is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
     each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
     The poses to trace go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is
-    traced alone either way, so its files do not depend on which process traced it."""
+    traced alone either way, so its files do not depend on which process traced it. progress() runs once per
+    traced pose, store or not: a caller under a stage guard passes its progress call."""
     if store is not None:
-        from bake.produce import DONE, read_references
+        from bake.produce import DONE, keyed_folder, read_references
     plans = []
     for poses_path, out in sets:
         out = pathlib.Path(out)
@@ -247,11 +248,13 @@ def render_sets(inputs, sets, samples=4, store=None):
         plans.append((out, target, folders, missing, [poses[index] for index in missing], (width, height, lens)))
 
     def traced(plan, index):
-        """Puts the `index`th traced pose of `plan` in the store."""
+        """Puts the `index`th traced pose of `plan` in the store, then tells progress."""
         _out, target, folders, missing, _poses, _size = plan
         if store is not None:
-            store.keep(folders[missing[index]], lambda folder: [
+            keyed_folder(folders[missing[index]], lambda folder: [
                 os.replace(target / f"{index:04d}{suffix}", folder / f"{POSE_NAME}{suffix}") for suffix in POSE_SUFFIXES])
+        if progress is not None:
+            progress()
 
     workers = gpu_workers(sum(len(plan[3]) for plan in plans))
     (trace_in_workers if workers > 1 else trace_here)(inputs, plans, samples, traced, workers)
@@ -302,17 +305,21 @@ def trace_here(inputs, plans, samples, traced, workers=1):
 def trace_in_workers(inputs, plans, samples, traced, workers):
     """The poses of `plans` traced by `workers` spawned processes (CUDA does not survive a fork), each loading the
     source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns, in
-    the order they finish."""
+    the order they finish. A pose that fails cancels the poses not yet started before it is raised."""
     tasks = [(plan, index) for plan in plans for index in range(len(plan[4]))]
     peaks = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
                                                 initializer=_load_worker, initargs=(inputs, samples, os.getpid())) as pool:
         futures = {pool.submit(_trace_task, (plan[1], index, plan[4][index], plan[5])): (plan, index)
                    for plan, index in tasks}
-        for future in concurrent.futures.as_completed(futures):
-            pid, peak = future.result()
-            traced(*futures[future])
-            peaks[pid] = max(peaks.get(pid, 0), peak)
+        try:
+            for future in concurrent.futures.as_completed(futures):
+                pid, peak = future.result()
+                traced(*futures[future])
+                peaks[pid] = max(peaks.get(pid, 0), peak)
+        except BaseException:
+            pool.shutdown(cancel_futures=True)
+            raise
     print(f"worker reference_poses pid={os.getpid()} traced={len(tasks)} gpu_workers={workers} "
           f"pose_peak_pss_bytes={sum(peaks.values())}", flush=True)
 

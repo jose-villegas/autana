@@ -423,10 +423,10 @@ class PoseStoreTests(unittest.TestCase):
     """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone, in this
     process or in CUDA workers alike."""
 
-    def render(self, poses_text, cache, out, key="render", workers=1):
-        """render_sets of one poses file holding `poses_text` with a PoseStore under `key`, its poses traced here or
-        by `workers` workers; returns the poses traced, each of which told the stage's guard once. A traced pose's
-        files hold its pose line, so a set shows which pose each index got."""
+    def render(self, poses_text, cache, out, key="render", workers=1, store=True):
+        """render_sets of one poses file holding `poses_text` with a PoseStore under `key` (none unless `store`), its
+        poses traced here or by `workers` workers; returns the poses traced, each of which told progress once. A
+        traced pose's files hold its pose line, so a set shows which pose each index got."""
         import contextlib
         import io
         from unittest.mock import patch
@@ -457,11 +457,11 @@ class PoseStoreTests(unittest.TestCase):
                 patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
                 patch.object(reference_render, "gpu_workers", return_value=workers), \
                 patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
-                patch("process_tree.progressed", side_effect=lambda: told.append(1)), \
                 patch.object(produce.keys, "gpu_name", return_value="GPU"), \
                 patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
                 contextlib.redirect_stdout(io.StringIO()):
-            reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key))
+            reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key) if store else None,
+                                         progress=lambda: told.append(1))
         self.assertEqual(len(told), len(traced), "each traced pose is progress for the stage's guard")
         return traced
 
@@ -489,6 +489,9 @@ class PoseStoreTests(unittest.TestCase):
                                      3, "another render key traces every pose")
                     self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
                                      "another pose size traces every pose")
+                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "sixth",
+                                                     workers=workers, store=False)), 3,
+                                     "without a store every pose is traced, each telling progress")
 
 
 # A floor and a wall in OBJ: a scene a spawned worker loads from its file.
