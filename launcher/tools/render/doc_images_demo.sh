@@ -3,14 +3,14 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only|--small-fill-only|--present-only]
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--small-fill-only|--present-only]
 #
 # OBJECT is the scene's fitted renderer, the one it ships. The scene's first
 # renderer is its showcase: the images that show the scene draw that one.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
-# --meshlets-only makes only the meshlet sheet; --present-only makes only the
-# three camera present GIFs (nearest, scanline, double) of the showcase.
+# --small-fill-only makes only the small-fill looks; --present-only makes only
+# the three camera present GIFs (nearest, scanline, double) of the showcase.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -20,8 +20,8 @@ set -eu
 
 . scripts/lib/run.sh
 
-[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
-    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only|--present-only]" >&2
+[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--small-fill-only|--present-only]" >&2
     exit 2
 }
 SCENE=$3
@@ -99,14 +99,7 @@ if [ "${5:-}" = --small-fill-only ]; then
     exit 0
 fi
 
-if [ "${5:-}" != --present-only ]; then
-run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$FULL.bmp" \
-    --scene "$ID" --object "$FULL" --view meshlets 2> "$W/meshlets-$FULL.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshlets.png" \
-    --still-column fitted "$W/meshlets-$FULL.bmp"
-[ "${5:-}" != --meshlets-only ] || exit 0
-small_fill_images
-fi
+[ "${5:-}" = --present-only ] || small_fill_images
 
 # One looping flythrough per present mode and view, the same three seconds of
 # it so the GIFs compare. Each keeps every rendered frame at the

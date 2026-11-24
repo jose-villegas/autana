@@ -28,11 +28,24 @@ other stages count everything their entry scripts import.
 | A start's or fit's code, with the same bytes out | only that bake: the fit and levels keys name the bytes they read |
 
 A branch that changes what a mesh is made from gets its bake from the
-Bakes workflow, which every push to a branch of this repository starts: its CPU job bakes the meshes the lock lacks and uploads them,
-and the lock check fails until the author runs `bake.py lock --from-run N`
-with that run and commits the lock. A branch keeps one Bakes run: a push cancels
-the run of the head before it, so wait for the run to finish before `lock --from-run`,
-which refuses one still going.
+Bakes workflow when it asks for one. A push runs only the lock check, on a hosted runner: it passes at once when
+nothing is missing, and otherwise fails naming the run to request. When it is the branch's turn to lock, request it:
+
+```sh
+gh workflow run bakes.yml --ref <branch>
+```
+
+That run's CPU job bakes the meshes the lock lacks and uploads them; the author then runs `bake.py lock --from-run N`
+with it and commits the lock, whose push passes the check.
+
+| Run | Bake jobs on the bakes runner | Lock check |
+|---|---|---|
+| a push to a branch | skipped, reported as success | runs; fails naming the run to request |
+| a requested run (`workflow_dispatch`) | bake what the lock lacks | runs; fails naming `lock --from-run` with this run |
+| a push to main | bake what the lock lacks | runs |
+
+A branch keeps one run of each: a push cancels the push run before it and a request the requested run before it,
+but a push never cancels a requested run. `lock --from-run` refuses a run still going.
 A fit needs the CUDA GPU, so the Bakes GPU workflow makes it, started by hand on the branch; no pull request reaches that
 runner. `--from-run` repeats, so the two runs lock together
 (`--from-run CPU --from-run GPU`); two runs that made one key with different
@@ -120,7 +133,7 @@ it; the Windows side, the board runner included, shares the VM's CPUs with it as
 
 No pull request starts the Bakes workflow, since a self-hosted runner never
 takes a pull request's code ([`check_workflows.py`](../../scripts/gates/check_workflows.py)).
-A pull request's bake checks are those of the push run on its head commit. A
+A pull request's bake checks are those of the Bakes runs on its head commit. A
 fork's pull request has none until a maintainer pushes its branch here; until
 then the hosted [`bakes-fork.yml`](../../.github/workflows/bakes-fork.yml)
 fails it when it needs a bake. While the machine is off, its jobs wait in GitHub's queue,
