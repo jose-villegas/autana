@@ -34,7 +34,6 @@
 
 typedef struct {
     uint8_t* storage;
-    void (*probe_copy)(uint8_t* dst, const uint8_t* src, size_t bytes);
     atomic_uint ready;
     uint8_t head[PANELCAP_HEAD_BYTES];
     recti_t dirty[PANELCAP_WINDOWS_MAX];

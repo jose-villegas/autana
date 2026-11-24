@@ -91,7 +91,7 @@ title Window header, one cell a byte
 |---|---|
 | PackBits | A signed header from 0 to 127 copies n+1 pixels. A header from -127 to -1 repeats one pixel 1–n times. -128 is a no-op. |
 | Storage | One `PANELCAP_IMAGE_BYTES` image, allocated at START from the app heap together with the encoder and packet buffers. |
-| Copies | Capture copies successful panel writes into PSRAM while the image is free. |
+| Copies | Capture copies successful panel writes into PSRAM while the image is free. The copy yields to split compute work while the present task holds the strip. |
 | Window merge | The latest write wins. Overlapping and rectangular adjacent regions merge. Overflow collapses the list to its bounding box. |
 | Publication | The FPS gate controls when a commit hands accumulated windows to the sender. Empty commits consume no FPS slot. |
 | Redraw | START requests a full redraw. Captured windows can cover lost bounds from their edges. The frame owner marks any remainder dirty. Indexed mode resends its lost strips. Bands and expanded pictures redraw in full. |
