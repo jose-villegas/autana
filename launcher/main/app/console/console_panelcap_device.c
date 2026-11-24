@@ -13,6 +13,8 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/capture/panelcap.h"
 #include "gfx/present/gfx_internal.h"
@@ -31,9 +33,24 @@ static bool redraw_full;
 static console_stream_t* stream;
 static panelcap_encoder_t* encoder;
 
+typedef enum {
+    PROBE_FULL,
+    PROBE_COPY,
+    PROBE_ENCODE,
+    PROBE_BURST,
+    PROBE_FAST,
+    PROBE_OTHER_CORE,
+} probe_mode_t;
+
+static probe_mode_t probe_mode;
+static atomic_bool burst;
+static int64_t probe_start_us;
+static const char* const probe_modes[] = {"full", "copy", "encode", "burst", "fast", "othercore"};
+
 static struct {
     uint64_t bytes;
     uint64_t encode_us;
+    uint64_t encode_cpu_us;
     uint64_t write_us;
     uint32_t sent;
     uint32_t failed;
@@ -42,6 +59,10 @@ static struct {
 
 static struct {
     uint64_t window_us;
+    uint64_t begin_us;
+    uint64_t commit_us;
+    uint64_t drain_us;
+    uint32_t frames;
     uint64_t redraw_pixels;
     uint32_t redraws;
 } present;
@@ -50,7 +71,9 @@ static void
 redraw(const void* payload) {
     (void)payload;
     if (console_panelcap_on) {
+        const int64_t started = timing_now_us();
         gfx_present_drain();
+        present.drain_us += (uint64_t)(timing_now_us() - started);
         const recti_t box = panelcap_redraw_requested(&capture);
         if (recti_is_empty(box)) {
             return;
@@ -71,19 +94,29 @@ CONSOLE_FRAME_SIGNAL(console_panelcap_redraw_slot, redraw)
 
 void
 console_panelcap_begin_active(void) {
-    if (panelcap_begin(&capture, timing_now_us())) {
+    const int64_t started = timing_now_us();
+    present.frames++;
+    if (panelcap_begin(&capture, started)) {
         (void)console_frame_post(console_frame_slots(), &console_panelcap_redraw_slot, NULL);
     }
+    present.begin_us += (uint64_t)(timing_now_us() - started);
 }
 
 void
 console_panelcap_commit_active(void) {
+    const int64_t started = timing_now_us();
     redraw_full |= !recti_is_empty(capture.owed) && gfx_frame_expanded();
     const uint32_t previous = capture.presents;
     panelcap_commit(&capture);
     if (capture.presents != previous) {
-        console_stream_wake(stream);
+        if (probe_mode == PROBE_COPY) {
+            panelcap_release(&capture, true);
+            sender.sent++;
+        } else {
+            console_stream_wake(stream);
+        }
     }
+    present.commit_us += (uint64_t)(timing_now_us() - started);
 }
 
 void
@@ -93,9 +126,22 @@ console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixel
     present.window_us += (uint64_t)(timing_now_us() - started);
 }
 
+static configRUN_TIME_COUNTER_TYPE
+probe_runtime_us(void) {
+    taskYIELD();
+    TaskStatus_t status;
+    vTaskGetInfo(NULL, &status, pdFALSE, eRunning);
+    return status.ulRunTimeCounter;
+}
+
 static size_t
 fill(void* arg, uint8_t* packet, size_t capacity, uint32_t write_us, bool sent) {
     panelcap_t* source = arg;
+    if (probe_mode == PROBE_BURST) {
+        sender.write_us += write_us;
+        sender.failed += write_us != 0 && !sent;
+        return atomic_load_explicit(&burst, memory_order_acquire) && sender.failed == 0 ? capacity : 0;
+    }
     if (encoder->part != 0) {
         sender.write_us += write_us;
         if (sender.last_part || !sent) {
@@ -109,9 +155,24 @@ fill(void* arg, uint8_t* packet, size_t capacity, uint32_t write_us, bool sent) 
     if (panelcap_peek(source) == NULL) {
         return 0;
     }
+    if (probe_mode == PROBE_ENCODE) {
+        const configRUN_TIME_COUNTER_TYPE cpu_start = probe_runtime_us();
+        const int64_t started = timing_now_us();
+        do {
+            (void)panelcap_fill(source, encoder, packet, capacity);
+        } while (packet[PANELCAP_PART_AT_LAST] == 0);
+        sender.encode_us += (uint64_t)(timing_now_us() - started);
+        sender.encode_cpu_us += probe_runtime_us() - cpu_start;
+        *encoder = (panelcap_encoder_t){0};
+        panelcap_release(source, true);
+        sender.sent++;
+        return 0;
+    }
+    const configRUN_TIME_COUNTER_TYPE cpu_start = probe_runtime_us();
     const int64_t started = timing_now_us();
     const size_t count = panelcap_fill(source, encoder, packet, capacity);
     sender.encode_us += (uint64_t)(timing_now_us() - started);
+    sender.encode_cpu_us += probe_runtime_us() - cpu_start;
     sender.last_part = packet[PANELCAP_PART_AT_LAST] != 0;
     return count;
 }
@@ -119,7 +180,7 @@ fill(void* arg, uint8_t* packet, size_t capacity, uint32_t write_us, bool sent) 
 static void
 ended(uint64_t sent, uint64_t packets, void* arg) {
     (void)arg;
-    sender.bytes = sent - (packets * PANELCAP_PART_HEAD_BYTES);
+    sender.bytes = probe_mode == PROBE_BURST ? sent : sent - (packets * PANELCAP_PART_HEAD_BYTES);
     atomic_store_explicit(&sender_done, true, memory_order_release);
 }
 
@@ -128,14 +189,25 @@ stop(void) {
     gfx_present_drain();
     const int64_t stop_us = timing_now_us();
     console_panelcap_on = false;
-    console_stream_close(stream, ended, NULL);
+    if (stream != NULL) {
+        atomic_store_explicit(&burst, false, memory_order_release);
+        console_stream_close(stream, ended, NULL);
+    }
     /* The frame owner frees the app block after the sender's last read. */
-    while (!atomic_load_explicit(&sender_done, memory_order_acquire)) {
+    while (stream != NULL && !atomic_load_explicit(&sender_done, memory_order_acquire)) {
         timing_sleep_ms(PANELCAP_STOP_WAIT_MS);
     }
     memory_free(encoder);
     encoder = NULL;
+    stream = NULL;
     char line[PANELCAP_LINE_BYTES];
+    (void)snprintf(line, sizeof line, "PANELCAP_STATS frames=%lu begin_us=%llu commit_us=%llu drain_us=%llu",
+                   (unsigned long)present.frames, (unsigned long long)present.begin_us,
+                   (unsigned long long)present.commit_us, (unsigned long long)present.drain_us);
+    console_emit_line_bounded(line);
+    (void)snprintf(line, sizeof line, "PANELCAP_STATS encode_cpu_us=%llu elapsed_us=%lld",
+                   (unsigned long long)sender.encode_cpu_us, (long long)(stop_us - probe_start_us));
+    console_emit_line_bounded(line);
     (void)snprintf(line, sizeof line, "PANELCAP_STATS encode_us=%llu write_us=%llu link_failed=%lu",
                    (unsigned long long)sender.encode_us, (unsigned long long)sender.write_us,
                    (unsigned long)sender.failed);
@@ -194,9 +266,9 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     }
     char line[PANELCAP_LINE_BYTES];
     const bool heap_ready = app_heap_active();
+    const size_t largest = heap_ready ? memory_largest_block(MEMORY_APP) : 0;
     encoder = heap_ready ? memory_alloc(PANELCAP_CAPTURE_BYTES, MEMORY_APP) : NULL;
     if (encoder == NULL) {
-        const size_t largest = heap_ready ? memory_largest_block(MEMORY_APP) : 0;
         (void)snprintf(line, sizeof line, PANELCAP_NO_MEMORY, PANELCAP_CAPTURE_BYTES, largest);
         console_panelcap_leave_launcher();
         reply(line);
@@ -206,44 +278,68 @@ console_panelcap_start(unsigned fps, console_reply_fn reply) {
     uint8_t* packet = image + PANELCAP_IMAGE_BYTES;
     uint8_t* scratch = packet + CONSOLE_PACKET_BYTES_MAX;
     (void)panelcap_init(&capture, image, fps);
+    capture.probe_fast = probe_mode == PROBE_FAST;
     redraw_full = false;
     memset(&sender, 0, sizeof sender);
     memset(&present, 0, sizeof present);
     *encoder = (panelcap_encoder_t){0};
     atomic_store_explicit(&sender_done, false, memory_order_relaxed);
-    const int core = configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1 : tskNO_AFFINITY;
-    stream =
-        console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch, PANELCAP_TASK_PRIORITY, core);
-    if (stream == NULL) {
+    const int core = probe_mode == PROBE_OTHER_CORE      ? 0
+                     : configNUMBER_OF_CORES > JOB_CORE1 ? JOB_CORE1
+                                                         : tskNO_AFFINITY;
+    memset(packet, 0, CONSOLE_PACKET_BYTES_MAX);
+    atomic_store_explicit(&burst, false, memory_order_relaxed);
+    if (probe_mode != PROBE_COPY) {
+        stream = console_stream_open_source(PANELCAP_PACKET_TAG, fill, &capture, packet, scratch,
+                                            PANELCAP_TASK_PRIORITY, core);
+    }
+    if (probe_mode != PROBE_COPY && stream == NULL) {
         memory_free(encoder);
         encoder = NULL;
-        console_panelcap_leave_launcher();
+        if (launcher_visit) {
+            launcher_visit = false;
+            app_arena_exit();
+        }
         reply(PANELCAP_NO_SENDER);
         return;
     }
     console_panelcap_on = true;
     gfx_request_full_redraw();
-    (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u image=%u", fps, (unsigned)PANELCAP_IMAGE_BYTES);
+    (void)snprintf(line, sizeof line, "PANELCAP_BEGIN fps=%u image=%u probe=%s largest=%zu core=%d priority=%u", fps,
+                   (unsigned)PANELCAP_IMAGE_BYTES, probe_modes[probe_mode], largest, core, PANELCAP_TASK_PRIORITY);
     reply(line);
-}
-
-static void
-answer(const void* payload) {
-    const unsigned fps = *(const unsigned*)payload;
-    if (fps == 0) {
-        console_panelcap_stop();
-    } else {
-        console_panelcap_start(fps, console_emit_line_bounded);
+    probe_start_us = timing_now_us();
+    if (probe_mode == PROBE_BURST) {
+        atomic_store_explicit(&burst, true, memory_order_release);
+        console_stream_wake(stream);
     }
 }
 
-CONSOLE_FRAME_SLOT(console_panelcap_slot, unsigned, 0, answer)
+typedef struct {
+    unsigned fps;
+    probe_mode_t mode;
+} probe_request_t;
+
+static void
+answer(const void* payload) {
+    const probe_request_t* request = payload;
+    if (request->fps == 0) {
+        console_panelcap_stop();
+    } else {
+        if (!console_panelcap_on) {
+            probe_mode = request->mode;
+        }
+        console_panelcap_start(request->fps, console_emit_line_bounded);
+    }
+}
+
+CONSOLE_FRAME_SLOT(console_panelcap_slot, probe_request_t, 0, answer)
 
 static void
 console_verb_panelcap(const char* args, console_reply_fn reply) {
-    unsigned fps = PANELCAP_FPS_DEFAULT;
+    probe_request_t request = {.fps = PANELCAP_FPS_DEFAULT};
     if (strcasecmp(args, "stop") == 0) {
-        fps = 0;
+        request.fps = 0;
     } else if (strcasecmp(args, "start") != 0) {
         char* end;
         if (strncasecmp(args, "start ", sizeof "start " - 1) != 0) {
@@ -251,13 +347,26 @@ console_verb_panelcap(const char* args, console_reply_fn reply) {
             return;
         }
         unsigned long parsed = strtoul(args + sizeof "start " - 1, &end, 10);
-        if (*end != '\0' || parsed == 0 || parsed > PANELCAP_FPS_MAX) {
+        if ((*end != '\0' && *end != ' ') || parsed == 0 || parsed > PANELCAP_FPS_MAX) {
             reply("PANELCAP_REFUSED: bad fps");
             return;
         }
-        fps = (unsigned)parsed;
+        request.fps = (unsigned)parsed;
+        if (*end == ' ') {
+            size_t i = 0;
+            for (; i < sizeof probe_modes / sizeof probe_modes[0]; i++) {
+                if (strcmp(end + 1, probe_modes[i]) == 0) {
+                    break;
+                }
+            }
+            if (i == sizeof probe_modes / sizeof probe_modes[0]) {
+                reply("PANELCAP_REFUSED: bad probe mode");
+                return;
+            }
+            request.mode = (probe_mode_t)i;
+        }
     }
-    (void)console_frame_post(console_frame_slots(), &console_panelcap_slot, &fps);
+    (void)console_frame_post(console_frame_slots(), &console_panelcap_slot, &request);
 }
 
 CONSOLE_VERB(panelcap, PANELCAP_ARGS_MAX, console_verb_panelcap)

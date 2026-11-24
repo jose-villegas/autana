@@ -23,3 +23,6 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 # every task, which the main task's stack-chain reserve has no room for. A
 # backtrace without it ends at the task function, which is all one needs.
 CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER=n
+
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y

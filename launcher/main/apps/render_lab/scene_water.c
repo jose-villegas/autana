@@ -20,6 +20,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+#include "esp_memory_utils.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+
 #include "board_config.h"
 #include "core/job.h"
 #include "core/timing.h"
@@ -639,6 +645,13 @@ scene_water_enter(const lab_scene_t* self) {
         fail("no memory for the water");
         return;
     }
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    ESP_LOGI(
+        TAG,
+        "WATER_PROBE core=%d priority=%u worker_core=%d worker_priority=%d split=%d grid_psram=%d particles_psram=%d",
+        xPortGetCoreID(), (unsigned)uxTaskPriorityGet(NULL), JOB_CORE1, JOB_CORE1_PRIORITY, two_core,
+        esp_ptr_external_ram(water.u), esp_ptr_external_ram(water.pos));
+#endif
     gravity_reset(&gravity);
     motion_seen = false;
     truncated = false;

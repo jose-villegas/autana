@@ -44,3 +44,6 @@ CONFIG_FREERTOS_TASK_FUNCTION_WRAPPER=n
 # The suites run on the main task. stack_chain_gate's deepest compiled chain
 # plus the gate's reserve needs 64 B above ESP-IDF's 3584 B default.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=3648
+
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
