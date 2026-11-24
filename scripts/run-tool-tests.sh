@@ -12,6 +12,7 @@
 #   scripts/run-tool-tests.sh
 #   scripts/run-tool-tests.sh --verbose
 #   scripts/run-tool-tests.sh --jobs N       (default: the CPU count)
+#   scripts/run-tool-tests.sh --shard K/N    (the Kth of N shares, for N runners)
 #
 # The list comes from git on every run, so a test is found wherever it
 # lives and build output is never searched. The files that took longest last
@@ -52,11 +53,13 @@ if [ "${1:-}" = --unit ]; then
 fi
 
 VERBOSE=0
+SHARD=1/1
 JOBS=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
-        --jobs) [ $# -ge 2 ] || { echo "--jobs needs a count" >&2; exit 2; }; JOBS=$2; shift ;;
+        --jobs | --shard) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
+            if [ "$1" = --jobs ]; then JOBS=$2; else SHARD=$2; fi; shift ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -109,11 +112,18 @@ fi
 rm -rf "$UNIT_DIR"
 mkdir -p "$UNIT_DIR"
 [ -f "$TIMES" ] || : >"$TIMES"
-# Longest first: last run's seconds, then bytes, which order a first run.
+# Longest first: last run's seconds, then bytes, which order a first run. Of
+# N shards, each file goes to the one with the fewest seconds so far (a file
+# never timed counts one), and shard K runs its own.
 # shellcheck disable=SC2086
 [ -z "$units" ] || (cd "$REPO_ROOT" && wc -c $units) |
     awk 'FILENAME == ARGV[1] { seconds[$2] = $1; next } $2 != "total" { print seconds[$2] + 0, $1, $2 }' "$TIMES" - |
-    sort -k1,1nr -k2,2nr | cut -d' ' -f3 | xargs -P "$JOBS" -n 1 sh "$0" --unit
+    sort -k1,1nr -k2,2nr |
+    awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
+        { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
+          load[least] += $1 > 1 ? $1 : 1; if (least == s[1]) print $3 }' >"$UNIT_DIR/order"
+xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
+units=$(sort "$UNIT_DIR/order")
 
 : >"$TIMES"
 unit_count=0

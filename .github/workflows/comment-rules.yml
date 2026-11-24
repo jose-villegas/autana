@@ -213,12 +213,17 @@ jobs:
   # The same suites on Windows, built by the dev machines' MinGW, so a Windows-only break (a PE link,
   # a CMake generator) goes red here rather than on a developer's desk. Not yet blocking: main still
   # fails here; the change that makes it pass removes continue-on-error.
-  tool-tests-windows:
+  tool-tests-windows-shard:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
-    name: Tool tests (Windows)
+    name: Tool tests (Windows) ${{ matrix.shard }}/2
     runs-on: windows-2025
     timeout-minutes: 90
+    # Two runners, each a share of the files by last run's seconds (run-tool-tests.sh --shard).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # A suite that crashes prints each thread's Python stack, so the log names where.
     env:
       PYTHONFAULTHANDLER: "1"
@@ -243,23 +248,61 @@ jobs:
           pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: launcher/test/build/run-tool-tests.times
+          key: tool-tests-windows-times-${{ github.run_id }}
+          restore-keys: tool-tests-windows-times-
+          enableCrossOsArchive: true
       - name: Tool tests
-        run: sh scripts/run-tool-tests.sh
+        run: sh scripts/run-tool-tests.sh --shard ${{ matrix.shard }}/2
       # A native crash past Python's own shutdown, where the faulthandler is off, is named by Windows' crash record.
       - name: Crashed processes
         if: ${{ failure() }}
         shell: pwsh
         run: Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, Message
-      # The quiet run prints each failing suite's head; the whole log is what a fix is classified from.
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tool-tests-windows-shard-${{ matrix.shard }}
+          path: |
+            launcher/test/build/run-tool-tests.log
+            launcher/test/build/run-tool-tests.times
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # The required check: green when every shard is, with the shards' logs as one and their seconds kept for the
+  # next run's shares. The quiet run printed each failing suite's head; the whole log is what a fix is classified from.
+  tool-tests-windows:
+    needs: [inputs, tool-tests-windows-shard]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
+    name: Tool tests (Windows)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: tool-tests-windows-shard-*
+      - name: One log and one table of seconds
+        run: |
+          mkdir -p launcher/test/build
+          cat tool-tests-windows-shard-*/run-tool-tests.log > launcher/test/build/run-tool-tests.log
+          cat tool-tests-windows-shard-*/run-tool-tests.times > launcher/test/build/run-tool-tests.times
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: tool-tests-windows-log
           path: |
             launcher/test/build/run-tool-tests.log
             launcher/test/build/run-tool-tests.times
           retention-days: 14
-          if-no-files-found: ignore
+      - if: ${{ needs.tool-tests-windows-shard.result == 'success' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: launcher/test/build/run-tool-tests.times
+          key: tool-tests-windows-times-${{ github.run_id }}
+          enableCrossOsArchive: true
+      - name: Every shard passed
+        run: test "${{ needs.tool-tests-windows-shard.result }}" = success
 
   # The generated-file sweep gets its own runner; banners define its inputs.
   generated-files:
