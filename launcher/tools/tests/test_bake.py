@@ -17,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import threading
 import time
 import types
 import unittest
@@ -1971,30 +1970,6 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(produce.keyed_folder(folder, make), folder)
         self.assertEqual(len(made), 1, "a done folder is not made again")
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
-
-    def test_a_reference_set_still_writing_pose_files_tells_the_stage_guard_and_an_idle_one_does_not(self):
-        folder = self.root / "partial"
-        folder.mkdir()
-        told, polled = [], threading.Event()
-        real_wait = threading.Event.wait
-
-        def wait(event, timeout=None):
-            # Each poll returns at once and is counted, so the test never sleeps a poll's length.
-            if timeout == produce.POSE_PROGRESS_POLL_S:
-                polled.set()
-            return real_wait(event, 0.01)
-
-        with mock.patch("process_tree.progressed", side_effect=lambda: told.append(1)),              mock.patch.object(threading.Event, "wait", wait):
-            with produce.poses_progress(folder):
-                self.assertTrue(real_wait(polled, 5))
-                self.assertEqual(told, [], "no pose file yet: no progress")
-                (folder / "0000.png").write_bytes(b"pose")
-                deadline = time.monotonic() + 5
-                while not told and time.monotonic() < deadline:
-                    time.sleep(0.01)
-                self.assertEqual(len(told), 1)
-                time.sleep(0.1)
-            self.assertEqual(len(told), 1, "the same files again are no progress")
 
     def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
         renders = []

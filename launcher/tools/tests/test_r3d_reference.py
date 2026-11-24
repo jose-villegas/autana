@@ -425,15 +425,15 @@ class PoseStoreTests(unittest.TestCase):
 
     def render(self, poses_text, cache, out, key="render", workers=1):
         """render_sets of one poses file holding `poses_text` with a PoseStore under `key`, its poses traced here or
-        by `workers` workers; returns the poses traced. A traced pose's files hold its pose line, so a set shows which
-        pose each index got."""
+        by `workers` workers; returns the poses traced, each of which told the stage's guard once. A traced pose's
+        files hold its pose line, so a set shows which pose each index got."""
         import contextlib
         import io
         from unittest.mock import patch
         from bake import produce
         from r3d import reference_render
 
-        traced = []
+        traced, told = [], []
 
         def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None):
             for index, pose in enumerate(poses):
@@ -457,10 +457,12 @@ class PoseStoreTests(unittest.TestCase):
                 patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
                 patch.object(reference_render, "gpu_workers", return_value=workers), \
                 patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
+                patch("process_tree.progressed", side_effect=lambda: told.append(1)), \
                 patch.object(produce.keys, "gpu_name", return_value="GPU"), \
                 patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
                 contextlib.redirect_stdout(io.StringIO()):
             reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key))
+        self.assertEqual(len(told), len(traced), "each traced pose is progress for the stage's guard")
         return traced
 
     def test_a_changed_pose_is_traced_again_and_the_rest_come_from_the_store(self):

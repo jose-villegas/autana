@@ -15,7 +15,6 @@ more, in a folder of its own and tracing every pose; a set or pose nothing has r
 deleted.
 """
 
-import contextlib
 import copy
 import importlib.metadata
 import json
@@ -26,7 +25,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import threading
 import time
 
 from bake import bake as keys
@@ -34,8 +32,6 @@ from bake import bake as keys
 KEY_INDEX = "keys"
 REFERENCES = "reference"
 REFERENCE_POSES = "reference-poses"
-# How often a reference set's render is looked at for the pose files it added: each is progress for a stage guard.
-POSE_PROGRESS_POLL_S = 60
 DONE = "done"
 PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
@@ -211,35 +207,6 @@ def prune_references(cache, now=None):
             continue  # gone already, or held open
 
 
-@contextlib.contextmanager
-def poses_progress(folder):
-    """While the block runs, tells the stage's guard each time `folder` holds more files than before: a reference set
-    traces for hours and writes each pose's files as it finishes it, so a set still tracing is never taken for hung.
-    A CPU trace's pose pool forks beside this thread safely: a child takes none of its locks, and the parent already
-    runs Dr.Jit's worker threads when it forks."""
-    from process_tree import progressed
-
-    stop = threading.Event()
-
-    def watch():
-        seen = 0
-        while not stop.wait(POSE_PROGRESS_POLL_S):
-            try:
-                count = sum(path.is_file() for path in pathlib.Path(folder).rglob("*"))
-            except OSError:
-                continue  # a folder renamed or removed while counting: count again next time
-            if count > seen:
-                seen = count
-                progressed()
-    watcher = threading.Thread(target=watch, daemon=True)
-    watcher.start()
-    try:
-        yield
-    finally:
-        stop.set()
-        watcher.join()
-
-
 # The one variant a reference set is baked on (r3d/README.md, "Reference on the GPU"); its row names the GPU.
 REFERENCE_VARIANT = "cuda_ad_rgb"
 
@@ -260,7 +227,7 @@ def reference_folder(cache, key):
 
 class PoseStore:
     """Traced poses in this cache's reference-poses/, one keyed_folder per pose: a digest of the pose as
-    fitted_variant.poses_text writes it (its size, lens and pose line), `key` (bake.py's "reference_pose" stage key:
+    reference_set.poses_text writes it (its size, lens and pose line), `key` (bake.py's "reference_pose" stage key:
     everything else its render reads) and trace_machine(). reference_render.render_sets traces only the poses it
     lacks."""
 
@@ -269,26 +236,32 @@ class PoseStore:
         self.key = keys.digest([key, *trace_machine()])
 
     def folder(self, width, height, lens, near, pose):
-        from r3d.fitted_variant import poses_text
+        from r3d.reference_set import poses_text
 
         return self.root / keys.digest(["reference pose", self.key, poses_text(width, height, lens, near, [pose])])
+
+    def keep(self, folder, make):
+        """keyed_folder(folder, make) for one traced pose, which is progress for the stage's guard: a set traces for
+        hours, and one still tracing is never taken for hung."""
+        from process_tree import progressed
+
+        keyed_folder(folder, make)
+        progressed()
 
 
 def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
     given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
-    reading. Given `pose_key` and no `fresh`, its poses come from this cache's PoseStore. The log says whether it
-    was rendered or reused."""
+    reading. Given `pose_key` and no `fresh`, its poses come from this cache's PoseStore; without one (a doc stage's
+    or objects report's set, keyed apart from a bake's) every pose is traced. The log says whether it was rendered
+    or reused."""
     from r3d.reference_set import prepare_references, reference_inputs
 
     folder = pathlib.Path(fresh) / key if fresh else reference_folder(cache, key)
     reused = (folder / DONE).is_file()
     store = PoseStore(cache, pose_key) if pose_key and not fresh else None
 
-    def make(partial):
-        with poses_progress(partial):
-            prepare_references(reference_inputs(job, scene), partial, store)
-    keyed_folder(folder, make)
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial, store))
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder

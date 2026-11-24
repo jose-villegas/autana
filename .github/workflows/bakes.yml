@@ -210,18 +210,6 @@ jobs:
         if: steps.missing.outputs.count != '0'
         run: python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
 
-      # Under WSL 2 Dr.Jit finds OptiX only through the Linux driver's libnvoptix, which the runner keeps in
-      # ~/gpu/optix (Bakes GPU's probe). A runner where Mitsuba cannot trace on CUDA fails here rather than lock a
-      # set traced on the CPU.
-      - name: Trace on Mitsuba's CUDA variant
-        if: steps.missing.outputs.count != '0'
-        run: |
-          echo "DRJIT_LIBOPTIX_PATH=$HOME/gpu/optix/libnvoptix.so.1" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$HOME/gpu/optix" >> "$GITHUB_ENV"
-          export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
-          python -c 'import sys; sys.path.insert(0, "launcher/tools"); from r3d.reference_render import reference_variant as variant
-          print(variant()); sys.exit(variant() != "cuda_ad_rgb")'
-
       - name: Trace and pack each set
         if: steps.missing.outputs.count != '0'
         env:
@@ -230,6 +218,9 @@ jobs:
           # A rerun first takes the sets its earlier attempts finished.
           earlier=()
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
+          # Under WSL 2 Dr.Jit finds OptiX only through the Linux driver's libnvoptix, kept in ~/gpu/optix (Bakes
+          # GPU's probe); a runner where Mitsuba cannot trace on CUDA fails the bake rather than lock a CPU trace.
+          . launcher/tools/r3d/optix_env.sh
           python scripts/lib/local_schedule.py start -- \
               python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
 

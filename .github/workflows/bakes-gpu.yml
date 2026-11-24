@@ -13,8 +13,8 @@ name: Bakes GPU
 # trace on the runner (its driver, OptiX, one small render), for the
 # path-traced backend. Under WSL 2 Dr.Jit finds OptiX only through the
 # Linux driver's libnvoptix (Mitsuba's OptiX setup page); the runner keeps a
-# copy in ~/gpu/optix, which the probe and the bake name in their own
-# environment, so a fit made `again` traces its fresh reference set on CUDA as
+# copy in ~/gpu/optix, which the probe and the bake name through
+# r3d/optix_env.sh, so a fit made `again` traces its fresh reference set on CUDA as
 # the Bakes reference job does.
 #
 # `runner` picks the self-hosted runner by a label of its own; the default
@@ -85,7 +85,7 @@ jobs:
 
       - name: One small render on cuda_ad_rgb
         run: |
-          export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
+          . launcher/tools/r3d/optix_env.sh
           sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
 
   gpu:
@@ -120,7 +120,7 @@ jobs:
           for name in $ONLY; do args+=(--only "$name"); done
           if [ "$AGAIN" = true ]; then args+=(--again); fi
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then args+=(--from-run "$GITHUB_RUN_ID"); fi
-          export DRJIT_LIBOPTIX_PATH="$HOME/gpu/optix/libnvoptix.so.1" LD_LIBRARY_PATH="$HOME/gpu/optix"
+          . launcher/tools/r3d/optix_env.sh
           sh scripts/ci/gpu_stage.sh sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake "${args[@]}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -232,7 +232,7 @@ def render_sets(inputs, sets, samples=4, store=None):
     The poses to trace go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is
     traced alone either way, so its files do not depend on which process traced it."""
     if store is not None:
-        from bake.produce import DONE, keyed_folder, read_references
+        from bake.produce import DONE, read_references
     plans = []
     for poses_path, out in sets:
         out = pathlib.Path(out)
@@ -250,7 +250,7 @@ def render_sets(inputs, sets, samples=4, store=None):
         """Puts the `index`th traced pose of `plan` in the store."""
         _out, target, folders, missing, _poses, _size = plan
         if store is not None:
-            keyed_folder(folders[missing[index]], lambda folder: [
+            store.keep(folders[missing[index]], lambda folder: [
                 os.replace(target / f"{index:04d}{suffix}", folder / f"{POSE_NAME}{suffix}") for suffix in POSE_SUFFIXES])
 
     workers = gpu_workers(sum(len(plan[3]) for plan in plans))
@@ -301,14 +301,17 @@ def trace_here(inputs, plans, samples, traced, workers=1):
 
 def trace_in_workers(inputs, plans, samples, traced, workers):
     """The poses of `plans` traced by `workers` spawned processes (CUDA does not survive a fork), each loading the
-    source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns."""
+    source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns, in
+    the order they finish."""
     tasks = [(plan, index) for plan in plans for index in range(len(plan[4]))]
     peaks = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
                                                 initializer=_load_worker, initargs=(inputs, samples, os.getpid())) as pool:
-        results = pool.map(_trace_task, [(plan[1], index, plan[4][index], plan[5]) for plan, index in tasks])
-        for (plan, index), (pid, peak) in zip(tasks, results):
-            traced(plan, index)
+        futures = {pool.submit(_trace_task, (plan[1], index, plan[4][index], plan[5])): (plan, index)
+                   for plan, index in tasks}
+        for future in concurrent.futures.as_completed(futures):
+            pid, peak = future.result()
+            traced(*futures[future])
             peaks[pid] = max(peaks.get(pid, 0), peak)
     print(f"worker reference_poses pid={os.getpid()} traced={len(tasks)} gpu_workers={workers} "
           f"pose_peak_pss_bytes={sum(peaks.values())}", flush=True)

@@ -374,12 +374,11 @@ from the same set.
 The path-traced backend runs on `cuda_ad_rgb` too where it loads a scene. Under WSL 2 the Windows driver ships only
 an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
-`libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
-profile:
+`libnvidia-gpucomp` and `nvoptix.bin` sit in `~/gpu/optix`, which [optix_env.sh](optix_env.sh) names to the shell
+that traces, never to the shell's profile:
 
 ```sh
-DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
-    sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+(. launcher/tools/r3d/optix_env.sh && sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py)
 ```
 
 The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba
