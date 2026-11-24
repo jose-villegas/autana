@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 45 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 124 | 26 | 0 |
+| [render](#render) | 120 | 26 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -225,10 +225,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/bistro-street_fitted_full-probes-3.png"><img src="../images/render/bistro-street_fitted_full-probes-3.png" width="160" alt=""></a> | Bistro probes from above the -x -z corner | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
 | <a href="../images/render/bistro-street_fitted_full-probes-4.png"><img src="../images/render/bistro-street_fitted_full-probes-4.png" width="160" alt=""></a> | Bistro probes from above the +x -z corner | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
 | <a href="../images/render/bistro-street_fitted_full-probes-orbit.gif"><img src="figure-thumbnails/render/bistro-street_fitted_full-probes-orbit.gif" width="160" alt=""></a> | Bistro probes, circling | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
-| <a href="../images/render/cards-atrium_fitted_full-cards.png"><img src="../images/render/cards-atrium_fitted_full-cards.png" width="160" alt=""></a> | The cards on the background | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
-| <a href="../images/render/cards-atrium_fitted_full-composite.png"><img src="../images/render/cards-atrium_fitted_full-composite.png" width="160" alt=""></a> | The cards over the light-only render | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
-| <a href="../images/render/cards-atrium_fitted_full-light-only.png"><img src="../images/render/cards-atrium_fitted_full-light-only.png" width="160" alt=""></a> | The foliage hidden from the camera | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
-| <a href="../images/render/cards-atrium_fitted_full-source.png"><img src="../images/render/cards-atrium_fitted_full-source.png" width="160" alt=""></a> | The source with its foliage | [render/offline/Appearance-Fit](../render/offline/Appearance-Fit.md) | not declared yet |
 | <a href="../images/render/contact-blob-atrium.png"><img src="../images/render/contact-blob-atrium.png" width="160" alt=""></a> | A skinned mover with its contact blob on the floor of a baked atrium | [render/Lighting](../render/Lighting.md) | not declared yet |
 | <a href="../images/render/contact-disc.png"><img src="../images/render/contact-disc.png" width="160" alt=""></a> | The dithered disc at strengths 0.25, 0.5, 0.75 and 1, then the share of pixels halved against distance from the centre, drawn and modelled | [render/frame/Contact-Shadows](../render/frame/Contact-Shadows.md) | [contact_figures.py](../../launcher/tools/r3d/contact/contact_figures.py) |
 | <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
