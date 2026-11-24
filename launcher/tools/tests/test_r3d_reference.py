@@ -435,17 +435,19 @@ class PoseStoreTests(unittest.TestCase):
 
         traced = []
 
-        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False):
+        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None):
             for index, pose in enumerate(poses):
                 traced.append(list(pose))
                 for suffix in reference_render.POSE_SUFFIXES:
                     (target / f"{index:04d}{suffix}").write_text(repr([float(value) for value in pose]))
+                done(index)
             return 0, 1
 
-        def fake_workers(inputs, plans, samples, count):
+        def fake_workers(inputs, plans, samples, done, count):
             self.assertEqual(count, workers)
-            for _out, target, _folders, _missing, poses, size in plans:
-                fake_render(None, None, None, poses, *size, samples, target)
+            for plan in plans:
+                _out, target, _folders, _missing, poses, size = plan
+                fake_render(None, None, None, poses, *size, samples, target, done=lambda index: done(plan, index))
 
         poses = out.parent / f"{out.name}.txt"
         poses.write_text(poses_text)
@@ -456,6 +458,7 @@ class PoseStoreTests(unittest.TestCase):
                 patch.object(reference_render, "gpu_workers", return_value=workers), \
                 patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
                 patch.object(produce.keys, "gpu_name", return_value="GPU"), \
+                patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
                 contextlib.redirect_stdout(io.StringIO()):
             reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key))
         return traced
@@ -486,6 +489,65 @@ class PoseStoreTests(unittest.TestCase):
                                      "another pose size traces every pose")
 
 
+# A floor and a wall in OBJ: a scene a spawned worker loads from its file.
+WALL_OBJ = """mtllib box.mtl
+v -2 -2 0
+v 2 -2 0
+v 2 2 0
+v -2 2 0
+v 1 -2 0
+v 1 2 0
+v 1 2 2
+v 1 -2 2
+vt 0 0
+usemtl white
+f 1/1 2/1 3/1
+f 1/1 3/1 4/1
+f 5/1 6/1 7/1
+f 5/1 7/1 8/1
+"""
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class WorkerTraceTests(unittest.TestCase):
+    """Poses traced by spawned CUDA workers are the bytes one process writes for them."""
+
+    @needs_mitsuba
+    def test_two_cuda_workers_write_the_files_one_process_writes(self):
+        import contextlib
+        import io
+        import tempfile
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.fitted_variant import poses_text
+        from r3d.reference_set import ReferenceInputs
+
+        if reference_render.reference_variant() != "cuda_ad_rgb":
+            self.skipTest("needs Mitsuba's CUDA variant")
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "box.obj").write_text(WALL_OBJ)
+            (root / "box.mtl").write_text("newmtl white\nKd 0.8 0.8 0.8\n")
+            settings = SimpleNamespace(source={"path": root / "box.obj"}, path=root / "box.obj", alpha_keep=None,
+                                       double_sided=set(), cards=None, seed=1)
+            inputs = ReferenceInputs(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None, indirect=None),
+                                     lights=[soup.sun([0.3, 0.2, -1.0], [1.0, 1.0, 1.0], 1.0)], indirect=None,
+                                     tonemap_white=2.0, camera=SimpleNamespace(background=0x123456), size=(8, 8),
+                                     poses={})
+            poses = root / "poses.txt"
+            poses.write_text(poses_text(8, 8, 1.0, 0.01, [(LOOK_DOWN + [x, 0.0, 2.0, 0.0, 0.0, 0.0]).tolist()
+                                                         for x in (-0.5, 0.0, 0.5, 1.0)]))
+            for workers in (1, 2):
+                with patch.object(reference_render, "gpu_workers", return_value=workers), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    reference_render.render_sets(inputs, [(poses, root / str(workers))])
+            names = sorted(path.name for path in (root / "1").iterdir())
+            self.assertEqual(len(names), 4 * len(reference_render.POSE_SUFFIXES))
+            self.assertEqual(sorted(path.name for path in (root / "2").iterdir()), names)
+            for name in names:
+                self.assertEqual((root / "1" / name).read_bytes(), (root / "2" / name).read_bytes(), name)
+
+
 class GpuWorkerTests(unittest.TestCase):
     """CUDA poses go to as many worker processes as host and GPU memory hold; off CUDA to this process."""
 
@@ -495,6 +557,7 @@ class GpuWorkerTests(unittest.TestCase):
         from r3d import reference_render
         available = tuple(floor + room * cost for floor, cost in zip(budget.FLOORS, budget.REFERENCE_GPU_BYTES))
         with patch.object(reference_render, "reference_variant", return_value=variant), \
+                patch.object(reference_render.sys, "platform", "linux"), \
                 patch.object(budget, "available_bytes", return_value=available), \
                 patch.object(budget, "cores_available", return_value=32):
             return reference_render.gpu_workers(poses)

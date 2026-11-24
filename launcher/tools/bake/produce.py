@@ -1,14 +1,15 @@
 """Making a bake (bake.py bake): runs its stage's tool into the cache and records which bytes the
 key got. Needs the tool's environment: the r3d requirements for a mesh or a reference set, and for a fit
 also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). A reference set traces on the CUDA GPU where
-Mitsuba loads a scene there, else on the CPU (reference_render.reference_variant). Before it runs, every
+Mitsuba loads a scene there, else on the CPU (reference_render.reference_variant); a reference bake fails off
+CUDA (REFERENCE_VARIANT). Before it runs, every
 requirement pin the key counts must match what is installed, so a key never names bytes made with other packages.
 A bake made on the GPU, a fit or a reference set traced there, names the GPU in its row.
 
 A fit's start is a mesh bake of its own and its reference set a reference bake; the fit reads the bytes its key
 names, from the lock or this cache, so any GPU host fits from the same inputs. A reference bake renders its set
-once per reference key into the cache's reference/ folder, where the doc stages read the held-out references
-too, and packs what the fit reads. Each pose of a set is traced once per pose key into reference-poses/ (PoseStore),
+once per reference key and machine (reference_folder) into the cache's reference/ folder, where the doc stages
+read the held-out references too, and packs what the fit reads. Each pose of a set is traced once per pose key into reference-poses/ (PoseStore),
 so a set whose key changed traces only the poses whose own inputs changed. A run made `again` renders each set once
 more, in a folder of its own and tracing every pose; a set or pose nothing has read for REFERENCE_KEEP_DAYS is
 deleted.
@@ -239,32 +240,38 @@ def poses_progress(folder):
         watcher.join()
 
 
+# The one variant a reference set is baked on (r3d/README.md, "Reference on the GPU"); its row names the GPU.
+REFERENCE_VARIANT = "cuda_ad_rgb"
+
+
+def trace_machine():
+    """What a reference trace's bytes differ by besides its inputs: the Mitsuba variant it traces on, the GPU and its
+    driver. A set's folder and each PoseStore key name it, so nothing traced on another machine, variant or driver
+    is ever taken for this one's."""
+    from r3d.reference_render import reference_variant
+
+    return [reference_variant(), keys.gpu_name(), keys.gpu_driver()]
+
+
+def reference_folder(cache, key):
+    """Where this cache keeps the reference set of `key` traced on this machine (trace_machine)."""
+    return pathlib.Path(cache) / REFERENCES / keys.digest([key, *trace_machine()])
+
+
 class PoseStore:
-    """Traced poses in this cache's reference-poses/, one folder per pose key: a digest of the pose's text (its
-    poses file's size and lens lines and its pose line) and `key`, everything else the pose's render reads
-    (bake.py, the stages' "reference_pose" key) with the variant and GPU it traces on. reference_render.render_sets
-    traces only the poses it does not hold."""
+    """Traced poses in this cache's reference-poses/, one keyed_folder per pose: a digest of the pose as
+    fitted_variant.poses_text writes it (its size, lens and pose line), `key` (bake.py's "reference_pose" stage key:
+    everything else its render reads) and trace_machine(). reference_render.render_sets traces only the poses it
+    lacks."""
 
     def __init__(self, cache, key):
-        from r3d.reference_render import reference_variant
-
         self.root = pathlib.Path(cache) / REFERENCE_POSES
-        self.key = keys.digest([key, reference_variant(), keys.gpu_name()])
+        self.key = keys.digest([key, *trace_machine()])
 
-    def folder(self, text):
-        return self.root / keys.digest(["reference pose", self.key, text])
+    def folder(self, width, height, lens, near, pose):
+        from r3d.fitted_variant import poses_text
 
-    @staticmethod
-    def holds(folder):
-        return (folder / DONE).is_file()
-
-    @staticmethod
-    def fill(folder, make):
-        keyed_folder(folder, make)
-
-    @staticmethod
-    def read(folder):
-        read_references(folder)
+        return self.root / keys.digest(["reference pose", self.key, poses_text(width, height, lens, near, [pose])])
 
 
 def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
@@ -274,7 +281,7 @@ def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
     was rendered or reused."""
     from r3d.reference_set import prepare_references, reference_inputs
 
-    folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
+    folder = pathlib.Path(fresh) / key if fresh else reference_folder(cache, key)
     reused = (folder / DONE).is_file()
     store = PoseStore(cache, pose_key) if pose_key and not fresh else None
 
@@ -304,11 +311,14 @@ def produce_reference(bake, cache, fresh_references):
     from r3d.reference_render import reference_variant
     from r3d.reference_set import pack_references, reference_inputs
 
+    if reference_variant() != REFERENCE_VARIANT:
+        raise keys.SettingsError(f"{bake.output}: a reference set is baked on Mitsuba's {REFERENCE_VARIANT} only, and "
+                                 f"this machine traces on {reference_variant()} (r3d/README.md, \"Reference on the GPU\")")
     folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references, bake.stages.get("reference_pose"))
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
-        return record(bake, target, cache, on_gpu=reference_variant().startswith("cuda"))
+        return record(bake, target, cache, on_gpu=True)
 
 
 def produce_fit(bake, cache, lock):

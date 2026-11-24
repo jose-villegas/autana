@@ -346,6 +346,8 @@ recipe weight and a margin in each triangle's start edge scale;
 
 A reference set traces its rays and bounced light on the fastest variant the machine runs
 (`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
+A bake takes `cuda_ad_rgb` only (`produce.REFERENCE_VARIANT`) and fails on any other, so a locked set is always a
+GPU trace; tools that only look at a set may trace one on the CPU.
 A pose's trace is NumPy-bound on the CPU and leaves the GPU mostly idle, so on CUDA spawned worker processes trace
 the poses side by side (`reference_render.gpu_workers`), as many as free host and GPU memory hold at
 `process_budget.REFERENCE_GPU_BYTES` each. Each pose is traced alone with its own seeds, so its files do not depend
@@ -357,10 +359,11 @@ misses by the build, which the fit would turn into a different mesh. So a set is
 runner's GPU: two traces of one set there make the same bytes. Its bytes differ between GPU models, so its lock row
 names the `gpu`, as a fit's does.
 
-Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by its pose line
-and the `reference_pose` key: the set's recipe without what only picks the poses, the variant, the GPU and the code
-`render_sets` reaches. A set traces only the poses the store lacks and links the rest, so moving one camera pose
-re-traces that pose alone. The lock still records the packed set only.
+Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by the pose as
+`poses_text` writes it, the `reference_pose` key (the set's recipe without what only picks the poses, and the code
+`lit_source` and `_write_pose` reach) and `produce.trace_machine`: the variant, the GPU and its driver, which a set's
+cache folder names too. A set traces only the poses the store lacks, puts each in as it finishes and links the
+rest, so moving one camera pose re-traces that pose alone. The lock still records the packed set only.
 
 Since a set differs between GPU models, the bake locks it: the Bakes reference job chooses its poses, renders
 them and packs what the fit reads

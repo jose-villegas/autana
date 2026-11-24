@@ -1,4 +1,5 @@
-"""native/shared_library.py: a process that cannot replace a library another process has loaded loads that one."""
+"""native/shared_library.py: a process that cannot replace a library another process has loaded loads that one
+when it is current, and fails otherwise."""
 
 import pathlib
 import sys
@@ -38,6 +39,17 @@ class BuildSharedTests(unittest.TestCase):
             loaded = pathlib.Path(self.build(cache, held))
             self.assertEqual(loaded.read_bytes(), b"theirs")
             self.assertEqual([path.name for path in cache.iterdir()], [loaded.name], "our copy is dropped")
+
+    def test_a_held_library_older_than_its_sources_still_fails(self):
+        import os
+        with tempfile.TemporaryDirectory() as folder:
+            def stale(building, path):
+                path.write_bytes(b"theirs")
+                os.utime(path, (0, 0))  # built before the source changed
+                raise PermissionError("in use")
+
+            with self.assertRaises(PermissionError):
+                self.build(pathlib.Path(folder) / ".cache", stale)
 
     def test_a_permission_error_with_no_library_in_place_still_fails(self):
         with tempfile.TemporaryDirectory() as folder:

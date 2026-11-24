@@ -1253,7 +1253,28 @@ class GpuRowTests(FittedBakeCase):
                 self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache,
                                                        on_gpu=True))
 
-    def test_a_fit_and_a_reference_set_traced_on_cuda_name_the_gpu_and_a_cpu_trace_does_not(self):
+    def test_the_driver_is_read_from_nvidia_smi(self):
+        with mock.patch.object(bake, "NVIDIA_SMI_DRIVER", (sys.executable, "-c", "print('581.57'); print('x')")):
+            self.assertEqual(bake.gpu_driver(), "581.57")
+        with mock.patch.object(bake, "NVIDIA_SMI_DRIVER", (str(self.root / "no-nvidia-smi"),)):
+            self.assertIsNone(bake.gpu_driver())
+
+    def test_a_reference_set_and_its_poses_are_kept_apart_per_variant_gpu_and_driver(self):
+        machines = [("cuda_ad_rgb", self.GPU, "581.57"), ("llvm_ad_rgb", self.GPU, "581.57"),
+                    ("cuda_ad_rgb", "NVIDIA GeForce RTX 2060", "581.57"), ("cuda_ad_rgb", self.GPU, "590.10")]
+        folders, stores = set(), set()
+        for variant, gpu, driver in machines:
+            module = types.SimpleNamespace(reference_variant=lambda variant=variant: variant)
+            with mock.patch.dict(sys.modules, {"r3d.reference_render": module}), \
+                    mock.patch.object(bake, "gpu_name", return_value=gpu), \
+                    mock.patch.object(bake, "gpu_driver", return_value=driver), \
+                    mock.patch.object(produce, "keyed_folder", side_effect=lambda folder, make: folders.add(folder)), \
+                    mock.patch.object(produce, "read_references"):
+                produce.reference_set("r" * 64, None, None, self.cache)
+                stores.add(produce.PoseStore(self.cache, "p" * 64).key)
+        self.assertEqual((len(folders), len(stores)), (len(machines), len(machines)))
+
+    def test_a_fit_and_a_reference_set_name_the_gpu_and_a_reference_set_bakes_only_on_cuda(self):
         start = self.root / "start.bundle"
         start.write_bytes(b"start")
         item = dataclasses.replace(bake_of("r" * 64, self.root / "set.tar.xz", kind="reference"), stages={})
@@ -1263,7 +1284,7 @@ class GpuRowTests(FittedBakeCase):
         def fit_stub(*args, target, **kwargs):
             target.write_bytes(b"fit")
 
-        for variant, named in (("cuda_ad_rgb", True), ("llvm_ad_rgb", False)):
+        for variant, baked in (("cuda_ad_rgb", True), ("llvm_ad_rgb", False)):
             modules = {"r3d.reference_render": types.SimpleNamespace(reference_variant=lambda variant=variant: variant),
                        "r3d.reference_set": types.SimpleNamespace(reference_inputs=mock.MagicMock(),
                                                                   pack_references=lambda *args: b"packed",
@@ -1273,8 +1294,11 @@ class GpuRowTests(FittedBakeCase):
                     mock.patch.object(bake, "gpu_name", return_value=self.GPU), \
                     mock.patch.object(produce, "reference_set", return_value=self.root), \
                     mock.patch.object(produce, "input_file", return_value=start):
-                self.assertEqual(produce.produce_reference(item, self.cache, None).get("gpu"),
-                                 self.GPU if named else None)
+                if baked:
+                    self.assertEqual(produce.produce_reference(item, self.cache, None)["gpu"], self.GPU)
+                else:
+                    with self.assertRaisesRegex(bake.SettingsError, "cuda_ad_rgb only"):
+                        produce.produce_reference(item, self.cache, None)
                 self.assertEqual(produce.produce_fit(fit, self.cache, {})["gpu"], self.GPU)
 
     def test_a_rerun_adopts_a_gpu_row_only_on_the_same_gpu_and_a_cpu_row_on_any(self):
@@ -1984,10 +2008,11 @@ class ProduceTests(unittest.TestCase):
 
         with mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
              mock.patch("r3d.reference_set.prepare_references", side_effect=prepare), \
+             mock.patch.object(produce, "trace_machine", return_value=["cuda_ad_rgb", "GPU", "1.0"]), \
              contextlib.redirect_stdout(io.StringIO()) as printed:
             read()
             read()
-            shared = self.cache / produce.REFERENCES / ("k" * 64) / produce.DONE
+            shared = produce.reference_folder(self.cache, "k" * 64) / produce.DONE
             made_at = shared.stat().st_mtime_ns
             read(self.root / "again")
             read(self.root / "again")

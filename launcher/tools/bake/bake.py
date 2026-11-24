@@ -125,6 +125,7 @@ ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu",
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
+NVIDIA_SMI_DRIVER = ("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
 GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
@@ -135,8 +136,8 @@ STAGES = {
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
                   "r3d/reference_render.py:render_sets"),
-    # One traced pose of a reference set (produce.PoseStore): only the code its render reaches.
-    "reference_pose": ("r3d/reference_render.py:render_sets",),
+    # One traced pose of a reference set (produce.PoseStore): the source it is traced from and its trace and files.
+    "reference_pose": ("r3d/reference_render.py:lit_source", "r3d/reference_render.py:_write_pose"),
     "fit": ("r3d/fit/stage.py:fit", "r3d/reference_set.py:unpack_references"),
     "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
@@ -1201,12 +1202,22 @@ def cpu_vendor():
 
 def gpu_name():
     """The first GPU nvidia-smi names (NVIDIA GeForce RTX 2060), None where there is none."""
+    return first_gpu(NVIDIA_SMI_NAME)
+
+
+def gpu_driver():
+    """The first GPU's driver version as nvidia-smi gives it (581.57), None where there is none."""
+    return first_gpu(NVIDIA_SMI_DRIVER)
+
+
+def first_gpu(query):
+    """The first line nvidia-smi answers `query` with, None without nvidia-smi or an answer."""
     try:
-        names = subprocess.run(NVIDIA_SMI_NAME, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
+        lines = subprocess.run(query, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
                                stdin=subprocess.DEVNULL).stdout.splitlines()
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return names[0].strip() if names and names[0].strip() else None
+    return lines[0].strip() if lines and lines[0].strip() else None
 
 
 def from_made(bake, lock, made):

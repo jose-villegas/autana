@@ -216,14 +216,6 @@ POSE_SUFFIXES = (".png", ".linear.npy", ".normal.npy")
 POSE_NAME = "pose"
 
 
-def pose_texts(poses_path):
-    """Each pose of a poses file as the text that alone decides its render: the file's size and lens lines and
-    its own pose line."""
-    lines = pathlib.Path(poses_path).read_text().splitlines()
-    header = [line for line in lines if not line.startswith("pose ")]
-    return ["\n".join([*header, line]) + "\n" for line in lines if line.startswith("pose ")]
-
-
 def link_or_copy(source, target):
     target.unlink(missing_ok=True)
     try:
@@ -235,36 +227,40 @@ def link_or_copy(source, target):
 def render_sets(inputs, sets, samples=4, store=None):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
     reference_set.ReferenceInputs) on `reference_variant()`. Given a pose `store` (bake/produce.PoseStore), each pose
-    is traced once per key of what it reads, its pose text and the store's key of the rest: a pose the store holds is
-    taken from it, the others are traced into it, and each set folder is assembled from the store. The poses to trace
-    go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is traced alone either way,
-    so the files do not depend on which process traced it."""
+    is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
+    each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
+    The poses to trace go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is
+    traced alone either way, so its files do not depend on which process traced it."""
+    if store is not None:
+        from bake.produce import DONE, keyed_folder, read_references
     plans = []
     for poses_path, out in sets:
         out = pathlib.Path(out)
-        width, height, lens, _near, poses = read_poses(poses_path)
+        width, height, lens, near, poses = read_poses(poses_path)
         out.mkdir(parents=True, exist_ok=True)
-        folders = [None] * len(poses) if store is None else [store.folder(text) for text in pose_texts(poses_path)]
-        missing = [index for index, folder in enumerate(folders) if folder is None or not store.holds(folder)]
+        folders = [None] * len(poses) if store is None else [store.folder(width, height, lens, near, pose)
+                                                             for pose in poses]
+        missing = [index for index, folder in enumerate(folders) if folder is None or not (folder / DONE).is_file()]
         target = out if store is None else out / ".tracing"
         if missing:
             target.mkdir(exist_ok=True)
         plans.append((out, target, folders, missing, [poses[index] for index in missing], (width, height, lens)))
+
+    def traced(plan, index):
+        """Puts the `index`th traced pose of `plan` in the store."""
+        _out, target, folders, missing, _poses, _size = plan
+        if store is not None:
+            keyed_folder(folders[missing[index]], lambda folder: [
+                os.replace(target / f"{index:04d}{suffix}", folder / f"{POSE_NAME}{suffix}") for suffix in POSE_SUFFIXES])
+
     workers = gpu_workers(sum(len(plan[3]) for plan in plans))
-    if workers > 1:
-        trace_in_workers(inputs, plans, samples, workers)
-    else:
-        trace_here(inputs, plans, samples)
+    (trace_in_workers if workers > 1 else trace_here)(inputs, plans, samples, traced, workers)
     if store is None:
         return
-    for out, target, folders, missing, _poses, _size in plans:
-        for traced, index in enumerate(missing):
-            store.fill(folders[index], lambda folder, traced=traced, target=target: [
-                os.replace(target / f"{traced:04d}{suffix}", folder / f"{POSE_NAME}{suffix}")
-                for suffix in POSE_SUFFIXES])
+    for out, target, folders, _missing, _poses, _size in plans:
         shutil.rmtree(target, ignore_errors=True)
         for index, folder in enumerate(folders):
-            store.read(folder)
+            read_references(folder)
             for suffix in POSE_SUFFIXES:
                 link_or_copy(folder / f"{POSE_NAME}{suffix}", out / f"{index:04d}{suffix}")
 
@@ -272,42 +268,47 @@ def render_sets(inputs, sets, samples=4, store=None):
 def gpu_workers(poses):
     """How many CUDA processes trace `poses` poses side by side: the trace is NumPy-bound in each process, so one
     leaves the GPU mostly idle (README, "Reference on the GPU"). As many as the free host and GPU memory hold at
-    process_budget.REFERENCE_GPU_BYTES each; 1 off CUDA, where render_poses chooses its own pool."""
-    if poses < 2 or not reference_variant().startswith("cuda"):
+    process_budget.REFERENCE_GPU_BYTES each; 1 off CUDA, where render_poses chooses its own pool, and off Linux, whose
+    /proc the free memory is read from."""
+    if poses < 2 or sys.platform != "linux" or not reference_variant().startswith("cuda"):
         return 1
     from r3d.process_budget import FLOORS, REFERENCE_GPU_BYTES, available_bytes, cores_available, worker_capacity
     return max(1, min(poses, worker_capacity(available_bytes(gpu=True), REFERENCE_GPU_BYTES, FLOORS, cores_available())))
 
 
-def trace_here(inputs, plans, samples):
+def trace_here(inputs, plans, samples, traced, workers=1):
     """The poses of `plans` traced in this process, the source loaded and its bounced light built once for all of
-    them only when one is missing. The bounced-light tracer, which holds the source's textures a second time, is
-    dropped before it returns, for the fit that follows in the process."""
+    them only when one is missing; traced(plan, index) as each pose's files are written. The bounced-light tracer,
+    which holds the source's textures a second time, is dropped before it returns, for the fit that follows in the
+    process."""
     job, scene = inputs.job(), inputs.scene()
     source = None
     try:
-        for out, target, folders, missing, poses, (width, height, lens) in plans:
+        for plan in plans:
+            out, target, folders, _missing, poses, (width, height, lens) = plan
             if not poses:
                 continue
             if source is None:
                 source = lit_source(job, scene, hide_cards=True, variant=reference_variant())
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, target, normals=True)
+            peak, used = render_poses(source, job, scene, poses, width, height, lens, samples, target, normals=True,
+                                      done=lambda index, plan=plan: traced(plan, index))
             print(f"worker reference_poses pid={os.getpid()} out={out} traced={len(poses)} of {len(folders)} "
-                  f"pose_peak_pss_bytes={peak} pose_workers={workers}", flush=True)
+                  f"pose_peak_pss_bytes={peak} pose_workers={used}", flush=True)
     finally:
         del source
         mesh_source.PATH_LIGHTS.clear()
 
 
-def trace_in_workers(inputs, plans, samples, workers):
+def trace_in_workers(inputs, plans, samples, traced, workers):
     """The poses of `plans` traced by `workers` spawned processes (CUDA does not survive a fork), each loading the
-    source once and taking the next pose as it finishes one."""
-    tasks = [(target, traced, pose, size) for _out, target, _folders, _missing, poses, size in plans
-             for traced, pose in enumerate(poses)]
+    source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns."""
+    tasks = [(plan, index) for plan in plans for index in range(len(plan[4]))]
     peaks = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
                                                 initializer=_load_worker, initargs=(inputs, samples, os.getpid())) as pool:
-        for pid, peak in pool.map(_trace_task, tasks):
+        results = pool.map(_trace_task, [(plan[1], index, plan[4][index], plan[5]) for plan, index in tasks])
+        for (plan, index), (pid, peak) in zip(tasks, results):
+            traced(plan, index)
             peaks[pid] = max(peaks.get(pid, 0), peak)
     print(f"worker reference_poses pid={os.getpid()} traced={len(tasks)} gpu_workers={workers} "
           f"pose_peak_pss_bytes={sum(peaks.values())}", flush=True)
@@ -328,7 +329,7 @@ def _trace_task(task):
     global POSE_STATE
     target, index, pose, (width, height, lens) = task
     source, job, scene, samples = WORKER_STATE
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(target), True, False)
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, target)
     return _write_pose((index, pose))
 
 
@@ -336,6 +337,11 @@ def _trace_task(task):
 # sky tangents, samples, directions and temporaries 256.
 POSE_BASE_BYTES_PER_RAY = 768
 POSE_STATE = None
+
+
+def pose_state(source, job, scene, width, height, lens, samples, out, normals=True, occlusion=False):
+    """What _write_pose reads, set once per set of poses in the process that writes them."""
+    return source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion
 
 
 def _write_pose(item):
@@ -363,9 +369,11 @@ def budget_pose_capacity(budget, rss, estimate, cores):
     return max(1, min(cores, (budget - rss) // estimate))
 
 
-def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False,
+                 done=None):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Every pose's rays are fixed, so the output matches a serial run.
+    Every pose's rays are fixed, so the output matches a serial run. done(index) is called as each pose's files
+    are written, in order.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
@@ -401,19 +409,23 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         workers = 1
     if budget_capacity is not None:
         print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, out, normals, occlusion)
     pose_peaks = {}
     try:
         if workers == 1:
-            for item in enumerate(poses):
-                pid, peak = _write_pose(item)
+            for index, pose in enumerate(poses):
+                pid, peak = _write_pose((index, pose))
                 pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                if done is not None:
+                    done(index)
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
                     mp_context=multiprocessing.get_context("fork"),
                     initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
-                for pid, peak in pool.map(_write_pose, enumerate(poses)):
+                for index, (pid, peak) in enumerate(pool.map(_write_pose, enumerate(poses))):
                     pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                    if done is not None:
+                        done(index)
     finally:
         POSE_STATE = None
     return sum(pose_peaks.values()), workers
