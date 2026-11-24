@@ -71,26 +71,6 @@ from the fit's frozen-copy draw and copy-coverage gate.
 The fitted candidate carries baked colours, with no texture alpha to test.
 The importer's `alpha_mask` triangle drop applies to its drawn geometry.
 
-### How cards compose
-
-The foliage is split in two. Its shadows and bounced light stay on the
-surfaces behind it, and its shape becomes masked cards drawn over them. The four steps at one
-atrium pose, traced from the source with the bake lighting:
-
-| 1. Source, foliage drawn | 2. Foliage light-only | 3. Cards alone | 4. Composite |
-|---|---|---|---|
-| ![The source with its foliage](../../images/render/cards-atrium_fitted_full-source.png) | ![The foliage hidden from the camera](../../images/render/cards-atrium_fitted_full-light-only.png) | ![The cards on the background](../../images/render/cards-atrium_fitted_full-cards.png) | ![The cards over the light-only render](../../images/render/cards-atrium_fitted_full-composite.png) |
-
-| Step | What it shows |
-|---|---|
-| 1 | The alpha-tested source as the bake lights it: the picture the fitted rest and the cards together approximate. |
-| 2 | The camera reference the fit learns from: camera rays pass the carded materials, which still cast shadows and bounce light onto what is behind them. |
-| 3 | The accepted cards alone, cut by their MASK1 pages, in the vertex colours the import bakes into them. |
-| 4 | The cards over step 2 wherever they are nearer. Step 2 stands in for the fitted rest, so this approximates what the fitted rest and the cards draw together. |
-
-[`composition_figures.py`](../../../launcher/tools/r3d/cards/composition_figures.py) traces them on the CPU
-at the panel size (368x448), 2x2 rays per pixel, at 8 s on the Sponza atrium's camera path.
-
 ## Poses
 
 `size = [width, height]` is two positive integers. Coverage widens this view to

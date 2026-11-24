@@ -27,6 +27,7 @@ from r3d.reference_render import camera_hidden, main
 from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
+from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
 
 
 # A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
@@ -93,7 +94,8 @@ class SharedOwnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(reference_render, 'load_source', return_value=source), \
                 patch.object(reference_render, 'RayQuery'), patch.object(reference_render, 'path_light_for'), \
-                patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [])), \
+                patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [[0.] * 6])), \
+                patch.object(reference_render, 'gpu_workers', return_value=1), \
                 patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),

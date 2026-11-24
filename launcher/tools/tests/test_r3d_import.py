@@ -99,10 +99,11 @@ def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
             + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
-def camera(path=False, region=True):
-    track = 'path = { animation = "fly.anim.toml", node = "camera" }\n' if path else ''
+def camera(path=False, region=True, name="camera", clip="fly.anim.toml"):
+    """A camera object named `name`; with `path`, flying the clip `clip` (a .anim.toml beside the scene)."""
+    track = f'path = {{ animation = "{clip}", node = "camera" }}\n' if path else ''
     bounds = 'region = { min = [0.0, 0.0, 0.0], max = [1.0, 1.0, 1.0] }\n' if region else ''
-    return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+    return (f'[[objects]]\nname = "{name}"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             + bounds + track)
 
 
@@ -1123,7 +1124,7 @@ class LocalSourceTests(unittest.TestCase):
             job.renderer.fit.size = (92, 112)
             self.assertNotEqual(reference_digest(job, scene), first)
 
-    def test_reference_settings_key_the_reference_set_and_leave_the_start_alone(self):
+    def test_reference_settings_key_the_reference_set_and_each_pose_and_leave_the_start_alone(self):
         from bake import bake
         from r3d.fitted_variant import reference_digest
 
@@ -1134,16 +1135,17 @@ class LocalSourceTests(unittest.TestCase):
                 objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD + trace))
                 job = scene.renderers[0]
-                return bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"], \
-                    reference_digest(job, scene), scene.bake
+                stages = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})
+                return stages["start"], reference_digest(job, scene), scene.bake, stages["reference_pose"]
 
-        start, reference, settings = keys(TRACE)
+        start, reference, settings, pose = keys(TRACE)
         self.assertEqual((settings.aa_samples, settings.denoise), (2, False))
         for changed in (TRACE.replace("aa_samples = 2", "aa_samples = 3"), TRACE.replace("false", "true")):
             with self.subTest(changed=changed):
                 moved = keys(changed)
                 self.assertEqual(moved[0], start, "a reference-trace key moved the start's key")
                 self.assertNotEqual(moved[1], reference, "a reference-trace key left the reference key alone")
+                self.assertNotEqual(moved[3], pose, "a reference-trace key left the pose store's key alone")
 
     def test_geometry_probes_move_only_the_keys_they_shape(self):
         from bake import bake

@@ -190,7 +190,7 @@ class PrepareReferencesTests(unittest.TestCase):
             # Three path poses split into two training and one held out; three probe faces into one and two.
             path_poses = (4, 4, 1.0, 0.1, [[0.0] * 6] * 3)
             with mock.patch("r3d.reference_render.render_sets", autospec=True,
-                            side_effect=lambda _inputs, sets: rendered.append(sets)), \
+                            side_effect=lambda _inputs, sets, store=None, progress=None: rendered.append(sets)), \
                  mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
                  mock.patch("r3d.views.probes.select", lambda *a, **k: probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {})), \
                  mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
