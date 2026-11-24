@@ -26,7 +26,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import AlphaTest, light  # noqa: E402
 from r3d.mesh_source import with_triangles  # noqa: E402
 from r3d.obj import Texture  # noqa: E402
-from r3d.poses import sample_camera_path  # noqa: E402
+from r3d.poses import flight_camera, sample_camera_path  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.reference_render import camera_hidden, device_picture, primary_hits, source_for, trace  # noqa: E402
 
@@ -38,10 +38,10 @@ SAMPLES = 2
 
 
 def path_pose(scene, time_ms, width, height):
-    """The camera path's pose `time_ms` into its clip."""
-    camera = scene.camera.component
-    if camera.path is None:
-        raise ValueError("the scene camera has no path")
+    """The flythrough's pose `time_ms` into its clip: the first camera with a path."""
+    camera = flight_camera(scene)
+    if camera is None:
+        raise ValueError("no camera in the scene has a path")
     if time_ms <= 0:
         raise ValueError("--time-ms must be positive")
     *_, poses = sample_camera_path(camera.path.animation, camera.path.node, time_ms, width, height,
