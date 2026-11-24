@@ -96,8 +96,10 @@ jobs:
       - name: Install the tool requirements and ffmpeg
         run: |
           pip install $(find launcher/tools -name requirements.txt -printf '-r %p ')
-          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends ffmpeg llvm
-          ffmpeg -version | head -1
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
+          ffmpeg_bin=$(python launcher/tools/device/video_encode.py install)
+          echo "$ffmpeg_bin" >> "$GITHUB_PATH"
+          "$ffmpeg_bin/ffmpeg" -version | head -1
 
       # figures_runner.py skips a producer whose inputs (toolchain included) match the record of its last run
       # that made the committed images. The key names this job: no other job reads or writes it. A branch

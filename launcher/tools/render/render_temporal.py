@@ -2,14 +2,13 @@
 import argparse
 import csv
 import pathlib
-import subprocess
 
 import numpy as np
 from PIL import Image
 
-# These helpers stay private because render_compare is frozen until the next rebake.
 from check_avi import read_video
-from render_compare import _box_mean, _ffmpeg_command, captioned
+from render_compare import _box_mean, captioned
+from video_encode import VideoWriter
 
 TEMPORAL_BLOCK_SIDE = 4
 TEMPORAL_POP_THRESHOLD = 8
@@ -31,19 +30,15 @@ def temporal_change(previous_a, a, previous_b, b):
 
 def write_video(frames, fps, out):
     """Encode RGB pictures with one bounded ffmpeg pipe."""
-    process = None
+    writer = VideoWriter(out, fps)
+    has_frames = False
     try:
         for picture in frames:
-            if process is None:
-                command = _ffmpeg_command("ffmpeg", picture.size, fps, str(out))
-                process = subprocess.Popen(command, stdin=subprocess.PIPE)
-            process.stdin.write(picture.tobytes())
+            writer.add(picture)
+            has_frames = True
     finally:
-        if process is not None:
-            process.stdin.close()
-            if process.wait():
-                raise RuntimeError("ffmpeg failed writing %s" % out)
-    if process is None:
+        writer.close()
+    if not has_frames:
         raise ValueError("no video frames")
 
 
