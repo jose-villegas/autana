@@ -13,6 +13,7 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/capture/panelcap.h"
 #include "gfx/present/gfx_internal.h"
@@ -22,6 +23,9 @@
 #define PANELCAP_STOP_WAIT_MS  10U
 /* Below the present and compute tasks on their core. */
 #define PANELCAP_TASK_PRIORITY 1U
+
+TUNE_OWNER(panelcap);
+TUNE(panelcap, redraw_early, 0, 0, 1);
 
 bool console_panelcap_on;
 static panelcap_t capture;
@@ -82,6 +86,10 @@ console_panelcap_commit_active(void) {
     redraw_full |= !recti_is_empty(capture.owed) && gfx_frame_expanded();
     const uint32_t previous = capture.presents;
     panelcap_commit(&capture);
+    if (redraw_early != 0 && capture.skipped_window && !capture.redraw_pending) {
+        capture.redraw_pending = true;
+        (void)console_frame_post(console_frame_slots(), &console_panelcap_redraw_slot, NULL);
+    }
     if (capture.presents != previous) {
         console_stream_wake(stream);
     }
