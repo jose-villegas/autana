@@ -6,10 +6,8 @@ transport and nothing else. It returns linear radiance and per-pixel coverage; e
 conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are pinned in requirements.txt.
 """
 
-import ctypes
 import importlib.util
 import math
-import sys
 
 import numpy as np
 
@@ -19,31 +17,16 @@ from .obj import alpha_tested
 
 DEFAULT_SPP = 256
 DEFAULT_DEPTH = 12
-# Windows LLVM's C API library crashes the process if it is unloaded before exit, which Dr.Jit does at shutdown.
-LLVM_LIBRARY = "LLVM-C.dll"
-GET_MODULE_HANDLE_EX_FLAG_PIN = 0x1
 
 
 def import_mitsuba():
-    """The mitsuba module, or None when it is not installed; its CPU backend pinned to one instruction set first, and
-    its LLVM kept loaded to the end."""
+    """The mitsuba module, or None when it is not installed; its CPU backend pinned to one instruction set first."""
     if importlib.util.find_spec("mitsuba") is None:
         return None
     isa.pin()
     import mitsuba
 
-    pin_llvm()
     return mitsuba
-
-
-def pin_llvm():
-    """Keeps Dr.Jit's LLVM loaded until the process ends, on Windows and once Dr.Jit has loaded it. Returns whether it
-    is pinned."""
-    if sys.platform != "win32":
-        return False
-    module = ctypes.c_void_p()
-    get_module = ctypes.windll.kernel32.GetModuleHandleExW
-    return bool(get_module(GET_MODULE_HANDLE_EX_FLAG_PIN, LLVM_LIBRARY, ctypes.byref(module)))
 
 
 def default_variant(mi):
