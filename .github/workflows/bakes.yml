@@ -6,14 +6,14 @@ name: Bakes
 # every mesh, fit's levels and sound the lock has no row for, and the reference job traces and packs every missing
 # reference set in one job; both upload the files; the author runs `bake.py lock --from-run N` with that run and
 # commits the lock. A run that makes levels runs the sky-through-walls flythrough on them in the CPU job, so a fit
-# that opens holes fails before it is locked. A mesh's and a reference set's bytes differ between CPU models, so every
-# job that makes a bake runs on the one self-hosted runner that makes the fits, gpu-legion (docs/assets/Bakes.md),
-# where these jobs and the fits queue behind each other. A push never queues there: the bake jobs it skips report
-# success, so a branch that bakes nothing passes at once. No pull request starts this workflow: a self-hosted runner
+# that opens holes fails before it is locked. A mesh's bytes differ between CPU models and a reference set's, traced
+# on the CUDA GPU, between GPU models, so every job that makes a bake runs on the one self-hosted runner that makes
+# the fits, gpu-legion (docs/assets/Bakes.md), where these jobs and the fits queue behind each other. A push never
+# queues there: the bake jobs it skips report success, so a branch that bakes nothing passes at once. No pull request starts this workflow: a self-hosted runner
 # never takes a pull request's code (scripts/gates/check_workflows.py). The checks a pull request needs are this
 # workflow's, on its head commit; a fork's pull request gets them only once its branch is pushed here, and
 # bakes-fork.yml fails it when it changes a bake. Each runner job installs into a venv of its own over the fit
-# environment ~/gpu/env (only a Bakes GPU dispatch installs into the fit environment), and its tracing steps run on
+# environment ~/gpu/env (only a Bakes GPU dispatch installs into the fit environment), and its baking steps run on
 # every CPU at the idle priority scripts/lib/local_schedule.py gives a CPU bake: work in the WSL VM pre-empts them,
 # Windows processes share the CPUs as ordinary load.
 # A fit needs the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it from the locked start and reference
@@ -124,7 +124,7 @@ jobs:
         if: steps.missing.outputs.mesh != '0'
         run: git submodule update --init --depth 1 third_party/upstream/meshoptimizer
 
-      # The bakes trace rays on Mitsuba's LLVM variant, on the libLLVM the runner holds.
+      # The mesh bakes trace rays on Mitsuba's LLVM variant, on the libLLVM the runner holds.
       - name: Install the r3d requirements
         if: steps.missing.outputs.mesh != '0'
         run: python -m pip install -q --progress-bar off -r launcher/tools/r3d/requirements.txt
@@ -169,7 +169,8 @@ jobs:
         if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
-  # Every missing reference set in one job: it selects each set's probe faces, traces all its poses and packs it.
+  # Every missing reference set in one job: it selects each set's probe faces on the CPU, traces all its poses on
+  # Mitsuba's CUDA variant, in worker processes side by side, and packs it on the CPU.
   reference:
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     name: Trace and pack the missing reference sets
@@ -217,6 +218,9 @@ jobs:
           # A rerun first takes the sets its earlier attempts finished.
           earlier=()
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
+          # Under WSL 2 Dr.Jit finds OptiX only through the Linux driver's libnvoptix, kept in ~/gpu/optix (Bakes
+          # GPU's probe); a runner where Mitsuba cannot trace on CUDA fails the bake rather than lock a CPU trace.
+          . launcher/tools/r3d/optix_env.sh
           python scripts/lib/local_schedule.py start -- \
               python launcher/tools/bake/bake.py bake --kind reference --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
 

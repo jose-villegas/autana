@@ -15,10 +15,12 @@ and shares the exposure, tone map and RGB565 conversion below. Only the bake bac
 """
 
 import argparse
+import functools
 import os
 import multiprocessing
 import concurrent.futures
 import pathlib
+import shutil
 import sys
 
 import numpy as np
@@ -26,7 +28,7 @@ from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mesh_source, mitsuba_reference
+from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
@@ -166,9 +168,10 @@ def source_for(scene, name=None, lit=True, hide_cards=False, hidden_materials=No
     return lit_source(named[0], scene, lit, hide_cards=hide_cards, hidden_materials=hidden_materials), named[0]
 
 
-def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
-    """Full-detail alpha-tested source with bake lighting. `hide_cards` passes accepted materials on camera rays;
-    they still shadow and bounce light onto the surfaces behind them."""
+def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None, variant=None):
+    """Full-detail alpha-tested source with bake lighting, its rays and bounced light traced on `variant`
+    (`ray_query.VARIANT` when None). `hide_cards` passes accepted materials on camera rays; they still shadow and
+    bounce light onto the surfaces behind them."""
     settings = job.settings
     selecting_cards = hide_cards and hidden_materials is None and settings.cards is not None
     source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
@@ -179,8 +182,8 @@ def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
     source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
-    source.bounce = path_light_for(source, job, scene)
+    source.intersector = RayQuery(source.p, source.tri_v, variant, hit_filter=source.alpha_test)
+    source.bounce = path_light_for(source, job, scene, variant)
     return source
 
 
@@ -192,29 +195,163 @@ def camera_hidden(source, settings, scene=None, hidden_materials=None):
     return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
-def render_sets(inputs, sets, samples=4):
-    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the bake's
-    CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
-    textures a second time, is dropped before it returns, for the fit that follows in the process."""
-    job, scene = inputs.job(), inputs.scene()
-    source = lit_source(job, scene, hide_cards=True)
+@functools.cache
+def reference_variant():
+    """The variant a reference set traces on: the fastest this machine runs (mitsuba_reference.default_variant),
+    `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`; `ray_query.VARIANT` without Mitsuba,
+    where the ray query names what to install. Mitsuba is left on the variant it was on."""
+    mi = mitsuba_reference.import_mitsuba()
+    if mi is None:
+        return ray_query.VARIANT
+    current = mi.variant()
     try:
-        for poses_path, out in sets:
-            width, height, lens, _near, poses = read_poses(poses_path)
-            pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True)
-            print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
-                  flush=True)
+        return mitsuba_reference.default_variant(mi)
+    finally:
+        if current is not None:
+            mi.set_variant(current)
+
+
+# A pose's files, as a set names them after the pose's index and a pose store after POSE_NAME.
+POSE_SUFFIXES = (".png", ".linear.npy", ".normal.npy")
+POSE_NAME = "pose"
+
+
+def link_or_copy(source, target):
+    target.unlink(missing_ok=True)
+    try:
+        os.link(source, target)
+    except OSError:
+        shutil.copyfile(source, target)
+
+
+def render_sets(inputs, sets, samples=4, store=None, progress=None):
+    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
+    reference_set.ReferenceInputs) on `reference_variant()`. Given a pose `store` (bake/produce.PoseStore), each pose
+    is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
+    each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
+    The poses to trace go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is
+    traced alone either way, so its files do not depend on which process traced it. progress() runs once per
+    traced pose, store or not: a caller under a stage guard passes its progress call."""
+    if store is not None:
+        from bake.produce import DONE, keyed_folder, read_references
+    plans = []
+    for poses_path, out in sets:
+        out = pathlib.Path(out)
+        width, height, lens, near, poses = read_poses(poses_path)
+        out.mkdir(parents=True, exist_ok=True)
+        folders = [None] * len(poses) if store is None else [store.folder(width, height, lens, near, pose)
+                                                             for pose in poses]
+        missing = [index for index, folder in enumerate(folders) if folder is None or not (folder / DONE).is_file()]
+        target = out if store is None else out / ".tracing"
+        if missing:
+            target.mkdir(exist_ok=True)
+        plans.append((out, target, folders, missing, [poses[index] for index in missing], (width, height, lens)))
+
+    def traced(plan, index):
+        """Puts the `index`th traced pose of `plan` in the store, then tells progress."""
+        _out, target, folders, missing, _poses, _size = plan
+        if store is not None:
+            keyed_folder(folders[missing[index]], lambda folder: [
+                os.replace(target / f"{index:04d}{suffix}", folder / f"{POSE_NAME}{suffix}") for suffix in POSE_SUFFIXES])
+        if progress is not None:
+            progress()
+
+    workers = gpu_workers(sum(len(plan[3]) for plan in plans))
+    (trace_in_workers if workers > 1 else trace_here)(inputs, plans, samples, traced, workers)
+    if store is None:
+        return
+    for out, target, folders, _missing, _poses, _size in plans:
+        shutil.rmtree(target, ignore_errors=True)
+        for index, folder in enumerate(folders):
+            read_references(folder)
+            for suffix in POSE_SUFFIXES:
+                link_or_copy(folder / f"{POSE_NAME}{suffix}", out / f"{index:04d}{suffix}")
+
+
+def gpu_workers(poses):
+    """How many CUDA processes trace `poses` poses side by side: the trace is NumPy-bound in each process, so one
+    leaves the GPU mostly idle (README, "Reference on the GPU"). As many as the free host and GPU memory hold at
+    process_budget.REFERENCE_GPU_BYTES each; 1 off CUDA, where render_poses chooses its own pool, and off Linux, whose
+    /proc the free memory is read from."""
+    if poses < 2 or sys.platform != "linux" or not reference_variant().startswith("cuda"):
+        return 1
+    from r3d.process_budget import FLOORS, REFERENCE_GPU_BYTES, available_bytes, cores_available, worker_capacity
+    return max(1, min(poses, worker_capacity(available_bytes(gpu=True), REFERENCE_GPU_BYTES, FLOORS, cores_available())))
+
+
+def trace_here(inputs, plans, samples, traced, workers=1):
+    """The poses of `plans` traced in this process, the source loaded and its bounced light built once for all of
+    them only when one is missing; traced(plan, index) as each pose's files are written. The bounced-light tracer,
+    which holds the source's textures a second time, is dropped before it returns, for the fit that follows in the
+    process."""
+    job, scene = inputs.job(), inputs.scene()
+    source = None
+    try:
+        for plan in plans:
+            out, target, folders, _missing, poses, (width, height, lens) = plan
+            if not poses:
+                continue
+            if source is None:
+                source = lit_source(job, scene, hide_cards=True, variant=reference_variant())
+            peak, used = render_poses(source, job, scene, poses, width, height, lens, samples, target, normals=True,
+                                      done=lambda index, plan=plan: traced(plan, index))
+            print(f"worker reference_poses pid={os.getpid()} out={out} traced={len(poses)} of {len(folders)} "
+                  f"pose_peak_pss_bytes={peak} pose_workers={used}", flush=True)
     finally:
         del source
         mesh_source.PATH_LIGHTS.clear()
+
+
+def trace_in_workers(inputs, plans, samples, traced, workers):
+    """The poses of `plans` traced by `workers` spawned processes (CUDA does not survive a fork), each loading the
+    source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns, in
+    the order they finish. A pose that fails cancels the poses not yet started before it is raised."""
+    tasks = [(plan, index) for plan in plans for index in range(len(plan[4]))]
+    peaks = {}
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
+                                                initializer=_load_worker, initargs=(inputs, samples, os.getpid())) as pool:
+        futures = {pool.submit(_trace_task, (plan[1], index, plan[4][index], plan[5])): (plan, index)
+                   for plan, index in tasks}
+        try:
+            for future in concurrent.futures.as_completed(futures):
+                pid, peak = future.result()
+                traced(*futures[future])
+                peaks[pid] = max(peaks.get(pid, 0), peak)
+        except BaseException:
+            pool.shutdown(cancel_futures=True)
+            raise
+    print(f"worker reference_poses pid={os.getpid()} traced={len(tasks)} gpu_workers={workers} "
+          f"pose_peak_pss_bytes={sum(peaks.values())}", flush=True)
+
+
+WORKER_STATE = None
+
+
+def _load_worker(inputs, samples, parent_pid):
+    global WORKER_STATE
+    from r3d.process_budget import parent_death_signal
+    parent_death_signal(parent_pid)
+    job, scene = inputs.job(), inputs.scene()
+    WORKER_STATE = (lit_source(job, scene, hide_cards=True, variant=reference_variant()), job, scene, samples)
+
+
+def _trace_task(task):
+    global POSE_STATE
+    target, index, pose, (width, height, lens) = task
+    source, job, scene, samples = WORKER_STATE
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, target)
+    return _write_pose((index, pose))
 
 
 # Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
 # sky tangents, samples, directions and temporaries 256.
 POSE_BASE_BYTES_PER_RAY = 768
 POSE_STATE = None
+
+
+def pose_state(source, job, scene, width, height, lens, samples, out, normals=True, occlusion=False):
+    """What _write_pose reads, set once per set of poses in the process that writes them."""
+    return source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion
 
 
 def _write_pose(item):
@@ -242,20 +379,24 @@ def budget_pose_capacity(budget, rss, estimate, cores):
     return max(1, min(cores, (budget - rss) // estimate))
 
 
-def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False,
+                 done=None):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Every pose's rays are fixed, so the output matches a serial run.
+    Every pose's rays are fixed, so the output matches a serial run. done(index) is called as each pose's files
+    are written, in order.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
     import os
     global POSE_STATE
-    if getattr(source, "bounce", None) is not None:
-        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
-        # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
-        # light renders in this process.
+    on_gpu = getattr(getattr(source, "intersector", None), "variant", "").startswith("cuda")
+    if on_gpu or getattr(source, "bounce", None) is not None:
+        # One process traces every pose on the GPU, where forked workers would share it and only add memory. On the
+        # CPU, Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one
+        # thread and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with
+        # bounced light renders in this process too.
         if workers not in (None, 1):
-            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
+            raise ValueError("poses on the GPU or with bounced light render in the main process; leave --workers unset")
         workers = 1
     budget_capacity = None
     if workers is None:
@@ -278,19 +419,23 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         workers = 1
     if budget_capacity is not None:
         print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, out, normals, occlusion)
     pose_peaks = {}
     try:
         if workers == 1:
-            for item in enumerate(poses):
-                pid, peak = _write_pose(item)
+            for index, pose in enumerate(poses):
+                pid, peak = _write_pose((index, pose))
                 pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                if done is not None:
+                    done(index)
         else:
             with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
                     mp_context=multiprocessing.get_context("fork"),
                     initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
-                for pid, peak in pool.map(_write_pose, enumerate(poses)):
+                for index, (pid, peak) in enumerate(pool.map(_write_pose, enumerate(poses))):
                     pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
+                    if done is not None:
+                        done(index)
     finally:
         POSE_STATE = None
     return sum(pose_peaks.values()), workers
