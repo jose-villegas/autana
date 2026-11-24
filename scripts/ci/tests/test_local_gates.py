@@ -327,6 +327,21 @@ jobs:
         rows = list(local_gates.rows(root))
         self.assertEqual([row['kind'] for row in rows], ['skip', 'gate'])
 
+    def test_a_matrix_job_runs_once_per_value(self):
+        root = self.fixture('''on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2]
+    steps:
+      - run: echo ${{ matrix.shard }}/2
+''')
+        rows = list(local_gates.rows(root))
+        self.assertEqual([(row['job'], row['kind'], row['command']) for row in rows],
+                         [('test:check-1', 'gate', 'echo 1/2'), ('test:check-2', 'gate', 'echo 2/2')])
+
     def test_unknown_condition_warns(self):
         root = self.fixture('''on: [pull_request]
 jobs:

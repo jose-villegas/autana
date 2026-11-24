@@ -82,9 +82,10 @@ console_driver_install(void) {
     return err;
 }
 
-static void
-console_write(const char* bytes, size_t len) {
-    uart_write_bytes(CONSOLE_UART, bytes, len);
+static bool
+console_write(const char* bytes, size_t len, uint32_t wait_ticks) {
+    (void)wait_ticks;
+    return uart_write_bytes(CONSOLE_UART, bytes, len) == (int)len;
 }
 #else
 static esp_err_t
@@ -99,9 +100,9 @@ console_driver_install(void) {
     return err;
 }
 
-static void
-console_write(const char* bytes, size_t len) {
-    usb_serial_jtag_write_bytes(bytes, len, portMAX_DELAY);
+static bool
+console_write(const char* bytes, size_t len, uint32_t wait_ticks) {
+    return usb_serial_jtag_write_bytes(bytes, len, wait_ticks) == (int)len;
 }
 #endif
 
@@ -113,26 +114,28 @@ console_write(const char* bytes, size_t len) {
 /* No single write may exceed the driver's TX ring (tx_buffer_size in
  * console_driver_install()): a byte ringbuffer refuses a larger item
  * outright, however long it is told to wait. */
-#define EMIT_CHUNK_BYTES 128
+#define EMIT_CHUNK_BYTES         128
+#define CONSOLE_BOUNDED_WRITE_MS 250U
 
 static void
 emit_bytes(const char* bytes, size_t len) {
     while (len > 0) {
         const size_t n = len < EMIT_CHUNK_BYTES ? len : EMIT_CHUNK_BYTES;
-        console_write(bytes, n);
+        (void)console_write(bytes, n, portMAX_DELAY);
         bytes += n;
         len -= n;
     }
 }
 
-void
-console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch) {
+bool
+console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch, bool bounded) {
     assert(count <= CONSOLE_PACKET_BYTES_MAX);
     const int head = snprintf((char*)scratch, CONSOLE_PACKET_HEAD_MAX, "%s_BIN %u %08lx\n", tag, (unsigned)count,
                               (unsigned long)crc32_update(0, bytes, count));
     assert(head > 0 && head < CONSOLE_PACKET_HEAD_MAX);
     memcpy(scratch + head, bytes, count);
-    console_write((const char*)scratch, (size_t)head + count);
+    const uint32_t wait_ticks = bounded ? pdMS_TO_TICKS(CONSOLE_BOUNDED_WRITE_MS) : portMAX_DELAY;
+    return console_write((const char*)scratch, (size_t)head + count, wait_ticks);
 }
 
 void
@@ -140,6 +143,14 @@ console_emit_line(const char* prefix, const char* payload) {
     emit_bytes(prefix, strlen(prefix));
     emit_bytes(payload, strlen(payload));
     emit_bytes("\n", 1);
+}
+
+void
+console_emit_line_bounded(const char* line) {
+    const uint32_t wait_ticks = pdMS_TO_TICKS(CONSOLE_BOUNDED_WRITE_MS);
+    if (console_write(line, strlen(line), wait_ticks)) {
+        (void)console_write("\n", 1, wait_ticks);
+    }
 }
 
 static void

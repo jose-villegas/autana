@@ -12,7 +12,7 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 | [power/](power/) | Generates the datasheet power-budget tables and figure of docs/power. |
 | [audio/](audio/) | Bakes WAV sounds into SOND entries and synthesizes deterministic source WAVs. |
 | [gfx/](gfx/README.md) | Bakes pictures and icons into pack entries. |
-| [scene/](scene/) | Host runs of a scene's animation and skin systems; [`scene_edit.py`](scene/scene_edit.py) reads and rewrites object placements in a `.scene.toml`. |
+| [scene/](scene/) | Host runs of a scene's animation and skin systems. [`scene_edit.py`](scene/scene_edit.py) reads and rewrites object placements in a `.scene.toml` and a camera path's `.keys.toml`. |
 | [render/](render/README.md) | Host render harness, image comparison, and [scenes](render/scenes/README.md). |
 | [device/](device/README.md) | Board profiles, report capture, and screenshot decoding. |
 | [quality/](quality/README.md) | Complexity, MISRA, and test report checks. |
