@@ -267,7 +267,7 @@ jobs:
           name: tool-tests-windows-log-${{ matrix.shard }}
           path: |
             launcher/test/build/run-tool-tests.log
-            launcher/test/build/run-tool-tests.*.times
+            launcher/test/build/run-tool-tests.${{ matrix.shard }}.times
           retention-days: 14
           if-no-files-found: ignore
 
