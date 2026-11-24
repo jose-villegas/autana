@@ -24,7 +24,8 @@
 #define PANELCAP_STOP_WAIT_MS  10U
 /* Below the present and compute tasks on their core. */
 #define PANELCAP_TASK_PRIORITY 1U
-/* Let split work preempt the capture copy while the present task still owns the strip. */
+/* The capture copy drops below JOB_CORE1_PRIORITY so core-1 jobs run during it; while recording,
+ * present timing depends on core-1 job load. */
 #define PANELCAP_COPY_PRIORITY (JOB_CORE1_PRIORITY - 1U)
 
 bool console_panelcap_on;

@@ -1,6 +1,7 @@
 #include "gfx/present/capture/panelcap.h"
 #include <limits.h>
 #include <string.h>
+#include "math/geometry/rect_overlap.h"
 #include "math/scalar/units.h"
 
 static bool
@@ -85,28 +86,6 @@ panelcap_redraw_requested(panelcap_t* capture) {
     return box;
 }
 
-static recti_t
-remove_repainted_edge(recti_t owed, recti_t window) {
-    const recti_t covered = recti_intersect(owed, window);
-    if (covered.w == owed.w) {
-        if (covered.y == owed.y) {
-            return recti_from_edges(owed.x, recti_bottom(covered), recti_right(owed), recti_bottom(owed));
-        }
-        if (recti_bottom(covered) == recti_bottom(owed)) {
-            return recti_from_edges(owed.x, owed.y, recti_right(owed), covered.y);
-        }
-    }
-    if (covered.h == owed.h) {
-        if (covered.x == owed.x) {
-            return recti_from_edges(recti_right(covered), owed.y, recti_right(owed), recti_bottom(owed));
-        }
-        if (recti_right(covered) == recti_right(owed)) {
-            return recti_from_edges(owed.x, owed.y, covered.x, recti_bottom(owed));
-        }
-    }
-    return owed;
-}
-
 void
 panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
     if (!capture->in_present || pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
@@ -130,7 +109,11 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
         source += row_bytes;
     }
     if (!recti_is_empty(capture->owed)) {
-        capture->owed = remove_repainted_edge(capture->owed, box);
+        recti_t left[RECTI_SUBTRACT_MAX];
+        const int pieces = recti_subtract(capture->owed, box, left);
+        if (pieces <= 1) {
+            capture->owed = pieces == 1 ? left[0] : recti_empty();
+        }
     }
     if (capture->collapsed) {
         capture->dirty[0] = recti_union(capture->dirty[0], box);
