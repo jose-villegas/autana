@@ -86,6 +86,43 @@ panelcap_redraw_requested(panelcap_t* capture) {
     return box;
 }
 
+/* A strip just copied covers the owed box or one whole edge of it: the owed box shrinks to what is left. */
+static void
+shrink_owed(panelcap_t* capture, recti_t box) {
+    if (recti_is_empty(capture->owed)) {
+        return;
+    }
+    recti_t left[RECTI_SUBTRACT_MAX];
+    const int pieces = recti_subtract(capture->owed, box, left);
+    if (pieces <= 1) {
+        capture->owed = pieces == 1 ? left[0] : recti_empty();
+    }
+}
+
+static void
+add_dirty(panelcap_t* capture, recti_t box) {
+    for (unsigned i = 0; i < capture->windows;) {
+        recti_t old = capture->dirty[i];
+        recti_t joined = recti_union(old, box);
+        if (!recti_is_empty(recti_intersect(old, box)) || recti_area(joined) == recti_area(old) + recti_area(box)) {
+            box = joined;
+            capture->dirty[i] = capture->dirty[--capture->windows];
+            i = 0;
+        } else {
+            i++;
+        }
+    }
+    if (capture->windows == PANELCAP_WINDOWS_MAX) {
+        /* A bounding box bounds metadata without encoding untouched panel margins. */
+        for (unsigned i = 0; i < capture->windows; i++) {
+            box = recti_union(box, capture->dirty[i]);
+        }
+        capture->windows = 0;
+        capture->collapsed = true;
+    }
+    capture->dirty[capture->windows++] = box;
+}
+
 void
 panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsigned y1, const void* pixels) {
     if (!capture->in_present || pixels == NULL || x1 <= x0 || y1 <= y0 || x1 > PANELCAP_WIDTH || y1 > PANELCAP_HEIGHT) {
@@ -108,37 +145,12 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
         memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
     }
-    if (!recti_is_empty(capture->owed)) {
-        recti_t left[RECTI_SUBTRACT_MAX];
-        const int pieces = recti_subtract(capture->owed, box, left);
-        if (pieces <= 1) {
-            capture->owed = pieces == 1 ? left[0] : recti_empty();
-        }
-    }
+    shrink_owed(capture, box);
     if (capture->collapsed) {
         capture->dirty[0] = recti_union(capture->dirty[0], box);
         return;
     }
-    for (unsigned i = 0; i < capture->windows;) {
-        recti_t old = capture->dirty[i];
-        recti_t joined = recti_union(old, box);
-        if (!recti_is_empty(recti_intersect(old, box)) || recti_area(joined) == recti_area(old) + recti_area(box)) {
-            box = joined;
-            capture->dirty[i] = capture->dirty[--capture->windows];
-            i = 0;
-        } else {
-            i++;
-        }
-    }
-    if (capture->windows == PANELCAP_WINDOWS_MAX) {
-        /* A bounding box bounds metadata without encoding untouched panel margins. */
-        for (unsigned i = 0; i < capture->windows; i++) {
-            box = recti_union(box, capture->dirty[i]);
-        }
-        capture->windows = 0;
-        capture->collapsed = true;
-    }
-    capture->dirty[capture->windows++] = box;
+    add_dirty(capture, box);
 }
 
 void
