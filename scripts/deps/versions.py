@@ -12,6 +12,7 @@ import contextlib
 import io
 import importlib.metadata
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 
@@ -62,6 +63,9 @@ def resolved_version(tool):
 
 def rows(root=ROOT):
     """(framework, pinned, here) for each pin."""
+    from device import video_encode
+    binary = video_encode.find()
+    yield "ffmpeg", video_encode.pinned()["version"], video_encode.version(binary) if binary else MISSING
     pin = idf_pin()
     yield "ESP-IDF commit", pin["commit"], idf_commit(idf_path()) or MISSING
     for tool in ("clang-format", "clang-tidy"):

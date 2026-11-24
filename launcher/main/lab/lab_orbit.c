@@ -15,7 +15,7 @@ place_camera(const lab_orbit_t* orbit) {
 }
 
 bool
-lab_orbit_fit(lab_orbit_t* orbit, entity_t camera, spheref_t subject, const lab_orbit_frame_t* frame) {
+lab_orbit_fit(lab_orbit_t* orbit, entity_t camera, spheref_t subject, const lab_orbit_frame_t* frame, float home_zoom) {
     const lens_t* lens = camera_lens(camera);
     if (lens == NULL) {
         return false;
@@ -23,7 +23,7 @@ lab_orbit_fit(lab_orbit_t* orbit, entity_t camera, spheref_t subject, const lab_
     const float fit = orbit_motion_fit_distance(subject.radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING);
     const float closest = fmaxf(fit * frame->zoom_in, subject.radius + (frame->near_clearance * lens->near_z));
     orbit_motion_init(&orbit->motion, subject.centre,
-                      (orbit_motion_state_t){frame->home_yaw, frame->home_pitch, logf(fit)},
+                      (orbit_motion_state_t){frame->home_yaw, frame->home_pitch, logf(fit * home_zoom)},
                       (orbit_motion_limits_t){frame->pitch_min, ORBIT_MOTION_PITCH_LIMIT, logf(closest),
                                               logf(fit * frame->zoom_out)});
     orbit_motion_touch_init(&orbit->touch);
