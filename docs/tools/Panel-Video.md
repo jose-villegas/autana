@@ -94,7 +94,7 @@ title Window header, one cell a byte
 | Copies | Capture copies successful panel writes into PSRAM while the image is free. |
 | Window merge | The latest write wins. Overlapping and rectangular adjacent regions merge. Overflow collapses the list to its bounding box. |
 | Publication | The FPS gate controls when a commit hands accumulated windows to the sender. Empty commits consume no FPS slot. |
-| Redraw | START requests a full redraw. After a lost window, publication waits for the frame owner to mark the lost bounds dirty. Indexed mode resends the lost strips from its index image. Bands, which keep no picture, and expanded pictures request a full redraw. |
+| Redraw | START requests a full redraw. Captured windows can cover lost bounds from their edges. The frame owner marks any remainder dirty. Indexed mode resends its lost strips. Bands and expanded pictures redraw in full. |
 | Sender | A low-priority console stream task packs the published image and releases it after the last packet or a write failure. |
 | App memory | Recording uses `PANELCAP_CAPTURE_BYTES` of app heap. From the launcher, START takes the app heap for the visit. Starting an app from there ends the recording with `PANELCAP STOP app switch`. |
 | Short on memory | START refuses with `PANELCAP ERR no memory: need N, largest free M` in bytes. The host exits non-zero. |

@@ -2121,39 +2121,6 @@ def video(args, store, board, lines=None, log=None):
     fps = default if args.fps is None else args.fps
     if not 1 <= fps <= maximum:
         raise RuntimeError(f"--fps must be between 1 and {maximum}")
-    probe = getattr(args, "probe", None)
-    if probe is not None:
-        from statistics import median
-
-        times = []
-        received = 0
-        parts = panel_video.Parts()
-
-        def measure(data):
-            nonlocal received
-            received += len(data)
-            complete = parts.feed(data)
-            if complete is not None:
-                times.append(panel_video.PRESENT.unpack_from(complete)[1])
-
-        def consume(data):
-            nonlocal received
-            if probe == "burst":
-                received += len(data)
-            else:
-                measure(data)
-
-        started = time.monotonic()
-        answer = capture_stream(args, store, board, "PANELCAP", consume, lines, log,
-                                opening=f"PANELCAP START {fps} {probe}", packet_tag=panel_video.PACKET_TAG,
-                                on_packet_error=parts.corrupt,
-                                error_prefix=panel_video.ERROR_PREFIX, rx_bytes=VIDEO_RX_BUFFER_BYTES)
-        elapsed = time.monotonic() - started
-        gaps = [b - a for a, b in zip(times, times[1:])]
-        print(f"PROBE_HOST mode={probe} bytes={received} seconds={elapsed:.3f} "
-              f"presents={len(times)} median_gap_us={median(gaps) if gaps else 0} "
-              f"span_us={times[-1] - times[0] if times else 0} discarded={parts.dropped}", flush=True)
-        return int(not answer.startswith("PANELCAP_END"))
     with panel_video.Recording(args.out, log=log) as recording:
         answer = capture_stream(args, store, board, "PANELCAP", recording.stage, lines, log,
                                 opening=f"PANELCAP START {fps}", packet_tag=panel_video.PACKET_TAG,
@@ -2575,7 +2542,6 @@ def main(argv=None):
     video_parser.add_argument("-o", "--out", required=True)
     video_parser.add_argument("--fps", type=int, metavar="N")
     video_parser.add_argument("--seconds", type=float)
-    video_parser.add_argument("--probe")
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",

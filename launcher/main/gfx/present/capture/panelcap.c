@@ -8,24 +8,17 @@ same(const uint8_t* p, size_t a, size_t b) {
     return memcmp(p + (a * PANELCAP_PIXEL_BYTES), p + (b * PANELCAP_PIXEL_BYTES), PANELCAP_PIXEL_BYTES) == 0;
 }
 
-static bool
-same_fast(const uint8_t* p, size_t a, size_t b) {
-    return bytes_read_u16(p + a * PANELCAP_PIXEL_BYTES) == bytes_read_u16(p + b * PANELCAP_PIXEL_BYTES);
-}
-
 static size_t
-pack_block(uint8_t* block, const uint8_t* pixels, size_t count, size_t* consumed, bool fast) {
+pack_block(uint8_t* block, const uint8_t* pixels, size_t count, size_t* consumed) {
     size_t run = 1;
-    while (run < count && run < PANELCAP_PACK_RUN_MAX && (fast ? same_fast(pixels, 0, run) : same(pixels, 0, run))) {
+    while (run < count && run < PANELCAP_PACK_RUN_MAX && same(pixels, 0, run)) {
         run++;
     }
     bool repeat = run > 1;
     if (!repeat) {
         while (run < count && run < PANELCAP_PACK_RUN_MAX) {
             /* Keep pairs inside a literal so their headers cannot increase its size. */
-            if (run + 2 < count
-                && (fast ? same_fast(pixels, run, run + 1) && same_fast(pixels, run, run + 2)
-                         : same(pixels, run, run + 1) && same(pixels, run, run + 2))) {
+            if (run + 2 < count && same(pixels, run, run + 1) && same(pixels, run, run + 2)) {
                 break;
             }
             run++;
@@ -43,7 +36,7 @@ panelcap_init(panelcap_t* capture, uint8_t* storage, unsigned fps) {
     if (fps == 0 || fps > PANELCAP_FPS_MAX) {
         return false;
     }
-    *capture = (panelcap_t){.storage = storage, .fps = fps, .probe_recover = true};
+    *capture = (panelcap_t){.storage = storage, .fps = fps};
     atomic_init(&capture->ready, 0);
     memset(storage, 0, PANELCAP_IMAGE_BYTES);
     return true;
@@ -136,7 +129,7 @@ panelcap_window(panelcap_t* capture, unsigned x0, unsigned y0, unsigned x1, unsi
         memcpy(capture->storage + ((((size_t)y * PANELCAP_WIDTH) + x0) * PANELCAP_PIXEL_BYTES), source, row_bytes);
         source += row_bytes;
     }
-    if (capture->probe_recover && !recti_is_empty(capture->owed)) {
+    if (!recti_is_empty(capture->owed)) {
         capture->owed = remove_repainted_edge(capture->owed, box);
     }
     if (capture->collapsed) {
@@ -238,7 +231,7 @@ encode_block(const panelcap_t* capture, panelcap_encoder_t* encoder) {
     const uint8_t* pixels =
         capture->storage + ((((size_t)encoder->y * PANELCAP_WIDTH) + encoder->x) * PANELCAP_PIXEL_BYTES);
     size_t consumed;
-    encoder->used = pack_block(encoder->block, pixels, recti_right(box) - encoder->x, &consumed, capture->probe_fast);
+    encoder->used = pack_block(encoder->block, pixels, recti_right(box) - encoder->x, &consumed);
     encoder->x += (int)consumed;
     if (encoder->x == recti_right(box)) {
         encoder->x = box.x;
