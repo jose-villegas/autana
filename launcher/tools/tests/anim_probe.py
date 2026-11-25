@@ -19,7 +19,8 @@ Python's double, so they hold to a tolerance. The scene is invented here, so
 nothing depends on one an app ships.
 
 It also holds what the tests that run track_host share: whether it can be
-built here, and a camera clip written beside its .glb.
+built here, one build for a whole test file, and a camera clip written beside
+its .glb.
 """
 
 import argparse
@@ -28,6 +29,8 @@ import pathlib
 import shutil
 import struct
 import sys
+import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -121,6 +124,21 @@ def has_compiler():
     except track_host.TrackHostError:
         return False
     return True
+
+
+def build_sampler_once():
+    """Builds track_host and has track_host.program() return that build until the calling test file ends.
+
+    program() asks the compiler for the program's headers on every call to see whether to rebuild, which
+    costs more than the sample it serves; no source changes while a test file runs. Call it from
+    setUpModule. Without a compiler it does nothing, and each sample fails as it would have."""
+    try:
+        built = track_host.program()
+    except track_host.TrackHostError:
+        return
+    patcher = mock.patch.object(track_host, "program", return_value=built)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=(), node="camera"):

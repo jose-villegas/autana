@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
-from anim_probe import write_camera_clip  # noqa: E402
+from anim_probe import build_sampler_once, write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
@@ -33,17 +33,9 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 
 def setUpModule():
-    # A fit key samples its camera clip through track_host, whose program() asks the compiler for the
-    # program's headers on every call to see whether to rebuild. No source changes while this file runs,
-    # so the program is found once and every sample runs that same build.
-    from anim import track_host
-    try:
-        built = track_host.program()
-    except track_host.TrackHostError:
-        return
-    patcher = mock.patch.object(track_host, "program", return_value=built)
-    patcher.start()
-    unittest.addModuleCleanup(patcher.stop)
+    # Every fit key samples its camera clip.
+    build_sampler_once()
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
