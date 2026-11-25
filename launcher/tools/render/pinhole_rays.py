@@ -21,7 +21,6 @@ shown
 import argparse
 import pathlib
 import sys
-import tempfile
 
 import numpy as np
 from scipy import ndimage
@@ -31,7 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import track_host
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import finest_triangles, read_lit_mesh
-from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, read_poses, sample_camera_rows
+from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, parse_poses, sample_camera_rows
 from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
@@ -56,8 +55,8 @@ def mesh_query(path, variant):
     return RayQuery(positions, triangles, variant=variant), np.cross(b - a, c - a), double.astype(bool)
 
 
-def pose_rays(width, height, lens, near, pose):
-    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], PIXEL_SAMPLES)
+def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
+    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
     forward = camera_basis(pose[3:])[2]
     origins += directions * (near / (directions @ forward))[:, None]
     return origins, directions
@@ -143,6 +142,14 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
         print(f'  {name}: ' + '; '.join(f'{key} {value}' for key, value in counts.items()))
 
 
+def flythrough_poses(camera, dt_ms, size, frames):
+    """(width, height, lens, near, poses) of a `--quarter 1` video's first `frames` frames at render `size`:
+    frame i is drawn at (i + 1) * dt_ms, so it takes poses[i + 1]."""
+    return parse_poses(track_host.poses(camera.path.animation, camera.path.node, dt_ms, *size,
+                                        camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt_ms,
+                                        number_format='.9g'))
+
+
 def rays(args, scene):
     camera = flight_camera(scene)
     rgb = camera.background
@@ -160,13 +167,7 @@ def rays(args, scene):
         if wanted is None and not enclosed_sky(frame, sky)[1].any():
             continue
         height, width = frame.shape[:2]
-        text = track_host.poses(camera.path.animation, camera.path.node, args.dt, width, height,
-                                camera.half_fov_short_tan, camera.near_z,
-                                until_ms=(index + 2) * args.dt, number_format='.9g')
-        with tempfile.TemporaryDirectory(prefix='pinhole_poses_') as work:
-            path = pathlib.Path(work) / 'poses.txt'
-            path.write_text(text)
-            _, _, lens, near, poses = read_poses(path)
+        _, _, lens, near, poses = flythrough_poses(camera, args.dt, (width, height), index + 1)
         if len(poses) <= index + 1:
             raise ValueError(f'camera path has no pose for frame {index}')
         diagnose_frame(frame, sky, poses[index + 1], lens, near, drawn, against, index)
