@@ -31,7 +31,8 @@ from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import AlphaTest, coincident_faces, device_light, device_occlusion, surface_table, to_srgb8
+from r3d.light import (AlphaTest, coincident_faces, device_light, device_occlusion, surface_table, to_srgb8,
+                       turned_frame)
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery, chunks, joined, rows, vectors
@@ -55,7 +56,7 @@ def hit_albedo(source, hits, bary):
     return albedo
 
 
-def render_linear(source, job, scene, pose, width, height, lens, samples=4):
+def render_linear(source, job, scene, pose, width, height, lens, samples):
     """Return a linear RGB source render, supersampled then box filtered."""
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
@@ -176,32 +177,53 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     return origin, direction, found.where, found.rays, found.faces, found.normal, found.bary, found.double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples=4):
+def trace(source, job, scene, pose, width, height, lens, samples, denoise=False):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
     the pixel's rays and zero where they all miss). The pose stays on the device from its camera rays to each hit's
     colour (device_primary_hits, device_light); the light is gathered over every hit of the pose at once, so a hit's
-    bounce samples depend on its place among them and not on how the camera rays were split."""
+    bounce samples depend on its place among them and not on how the camera rays were split. Every hemisphere term
+    turns its directions per point (light.turned_frame); with `denoise` the colour passes through `denoised`."""
     origin, direction, found, albedo = device_primary_hits(source, job, pose, width, height, lens, samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
     shading = np.zeros((len(origin), 3), dtype=float)
+    surface = np.zeros((len(origin), 3), dtype=float)
     if found is not None:
         radiance = device_light(found.where, found.normal, found.double, source.intersector, scene.lights,
                                 job.bake.ray_offset, source.bounce, ao=job.bake.ao,
-                                bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
+                                bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0,
+                                frame=turned_frame)
         rays = np.array(found.rays, np.int64).reshape(-1)
         normal = rows(found.normal, len(rays))
         covered[rays] = 1.0
         linear[rays] = rows(albedo * radiance, len(rays))
+        surface[rays] = rows(albedo, len(rays))
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
-    shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
-    return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
-            covered.reshape(height, width, samples * samples).mean(axis=2),
-            shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12))
+    shape = (height, width, samples * samples, 3)
+    shading = shading.reshape(shape).sum(axis=2)
+    shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
+    linear = linear.reshape(shape).mean(axis=2)
+    if denoise:
+        linear = denoised(linear, surface.reshape(shape).mean(axis=2), shading)
+    return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
 
 
-def occlusion_map(source, job, pose, width, height, lens, samples=4):
+def denoised(linear, albedo, normal):
+    """`linear` through Open Image Denoise's ray-tracing filter (OIDN, pinned in requirements.txt) on the CPU,
+    guided by the pixel's albedo and shading normal. The guides come from the primary rays alone, which carry no
+    sampling noise, so OIDN takes them as they are (clean_aux) and only the colour is filtered."""
+    import pyoidn
+
+    def image(values):
+        return np.ascontiguousarray(values, dtype=np.float32)
+
+    out = pyoidn.denoise(image(linear), image(np.clip(albedo, 0.0, 1.0)), image(normal), hdr=True, clean_aux=True,
+                         quality="high")
+    return np.maximum(out.astype(np.float64), 0.0)
+
+
+def occlusion_map(source, job, pose, width, height, lens, samples):
     """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
     subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
     light by, so the scene must set it."""
@@ -215,7 +237,8 @@ def occlusion_map(source, job, pose, width, height, lens, samples=4):
         covered[found.rays] = 1.0
         factor[found.rays] = np.array(device_occlusion(source.intersector, vectors(mi.Point3f, found.where),
                                                        vectors(mi.Vector3f, found.normal), mi.Bool(found.double),
-                                                       job.bake.ao, job.bake.ray_offset), np.float64).reshape(-1)
+                                                       job.bake.ao, job.bake.ray_offset, turned_frame),
+                                      np.float64).reshape(-1)
     shape = (height, width, samples * samples)
     return factor.reshape(shape).mean(axis=2), covered.reshape(shape).mean(axis=2)
 
@@ -299,9 +322,10 @@ def link_or_copy(source, target):
         shutil.copyfile(source, target)
 
 
-def render_sets(inputs, sets, samples=4, store=None, progress=None):
+def render_sets(inputs, sets, store=None, progress=None):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    reference_set.ReferenceInputs) on `reference_variant()`. Given a pose `store` (bake/produce.PoseStore), each pose
+    reference_set.ReferenceInputs: its `samples` rays per pixel side, denoised when it says so) from
+    `reference_source`. Given a pose `store` (bake/produce.PoseStore), each pose
     is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
     each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
     The poses are traced in this process (trace_here). progress() runs once per traced pose, store or not: a caller
@@ -330,7 +354,7 @@ def render_sets(inputs, sets, samples=4, store=None, progress=None):
         if progress is not None:
             progress()
 
-    trace_here(inputs, plans, samples, traced)
+    trace_here(inputs, plans, traced)
     if store is None:
         return
     for out, target, folders, _missing, _poses, _size in plans:
@@ -341,7 +365,13 @@ def render_sets(inputs, sets, samples=4, store=None, progress=None):
                 link_or_copy(folder / f"{POSE_NAME}{suffix}", out / f"{index:04d}{suffix}")
 
 
-def trace_here(inputs, plans, samples, traced):
+def reference_source(job, scene):
+    """The source every pose of a reference set is traced from: lit, its accepted card materials hidden from camera
+    rays (the fit makes them), on `reference_variant()`."""
+    return lit_source(job, scene, hide_cards=True, variant=reference_variant())
+
+
+def trace_here(inputs, plans, traced):
     """The poses of `plans` traced in this process, the source loaded and its bounced light built once for all of
     them only when one is missing; traced(plan, index) as each pose's files are written. The bounced-light tracer,
     which holds the source's textures a second time, is dropped before it returns, for the fit that follows in the
@@ -354,9 +384,10 @@ def trace_here(inputs, plans, samples, traced):
             if not poses:
                 continue
             if source is None:
-                source = lit_source(job, scene, hide_cards=True, variant=reference_variant())
-            peak = render_poses(source, job, scene, poses, width, height, lens, samples, target, normals=True,
-                                done=lambda index, plan=plan: traced(plan, index))
+                source = reference_source(job, scene)
+            peak = render_poses(source, job, scene, poses, width, height, lens, inputs.samples, target,
+                                normals=REFERENCE_NORMALS, done=lambda index, plan=plan: traced(plan, index),
+                                denoise=inputs.denoise)
             print(f"worker reference_poses pid={os.getpid()} out={out} traced={len(poses)} of {len(folders)} "
                   f"pose_peak_pss_bytes={peak}", flush=True)
     finally:
@@ -364,9 +395,13 @@ def trace_here(inputs, plans, samples, traced):
         mesh_source.PATH_LIGHTS.clear()
 
 
-def write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, index, pose):
+# A reference pose writes its normals beside its picture: the fit reads both.
+REFERENCE_NORMALS = True
+
+
+def write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise, index, pose):
     """Trace one pose and write its files under `out`."""
-    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples, denoise)
     np.save(out / ("%04d.linear.npy" % index), linear)
     if normals:
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
@@ -383,7 +418,7 @@ def write_pose(source, job, scene, width, height, lens, samples, out, normals, o
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, occlusion=False,
-                 done=None):
+                 done=None, denoise=False):
     """Trace the poses one after another in this process, which keeps the device busy alone: on the GPU a launch
     fills it, on the CPU Mitsuba's LLVM threads trace one pose on every core. done(index) is called as each pose's
     files are written. Returns the process's peak PSS after a pose."""
@@ -392,7 +427,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     out = pathlib.Path(out)
     peak = 0
     for index, pose in enumerate(poses):
-        write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, index, pose)
+        write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise, index, pose)
         peak = max(peak, pss_bytes(os.getpid()))
         if done is not None:
             done(index)
@@ -405,7 +440,9 @@ def main(argv=None):
     parser.add_argument("--object", help="the scene's mesh renderer to render, lit as it is baked (default: the first)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--samples", type=int, default=4)
+    parser.add_argument("--samples", type=int, default=4, help="rays per pixel side (default 4)")
+    parser.add_argument("--denoise", action="store_true",
+                        help="pass each pose's colour through Open Image Denoise, as a fit recipe with denoise does")
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--occlusion", action="store_true",
@@ -456,7 +493,7 @@ def main(argv=None):
     if path is None:
         try:
             peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals,
-                                args.occlusion)
+                                args.occlusion, denoise=args.denoise)
         except ValueError as error:
             parser.error(str(error))
         print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak}", flush=True)

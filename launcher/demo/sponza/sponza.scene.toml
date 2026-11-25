@@ -83,6 +83,8 @@ coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
 size = [184, 224]
+samples = 4         # 4 x 4 rays per pixel (docs/render/scene/Scene-Files.md#fitposes)
+denoise = true      # OIDN with albedo + normal guides
 train_every_ms = 1000
 held_out_every_ms = 5000
 

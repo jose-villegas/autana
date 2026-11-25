@@ -118,7 +118,7 @@ class OccludedLightTest(unittest.TestCase):
 
     def test_the_indirect_light_is_scaled_only_when_asked(self):
         class Constant:
-            def device_bounce(self, points, normals, ray_offset, side=0):
+            def device_bounce(self, points, normals, ray_offset, side, frame):
                 import drjit as dr
                 import mitsuba as mi
 

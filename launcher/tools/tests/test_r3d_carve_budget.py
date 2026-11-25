@@ -204,7 +204,7 @@ class FitCeilingTests(unittest.TestCase):
     def test_prune_floor_must_not_exceed_variant_ceiling(self):
         from r3d.import_settings import load_fit
         recipe = dict(prune=dict(budget=3, coverage_every_ms=1),
-                      poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
+                      poses=dict(size=[2, 2], samples=1, denoise=False, train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
                                     surface_weight=10.0, surface_margin=0.25))
         with self.assertRaisesRegex(SettingsError, 'prune.budget.*ceiling'):

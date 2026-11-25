@@ -557,6 +557,14 @@ class StageTests(unittest.TestCase):
             for path, name in expected.items():
                 self.assertIn((path, name), reached, stage)
 
+    def test_a_traced_pose_keys_the_source_it_is_traced_from_and_the_files_it_writes(self):
+        # A pose store serves a pose under this key, so what chooses its source (hidden cards, the variant) and its
+        # files (normals) must move it, not only the set's key.
+        units, _ = bake.stage_units("reference_pose")
+        reached = {name for unit in units if unit.path.name == "reference_render.py" for name in unit.names}
+        self.assertTrue({"reference_source", "lit_source", "reference_variant", "REFERENCE_NORMALS", "write_pose"}
+                        <= reached, reached)
+
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)

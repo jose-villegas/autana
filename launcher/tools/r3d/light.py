@@ -408,6 +408,52 @@ def tangent_frame(n):
     return tu, dr.cross(n, tu)
 
 
+def fixed_frame(points, normals):
+    """tangent_frame at every point: equal normals trace equal directions, so equal surroundings give equal light."""
+    return tangent_frame(normals)
+
+
+# A point's hash: each coordinate's bits times its own odd constant, xored together, then SplitMix64's finalizer
+# (Steele et al. 2014). The constants are SplitMix64's gamma and its two finalizer multipliers.
+COORDINATE_CONSTANTS = np.array([0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=np.uint64)
+FINALIZER_MULTIPLIERS = (np.uint64(0xBF58476D1CE4E5B9), np.uint64(0x94D049BB133111EB))
+FINALIZER_SHIFTS = (np.uint64(30), np.uint64(27), np.uint64(31))
+# The hash's top 53 bits become a fraction of a turn, the most a float64 holds exactly.
+TURN_BITS = 53
+
+
+def turned_frame(points, normals):
+    """tangent_frame turned about each normal by an angle hashed from the point's coordinate bits, so neighbouring
+    points trace different directions and a direction set's error is noise, not a shape repeated across a surface.
+    A point turns the same however it is traced: alone, with others, or in another shard. NumPy rows or Dr.Jit
+    vectors, like tangent_frame; a Dr.Jit point hashes its float32 coordinates widened to float64, so it turns as
+    the NumPy row of the same float32 values does."""
+    import drjit as dr
+
+    tu, tv = tangent_frame(normals)
+    if isinstance(points, np.ndarray):
+        bits = np.ascontiguousarray(points, dtype=np.float64).view(np.uint64)
+        mixed = np.bitwise_xor.reduce(bits * COORDINATE_CONSTANTS, axis=1)
+        multipliers, top = FINALIZER_MULTIPLIERS, np.uint64(64 - TURN_BITS)
+    else:
+        word = dr.uint64_array_t(type(points.x))
+        mixed = word(0)
+        for axis, constant in zip(points, COORDINATE_CONSTANTS):
+            mixed ^= dr.reinterpret_array(word, dr.float64_array_t(type(axis))(axis)) * word(int(constant))
+        multipliers, top = [word(int(value)) for value in FINALIZER_MULTIPLIERS], 64 - TURN_BITS
+    shifts = [int(value) for value in FINALIZER_SHIFTS]
+    mixed = (mixed ^ (mixed >> shifts[0])) * multipliers[0]
+    mixed = (mixed ^ (mixed >> shifts[1])) * multipliers[1]
+    mixed = mixed ^ (mixed >> shifts[2])
+    if isinstance(points, np.ndarray):
+        angle = (2 * math.pi / 2 ** TURN_BITS) * (mixed >> top).astype(np.float64)[:, None]
+        cos, sin = np.cos(angle), np.sin(angle)
+    else:
+        angle = (2 * math.pi / 2 ** TURN_BITS) * dr.float64_array_t(word)(mixed >> top)
+        cos, sin = (type(points.x)(value) for value in dr.sincos(angle)[::-1])
+    return cos * tu + sin * tv, cos * tv - sin * tu
+
+
 def sky_directions(count):
     """One fixed set of cosine-weighted hemisphere directions (z up), shared by
     every point: a golden-ratio sequence, so any prefix is evenly spread."""
@@ -418,18 +464,20 @@ def sky_directions(count):
     return np.stack([r * np.cos(a), r * np.sin(a), np.sqrt(1 - r1)], axis=1)
 
 
-def hemisphere_ray(mi, origins, normals, local):
-    """ray(point, k): from origins[point], along the k-th of the `local` (z-up) directions turned into the frame of
-    normals[point]."""
+def hemisphere_ray(mi, origins, normals, tangents, local):
+    """ray(point, k): from origins[point], along the k-th of the `local` (z-up) directions turned into the point's
+    frame: `tangents` (a frame function's two tangents per point) and normals[point]."""
     import drjit as dr
 
     table = vectors(mi.Vector3f, local)
+    tu, tv = tangents
+    dr.eval(tu, tv)
 
     def ray(point, k):
         n = dr.gather(type(normals), normals, point)
-        tu, tv = tangent_frame(n)
         d = dr.gather(type(table), table, k)
-        return mi.Ray3f(dr.gather(type(origins), origins, point), tu * d.x + tv * d.y + n * d.z)
+        return mi.Ray3f(dr.gather(type(origins), origins, point),
+                        dr.gather(type(tu), tu, point) * d.x + dr.gather(type(tv), tv, point) * d.y + n * d.z)
 
     return ray
 
@@ -446,11 +494,11 @@ def bake_directional(light, ctx):
 
 
 def bake_sky(light, ctx):
-    """The share of the light's `rays` fixed cosine-weighted directions that reach the sky."""
+    """The share of the light's `rays` cosine-weighted directions, in each point's frame, that reach the sky."""
     import drjit as dr
 
     mi = ctx.mi
-    ray = hemisphere_ray(mi, ctx.origin, ctx.normals, sky_directions(light["rays"]))
+    ray = hemisphere_ray(mi, ctx.origin, ctx.normals, ctx.frame(ctx.points, ctx.normals), sky_directions(light["rays"]))
     visible = summed_rays(mi, mi.Float, ctx.count, light["rays"], lambda point, k, _chunk: dr.select(
         ctx.query.device_blocked(ray(point, k)), 0.0, 1.0))
     return visible / light["rays"] * colour(mi, light)
@@ -471,16 +519,16 @@ LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
 
 
-def device_local_occlusion(query, points, normals, ao, ray_offset):
+def device_local_occlusion(query, points, normals, ao, ray_offset, frame=fixed_frame):
     """Distance-limited ambient occlusion per point (Dr.Jit arrays): 1 where nothing stands within `ao.distance`
     of the point's hemisphere, down to 1 - `ao.strength` where it is walled in. Every point uses the same
-    cosine-weighted directions in its own frame, and a hit counts for less the farther it is, linearly to nothing at
-    the distance."""
+    cosine-weighted directions in its own `frame`, and a hit counts for less the farther
+    it is, linearly to nothing at the distance."""
     import drjit as dr
 
     mi = query.mi
     origin = points + normals * ray_offset
-    ray = hemisphere_ray(mi, origin, normals, sky_directions(ao.rays))
+    ray = hemisphere_ray(mi, origin, normals, frame(points, normals), sky_directions(ao.rays))
 
     def covered(point, k, _chunk):
         traced = ray(point, k)
@@ -490,17 +538,18 @@ def device_local_occlusion(query, points, normals, ao, ray_offset):
     return 1.0 - ao.strength * summed_rays(mi, mi.Float, dr.width(points), ao.rays, covered) / ao.rays
 
 
-def device_occlusion(query, points, normals, double_sided, ao, ray_offset):
+def device_occlusion(query, points, normals, double_sided, ao, ray_offset, frame=fixed_frame):
     """device_local_occlusion on each point's own side. A double-sided surface has no side it is meant to be seen
     from, so it takes the less occluded of its two: a curtain hanging against a wall is lit by the open side it is
     seen from, not darkened by the wall behind it."""
     import drjit as dr
 
     mi = query.mi
-    factor = device_local_occlusion(query, points, normals, ao, ray_offset)
+    factor = device_local_occlusion(query, points, normals, ao, ray_offset, frame)
     both = dr.compress(double_sided)
     if dr.width(both):
-        other = device_local_occlusion(query, dr.gather(type(points), points, both), -dr.gather(type(normals), normals, both), ao, ray_offset)
+        other = device_local_occlusion(query, dr.gather(type(points), points, both),
+                                       -dr.gather(type(normals), normals, both), ao, ray_offset, frame)
         best = dr.maximum(dr.gather(mi.Float, factor, both), other)
         dr.eval(best)
         dr.scatter(factor, best, both)
@@ -508,11 +557,11 @@ def device_occlusion(query, points, normals, double_sided, ao, ray_offset):
     return factor
 
 
-def local_occlusion(points, normals, intersector, ao, ray_offset):
+def local_occlusion(points, normals, intersector, ao, ray_offset, frame=fixed_frame):
     """device_local_occlusion for NumPy points and unit normals."""
     mi = intersector.mi
     factor = device_local_occlusion(intersector, vectors(mi.Point3f, points), vectors(mi.Vector3f, normals), ao,
-                                    ray_offset)
+                                    ray_offset, frame)
     return np.array(factor, np.float64).reshape(-1)
 
 
@@ -537,12 +586,13 @@ def face_towards_light(normals, double_sided, lights):
 
 
 def device_light(points, normals, double_sided, query, lights, ray_offset, bounce=None, bounce_groups=None, ao=None,
-                 bounce_intensity=1.0):
+                 bounce_intensity=1.0, frame=fixed_frame):
     """Radiance from the scene lights at each point (Dr.Jit points, unit normals and double-sided flags), in the
     unit of irradiance over pi.
 
-    The sun and sky come from shadow rays against `query`, the same fixed directions at every point so equal
-    surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` (NumPy) gives
+    The sun and sky come from shadow rays against `query`. Every hemisphere term (sky, local occlusion, bounce)
+    casts one direction set in each point's `frame`: `fixed_frame` traces the same directions at every
+    point, `turned_frame` turns them per point. `bounce` is a PathLight whose bounced light is added; `bounce_groups` (NumPy) gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
     and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
@@ -554,15 +604,15 @@ def device_light(points, normals, double_sided, query, lights, ray_offset, bounc
     mi = query.mi
     lights = baked_lights(lights)
     n = face_towards_light(normals, double_sided, lights)
-    occlusion = None if ao is None else device_occlusion(query, points, normals, double_sided, ao, ray_offset)
+    occlusion = None if ao is None else device_occlusion(query, points, normals, double_sided, ao, ray_offset, frame)
     radiance = lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity,
-                        0)
+                        0, frame)
     both = dr.compress(double_sided)
     if dr.width(both):
         groups = None if bounce_groups is None else np.asarray(bounce_groups)[np.array(both, np.int64)]
         other = lit_side(query, dr.gather(type(points), points, both), -dr.gather(type(n), n, both), lights,
                          ray_offset, None if occlusion is None else dr.gather(mi.Float, occlusion, both), bounce,
-                         groups, ao, bounce_intensity, 1)
+                         groups, ao, bounce_intensity, 1, frame)
         mine = dr.gather(type(radiance), radiance, both)
         best = dr.select(dr.sum(other) > dr.sum(mine), other, mine)
         dr.eval(best)
@@ -572,42 +622,43 @@ def device_light(points, normals, double_sided, query, lights, ray_offset, bounc
 
 
 def light(points, normals, double_sided, intersector, lights, ray_offset, bounce=None, bounce_groups=None, ao=None,
-          bounce_intensity=1.0):
+          bounce_intensity=1.0, frame=fixed_frame):
     """device_light for NumPy points, unit normals and double-sided flags, on the intersector's variant."""
     mi = intersector.mi
     if not len(points):
         return np.zeros((0, 3))
     radiance = device_light(vectors(mi.Point3f, points), vectors(mi.Vector3f, normals),
                             mi.Bool(np.asarray(double_sided, bool)), intersector, lights, ray_offset, bounce,
-                            bounce_groups, ao, bounce_intensity)
+                            bounce_groups, ao, bounce_intensity, frame)
     return rows(radiance, len(points))
 
 
-def lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity, side):
+def lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity, side,
+             frame):
     """The light at each point on the side its unit normal `n` faces; `side` (0, 1) keeps the two sides' bounced
     light on separate sample streams."""
     import drjit as dr
 
     mi = query.mi
-    ctx = SimpleNamespace(mi=mi, query=query, normals=n, origin=points + n * ray_offset, occlusion=occlusion,
-                          count=dr.width(points))
+    ctx = SimpleNamespace(mi=mi, query=query, points=points, normals=n, origin=points + n * ray_offset,
+                          occlusion=occlusion, count=dr.width(points), frame=frame)
     radiance = dr.zeros(mi.Color3f, ctx.count)
     for scene_light in lights:
         radiance = radiance + LIGHTS[scene_light["type"]][1](scene_light, ctx)
     if bounce is None:
         return radiance
-    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups, side) * bounce_intensity
+    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups, side, frame) * bounce_intensity
     if ao is not None and ao.indirect:
         bounced = bounced * occlusion
     return radiance + bounced
 
 
-def bounced_light(bounce, points, normals, ray_offset, groups=None, side=0):
+def bounced_light(bounce, points, normals, ray_offset, groups=None, side=0, frame=fixed_frame):
     """`bounce.device_bounce` for every point; with NumPy `groups`, once per group on the group's mean normal."""
     import drjit as dr
 
     if groups is None:
-        return bounce.device_bounce(points, normals, ray_offset, side)
+        return bounce.device_bounce(points, normals, ray_offset, side, frame)
     mi = bounce.mi
     _, first, inverse = np.unique(groups, return_index=True, return_inverse=True)
     inverse = inverse.reshape(-1)
@@ -616,7 +667,7 @@ def bounced_light(bounce, points, normals, ray_offset, groups=None, side=0):
     length = np.linalg.norm(total, axis=1, keepdims=True)
     mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), host[first])
     gathered = bounce.device_bounce(dr.gather(type(points), points, mi.UInt32(first.astype(np.uint32))),
-                                    vectors(mi.Vector3f, mean), ray_offset, side)
+                                    vectors(mi.Vector3f, mean), ray_offset, side, frame)
     return dr.gather(type(gathered), gathered, mi.UInt32(inverse.astype(np.uint32)))
 
 

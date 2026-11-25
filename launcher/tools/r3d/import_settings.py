@@ -168,7 +168,7 @@ def face_sample_options(value, where):
 
 FIT_GROUPS = {
     "prune": ("coverage_every_ms",),
-    "poses": ("size", "train_every_ms", "held_out_every_ms"),
+    "poses": ("size", "samples", "denoise", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = ("budget",) + tuple(key for keys in FIT_GROUPS.values() for key in keys)
@@ -195,12 +195,13 @@ def load_fit(value, variant, where):
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
     fit = SimpleNamespace(**{key: values.get(key) for key in FIT_KEYS})
-    for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+    for key in ("budget", "samples", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         if getattr(fit, key) is not None:
             setattr(fit, key, count(values[key], f"{where}.{key}"))
     if getattr(variant, "ceiling", None) is not None and fit.budget is not None and fit.budget > variant.ceiling:
         raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
+    fit.denoise = boolean(values["denoise"], f"{where}.poses.denoise")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
     for key in ("surface_weight", "surface_margin"):
@@ -814,7 +815,8 @@ def load_scene(path):
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
+    check_keys(values, ("objects",), "scene",
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")

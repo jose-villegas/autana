@@ -161,7 +161,7 @@ class SideBounce:
     def __init__(self, up=(0.0, 0.0, 0.0), down=(0.0, 0.0, 0.0)):
         self.up, self.down, self.calls, self.mi = np.array(up), np.array(down), [], llvm()
 
-    def device_bounce(self, points, normals, ray_offset, side=0):
+    def device_bounce(self, points, normals, ray_offset, side, frame):
         import drjit as dr
 
         normals = rows(normals, dr.width(normals))

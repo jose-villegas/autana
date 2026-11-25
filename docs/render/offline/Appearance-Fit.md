@@ -24,6 +24,8 @@ Measured results are in
 | `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
+| `fit.poses.samples` | | reference rays per pixel side |
+| `fit.poses.denoise` | | Open Image Denoise on each reference render |
 | `fit.poses.train_every_ms` | | camera-path spacing of the training poses |
 | `fit.poses.held_out_every_ms` | | which of those poses are held out and only scored |
 | `fit.optimise.steps` | $`K`$ | optimiser steps |

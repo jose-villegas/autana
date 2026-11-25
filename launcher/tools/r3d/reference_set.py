@@ -76,6 +76,8 @@ class ReferenceInputs:
     tonemap_white: float
     camera: SimpleNamespace       # the scene camera: lens, background and path
     size: tuple                   # the fit recipe's pose size
+    samples: int                  # the fit recipe's rays per pixel side of a reference render
+    denoise: bool                 # the fit recipe's: denoise each reference render
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
 
@@ -91,11 +93,12 @@ class ReferenceInputs:
 
 
 def reference_inputs(job, scene):
-    """The reference inputs of a fitted renderer, with its recipe's pose size."""
+    """The reference inputs of a fitted renderer, with its recipe's pose size, samples and denoise."""
     renderer = job.renderer
     size = tuple(renderer.fit.size)
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
+                           samples=renderer.fit.samples, denoise=renderer.fit.denoise,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
                            probes=job.settings.fit.probes)
 

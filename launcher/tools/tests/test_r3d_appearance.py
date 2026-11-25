@@ -452,7 +452,7 @@ class AppearanceMeshTests(unittest.TestCase):
         from r3d.import_settings import SettingsError, load_fit
 
         recipe = dict(prune=dict(budget=1, coverage_every_ms=1),
-                      poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
+                      poses=dict(size=[2, 2], samples=1, denoise=False, train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
                                     surface_weight=10.0, surface_margin=0.25))
         for key in ("surface_weight", "surface_margin"):

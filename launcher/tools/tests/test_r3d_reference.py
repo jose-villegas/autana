@@ -127,7 +127,7 @@ def plane_source(*quads):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)])
+    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)], bake=None)
     return job, scene
 
 
@@ -161,6 +161,25 @@ class ReferenceRenderTest(unittest.TestCase):
         self.assertEqual(error.exception.code, 2)
         self.assertIn(message, stderr.getvalue())
         occlusion.assert_called_once()
+
+    def test_the_command_line_traces_4_rays_a_side_and_denoises_only_when_asked(self):
+        # Doc figures call the command line: a scene's fit recipe that denoises its references must not reach them.
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        scene = SimpleNamespace(camera=SimpleNamespace(component=None), tonemap_white=1.0)
+        for extra, denoise in (([], False), (['--denoise'], True)):
+            with self.subTest(extra=extra), contextlib.redirect_stdout(io.StringIO()), \
+                    patch.object(reference_render, 'load_scene', return_value=scene), \
+                    patch.object(reference_render, 'read_poses', return_value=(1, 1, .1, .01, [None])), \
+                    patch.object(reference_render, 'source_for', return_value=(None, None)), \
+                    patch.object(reference_render, 'render_poses', return_value=0) as render, \
+                    patch.object(reference_render.pathlib.Path, 'mkdir'):
+                self.assertEqual(reference_render.main(['scene', '--poses', 'p', '--out', 'o'] + extra), 0)
+            args, kwargs = render.call_args
+            self.assertEqual((args[7], kwargs['denoise']), (4, denoise))
 
     @needs_llvm
     def test_an_unshadowed_plane_is_exact_lambert(self):
@@ -278,6 +297,103 @@ class RenderPosesTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class PerPointDirectionsTests(unittest.TestCase):
+    @needs_llvm
+    def test_a_turned_frame_stays_orthonormal_about_the_normal_and_turns_a_point_alike_in_any_batch(self):
+        from r3d.light import turned_frame
+
+        rng = np.random.default_rng(0)
+        points = rng.uniform(-100.0, 100.0, (64, 3))
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        tu, tv = turned_frame(points, normals)
+        for a, b in ((tu, tu), (tv, tv), (tu, tv), (tu, normals), (tv, normals)):
+            np.testing.assert_allclose((a * b).sum(axis=1), 1.0 if a is b else 0.0, atol=1e-6)  # float32 tangents
+        alone = [turned_frame(points[i:i + 1], normals[i:i + 1]) for i in (5, 40)]
+        reversed_u, _ = turned_frame(points[::-1], normals[::-1])
+        for i, (u, v) in zip((5, 40), alone):
+            self.assertTrue(np.array_equal(u[0], tu[i]) and np.array_equal(v[0], tv[i]))
+            self.assertTrue(np.array_equal(reversed_u[len(points) - 1 - i], tu[i]))
+
+    @needs_llvm
+    def test_a_device_point_turns_as_the_numpy_row_of_its_float32_coordinates(self):
+        import mitsuba as mi
+
+        from r3d.light import turned_frame
+        from r3d.ray_query import rows, vectors
+
+        rng = np.random.default_rng(1)
+        points = rng.uniform(-100.0, 100.0, (64, 3)).astype(np.float32).astype(np.float64)
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        host = turned_frame(points, normals)
+        device = turned_frame(vectors(mi.Point3f, points), vectors(mi.Vector3f, normals))
+        for want, got in zip(host, device):
+            np.testing.assert_allclose(rows(got, len(points)), want, atol=1e-6)
+
+    @needs_llvm
+    def test_neighbouring_points_on_one_plane_turn_apart_where_a_fixed_frame_does_not(self):
+        from r3d.light import fixed_frame, turned_frame
+
+        points = np.array([[x, 0.0, 0.0] for x in np.linspace(0.0, 1e-3, 16)])
+        up = np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        fixed = fixed_frame(points, up)[0]
+        turned = turned_frame(points, up)[0]
+        self.assertTrue(np.all(fixed == fixed[0]))
+        angles = np.arctan2(turned[:, 1], turned[:, 0])
+        self.assertEqual(len(np.unique(angles)), len(points))
+        # Spread over the whole turn, not clustered: every quarter holds some of the angles.
+        quarters = np.floor((angles + np.pi) / (np.pi / 2)).astype(int) % 4
+        self.assertEqual(set(quarters), {0, 1, 2, 3})
+
+    @needs_llvm
+    def test_a_trace_turns_every_hemisphere_term_per_point(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.light import turned_frame
+
+        source = plane_source(square())
+        with patch.object(reference_render, "device_light", wraps=reference_render.device_light) as lit:
+            trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 0.1, 1)
+        self.assertIs(lit.call_args.kwargs["frame"], turned_frame)
+
+    @needs_llvm
+    def test_a_denoised_trace_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source(square())
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise), \
+                    patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
+                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1, denoise)
+                self.assertEqual(filtered.call_count, int(denoise))
+                np.testing.assert_array_equal(linear, plain[0] + float(denoise))
+                np.testing.assert_array_equal(normal, plain[2])
+                if denoise:
+                    colour, albedo, guide = filtered.call_args.args
+                    np.testing.assert_array_equal(colour, plain[0])
+                    np.testing.assert_allclose(albedo, 1.0, atol=1e-12)
+                    np.testing.assert_array_equal(guide, plain[2])
+
+    def test_oidn_takes_the_grain_out_of_a_flat_surface_and_keeps_its_level(self):
+        from r3d.reference_render import denoised
+
+        rng = np.random.default_rng(0)
+        size = 64
+        level = 0.4
+        noisy = level * rng.uniform(0.5, 1.5, (size, size, 3))
+        albedo = np.full((size, size, 3), 0.8)
+        normal = np.tile([0.0, 0.0, 1.0], (size, size, 1))
+        clean = denoised(noisy, albedo, normal)
+        self.assertEqual(clean.dtype, np.float64)
+        self.assertLess(clean.std(), noisy.std() / 4)
+        self.assertAlmostEqual(clean.mean(), noisy.mean(), delta=0.02 * level)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class ReferenceSetTests(unittest.TestCase):
     def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
         import contextlib
@@ -294,7 +410,8 @@ class ReferenceSetTests(unittest.TestCase):
         background = SimpleNamespace(background=0x123456)
         scene.camera = SimpleNamespace(component=background)
         inputs = ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=None,
-                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={})
+                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={},
+                                 samples=4, denoise=False)
         shifts = ([0.], [.5], [-.5, 1.])
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -331,7 +448,7 @@ class ReferenceSetTests(unittest.TestCase):
 @unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
-        def device_bounce(self, points, normals, ray_offset, side=0):
+        def device_bounce(self, points, normals, ray_offset, side, frame):
             import drjit as dr
             import mitsuba as mi
 
@@ -359,10 +476,18 @@ class BounceReferenceTests(unittest.TestCase):
         self.assertEqual(done, [0, 1, 2])
         self.assertEqual([call.args[-2:] for call in write.call_args_list], [(0, 'a'), (1, 'b'), (2, 'c')])
 
+    def test_a_reference_set_traces_at_its_inputs_samples_and_denoising(self):
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise):
+                render_poses = render_one_set(None, samples=3, denoise=denoise, lit_source={"return_value": object()})["render_poses"]
+                args, kwargs = render_poses.call_args
+                self.assertEqual((args[7], kwargs["denoise"]), (3, denoise))
 
-def render_one_set(job, **patches):
+
+def render_one_set(job, samples=1, denoise=False, **patches):
     """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
-    patched by its keyword arguments (render_poses returns no work unless given); returns the patches by name."""
+    patched by its keyword arguments (render_poses returns no work unless given), the inputs tracing at `samples`
+    with `denoise`; returns the patches by name."""
     import contextlib
     import io
     import tempfile
@@ -371,7 +496,7 @@ def render_one_set(job, **patches):
     from r3d.fitted_variant import poses_text
 
     patches.setdefault("render_poses", {"return_value": 0})
-    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, samples=samples, denoise=denoise)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
         poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
@@ -398,7 +523,8 @@ class PoseStoreTests(unittest.TestCase):
 
         traced, told = [], []
 
-        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None):
+        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None,
+                        denoise=False):
             for index, pose in enumerate(poses):
                 traced.append(list(pose))
                 for suffix in reference_render.POSE_SUFFIXES:
@@ -408,7 +534,7 @@ class PoseStoreTests(unittest.TestCase):
 
         poses = out.parent / f"{out.name}.txt"
         poses.write_text(poses_text)
-        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None, samples=1, denoise=False)
         with patch.object(reference_render, "lit_source", return_value=object()), \
                 patch.object(reference_render, "render_poses", side_effect=fake_render), \
                 patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \

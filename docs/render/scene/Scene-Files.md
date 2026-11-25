@@ -53,7 +53,7 @@ visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit]      # fitted to reference renders of the source
 prune = { budget = 13313, coverage_every_ms = 20 }
-poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
+poses = { size = [184, 224], samples = 4, denoise = true, train_every_ms = 1000, held_out_every_ms = 5000 }
 
 [objects.mesh_renderer.fit.optimise]
 steps = 2000
@@ -198,6 +198,8 @@ coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
 size = [184, 224]
+samples = 4         # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -221,7 +223,7 @@ normal_weight = 1.0
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
-| `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.poses` | `size`, `samples`, `denoise`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
@@ -306,6 +308,14 @@ pixels over. How a fit runs: [Appearance-Fit.md](../offline/Appearance-Fit.md#st
 `size = [width, height]` sets the pose resolution; `train_every_ms` spaces the
 training poses along the camera path, and poses at multiples of
 `held_out_every_ms` are held out and only scored ([Poses](../offline/Appearance-Fit.md#poses)).
+
+`samples` and `denoise` set how the reference renders are traced
+([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)):
+
+| Field | Meaning |
+|---|---|
+| `samples` | Rays per pixel along each side, at least 1: `samples`² primary rays per pixel. |
+| `denoise` | `true` filters each render with Open Image Denoise<sup>[[143]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
 
 #### fit.optimise
 

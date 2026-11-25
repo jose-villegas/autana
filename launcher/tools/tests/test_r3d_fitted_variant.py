@@ -315,7 +315,8 @@ class SweepTests(unittest.TestCase):
         start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
-                                   fit=SimpleNamespace(size=(2, 3), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
+                                   fit=SimpleNamespace(size=(2, 3), samples=1, denoise=False, train_every_ms=1,
+                                                       held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path", size=(9, 7)))
         job = SimpleNamespace(settings=SimpleNamespace(path="settings", fit=UNSHAPED), bake=SimpleNamespace(), renderer=renderer,
                               object=SimpleNamespace(name="tiny"))
@@ -333,6 +334,7 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(render.call_count, 1)
         self.assertEqual(prepare.call_args.args[0].size, renderer.fit.size)
         inputs, sets = render.call_args.args
+        self.assertEqual((inputs.samples, inputs.denoise), (renderer.fit.samples, renderer.fit.denoise))
         self.assertIsInstance(inputs, fitted_variant.ReferenceInputs)
         self.assertEqual(inputs.size, renderer.fit.size)
         self.assertEqual([folder.name for _poses, folder in sets],
@@ -370,7 +372,8 @@ class SweepTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):
-        fit = SimpleNamespace(size=(8, 6), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
+        fit = SimpleNamespace(size=(8, 6), samples=1, denoise=False, train_every_ms=1, held_out_every_ms=2,
+                              coverage_every_ms=3)
         scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
         size = (8, 6)
         for source in ("camera_region", None):
