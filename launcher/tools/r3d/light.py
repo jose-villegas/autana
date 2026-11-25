@@ -517,14 +517,6 @@ def local_occlusion(points, normals, intersector, ao, ray_offset):
     return np.array(factor, np.float64).reshape(-1)
 
 
-def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset):
-    """device_occlusion for NumPy points, unit normals and double-sided flags."""
-    mi = intersector.mi
-    factor = device_occlusion(intersector, vectors(mi.Point3f, points), vectors(mi.Vector3f, normals),
-                              mi.Bool(np.asarray(double_sided, bool)), ao, ray_offset)
-    return np.array(factor, np.float64).reshape(-1)
-
-
 def baked_lights(lights):
     """The surface and probe bakes share the baked rig; sky and ambient are bake settings."""
     return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
