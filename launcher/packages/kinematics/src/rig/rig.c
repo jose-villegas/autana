@@ -8,11 +8,10 @@ rig_follow_position(const transformf_t* target, vec3f_t offset, rig_bind_t bind)
     if (bind == RIG_BIND_TARGET) {
         offset = quatf_rotate(target->rotation, offset);
     } else if (bind == RIG_BIND_TARGET_YAW) {
-        const vec3f_t up = vec3f_up();
         const vec3f_t forward = quatf_rotate(target->rotation, vec3f_forward());
-        const vec3f_t horizontal = vec3f_sub(forward, vec3f_scale(up, vec3f_dot(forward, up)));
+        const vec3f_t horizontal = {forward.x, 0.0F, forward.z};
         if (vec3f_dot(horizontal, horizontal) >= RIG_YAW_PROJECTION_EPSILON * RIG_YAW_PROJECTION_EPSILON) {
-            offset = quatf_rotate(quatf_looking(horizontal, up), offset);
+            offset = quatf_rotate(quatf_looking(horizontal, vec3f_up()), offset);
         }
     }
     return vec3f_add(target->position, offset);
