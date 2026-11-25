@@ -50,6 +50,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
+# The fit refines a shape in place: no free point leaves its start by more than this many local edge lengths
+# (vertex_scale), however rarely the colour views see it; a seam-held point follows its target (hold_seams).
+MOVE_REACH = 1.0
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
@@ -959,6 +962,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
+            # A point moves step_scale * delta, so a cap of MOVE_REACH local scales is one bound on every row of delta.
+            reach = MOVE_REACH * point_scale.max()
+            length = delta.norm(dim=1, keepdim=True)
+            delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
