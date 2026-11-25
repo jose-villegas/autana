@@ -22,6 +22,7 @@ import types
 import unittest
 import urllib.error
 import zipfile
+from http import HTTPStatus
 from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
 from bake import bake, produce  # noqa: E402
+import http_get  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
@@ -1683,10 +1685,61 @@ class LockTests(unittest.TestCase):
                                  {"name": "other", "expired": False, "archive_download_url": "never"}]}
         replies = {"zip": archive.getvalue()}
         with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
-                mock.patch.object(bake, "github_get", side_effect=lambda url, token: replies.get(url, json.dumps(listing).encode())) as get:
+                mock.patch.object(bake, "github_get", side_effect=lambda url, token, **_: replies.get(url, json.dumps(listing).encode())) as get:
             bake.run_files(7, self.root / "run")
         self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
         self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
+
+    ARCHIVE = "https://api.github.com/repos/o/r/actions/artifacts/1/zip"
+
+    @staticmethod
+    def zipped():
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as zipped:
+            zipped.writestr("files/a.bundle", b"mesh")
+        return archive.getvalue()
+
+    def read_archive(self, replies):
+        """run_files over one listed artifact whose archive answers `replies` in turn (a status code
+        or zipped()'s bytes); returns the archive's URL opens and the sleeps between them."""
+        listing = json.dumps({"artifacts": [{"name": "bakes-cpu", "expired": False, "archive_download_url": self.ARCHIVE}]})
+        pending = iter(replies)
+        opens = []
+
+        def urlopen(director, request, timeout):
+            if request.full_url != self.ARCHIVE:
+                return io.BytesIO(listing.encode())
+            opens.append(request.full_url)
+            reply = next(pending)
+            if isinstance(reply, int):
+                raise urllib.error.HTTPError(self.ARCHIVE, reply, "Not Found", {}, None)
+            return io.BytesIO(reply)
+
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", autospec=True, side_effect=urlopen), \
+                mock.patch("time.sleep") as sleep:
+            bake.run_files(7, self.root / "run")
+        return opens, sleep.call_count
+
+    def test_an_archive_that_404s_right_after_upload_is_fetched_once_it_is_ready(self):
+        opens, sleeps = self.read_archive([HTTPStatus.NOT_FOUND, self.zipped()])
+        self.assertEqual(len(opens), 2)
+        self.assertEqual(sleeps, 1)
+        self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
+
+    def test_an_archive_that_keeps_404ing_fails_loudly_after_the_bounded_retries(self):
+        with self.assertRaises(urllib.error.HTTPError) as failed:
+            self.read_archive([HTTPStatus.NOT_FOUND] * http_get.GET_ATTEMPTS)
+        self.assertEqual(failed.exception.code, HTTPStatus.NOT_FOUND)
+        self.assertIn(f"failed after {http_get.GET_ATTEMPTS} attempts", "".join(failed.exception.__notes__))
+
+    def test_a_404_elsewhere_is_not_retried(self):
+        gone = urllib.error.HTTPError("url", HTTPStatus.NOT_FOUND, "Not Found", {}, None)
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", side_effect=gone) as opened, \
+                mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
+            bake.run_status(7)
+        self.assertEqual(opened.call_count, 1)
 
     def test_a_runs_status_is_read_through_the_api(self):
         with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \

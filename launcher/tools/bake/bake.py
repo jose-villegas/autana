@@ -85,6 +85,7 @@ import tomllib
 import urllib.error
 import urllib.request
 import zipfile
+from http import HTTPStatus
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 REPO = TOOLS.parents[1]
@@ -92,7 +93,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO / "scripts/gates"))
 sys.path.insert(0, str(REPO / "scripts/lib"))
 from autana_config import user_cache_dir
-from http_get import get
+from http_get import get, transient
 
 from build import packages  # noqa: E402
 from build.c_header import read_define  # noqa: E402
@@ -1168,19 +1169,27 @@ class KeepRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def github_get(url, token):
+def archive_pending(error):
+    """Whether an artifact archive's download may still succeed: GitHub answers 404 for a while after
+    the artifact is listed, before its archive can be fetched."""
+    return transient(error) or (isinstance(error, urllib.error.HTTPError) and error.code == HTTPStatus.NOT_FOUND)
+
+
+def github_get(url, token, retryable=transient):
     """GET with the token; a redirect (an artifact's storage link, signed already) is followed
-    without it, since the storage refuses a request that carries one."""
+    without it, since the storage refuses a request that carries one. `retryable` says which
+    failures get's bounded backoff repeats."""
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
                                                    "Accept": "application/vnd.github+json"})
     try:
-        return get(request, timeout=DOWNLOAD_TIMEOUT_S, opener=urllib.request.build_opener(KeepRedirect))
+        return get(request, timeout=DOWNLOAD_TIMEOUT_S, opener=urllib.request.build_opener(KeepRedirect),
+                   retryable=retryable)
     except urllib.error.HTTPError as error:
         location = error.headers.get("Location")
         error.close()
         if error.code not in (301, 302, 303, 307, 308) or not location:
             raise
-    return get(location, timeout=DOWNLOAD_TIMEOUT_S)
+    return get(location, timeout=DOWNLOAD_TIMEOUT_S, retryable=retryable)
 
 
 def run_files(run, folder):
@@ -1190,7 +1199,7 @@ def run_files(run, folder):
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
-            data = github_get(artifact["archive_download_url"], token)
+            data = github_get(artifact["archive_download_url"], token, retryable=archive_pending)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(pathlib.Path(folder) / artifact["name"])
     return folder
