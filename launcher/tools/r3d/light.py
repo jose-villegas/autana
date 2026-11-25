@@ -150,8 +150,7 @@ def table_inputs(source):
 
 def surface_table(source, mi):
     """The source's SurfaceTable on Mitsuba's current variant, built once and built again when the variant changes
-    or any array it reads is replaced. A copy of the source (with_triangles) inherits the attribute but builds its
-    own table, which replaces it on the copy alone."""
+    or any array it reads is replaced. A copy of the source builds its own."""
     table = vars(source).get("_surface_table")
     if (table is None or table.source is not source or table.variant != mi.variant()
             or any(old is not new for old, new in zip(table.inputs, table_inputs(source)))):
