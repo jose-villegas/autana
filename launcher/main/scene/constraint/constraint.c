@@ -1,6 +1,7 @@
 /* Constraints read the placed and timeline-sampled world poses. */
 #include "scene/constraint/constraint.h"
 
+#include <assert.h>
 #include <float.h>
 #include <string.h>
 
@@ -51,7 +52,9 @@ protect_inputs(scene_claims_t* claims, scene_row_t owner, int first, int count, 
 static void
 claim_transform(scene_claims_t* claims, scene_row_t row, int field) {
     claims->protected_rows[row] |= SCENE_CLAIM_DRIVEN | SCENE_PROTECTED_TRANSFORM;
-    (void)scene_field_claim(claims, row, scene_field_bit(SCENE_COMPONENT_TRANSFORM, field));
+    const bool claimed = scene_field_claim(claims, row, scene_field_bit(SCENE_COMPONENT_TRANSFORM, field));
+    assert(claimed);
+    (void)claimed;
 }
 
 static scene_failure_t
@@ -174,8 +177,10 @@ apply_position(scene_t* scene, const scene_asset_position_constraint_t* row, con
         const transformf_t frame = scene_row_parent_world(scene->root, row->entity);
         if (fabsf(frame.scale.x) >= FLT_MIN && fabsf(frame.scale.y) >= FLT_MIN && fabsf(frame.scale.z) >= FLT_MIN) {
             const vec3f_t mapped = transformf_inverse_point(&frame, target);
-            if (isfinite(mapped.x) && isfinite(mapped.y) && isfinite(mapped.z)) {
-                next = vec3f_lerp(c->own, mapped, weight);
+            const vec3f_t blended =
+                weight == 1.0F ? mapped : vec3f_add(vec3f_scale(c->own, 1.0F - weight), vec3f_scale(mapped, weight));
+            if (isfinite(blended.x) && isfinite(blended.y) && isfinite(blended.z)) {
+                next = blended;
             }
         }
     }
@@ -215,9 +220,7 @@ apply_aim(scene_t* scene, const scene_asset_aim_constraint_t* row, const scene_a
         const vec3f_t from = scene_row_world(scene->root, row->entity).position;
         vec3f_t direction;
         if (weighted_position(scene, &c->inputs, row->source_count, vec3f_zero(), RIG_BIND_WORLD, from, &direction)) {
-            const vec3f_t at = vec3f_add(from, direction);
-            const float scale = fmaxf(1.0F, fmaxf(vec3f_dot(from, from), vec3f_dot(at, at)));
-            if (vec3f_dot(direction, direction) > AIM_DISTANCE_SQUARED_MIN * scale) {
+            if (vec3f_dot(direction, direction) > AIM_DISTANCE_SQUARED_MIN) {
                 const quatf_t frame = scene_row_parent_world(scene->root, row->entity).rotation;
                 const quatf_t own = quatf_mul(frame, c->own);
                 const quatf_t aimed = aim_world_rotation(scene, row, c, from, direction, own);
@@ -236,7 +239,7 @@ apply_aim(scene_t* scene, const scene_asset_aim_constraint_t* row, const scene_a
 static bool
 path_placed(const scene_t* scene, scene_row_t row) {
     for (; row != SCENE_ROW_NONE; row = scene_row_parent(scene, row)) {
-        if (scene->flags[row] & SCENE_FLAG_PLACED) {
+        if (scene->flags[row] & SCENE_FLAG_PENDING_PLACEMENT) {
             return true;
         }
     }

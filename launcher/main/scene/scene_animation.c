@@ -226,7 +226,7 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
             location.component == SCENE_COMPONENT_CPOS || location.component == SCENE_COMPONENT_CAIM;
         if ((owned != NULL && (location.component == SCENE_COMPONENT_ANIMATOR || constraint))
             || (owned != NULL && location.component == SCENE_COMPONENT_TRANSFORM
-                && scene_constraint_covers(claims->protected_rows, entity))
+                && scene_constraint_covers(claims, entity))
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
             || (constraint
                 && (location.field >= CONSTRAINT_FIRST_SOURCE_FIELD
@@ -248,7 +248,12 @@ scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int cou
     anim_apply(fields, count, anim_playhead_sample_seconds(playhead, clip));
     for (int i = 0; i < count; i++) {
         const ptrdiff_t entity = fields[i].dirty - scene->flags;
-        scene->locals[entity].cached = false;
+        transformf_t* local = &scene->locals[entity];
+        const float* target = fields[i].target;
+        if (target == &local->position.x || target == &local->rotation.x || target == &local->scale.x) {
+            scene->flags[entity] |= SCENE_FLAG_PENDING_PLACEMENT;
+        }
+        local->cached = false;
     }
 }
 
@@ -421,10 +426,18 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
 
+static void
+scene_drivers_step(scene_t* scene, uint32_t dt_ms) {
+    scene_constraint_step(scene, scene_timeline_step(scene, dt_ms));
+    for (int row = 0; row < scene->asset.entity_count; row++) {
+        scene->flags[row] &= (uint8_t)~SCENE_FLAG_PENDING_PLACEMENT;
+    }
+}
+
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
-    scene_constraint_step(scene, scene_timeline_step(scene, dt_ms));
+    scene_drivers_step(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

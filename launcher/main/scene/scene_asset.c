@@ -176,17 +176,16 @@ static bool
 aim_constraint_fits(const scene_asset_t* scene, const scene_asset_aim_constraint_t* aim) {
     const bool object_up = aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_UP
                            || aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_ROTATION_UP;
+    const bool uses_vector = aim->world_up_type == SCENE_ASSET_WORLD_UP_VECTOR
+                             || aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_ROTATION_UP;
     const quatf_t rotation = aim->rotation_offset;
     return aim->entity < scene->entity_count && aim->world_up_type <= SCENE_ASSET_WORLD_UP_NONE
            && (object_up ? aim->world_up_object < scene->entity_count
                          : aim->world_up_object == SCENE_ASSET_WORLD_UP_OBJECT_NONE)
            && source_range_fits(scene, aim->source_first, aim->source_count)
            && scene_constraint_weight_fits(aim->weight) && direction_fits(aim->aim_vector)
-           && direction_fits(aim->up_vector) && direction_fits(aim->world_up_vector) && isfinite(rotation.x)
-           && isfinite(rotation.y) && isfinite(rotation.z) && isfinite(rotation.w)
-           && fabsf(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z
-                    + rotation.w * rotation.w - 1.0F)
-                  <= SCENE_ASSET_AIM_ROTATION_TOLERANCE;
+           && direction_fits(aim->up_vector) && (!uses_vector || direction_fits(aim->world_up_vector))
+           && fabsf(quatf_dot(rotation, rotation) - 1.0F) <= SCENE_ASSET_AIM_ROTATION_TOLERANCE;
 }
 
 static bool

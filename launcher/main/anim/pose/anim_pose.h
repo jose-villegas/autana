@@ -33,7 +33,4 @@ enum { ANIM_POSE_POSITION_FIELD, ANIM_POSE_ROTATION_FIELD, ANIM_POSE_SCALE_FIELD
     [ANIM_POSE_ROTATION_FIELD] = ANIM_FIELD(transformf_t, rotation, ANIM_VALUE_QUAT),                                  \
     [ANIM_POSE_SCALE_FIELD] = ANIM_FIELD(transformf_t, scale, ANIM_VALUE_VEC3)
 
-_Static_assert(ANIM_POSE_POSITION_FIELD == 0 && ANIM_POSE_ROTATION_FIELD == 1,
-               "transform writer claims use position and rotation in field order");
-
 extern const anim_component_fields_t ANIM_POSE_TRANSFORM_FIELDS;

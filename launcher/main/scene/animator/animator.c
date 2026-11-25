@@ -163,7 +163,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
         }
         memset(writes, 0, 2 * bytes);
-        scene_claims_t claims = {.asset = &scene->asset, .writes = writes, .protected_rows = scene->flags};
+        scene_claims_t claims = {.asset = &scene->asset, .writes = writes, .flags = scene->flags};
         result = claim_replacement(&claims, &targets, scene, a, ids, count, row, writes + scene->asset.entity_count);
     }
     if (result.status == SCENE_OK) {

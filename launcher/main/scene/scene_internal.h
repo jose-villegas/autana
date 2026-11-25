@@ -50,27 +50,21 @@ typedef struct {
     float intensity;
 } scene_light_t;
 
-#define SCENE_FLAG_ENABLED         1U
-#define SCENE_FLAG_DIRTY           2U
-#define SCENE_FLAG_SKIN_DIRTY      4U
-#define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
-#define SCENE_FLAG_ACTIVE          8U  /* enabled, and every ancestor enabled */
-#define SCENE_FLAG_MOVED           16U /* its world changed in this resolve */
+#define SCENE_FLAG_ENABLED           1U
+#define SCENE_FLAG_DIRTY             2U
+#define SCENE_FLAG_SKIN_DIRTY        4U
+#define SCENE_FLAG_CHANGED           (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_FLAG_ACTIVE            8U  /* enabled, and every ancestor enabled */
+#define SCENE_FLAG_MOVED             16U /* its world changed in this resolve */
 /* Its transform was set since its skin was last lit: a copy whose playing
  * clip paces it relights at its next pose, any other at once; a moved light
  * relights every skin at once. */
-#define SCENE_FLAG_RELIGHT         32U
-#define SCENE_FLAG_PLACED          (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
-#define SCENE_CLAIM_DRIVEN         64U
-#define SCENE_PROTECTED_TRANSFORM  128U
-#define SCENE_WORLD_SLOT_NONE      0xFFFFU
-#define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
-#define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
-
-/* A row of one scene's columns: the SCNE entity index. Apps hold entity_t
- * handles; the world (entity.c) turns one into its scene and row. */
-#define SCENE_ROW_NONE             ((scene_row_t)0xFFFFU)
-#define SCENE_ROW_ROOT             ((scene_row_t)0xFFFEU) /* the scene's root entity, outside its columns */
+#define SCENE_FLAG_RELIGHT           32U
+#define SCENE_FLAG_PENDING_PLACEMENT 64U /* placed since the last driver step */
+#define SCENE_FLAG_PLACED            (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT | SCENE_FLAG_PENDING_PLACEMENT)
+#define SCENE_WORLD_SLOT_NONE        0xFFFFU
+#define SCENE_LIGHT_FAILURE_ALBEDO   "skin vertex colors required"
+#define SCENE_LIGHT_FAILURE_NORMAL   "skin normal transform invalid"
 
 #include "scene/scene_asset.h"
 
@@ -200,10 +194,23 @@ typedef struct {
     int count;
 } scene_anim_targets_t;
 
+/* Only SCENE_PROTECTED_TRANSFORM is copied into scene flags. */
+enum {
+    SCENE_PROTECTED_TRANSFORM = 128U,
+    SCENE_CLAIM_DRIVEN = 256U,
+};
+
+_Static_assert((SCENE_CLAIM_DRIVEN
+                & (SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED | SCENE_FLAG_ACTIVE | SCENE_FLAG_MOVED | SCENE_FLAG_PLACED
+                   | SCENE_PROTECTED_TRANSFORM))
+                   == 0,
+               "claim-only bits are disjoint from scene flags");
+
 typedef struct {
     const scene_asset_t* asset;
     scene_field_mask_t* writes;
-    uint8_t* protected_rows;
+    uint16_t* protected_rows;
+    const uint8_t* flags;
 } scene_claims_t;
 
 typedef struct {
@@ -437,11 +444,13 @@ scene_failure_t scene_constraint_claim(scene_claims_t* claims);
 int scene_constraint_source_count(const scene_asset_t* asset, scene_row_t row, int component);
 void scene_constraint_open(scene_t* scene);
 void scene_constraint_step(scene_t* scene, bool applied);
-scene_row_t scene_asset_find_row(const scene_asset_t* asset, name_hash_t hash);
 
 static inline bool
-scene_constraint_covers(const uint8_t* rows, scene_row_t row) {
-    return rows != NULL && (rows[row] & SCENE_PROTECTED_TRANSFORM) != 0;
+scene_constraint_covers(const scene_claims_t* claims, scene_row_t row) {
+    const uint16_t flags = claims->protected_rows != NULL ? claims->protected_rows[row]
+                           : claims->flags != NULL        ? claims->flags[row]
+                                                          : 0;
+    return (flags & SCENE_PROTECTED_TRANSFORM) != 0;
 }
 
 static inline scene_row_t

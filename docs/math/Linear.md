@@ -113,6 +113,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_dot(a, b)` | four-component dot product | $`a_x b_x + a_y b_y + a_z b_z + a_w b_w`$ |
 | `P_identity()` | the no-rotation quaternion | $`(0,\ 0,\ 0,\ 1)`$ |
 | `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` | $`u = \mathit{axis}\,\sin\tfrac{\mathit{angle}}{2}`$<br> $`w = \cos\tfrac{\mathit{angle}}{2}`$<br> $`(u_x,\ u_y,\ u_z,\ w)`$ |
 | `P_conjugate(q)` | inverse of a unit rotation | $`(-q_x, -q_y, -q_z, q_w)`$ |

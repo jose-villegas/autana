@@ -430,10 +430,12 @@ def decode_constraint(part, row, entity_count, total_sources):
     mode, count, first, reference, weight, *values = row
     if not 1 <= count <= CONSTRAINT_SOURCES_MAX or first + count > total_sources:
         raise SceneError(f"{part}: invalid sources range")
-    if not 0 <= weight <= 1 or not all(map(math.isfinite, values)):
+    if not 0 <= weight <= 1:
         raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
     fields = dict(source_count=count, source_first=first, weight=weight)
     if part == "position_constraints":
+        if not all(map(math.isfinite, values)):
+            raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
         if mode not in BINDS.values() or reference:
             raise SceneError(f"{part}: invalid binding_mode or padding")
         return dict(**fields, binding_mode=mode, translation_offset=tuple(values))
@@ -446,9 +448,14 @@ def decode_constraint(part, row, entity_count, total_sources):
     up = tuple(values[TRANSFORM_AXES:2 * TRANSFORM_AXES])
     world_up = tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES])
     rotation = tuple(values[3 * TRANSFORM_AXES:])
-    for field, direction in (("aim_vector", aim), ("up_vector", up), ("world_up_vector", world_up)):
-        if not any(direction):
-            raise SceneError(f"{part}: {field} must be nonzero")
+    directions = [("aim_vector", aim), ("up_vector", up)]
+    if mode in (WORLD_UP["vector"], WORLD_UP["object_rotation_up"]):
+        directions.append(("world_up_vector", world_up))
+    for field, direction in directions:
+        if not all(map(math.isfinite, direction)) or not any(direction):
+            raise SceneError(f"{part}: {field} must be finite and nonzero")
+    if not all(map(math.isfinite, rotation)):
+        raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
     length_squared = 0.0
     for value in rotation:
         length_squared = f32(length_squared + f32(value * value))

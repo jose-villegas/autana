@@ -11,6 +11,14 @@
 #include "scene/scene_format.h"
 
 typedef uint16_t scene_row_t;
+typedef struct scene_asset scene_asset_t;
+
+/* A row of one scene's columns: the SCNE entity index. Apps hold entity_t
+ * handles; the world (entity.c) turns one into its scene and row. */
+#define SCENE_ROW_NONE ((scene_row_t)0xFFFFU)
+#define SCENE_ROW_ROOT ((scene_row_t)0xFFFEU) /* the scene's root entity, outside its columns */
+
+scene_row_t scene_asset_find_row(const scene_asset_t* asset, name_hash_t hash);
 
 typedef struct {
     mat3f_t linear;
@@ -147,7 +155,7 @@ _Static_assert(sizeof(scene_asset_hinge_t) == SCENE_ASSET_HINGE_SIZE && SCNE_HIN
                "SCNE hinge row layout");
 
 /* An opened entry. Holds no copy: the pack must outlive it. */
-typedef struct {
+struct scene_asset {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
     uint16_t batch_count, chunk_count, copy_count;
@@ -171,7 +179,7 @@ typedef struct {
     const scene_asset_aim_constraint_t* aim_constraints;
     const scene_asset_constraint_source_t* sources;
     const scene_asset_hinge_t* hinges;
-} scene_asset_t;
+};
 
 /* Checks every row once and returns the first failure: ASSET_ERR_VERSION,
  * ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT. Else fills `out`. */

@@ -411,50 +411,26 @@ The default wrap is `"clamp"`, which holds the clip's final frame.
 and the timeline must write separate fields. Load fails naming
 `object.field` when both claim that field.
 
-### Constraint and hinge
+### Constraint
 
-An object can have one [position constraint and one aim constraint](Constraint.md).
-`scene_load()` reports hinge rows as unsupported.
-
-```toml
-[objects.position_constraint]
-weight = 1.0
-translation_offset = [0, 60, 180]
-binding_mode = "lock_to_target_with_world_up"
-sources = [{ target = "follow_target" }, { target = "next_target", weight = 0.0 }]
-
-[objects.aim_constraint]
-aim_vector = [0, 0, -1]
-up_vector = [0, 1, 0]
-world_up_type = "object_rotation_up"
-world_up_vector = [0, 1, 0]
-world_up_object = "up_target"
-rotation_offset = [0, 0, 0]
-sources = [{ target = "look_target" }]
-
-[objects.hinge]
-axis = [0, 0, 1]
-min = -1.2
-max = 1.2
-angle = 0.0
-```
-
-Contributions are averaged by weight. See [Constraint](Constraint.md) for
-field definitions and defaults.
-
-A hinge takes a unit axis and ordered bounds in radians.
-Its starting angle defaults to zero.
+An object can have one position constraint and one aim constraint.
+See [Constraint](Constraint.md) for a copyable example, fields and defaults.
 
 | Timeline field | Sample |
 |---|---|
 | `CPOS.weight` | Position constraint influence. |
 | `CAIM.weight` | Aim constraint influence. |
-| `CPOS.weight0` through `CPOS.weightN-1` | Relative influence of the indexed position source. |
-| `CAIM.weight0` through `CAIM.weightN-1` | Relative influence of the indexed aim source. |
+| `CPOS.weight<i>` | Relative influence of the indexed position source. |
+| `CAIM.weight<i>` | Relative influence of the indexed aim source. |
 
-Weights are float curves, where N = `SCENE_CONSTRAINT_SOURCES_MAX`.
-A track naming a source index absent from its
-scene row fails load and reports the field.
+Weights are float curves. Source index `i` is below `SCENE_CONSTRAINT_SOURCES_MAX`.
+A track naming a source index absent from its scene row fails load and reports the field.
+
+### Hinge
+
+The scene parser and packer accept `[objects.hinge]` with a unit axis and
+ordered bounds in radians. The starting angle defaults to zero.
+`scene_load()` refuses scenes with hinge rows.
 
 ### Light options
 

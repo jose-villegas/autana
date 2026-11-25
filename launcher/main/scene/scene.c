@@ -500,7 +500,7 @@ next_property_animator(const scene_asset_t* asset, int first) {
 /* A lender cannot reclaim refused scene blocks, so check writers with scratch rows first. */
 static scene_failure_t
 check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_tracks_t* timeline, const char* id,
-              scene_field_mask_t** writes, uint8_t** protected_rows, scene_timeline_blocks_t* blocks) {
+              scene_field_mask_t** writes, uint16_t** protected_rows, scene_timeline_blocks_t* blocks) {
     scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, id);
     *writes = NULL;
     *protected_rows = NULL;
@@ -514,7 +514,8 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     }
     const size_t bytes = asset->entity_count * sizeof **writes;
     scene_field_mask_t* scratch = memory_alloc(2 * bytes, MEMORY_APP);
-    uint8_t* protected = constrained ? memory_alloc(asset->entity_count, MEMORY_APP) : NULL;
+    const size_t protected_bytes = asset->entity_count * sizeof **protected_rows;
+    uint16_t* protected = constrained ? memory_alloc(protected_bytes, MEMORY_APP) : NULL;
     const scene_anim_targets_t targets = scene_anim_targets(asset, NULL);
     scene_claims_t claims = {.asset = asset, .writes = scratch, .protected_rows = protected};
     if (scratch == NULL || targets.block == NULL || (constrained && protected == NULL)) {
@@ -522,7 +523,7 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     } else {
         memset(scratch, 0, bytes);
         if (constrained) {
-            memset(protected, 0, asset->entity_count);
+            memset(protected, 0, protected_bytes);
             result = scene_constraint_claim(&claims);
         }
     }
@@ -581,7 +582,7 @@ open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
         }
     }
     scene_field_mask_t* writes;
-    uint8_t* protected_rows;
+    uint16_t* protected_rows;
     scene_timeline_blocks_t blocks = {0};
     const scene_failure_t writers =
         check_writers(&asset, pack, &timeline, record->id, &writes, &protected_rows, &blocks);
