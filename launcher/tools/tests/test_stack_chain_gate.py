@@ -35,13 +35,17 @@ class StackChainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             spec = pathlib.Path(directory) / "stack_chain.txt"
             spec.write_text("root test_scoped_out test\nroot test_misspelt test\n"
-                            "indirect test_scoped_out : target\n")
+                            "indirect test_scoped_out : gone\n"
+                            "indirect target : test_scoped_out\n"
+                            "indirect misspelt_caller : test_scoped_out\n")
             graph = ({"main_task": 32, "call_protected": 48, "target": 16},
                      {"main_task": {"call_protected"}}, set(), [])
             with patch.object(gate, "parse_graph", return_value=graph):
                 problems = gate.check_app("app", str(spec), [], 3584, 512, 224,
                                           uncompiled=lambda name: name == "test_scoped_out")
-            self.assertEqual(["root test_misspelt is not in the graph"], problems)
+            self.assertEqual(["declared edge misspelt_caller > test_scoped_out names a "
+                              "function that is not in the graph",
+                              "root test_misspelt is not in the graph"], problems)
 
     def test_a_function_counts_as_uncompiled_only_when_a_left_out_source_defines_it(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -49,7 +53,8 @@ class StackChainTests(unittest.TestCase):
             compiled, left_out = root / "main" / "kept.c", root / "main" / "scoped.c"
             compiled.parent.mkdir()
             compiled.write_text("void kept(void) {\n}\n")
-            left_out.write_text("static void\nscoped(int x) {\n    kept();\n}\n")
+            left_out.write_text("static void\nscoped(int x) {\n    if (only_called(x)) {\n"
+                                "        kept();\n    }\n}\n")
             db = root / "compile_commands.json"
             db.write_text(json.dumps([{"file": str(compiled)}]))
             with patch.object(gate, "MAIN_DIR", str(root / "main")), \
@@ -59,6 +64,7 @@ class StackChainTests(unittest.TestCase):
             self.assertTrue(uncompiled("scoped.c:scoped"))
             self.assertFalse(uncompiled("other.c:scoped"))
             self.assertFalse(uncompiled("kept"))
+            self.assertFalse(uncompiled("only_called"))
             self.assertFalse(uncompiled("never_written"))
 
     def test_harness_follows_the_deepest_live_path_only(self):

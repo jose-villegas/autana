@@ -152,10 +152,11 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     covered = set()
     for caller, callee in declared + list(runner_edges):
         callers, callees = resolve(caller, frame), resolve(callee, frame)
-        missing = [n for n, found in ((caller, callers), (callee, callees)) if not found]
-        if any(uncompiled(n) for n in missing):
+        # A left-out caller never runs; a left-out callee is never reached
+        # from a caller that is there. Any other missing name fails.
+        if (not callers and uncompiled(caller)) or (callers and not callees and uncompiled(callee)):
             skipped += 1
-        elif missing:
+        elif not callers or not callees:
             problems.append("declared edge %s > %s names a function that is "
                             "not in the graph" % (caller, callee))
         for c in callers:
@@ -213,6 +214,14 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     return problems
 
 
+def definition_re(names):
+    """A definition of one of names: a line from column 0 with the name, its
+    parameters and the opening brace. An indented call, as in if (name(x)) {,
+    does not match."""
+    return re.compile(r"(?m)^(?:[A-Za-z_][^;{}()=\n]*[\s*])?(?:%s)\s*\([^;{}]*\)\s*\{"
+                      % "|".join(re.escape(name) for name in names))
+
+
 def uncompiled_definitions(db_path):
     """A test of whether a function is defined in a first-party source the build
     did not compile; a misspelt name is defined nowhere and still fails."""
@@ -226,7 +235,7 @@ def uncompiled_definitions(db_path):
 
     def uncompiled(name):
         qualifier, _, function = name.rpartition(":")
-        definition = re.compile(r"\b%s\s*\([^;{}]*\)\s*\{" % re.escape(function))
+        definition = definition_re([function])
         for path in sources:
             if qualifier and not path.as_posix().endswith(qualifier):
                 continue
@@ -244,8 +253,7 @@ def app_jobs(db_path, app_dir=None, functions=()):
         entries = json.load(fh)
     marker = (app_dir or MAIN_DIR).replace("\\", "/").rstrip("/") + "/"
     jobs = []
-    definition = re.compile(r"\b(?:%s)\s*\([^;{}]*\)\s*\{" %
-                            "|".join(re.escape(f) for f in functions)) if functions else None
+    definition = definition_re(functions) if functions else None
     for entry in entries:
         source = entry["file"].replace("\\", "/")
         if not source.endswith(".c") or (app_dir is None and "/apps/" in source):
