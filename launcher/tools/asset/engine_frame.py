@@ -81,14 +81,15 @@ def to_engine(kind, entry):
         return entry
     out = bytearray(entry)
     if kind == mesh_asset.TYPE:
-        (vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at) = mesh_asset.BLOB_HEADER.unpack_from(entry)
+        (vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at,
+         back_at) = mesh_asset.BLOB_HEADER.unpack_from(entry)
         for index in range(vertices):
             at = pos_at + index * POSITION.size
             POSITION.pack_into(out, at, *_mirror_position(POSITION.unpack_from(entry, at)))
         for index in range(clusters):
             at = cl_at + index * mesh_asset.CLUSTER.size
-            vb, vc, tb, tc, *box, double = mesh_asset.CLUSTER.unpack_from(entry, at)
-            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double)
+            vb, vc, tb, tc, *box, double, back_first = mesh_asset.CLUSTER.unpack_from(entry, at)
+            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double, back_first)
         for index in range(nodes):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)

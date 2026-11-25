@@ -145,8 +145,9 @@ test_styles_match_pipeline_colours(void) {
     static const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
     static const uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
     static const uint16_t triangle[3] = {0, 1, 2};
-    static const r3d_lit_cluster_t cluster = {.vertex_count = 3};
-    static const r3d_lit_mesh_t mesh = {.positions = positions, .colors = colours, .clusters = &cluster};
+    static const r3d_lit_cluster_t cluster = {.vertex_count = 3, .double_sided = true};
+    static const r3d_lit_mesh_t mesh = {
+        .positions = positions, .colors = colours, .triangles = &triangle, .clusters = &cluster};
     const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
@@ -171,7 +172,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, R3D_SPAN_FACE_NONE, true, &actual, 0U, 0, 0);
+        draw_in_front(&mesh, vertices, 0, R3D_SPAN_FACE_NONE, &cluster, &actual, 0U, 0, 0);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {

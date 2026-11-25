@@ -518,7 +518,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
         entries.extend(bundle_entries(mesh_id, mesh, morph_blob if job.settings.morph else None))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
-                        lcol_asset.encode(encoding, len(keys), sets)))
+                        lcol_asset.encode(encoding, len(keys), 0, sets)))
         for index, (instance, _) in enumerate(copies):
             rows.append(dict(name=mesh_bundle.copy_name(job.object.name if job.object else name, mesh_id, index), mesh=mesh_id,
                              matrix=(instance.linear @ reflect).tolist(), position=instance.position.tolist(),

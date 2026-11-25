@@ -13,8 +13,8 @@
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_landing_t) == LMOR_LANDING_SIZE, "a landing point is LMOR_LANDING_SIZE bytes");
-_Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
-                   && offsetof(r3d_lit_cluster_t, double_sided) == 20,
+_Static_assert(sizeof(r3d_lit_cluster_t) == 24 && offsetof(r3d_lit_cluster_t, bounds) == 8
+                   && offsetof(r3d_lit_cluster_t, double_sided) == 20 && offsetof(r3d_lit_cluster_t, back_first) == 22,
                "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
@@ -24,7 +24,7 @@ _Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t)
                "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
-    HEADER_WORDS = 11,
+    HEADER_WORDS = 12,
     ENTRY_ALIGNMENT = 4,
     COUNT_VERTEX = 0,
     COUNT_TRIANGLE,
@@ -37,6 +37,7 @@ enum {
     AT_CLUSTERS,
     AT_NODES,
     AT_FACE_COLORS,
+    AT_BACK_COLORS,
 };
 
 _Static_assert(HEADER_WORDS * sizeof(uint32_t) == R3D_LIT_MESH_HEADER_BYTES, "the header is its words");
@@ -81,17 +82,37 @@ clusters_are_inside(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
+/* The clusters tile both the vertices and the triangles in order. */
 static bool
-clusters_cover_vertices(const r3d_lit_mesh_t* mesh) {
+clusters_tile(const r3d_lit_mesh_t* mesh) {
+    int vertices = 0;
+    int triangles = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
+        if (cluster->vertex_first != vertices || cluster->triangle_first != triangles) {
+            return false;
+        }
+        vertices += cluster->vertex_count;
+        triangles += cluster->triangle_count;
+    }
+    return vertices == mesh->vertex_count && triangles == mesh->triangle_count;
+}
+
+/* The back colour entries the double-sided clusters hold, one per vertex
+ * (`per_vertex`) or per triangle, when their runs tile them from 0 in
+ * cluster order and every single-sided cluster's back_first is 0; else -1.
+ * Checked only where back colours are there to read. */
+static int
+back_entries(const r3d_lit_mesh_t* mesh, bool per_vertex) {
     int end = 0;
     for (int c = 0; c < mesh->cluster_count; c++) {
         const r3d_lit_cluster_t* cluster = &mesh->clusters[c];
-        if (cluster->vertex_first != end) {
-            return false;
+        if (cluster->back_first != (cluster->double_sided ? end : 0) || cluster->reserved != 0) {
+            return -1;
         }
-        end = cluster->vertex_first + cluster->vertex_count;
+        end += cluster->double_sided ? (per_vertex ? cluster->vertex_count : cluster->triangle_count) : 0;
     }
-    return end == mesh->vertex_count;
+    return end;
 }
 
 static bool
@@ -306,6 +327,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     const uint32_t nodes = word(asset->data, COUNT_NODE);
     const uint32_t colors_at = word(asset->data, AT_COLORS);
     const uint32_t face_at = word(asset->data, AT_FACE_COLORS);
+    const uint32_t back_at = word(asset->data, AT_BACK_COLORS);
     if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
     }
@@ -332,8 +354,25 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
-    if (!clusters_cover_vertices(&built)) {
+    if (!clusters_tile(&built)) {
         return ASSET_ERR_FORMAT;
+    }
+    /* Back colours, in the mesh's own encoding, cover every double-sided
+     * cluster or none (front colours both ways); a colourless mesh takes
+     * them from its colour set. */
+    const bool coloured = colors_at != 0 || face_at != 0;
+    const int backs = back_at != 0 && coloured ? back_entries(&built, face_at == 0) : 0;
+    if (back_at != 0 && backs <= 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (back_at != 0) {
+        const void* back = array_at(asset, back_at, (uint32_t)backs, face_at == 0 ? 3U : 2U);
+        if (back == NULL) {
+            return ASSET_ERR_BOUNDS;
+        }
+        built.back_colors = face_at == 0 ? back : NULL;
+        built.back_face_colors = face_at == 0 ? NULL : back;
+        built.back_count = backs;
     }
     *mesh = built;
     return ASSET_OK;
@@ -407,22 +446,29 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
     const uint16_t encoding = asset_read_u16(asset->data + LCOL_AT_ENCODING);
     const uint32_t sets = asset_read_u32(asset->data + LCOL_AT_SET_COUNT);
     const uint32_t count = asset_read_u32(asset->data + LCOL_AT_COUNT);
+    const uint32_t back_count = asset_read_u32(asset->data + LCOL_AT_BACK_COUNT);
     if (encoding != LCOL_ENCODING_RGB888 && encoding != LCOL_ENCODING_RGB565) {
         return ASSET_ERR_FORMAT;
     }
     const bool vertex = encoding == LCOL_ENCODING_RGB888;
     const uint32_t expected = (uint32_t)(vertex ? mesh->vertex_count : mesh->triangle_count);
     const uint32_t stride = vertex ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
-    if (sets == 0 || set >= sets || count != expected || mesh->colors != NULL || mesh->face_colors != NULL) {
+    if (sets == 0 || set >= sets || count != expected || mesh->colors != NULL || mesh->face_colors != NULL
+        || (back_count != 0 && (int64_t)back_count != back_entries(mesh, vertex))) {
         return ASSET_ERR_FORMAT;
     }
-    const uint64_t bytes = (uint64_t)count * stride;
+    /* Each set is its front colours, then its back ones. */
+    const uint64_t bytes = (uint64_t)(count + back_count) * stride;
     if (LCOL_HEADER_SIZE + (bytes * sets) != asset->size) {
         return ASSET_ERR_BOUNDS;
     }
-    const void* colors = asset->data + LCOL_HEADER_SIZE + (bytes * set);
-    mesh->colors = vertex ? colors : NULL;
-    mesh->face_colors = vertex ? NULL : colors;
+    const uint8_t* colors = asset->data + LCOL_HEADER_SIZE + (bytes * set);
+    const void* back = back_count == 0 ? NULL : colors + ((size_t)count * stride);
+    mesh->colors = vertex ? (const void*)colors : NULL;
+    mesh->face_colors = vertex ? NULL : (const void*)colors;
+    mesh->back_colors = vertex ? back : NULL;
+    mesh->back_face_colors = vertex ? NULL : back;
+    mesh->back_count = (int)back_count;
     return ASSET_OK;
 }
 

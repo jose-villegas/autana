@@ -123,7 +123,7 @@ class MeshBundleTests(unittest.TestCase):
                 mesh = read_lit_mesh(blobs[mesh_id][1])
                 self.assertIsNone(mesh.rgb)
                 self.assertIsNone(mesh.face_colors)
-                encoding, count, sets = lcol_asset.decode(blobs[lcol_asset.name_for_mesh(mesh_id)][1])
+                encoding, count, _back, sets = lcol_asset.decode(blobs[lcol_asset.name_for_mesh(mesh_id)][1])
                 self.assertEqual(encoding, lcol_asset.RGB565 if flat else lcol_asset.RGB888)
                 self.assertEqual(count, len(mesh.tris) if flat else len(mesh.pos))
                 members = [row for row in manifest if row['mesh'] == mesh_id]
@@ -401,7 +401,7 @@ class FitCopiesTests(unittest.TestCase):
         shown = [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == mesh_asset.LOD_NONE]
         vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
         faces = np.concatenate([mesh.tris[tbase:tbase + tcount] for _, _, tbase, tcount, *_ in shown])
-        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [mesh.rgb.astype('u1').tobytes()])
+        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), 0, [mesh.rgb.astype('u1').tobytes()])
         mesh.rgb = None
         with tempfile.TemporaryDirectory() as folder:
             data, _, _, _, _ = bundle_fixture(folder)

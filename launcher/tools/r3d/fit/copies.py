@@ -74,7 +74,7 @@ def placed_copies(bundle, flat):
         renumber[vertices] = np.arange(len(vertices))
         local, welded = np.unique(mesh.pos[vertices], axis=0, return_inverse=True)
         local, welded = local / float(mesh.position_scale), welded.reshape(-1)
-        encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
+        encoding, _count, _back, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
                              f"and its rest is not")

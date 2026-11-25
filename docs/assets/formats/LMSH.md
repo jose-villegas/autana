@@ -10,16 +10,21 @@ struct.
 Levels are an optional sibling [LLOD](LLOD.md) entry, resolved once by `r3d_lit_mesh_open()`, and
 their morph targets an optional sibling [LMOR](LMOR.md) entry beside them.
 
+A double-sided cluster may carry back colours: what its triangles show seen from behind. The
+rasterizer picks front or back from the winding at triangle setup, as a fragment shader reads
+`gl_FrontFacing`<sup>[[145]](../../Citations.md#khronos-glsl-4-60)</sup> or `SV_IsFrontFace`<sup>[[146]](../../Citations.md#microsoft-hlsl-semantics)</sup>.
+A textured cluster keeps one texture on both sides, as glTF's `doubleSided`<sup>[[144]](../../Citations.md#khronos-gltf-double-sided)</sup> does; only its lighting differs.
+
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(3) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 12
     bitWidth: 60
 ---
 packet-beta
-title Header, 44 bytes (11 words) at 0, one cell a byte
+title Header, 48 bytes (12 words) at 0, one cell a byte
 0-3: "vertex_count"
 4-7: "triangle_count"
 8-11: "cluster_count"
@@ -31,18 +36,19 @@ title Header, 44 bytes (11 words) at 0, one cell a byte
 32-35: "clusters_off"
 36-39: "nodes_off"
 40-43: "face_colours_off"
+44-47: "back_colours_off"
 ```
 
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
 ---
 packet-beta
-title Cluster registry, one 22-byte row a cluster from clusters_off
+title Cluster registry, one 24-byte row a cluster from clusters_off
 0-1: "vertex_first"
 2-3: "vertex_count"
 4-5: "triangle_first"
@@ -51,6 +57,7 @@ title Cluster registry, one 22-byte row a cluster from clusters_off
 14-19: "int16 hi[3]"
 20: "double_sided"
 21: "0"
+22-23: "back_first"
 ```
 
 ```mermaid
@@ -128,23 +135,40 @@ title Content: face colour, 2 bytes a triangle from face_colours_off
 0-1: "uint16 panel RGB565"
 ```
 
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 6
+    bitWidth: 84
+---
+packet-beta
+title Content: back colour, a vertex's 3 bytes (or a triangle's 2) from back_colours_off
+0: "r"
+1: "g"
+2: "b"
+```
+
 | Part | At | Size |
 |---|---|---|
-| Header | 0 | 44 bytes |
+| Header | 0 | 48 bytes |
 | Content: positions | `positions_off` | 6 bytes a vertex |
 | Content: colours | `colours_off`, or 0 when absent | 3 bytes a vertex |
 | Content: triangles | `triangles_off` | 6 bytes each |
-| Cluster registry | `clusters_off` | 22 bytes a cluster, the layout of `r3d_lit_cluster_t` |
+| Cluster registry | `clusters_off` | 24 bytes a cluster, the layout of `r3d_lit_cluster_t` |
 | Node registry | `nodes_off` | 16 bytes a node, the layout of `r3d_lit_node_t`; `nodes[0]` is the root |
 | Content: face colours | `face_colours_off`, or 0 when absent | 2 bytes a triangle |
+| Content: back colours | `back_colours_off`, or 0 when absent | 3 bytes a vertex of each double-sided cluster, or 2 bytes a triangle beside face colours |
 
 | Rule | Detail |
 |---|---|
-| Owners | the header's word order is the `enum` in `r3d_lit_mesh.c`; `VERTEX_LIMIT` (65535) there caps the four counts (`ASSET_ERR_BOUNDS`); `r3d_lit_cluster_t` and `r3d_lit_node_t` are `_Static_assert`ed to 22 and 16 bytes with the field offsets above, and `lit_mesh.py`'s `CLUSTER` and `NODE` write the same bytes |
-| Arrays | each offset a multiple of 4 and at least 44, the array inside the entry; the writer pads each array to 4 bytes and sets the offset of an empty one to 0 (`ASSET_ERR_BOUNDS`, also for a header shorter than 44 bytes); only colours and face colours may be 0 |
+| Owners | the header's word order is the `enum` in `r3d_lit_mesh.c`; `VERTEX_LIMIT` (65535) there caps the four counts (`ASSET_ERR_BOUNDS`); `r3d_lit_cluster_t` and `r3d_lit_node_t` are `_Static_assert`ed to 24 and 16 bytes with the field offsets above, and `lit_mesh.py`'s `CLUSTER` and `NODE` write the same bytes |
+| Arrays | each offset a multiple of 4 and at least 48, the array inside the entry; the writer pads each array to 4 bytes and sets the offset of an empty one to 0 (`ASSET_ERR_BOUNDS`, also for a header shorter than 48 bytes); only colours, face colours and back colours may be 0 |
 | Colour source | At most one of colours and face colours (`ASSET_ERR_FORMAT` for both) |
+| Back colours | in the mesh's own encoding, for every double-sided cluster or none: each cluster's run starts at its `back_first`, the runs tile the array in cluster order, and a single-sided cluster's `back_first` is 0 (`ASSET_ERR_FORMAT`, also for back colours on a mesh with no colours or no double-sided cluster); without them a double-sided cluster shows its front colours from both sides; a colourless prototype's come with its [LCOL](LCOL.md) set |
 | Scale | `position_scale` is ticks per model unit, in 1..`INT_MAX` (`ASSET_ERR_FORMAT`); positions are int16 ticks |
 | Counts | at least one cluster and one node (`ASSET_ERR_FORMAT`) |
-| Clusters | vertex ranges tile every vertex once and in order: the first starts at 0, each starts at the previous end, the last ends at `vertex_count` (`ASSET_ERR_FORMAT`); each cluster's vertex and triangle ranges lie inside the mesh and its triangles index only its own vertices (`ASSET_ERR_BOUNDS`); the writer also tiles the triangle ranges in order |
+| Clusters | vertex and triangle ranges each tile their array once and in order: the first starts at 0, each starts at the previous end, the last ends at the count (`ASSET_ERR_FORMAT`); each cluster's vertex and triangle ranges lie inside the mesh and its triangles index only its own vertices (`ASSET_ERR_BOUNDS`) |
 | Nodes | a leaf's children are clusters, an inner node's are nodes, `first + count` inside that array; an inner node's children come after it, so a walk down the tree ends, and number at most `R3D_LIT_NODE_CHILDREN_MAX` (8), the cluster tree's fanout (`ASSET_ERR_BOUNDS`); the writer limits `count` to `MAX_NODE_CHILDREN` and hangs every cluster off exactly one leaf, no deeper than `R3D_LIT_TREE_DEPTH_MAX` (10) below the root |
 | Order | header, then the arrays in the order of the Part table, each padded to 4; padding zero |

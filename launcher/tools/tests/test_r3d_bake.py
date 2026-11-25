@@ -623,6 +623,36 @@ class ClusterTreeTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LitMeshTests(unittest.TestCase):
+    def test_back_colours_round_trip_for_double_sided_clusters_alone(self):
+        """A grid half single-sided, half double-sided: only the double-sided clusters' vertices (or triangles,
+        flat) store back colours, each run from its back_first in cluster order, and they read back as written."""
+        from r3d.mesh_asset import CLUSTER, BLOB_HEADER, back_entries
+        p, tris = grid(4)
+        double = (np.arange(len(tris)) % 2).astype(int)
+        front = np.tile([200, 40, 40], (len(p), 1))
+        back = np.tile([30, 180, 60], (len(p), 1))
+        for flat in (False, True):
+            with self.subTest(flat=flat), tempfile.TemporaryDirectory() as directory:
+                face = dict(face_rgb=np.tile([200, 40, 40], (len(tris), 1)),
+                            back_face_rgb=np.tile([30, 180, 60], (len(tris), 1))) if flat else dict(back_rgb=back)
+                write_lit_mesh(directory, "sheet", p, None if flat else front, tris, double, **face)
+                blob = parse_pack((pathlib.Path(directory) / "sheet.bundle").read_bytes())["sheet"][1]
+                read = read_lit_mesh(pathlib.Path(directory) / "sheet.bundle")
+                clusters_at = BLOB_HEADER.unpack_from(blob)[8]
+                runs = [(CLUSTER.unpack_from(blob, clusters_at + i * CLUSTER.size)[-1], c)
+                        for i, c in enumerate(read.clusters)]
+                stored = sum((c[3] if flat else c[1]) for _, c in runs if c[-1])
+                self.assertGreater(stored, 0)
+                self.assertEqual(back_entries(blob, not flat), stored)
+                self.assertTrue(all(first == 0 for first, c in runs if not c[-1]))
+                sides = read.back_face_colors if flat else read.back_rgb
+                fronts = read.face_colors if flat else read.rgb
+                for _, (vb, vc, tb, tc, *_, dbl) in runs:
+                    rows = slice(tb, tb + tc) if flat else slice(vb, vb + vc)
+                    want = ([30, 180, 60] if dbl else [200, 40, 40])
+                    np.testing.assert_allclose(sides[rows], np.tile(want, (len(sides[rows]), 1)), atol=8)
+                    np.testing.assert_allclose(fronts[rows], np.tile([200, 40, 40], (len(fronts[rows]), 1)), atol=8)
+
     def test_a_colourless_mesh_writes_and_reads_without_colour_arrays(self):
         p, tris = grid(1)
         with tempfile.TemporaryDirectory() as directory:
@@ -640,13 +670,13 @@ class LitMeshTests(unittest.TestCase):
         p = np.array([[0., 0, 0], [1, 0, 0], [0, 1, 0]])
         positions = p.astype(int) * scale
         arrays = [struct.pack('<9h', *positions.ravel()), struct.pack('<3H', 0, 1, 2),
-                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0),
+                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0, 0),
                   NODE.pack(0, 0, 0, scale, scale, 0, 0, 1, 1)]
         offsets, at = [], BLOB_HEADER.size
         for array in arrays:
             offsets.append(at)
             at += len(array) + (-len(array) % struct.calcsize('<I'))
-        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0)
+        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0, 0)
         expected += b''.join(array + bytes(-len(array) % struct.calcsize('<I')) for array in arrays)
         with tempfile.TemporaryDirectory() as directory:
             write_lit_mesh(directory, 'triangle', p, None, np.array([[0, 1, 2]]), np.zeros(1, dtype=int))

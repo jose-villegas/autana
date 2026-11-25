@@ -309,7 +309,8 @@ scene_asset_batch(const scene_asset_t* asset, int row, const r3d_lit_mesh_t* mes
     return (r3d_batch_t){.chunks = chunks + batch->first_chunk,
                          .places = asset->places + batch->first_copy,
                          .turns = asset->turns + batch->first_copy,
-                         .colour_stride = (uint32_t)(mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count),
+                         .colour_stride = (uint32_t)((mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count)
+                                                     + mesh->back_count),
                          .copy_radius = r3d_batch_copy_radius(mesh),
                          .copy_count = batch->copy_count,
                          .chunk_count = (uint16_t)r3d_batch_chunks(batch->copy_count)};

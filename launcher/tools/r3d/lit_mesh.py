@@ -18,7 +18,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 from build.c_header import read_define  # noqa: E402
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE  # noqa: E402
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE, back_entries  # noqa: E402
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
@@ -40,6 +40,8 @@ TREE_DEPTH_MAX = read_define(pathlib.Path(__file__).resolve().parents[2] / "main
                              "R3D_LIT_TREE_DEPTH_MAX")
 
 LEAF_TRIANGLES = 320
+# Channels of one colour: a front or a back one.
+RGB_CHANNELS = 3
 POSITION_SCALE = 8
 
 # A bake welds positions closer than half an output tick (position_scale ticks per unit) into one vertex.
@@ -103,7 +105,8 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None, vertex_uvs=None, vertex_pages=None):
+                  meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None, vertex_uvs=None, vertex_pages=None,
+                  back_rgb=None, back_face_rgb=None):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes, the
@@ -112,11 +115,15 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     triangles. Given face_rgb, one 0..255 colour per triangle, the mesh is
     flat: rgb is None, vertices weld by position alone and face_colors holds
     the colours; otherwise face_colors is None. With neither input colour
-    array, the mesh is colourless."""
+    array, the mesh is colourless. back_rgb (beside rgb) and back_face_rgb
+    (beside face_rgb) are what a double-sided triangle shows from behind,
+    returned as back_rgb and back_face_colors; they weld and cut with the
+    front colours."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     flat = face_rgb is not None
-    col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
-    face = np.clip(np.rint(face_rgb), 0, 255).astype(np.int64) if flat else None
+    back = back_face_rgb if flat else back_rgb
+    col = None if flat or rgb is None else np.clip(np.rint(both_sides(rgb, back)), 0, 255).astype(np.int64)
+    face = np.clip(np.rint(both_sides(face_rgb, back)), 0, 255).astype(np.int64) if flat else None
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
     channels = 0 if col is None else col.shape[1]
     if vertex_uvs is not None:
@@ -140,7 +147,41 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
             for entry in part:
                 entry["page"] = int(page)
             entries.extend(part)
-    return assemble(q, col, entries, position_scale, leaf_triangles, vertex_uvs=vertex_uvs)
+    return split_back(assemble(q, col, entries, position_scale, leaf_triangles, vertex_uvs=vertex_uvs), back is not None)
+
+
+def both_sides(front, back):
+    """Front colours with the back ones beside them as more channels, so the two weld and cut as one."""
+    return front if back is None else np.concatenate([np.asarray(front), np.asarray(back)], axis=1)
+
+
+def split_back(mesh, back):
+    """`mesh` with the back half of its colour channels (both_sides()) moved to back_rgb or back_face_colors."""
+    mesh.back_rgb = mesh.back_face_colors = None
+    if back:
+        if mesh.rgb is not None:
+            mesh.rgb, mesh.back_rgb = mesh.rgb[:, :RGB_CHANNELS], mesh.rgb[:, RGB_CHANNELS:]
+        if mesh.face_colors is not None:
+            mesh.face_colors, mesh.back_face_colors = (mesh.face_colors[:, :RGB_CHANNELS],
+                                                       mesh.face_colors[:, RGB_CHANNELS:])
+    return mesh
+
+
+def back_firsts(clusters, per_vertex):
+    """Each cluster's back_first: a double-sided one's first entry in the back colours, one per vertex
+    (`per_vertex`) or per triangle, the double-sided clusters' runs tiling them in order; 0 for the rest."""
+    firsts, end = [], 0
+    for _, vcount, _, tcount, *_, double in clusters:
+        firsts.append(end if double else 0)
+        end += (vcount if per_vertex else tcount) if double else 0
+    return firsts
+
+
+def back_rows(clusters, colours, per_vertex):
+    """The rows of `colours` (one per vertex, or per triangle) the double-sided clusters hold, in cluster order."""
+    runs = [colours[vb:vb + vc] if per_vertex else colours[tb:tb + tc]
+            for vb, vc, tb, tc, *_, double in clusters if double]
+    return np.concatenate(runs) if runs else colours[:0]
 
 
 def meshlet_entries(q, tris, double, face, meshlet_triangles):
@@ -381,14 +422,25 @@ def rgb888(panel):
 def mesh_blob(mesh):
     """The entry's bytes for a baked mesh: BLOB_HEADER, then each array at an
     offset from the entry's first byte, in the layouts r3d_lit_mesh.h's
-    structs have."""
+    structs have. A double-sided cluster's back colours run from its
+    back_first, counted in the mesh's colours or colour keys: per vertex, or
+    per triangle for a flat mesh."""
+    per_vertex = mesh.face_colors is None and getattr(mesh, "face_keys", None) is None
+    firsts = back_firsts(mesh.clusters, per_vertex)
+    back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
+    if back_rgb is not None:
+        back = np.asarray(back_rows(mesh.clusters, back_rgb, True), dtype="u1").tobytes()
+    else:
+        back = b"" if back_face is None else panel_colour(back_rows(mesh.clusters, back_face, False)).tobytes()
     arrays = [
         ("positions", np.asarray(mesh.pos, dtype="<i2").tobytes()),
         ("colors", b"" if mesh.rgb is None else np.asarray(mesh.rgb, dtype="u1").tobytes()),
         ("triangles", np.asarray(mesh.tris, dtype="<u2").tobytes()),
-        ("clusters", b"".join(CLUSTER.pack(vb, vc, tb, tc, *lo, *hi, int(dbl)) for vb, vc, tb, tc, lo, hi, dbl in mesh.clusters)),
+        ("clusters", b"".join(CLUSTER.pack(vb, vc, tb, tc, *lo, *hi, int(dbl), first)
+                              for (vb, vc, tb, tc, lo, hi, dbl), first in zip(mesh.clusters, firsts))),
         ("nodes", b"".join(NODE.pack(*n["lo"], *n["hi"], n["first"], n["count"], int(n["leaf"])) for n in mesh.nodes)),
         ("face_colors", b"" if mesh.face_colors is None else panel_colour(mesh.face_colors).tobytes()),
+        ("back_colors", back),
     ]
     offsets, body, at = {}, b"", BLOB_HEADER.size
     for key, data in arrays:
@@ -501,7 +553,7 @@ def read_lit_mesh(path, levels=None):
         return read_bundle_mesh(entries, mesh_bundle.rest_name(entries, copies))
     blob = path
     vertices, triangles, clusters, nodes, scale, *at = BLOB_HEADER.unpack_from(blob)
-    pos_at, col_at, tri_at, cl_at, node_at, face_at = at
+    pos_at, col_at, tri_at, cl_at, node_at, face_at, back_at = at
 
     def array(offset, dtype, count):
         return np.frombuffer(blob, dtype=dtype, count=count, offset=offset).astype(np.int64)
@@ -513,8 +565,26 @@ def read_lit_mesh(path, levels=None):
     mesh.tris = array(tri_at, "<u2", triangles * 3).reshape(-1, 3)
     mesh.clusters = []
     for i in range(clusters):
-        vb, vc, tb, tc, *box, dbl = CLUSTER.unpack_from(blob, cl_at + i * CLUSTER.size)
+        vb, vc, tb, tc, *box, dbl, _ = CLUSTER.unpack_from(blob, cl_at + i * CLUSTER.size)
         mesh.clusters.append((vb, vc, tb, tc, np.array(box[:3]), np.array(box[3:]), bool(dbl)))
+    mesh.back_rgb = mesh.back_face_colors = None
+    if back_at:
+        per_vertex = not face_at
+        count = back_entries(blob, per_vertex)
+        rows = (array(back_at, "u1", count * 3).reshape(-1, 3) if per_vertex
+                else rgb888(array(back_at, "<u2", count)))
+        # Full length beside the front colours: the back rows where a double-sided cluster has them.
+        full = (mesh.rgb if per_vertex else mesh.face_colors).copy()
+        at = 0
+        for vb, vc, tb, tc, *_, dbl in mesh.clusters:
+            if dbl:
+                first, n = (vb, vc) if per_vertex else (tb, tc)
+                full[first:first + n] = rows[at:at + n]
+                at += n
+        if per_vertex:
+            mesh.back_rgb = full
+        else:
+            mesh.back_face_colors = full
     mesh.nodes = []
     for i in range(nodes):
         *box, first, count, leaf = NODE.unpack_from(blob, node_at + i * NODE.size)
