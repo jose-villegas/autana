@@ -182,7 +182,8 @@ class PrepareReferencesTests(unittest.TestCase):
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
                                  probes=settings, job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)),
-                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None))
+                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None),
+                                 aa_samples=1, denoise=False)
         rendered = []
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"

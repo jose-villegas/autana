@@ -32,7 +32,8 @@ from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals, hit_barycentrics
 from r3d.import_settings import load_scene
-from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8
+from r3d.light import (AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8,
+                       turned_frame)
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
@@ -63,7 +64,7 @@ def hit_albedo(source, hits, bary):
     return out
 
 
-def render_linear(source, job, scene, pose, width, height, lens, samples=4):
+def render_linear(source, job, scene, pose, width, height, lens, samples):
     """Return a linear RGB source render, supersampled then box filtered."""
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
@@ -105,31 +106,50 @@ def primary_hits(source, job, pose, width, height, lens, samples):
     return origin, direction, locations, rays, faces, normal, bary, double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples=4):
+def trace(source, job, scene, pose, width, height, lens, samples, denoise=False):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
-    the pixel's rays and zero where they all miss)."""
-    settings = job.settings
+    the pixel's rays and zero where they all miss). Every hemisphere term turns its directions per point
+    (light.turned_frame); with `denoise` the colour passes through `denoised`."""
     origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
                                                                                     samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
     covered[rays] = 1.0
     shading = np.zeros((len(origin), 3), dtype=float)
+    albedo = np.zeros((len(origin), 3), dtype=float)
     if len(rays):
-        albedo = hit_albedo(source, faces, bary)
+        albedo[rays] = hit_albedo(source, faces, bary)
         radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
                          source.bounce, ao=job.bake.ao,
-                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
-        linear[rays] = albedo * radiance
+                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0,
+                         frame=turned_frame)
+        linear[rays] = albedo[rays] * radiance
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
-    shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
-    return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
-            covered.reshape(height, width, samples * samples).mean(axis=2),
-            shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12))
+    shape = (height, width, samples * samples, 3)
+    shading = shading.reshape(shape).sum(axis=2)
+    shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
+    linear = linear.reshape(shape).mean(axis=2)
+    if denoise:
+        linear = denoised(linear, albedo.reshape(shape).mean(axis=2), shading)
+    return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
 
 
-def occlusion_map(source, job, pose, width, height, lens, samples=4):
+def denoised(linear, albedo, normal):
+    """`linear` through Open Image Denoise's ray-tracing filter (OIDN, pinned in requirements.txt) on the CPU,
+    guided by the pixel's albedo and shading normal. The guides come from the primary rays alone, which carry no
+    sampling noise, so OIDN takes them as they are (clean_aux) and only the colour is filtered."""
+    import pyoidn
+
+    def image(values):
+        return np.ascontiguousarray(values, dtype=np.float32)
+
+    out = pyoidn.denoise(image(linear), image(np.clip(albedo, 0.0, 1.0)), image(normal), hdr=True, clean_aux=True,
+                         quality="high")
+    return np.maximum(out.astype(np.float64), 0.0)
+
+
+def occlusion_map(source, job, pose, width, height, lens, samples):
     """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
     subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
     light by, so the scene must set it."""
@@ -141,7 +161,8 @@ def occlusion_map(source, job, pose, width, height, lens, samples=4):
     covered = np.zeros(len(origin))
     covered[rays] = 1.0
     if len(rays):
-        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset)
+        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset,
+                                           turned_frame)
     shape = (height, width, samples * samples)
     return factor.reshape(shape).mean(axis=2), covered.reshape(shape).mean(axis=2)
 
@@ -224,9 +245,10 @@ def link_or_copy(source, target):
         shutil.copyfile(source, target)
 
 
-def render_sets(inputs, sets, samples=4, store=None, progress=None):
+def render_sets(inputs, sets, store=None, progress=None):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    reference_set.ReferenceInputs) on `reference_variant()`. Given a pose `store` (bake/produce.PoseStore), each pose
+    reference_set.ReferenceInputs: its aa_samples rays per pixel side, denoised when it says so) from
+    `reference_source`. Given a pose `store` (bake/produce.PoseStore), each pose
     is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
     each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
     The poses to trace go to `gpu_workers` processes on CUDA, else to this process (render_poses); each pose is
@@ -257,7 +279,7 @@ def render_sets(inputs, sets, samples=4, store=None, progress=None):
             progress()
 
     workers = gpu_workers(sum(len(plan[3]) for plan in plans))
-    (trace_in_workers if workers > 1 else trace_here)(inputs, plans, samples, traced, workers)
+    (trace_in_workers if workers > 1 else trace_here)(inputs, plans, traced, workers)
     if store is None:
         return
     for out, target, folders, _missing, _poses, _size in plans:
@@ -279,7 +301,13 @@ def gpu_workers(poses):
     return max(1, min(poses, worker_capacity(available_bytes(gpu=True), REFERENCE_GPU_BYTES, FLOORS, cores_available())))
 
 
-def trace_here(inputs, plans, samples, traced, workers=1):
+def reference_source(job, scene):
+    """The source every pose of a reference set is traced from: lit, its accepted card materials hidden from camera
+    rays (the fit makes them), on `reference_variant()`."""
+    return lit_source(job, scene, hide_cards=True, variant=reference_variant())
+
+
+def trace_here(inputs, plans, traced, workers=1):
     """The poses of `plans` traced in this process, the source loaded and its bounced light built once for all of
     them only when one is missing; traced(plan, index) as each pose's files are written. The bounced-light tracer,
     which holds the source's textures a second time, is dropped before it returns, for the fit that follows in the
@@ -292,9 +320,10 @@ def trace_here(inputs, plans, samples, traced, workers=1):
             if not poses:
                 continue
             if source is None:
-                source = lit_source(job, scene, hide_cards=True, variant=reference_variant())
-            peak, used = render_poses(source, job, scene, poses, width, height, lens, samples, target, normals=True,
-                                      done=lambda index, plan=plan: traced(plan, index))
+                source = reference_source(job, scene)
+            peak, used = render_poses(source, job, scene, poses, width, height, lens, inputs.aa_samples, target,
+                                      normals=REFERENCE_NORMALS, done=lambda index, plan=plan: traced(plan, index),
+                                      denoise=inputs.denoise)
             print(f"worker reference_poses pid={os.getpid()} out={out} traced={len(poses)} of {len(folders)} "
                   f"pose_peak_pss_bytes={peak} pose_workers={used}", flush=True)
     finally:
@@ -302,14 +331,14 @@ def trace_here(inputs, plans, samples, traced, workers=1):
         mesh_source.PATH_LIGHTS.clear()
 
 
-def trace_in_workers(inputs, plans, samples, traced, workers):
+def trace_in_workers(inputs, plans, traced, workers):
     """The poses of `plans` traced by `workers` spawned processes (CUDA does not survive a fork), each loading the
     source once and taking the next pose as it finishes one; traced(plan, index) as each pose's result returns, in
     the order they finish. A pose that fails cancels the poses not yet started before it is raised."""
     tasks = [(plan, index) for plan in plans for index in range(len(plan[4]))]
     peaks = {}
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
-                                                initializer=_load_worker, initargs=(inputs, samples, os.getpid())) as pool:
+                                                initializer=_load_worker, initargs=(inputs, os.getpid())) as pool:
         futures = {pool.submit(_trace_task, (plan[1], index, plan[4][index], plan[5])): (plan, index)
                    for plan, index in tasks}
         try:
@@ -327,37 +356,42 @@ def trace_in_workers(inputs, plans, samples, traced, workers):
 WORKER_STATE = None
 
 
-def _load_worker(inputs, samples, parent_pid):
+def _load_worker(inputs, parent_pid):
     global WORKER_STATE
     from r3d.process_budget import parent_death_signal
     parent_death_signal(parent_pid)
     job, scene = inputs.job(), inputs.scene()
-    WORKER_STATE = (lit_source(job, scene, hide_cards=True, variant=reference_variant()), job, scene, samples)
+    WORKER_STATE = (reference_source(job, scene), job, scene, inputs.aa_samples, inputs.denoise)
 
 
 def _trace_task(task):
     global POSE_STATE
     target, index, pose, (width, height, lens) = task
-    source, job, scene, samples = WORKER_STATE
-    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, target)
+    source, job, scene, samples, denoise = WORKER_STATE
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, target, denoise=denoise)
     return _write_pose((index, pose))
 
 
 # Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
 # sky tangents, samples, directions and temporaries 256.
 POSE_BASE_BYTES_PER_RAY = 768
+# Rays per pixel side the command line traces a scene without [bake] aa_samples at.
+FALLBACK_SAMPLES = 4
 POSE_STATE = None
+# A reference pose writes its normals beside its picture: the fit reads both.
+REFERENCE_NORMALS = True
 
 
-def pose_state(source, job, scene, width, height, lens, samples, out, normals=True, occlusion=False):
+def pose_state(source, job, scene, width, height, lens, samples, out, normals=REFERENCE_NORMALS, occlusion=False,
+               denoise=False):
     """What _write_pose reads, set once per set of poses in the process that writes them."""
-    return source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion
+    return source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion, denoise
 
 
 def _write_pose(item):
-    source, job, scene, width, height, lens, samples, out, normals, occlusion = POSE_STATE
+    source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise = POSE_STATE
     index, pose = item
-    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples, denoise)
     np.save(out / ("%04d.linear.npy" % index), linear)
     if normals:
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
@@ -380,7 +414,7 @@ def budget_pose_capacity(budget, rss, estimate, cores):
 
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False,
-                 done=None):
+                 done=None, denoise=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
     Every pose's rays are fixed, so the output matches a serial run. done(index) is called as each pose's files
     are written, in order.
@@ -390,13 +424,15 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
     import os
     global POSE_STATE
     on_gpu = getattr(getattr(source, "intersector", None), "variant", "").startswith("cuda")
-    if on_gpu or getattr(source, "bounce", None) is not None:
+    if on_gpu or denoise or getattr(source, "bounce", None) is not None:
         # One process traces every pose on the GPU, where forked workers would share it and only add memory. On the
         # CPU, Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one
         # thread and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with
-        # bounced light renders in this process too.
+        # bounced light renders in this process too. So does a denoised pose: OIDN's device already threads over
+        # every core, and a forked worker would inherit a device another process started.
         if workers not in (None, 1):
-            raise ValueError("poses on the GPU or with bounced light render in the main process; leave --workers unset")
+            raise ValueError("poses on the GPU, with bounced light or denoised render in the main process; "
+                             "leave --workers unset")
         workers = 1
     budget_capacity = None
     if workers is None:
@@ -419,7 +455,7 @@ def render_poses(source, job, scene, poses, width, height, lens, samples, out, n
         workers = 1
     if budget_capacity is not None:
         print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
-    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, out, normals, occlusion)
+    POSE_STATE = pose_state(source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise)
     pose_peaks = {}
     try:
         if workers == 1:
@@ -448,7 +484,9 @@ def main(argv=None):
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--workers", type=int, help="pose workers; default: available CPU and memory budget")
-    parser.add_argument("--samples", type=int, default=4)
+    parser.add_argument("--samples", type=int,
+                        help="rays per pixel side; default: the scene's [bake] aa_samples, or %d without it"
+                             % FALLBACK_SAMPLES)
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--occlusion", action="store_true",
@@ -465,7 +503,7 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=0, help="mitsuba: sampler seed")
     mitsuba_reference.add_options(parser)
     args = parser.parse_args(argv)
-    if args.samples < 1 or args.skip < 0:
+    if (args.samples is not None and args.samples < 1) or args.skip < 0:
         parser.error("--samples must be positive and --skip cannot be negative")
     if args.backend == "mitsuba" and (args.spp < 1 or args.max_depth < 1):
         parser.error("--spp and --max-depth must be positive")
@@ -478,6 +516,8 @@ def main(argv=None):
     if args.backend == "bake" and args.sky:
         parser.error("--sky needs --backend mitsuba")
     scene = load_scene(args.scene)
+    if args.samples is None:
+        args.samples = FALLBACK_SAMPLES if scene.bake is None or scene.bake.aa_samples is None else scene.bake.aa_samples
     width, height, lens, near, poses = read_poses(args.poses)
     poses = poses[args.skip :]
     if not poses:
@@ -498,7 +538,8 @@ def main(argv=None):
         parser.error("the scene sets no [bake].ao")
     if path is None:
         try:
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion,
+                                         denoise=bool(scene.bake and scene.bake.denoise))
         except ValueError as error:
             parser.error(str(error))
         print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}", flush=True)

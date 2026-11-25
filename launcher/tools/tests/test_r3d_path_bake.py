@@ -154,7 +154,7 @@ class SideBounce:
     def __init__(self, up=(0.0, 0.0, 0.0), down=(0.0, 0.0, 0.0)):
         self.up, self.down, self.calls = np.array(up), np.array(down), []
 
-    def bounce(self, points, normals, ray_offset):
+    def bounce(self, points, normals, ray_offset, frame):
         self.calls.append(normals)
         return np.where(normals[:, 1:2] > 0, self.up, self.down)
 

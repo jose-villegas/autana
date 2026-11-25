@@ -139,7 +139,8 @@ STAGES = {
                   "r3d/reference_set.py:poses_text", "r3d/reference_render.py:render_sets",
                   "r3d/reference_render.py:reference_variant"),
     # One traced pose of a reference set (produce.PoseStore): the source it is traced from and its trace and files.
-    "reference_pose": ("r3d/reference_render.py:lit_source", "r3d/reference_render.py:_write_pose"),
+    "reference_pose": ("r3d/reference_render.py:reference_source", "r3d/reference_render.py:pose_state",
+                       "r3d/reference_render.py:_write_pose"),
     "fit": ("r3d/fit/stage.py:fit", "r3d/reference_set.py:unpack_references"),
     "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
