@@ -6,8 +6,9 @@ time, then compare stored keys during lookup.
 
 `name_hash()` hashes a NUL-terminated name; `name_hash_n()` hashes a byte span,
 including embedded NULs. Both use FNV-1a 32 (Fowler, Noll, Vo).
-`NAME_HASH_NONE` is reserved for absent names. `name_hash64_n(seed, data, size)`
-starts from `NAME_HASH64_OFFSET_BASIS` or continues a previous fold.
+`NAME_HASH_NONE` is reserved for absent names. The seeded forms
+`name_hash_seeded_n(seed, data, size)` and `name_hash64_n(seed, data, size)`
+start from their `*_OFFSET_BASIS` or continue a previous fold.
 
 `crc32_update(crc, data, size)` starts from 0 or continues a previous result,
 as zlib's `crc32()` does. `crc32_update_nibble()` is the reference;

@@ -44,8 +44,15 @@ def bounce_at_the_wall_foot(**kwargs):
     return bounce_at(path_light(**kwargs), [0.5])[0]
 
 
+class SameBytes:
+    """A bake on the variant the test class sets gives the same bytes twice."""
+
+    def test_the_same_scene_gives_the_same_bytes(self):
+        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
+
+
 @needs_mitsuba
-class BounceTests(unittest.TestCase):
+class BounceTests(SameBytes, unittest.TestCase):
     def test_a_floor_beside_a_sunlit_wall_gets_half_the_walls_radiance(self):
         # The wall covers half of the floor point's cosine-weighted hemisphere, and sends back its albedo times the
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
@@ -101,9 +108,6 @@ class BounceTests(unittest.TestCase):
     def test_more_bounces_add_light(self):
         one, two = bounce_at_the_wall_foot(bounces=1), bounce_at_the_wall_foot(bounces=2)
         self.assertGreater(two[0], one[0])
-
-    def test_the_same_scene_gives_the_same_bytes(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
     def test_ambient_is_left_to_the_bake(self):
         ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
@@ -225,7 +229,7 @@ class LightPlumbingTests(unittest.TestCase):
 
 @needs_mitsuba
 @needs_llvm
-class LlvmBounceTests(unittest.TestCase):
+class LlvmBounceTests(SameBytes, unittest.TestCase):
     def setUp(self):
         ray_query.VARIANT = "llvm_ad_rgb"
 
@@ -262,9 +266,6 @@ class LlvmBounceTests(unittest.TestCase):
         finally:
             path_bake.BATCH = original
         np.testing.assert_allclose(split, alone, rtol=1e-4)
-
-    def test_the_same_scene_gives_the_same_bytes_on_llvm(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
 
 if __name__ == "__main__":
