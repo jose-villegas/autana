@@ -656,13 +656,13 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
-        simplify = job.settings.simplify
-        if simplify and simplify.seal_seams and scene.camera is not None:
-            # The seal step's views are bake inputs: the camera, and the flight's poses with seal_views.
-            camera = recipe.setdefault("camera", camera_inputs(scene))
-            views = job.renderer.seal_views
-            if views is not None:
-                camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
+    simplify = job.settings.simplify
+    if simplify and simplify.seal_seams and scene.camera is not None:
+        # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.
+        camera = recipe.setdefault("camera", camera_inputs(scene))
+        views = job.renderer.seal_views
+        if views is not None:
+            camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
     return recipe
 
 

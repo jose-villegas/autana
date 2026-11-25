@@ -1075,6 +1075,14 @@ class PosesTests(FittedBakeCase):
         self.job.renderer.seal_views.size = (6, 8)
         self.assertNotEqual(spaced["start"], self.keys()["start"])
 
+    def test_a_sealed_albedo_mesh_is_keyed_by_the_camera_too(self):
+        self.job.bake = None
+        self.job.settings.simplify.seal_seams = True
+        before = bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({}))
+        self.scene.camera.component.near_z += 1.0
+        self.assertNotEqual(before, bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({})),
+                            "the seal's probes stand by the camera whether the mesh is lit or not")
+
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
 
