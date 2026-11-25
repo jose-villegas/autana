@@ -243,7 +243,7 @@ class LeakProbeTests(unittest.TestCase):
         eye = np.array(PATH_EYE)
         pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
         whole_batches = len(self.probes.holes(*holed))
-        with mock.patch.object(leaks, "BATCH", SMALL_BATCH):
+        with mock.patch.object(leaks, "LAUNCH", SMALL_BATCH):
             without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
             with_path = leaks.LeakProbes(self.pos, self.tris, *CAMERA, path=(*PATH_VIEW, [pose]))
             self.assertEqual(len(with_path.views), len(without.views) + 1)
