@@ -72,7 +72,7 @@ def bake_trace(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, do
     """The bake reference's linear image and coverage of a fixture."""
     settings = SimpleNamespace(double_sided=set(double), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001, ao=None))
-    return trace(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)[:2]
+    return trace(source, job, SimpleNamespace(lights=lights, bake=None), pose, width, height, lens, 4)[:2]
 
 
 def bake_render(source, lights, **view):

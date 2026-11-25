@@ -10,26 +10,58 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from quality import stack_chain_gate as gate
 
 
+def check(spec_text, graph, **options):
+    """check_app's problems for one spec over a given graph."""
+    with tempfile.TemporaryDirectory() as directory:
+        spec = pathlib.Path(directory) / "stack_chain.txt"
+        spec.write_text(spec_text)
+        with patch.object(gate, "parse_graph", return_value=graph):
+            return gate.check_app("app", str(spec), [], 3584, 512, 224, **options)
+
+
 class StackChainTests(unittest.TestCase):
     def test_derived_harness_and_interrupt_cannot_overbook_the_main_task(self):
-        with tempfile.TemporaryDirectory() as directory:
-            spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame test\n")
-            graph = ({"test_frame": 2400, "main_task": 400,
-                      "call_protected": 80}, {"main_task": {"call_protected"}}, set(), [])
-            with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
-            self.assertTrue(any("3104 bytes" in p for p in problems))
+        problems = check("root test_frame test\n",
+                         ({"test_frame": 2400, "main_task": 400, "call_protected": 80},
+                          {"main_task": {"call_protected"}}, set(), []))
+        self.assertTrue(any("3104 bytes" in p for p in problems))
 
     def test_an_unreachable_harness_fails(self):
+        problems = check("root test_frame test\n",
+                         ({"test_frame": 32, "main_task": 32, "call_protected": 48}, {}, set(), []))
+        self.assertTrue(any("no measured main_task path" in p for p in problems))
+
+    def test_entries_for_code_the_build_left_out_are_skipped_but_misspelt_ones_fail(self):
+        problems = check("root test_scoped_out test\nroot test_misspelt test\n"
+                         "indirect test_scoped_out : gone\n"
+                         "indirect target : test_scoped_out\n"
+                         "indirect misspelt_caller : test_scoped_out\n",
+                         ({"main_task": 32, "call_protected": 48, "target": 16},
+                          {"main_task": {"call_protected"}}, set(), []),
+                         uncompiled=lambda name: name == "test_scoped_out")
+        self.assertEqual(["declared edge misspelt_caller > test_scoped_out names a "
+                          "function that is not in the graph",
+                          "root test_misspelt is not in the graph"], problems)
+
+    def test_a_function_counts_as_uncompiled_only_when_a_left_out_source_defines_it(self):
         with tempfile.TemporaryDirectory() as directory:
-            spec = pathlib.Path(directory) / "stack_chain.txt"
-            spec.write_text("root test_frame test\n")
-            graph = ({"test_frame": 32, "main_task": 32,
-                      "call_protected": 48}, {}, set(), [])
-            with patch.object(gate, "parse_graph", return_value=graph):
-                problems = gate.check_app("app", str(spec), [], 3584, 512, 224)
-            self.assertTrue(any("no measured main_task path" in p for p in problems))
+            root = pathlib.Path(directory)
+            compiled, left_out = root / "main" / "kept.c", root / "main" / "scoped.c"
+            compiled.parent.mkdir()
+            compiled.write_text("void kept(void) {\n}\n")
+            left_out.write_text("static void\nscoped(int x) {\n    if (only_called(x)) {\n"
+                                "        kept();\n    }\n}\n")
+            db = root / "compile_commands.json"
+            db.write_text(json.dumps([{"file": str(compiled)}]))
+            with patch.object(gate, "MAIN_DIR", str(root / "main")), \
+                    patch.object(gate, "LAUNCHER", str(root)):
+                uncompiled = gate.uncompiled_definitions(str(db))
+            self.assertTrue(uncompiled("scoped"))
+            self.assertTrue(uncompiled("scoped.c:scoped"))
+            self.assertFalse(uncompiled("other.c:scoped"))
+            self.assertFalse(uncompiled("kept"))
+            self.assertFalse(uncompiled("only_called"))
+            self.assertFalse(uncompiled("never_written"))
 
     def test_harness_follows_the_deepest_live_path_only(self):
         frames = {"main_task": 48, "a": 80, "b": 160,

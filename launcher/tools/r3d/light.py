@@ -248,6 +248,35 @@ def tangent_frame(n):
     return tu, np.cross(n, tu)
 
 
+def fixed_frame(points, normals):
+    """tangent_frame at every point: equal normals trace equal directions, so equal surroundings give equal light."""
+    return tangent_frame(normals)
+
+
+# A point's hash: each coordinate's bits times its own odd constant, xored together, then SplitMix64's finalizer
+# (Steele et al. 2014). The constants are SplitMix64's gamma and its two finalizer multipliers.
+COORDINATE_CONSTANTS = np.array([0x9E3779B97F4A7C15, 0xBF58476D1CE4E5B9, 0x94D049BB133111EB], dtype=np.uint64)
+FINALIZER_MULTIPLIERS = (np.uint64(0xBF58476D1CE4E5B9), np.uint64(0x94D049BB133111EB))
+FINALIZER_SHIFTS = (np.uint64(30), np.uint64(27), np.uint64(31))
+# The hash's top 53 bits become a fraction of a turn, the most a float64 holds exactly.
+TURN_BITS = 53
+
+
+def turned_frame(points, normals):
+    """tangent_frame turned about each normal by an angle hashed from the point's coordinate bits, so neighbouring
+    points trace different directions and a direction set's error is noise, not a shape repeated across a surface.
+    A point turns the same however it is traced: alone, with others, or in another shard."""
+    tu, tv = tangent_frame(normals)
+    bits = np.ascontiguousarray(points, dtype=np.float64).view(np.uint64)
+    mixed = np.bitwise_xor.reduce(bits * COORDINATE_CONSTANTS, axis=1)
+    mixed = (mixed ^ (mixed >> FINALIZER_SHIFTS[0])) * FINALIZER_MULTIPLIERS[0]
+    mixed = (mixed ^ (mixed >> FINALIZER_SHIFTS[1])) * FINALIZER_MULTIPLIERS[1]
+    mixed = mixed ^ (mixed >> FINALIZER_SHIFTS[2])
+    angle = (2 * math.pi / 2 ** TURN_BITS) * (mixed >> np.uint64(64 - TURN_BITS)).astype(np.float64)[:, None]
+    cos, sin = np.cos(angle), np.sin(angle)
+    return cos * tu + sin * tv, cos * tv - sin * tu
+
+
 def sky_directions(count):
     """One fixed set of cosine-weighted hemisphere directions (z up), shared by
     every point: a golden-ratio sequence, so any prefix is evenly spread."""
@@ -267,9 +296,9 @@ def bake_directional(light, ctx):
 
 
 def bake_sky(light, ctx):
-    """The share of the light's `rays` fixed cosine-weighted directions that reach the sky."""
+    """The share of the light's `rays` cosine-weighted directions, in each point's frame, that reach the sky."""
     n = ctx.normals
-    tu, tv = tangent_frame(n)
+    tu, tv = ctx.frame(ctx.points, n)
     directions = (tu * x + tv * y + n * z for x, y, z in sky_directions(light["rays"]))
     visible = unshadowed_count(ctx.intersector, ctx.origin, directions) / light["rays"]
     return visible[:, None] * np.array(light["color"]) * light["intensity"]
@@ -287,14 +316,14 @@ LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
 
 
-def local_occlusion(points, normals, intersector, ao, ray_offset):
+def local_occlusion(points, normals, intersector, ao, ray_offset, frame=fixed_frame):
     """Distance-limited ambient occlusion per point: 1 where nothing stands within `ao.distance` of the point's
     hemisphere, down to 1 - `ao.strength` where it is walled in. Every point uses the same cosine-weighted
-    directions in its own frame, and a hit counts for less the farther it is, linearly to
+    directions in its own `frame`, and a hit counts for less the farther it is, linearly to
     nothing at the distance."""
     origin = points + normals * ray_offset
     covered = np.zeros(len(points))
-    tu, tv = tangent_frame(normals)
+    tu, tv = frame(points, normals)
     for x, y, z in sky_directions(ao.rays):
         direction = tu * x + tv * y + normals * z
         locations, indices, _ = intersector.first_hit(origin, direction)
@@ -303,14 +332,14 @@ def local_occlusion(points, normals, intersector, ao, ray_offset):
     return 1.0 - ao.strength * covered / ao.rays
 
 
-def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset):
+def open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset, frame=fixed_frame):
     """local_occlusion on each point's own side. A double-sided surface has no side it is meant to be seen from, so
     it takes the less occluded of its two: a curtain hanging against a wall is lit by the open side it is seen from,
     not darkened by the wall behind it."""
-    factor = local_occlusion(points, normals, intersector, ao, ray_offset)
+    factor = local_occlusion(points, normals, intersector, ao, ray_offset, frame)
     if double_sided.any():
         chosen = np.nonzero(double_sided)[0]
-        other = local_occlusion(points[chosen], -normals[chosen], intersector, ao, ray_offset)
+        other = local_occlusion(points[chosen], -normals[chosen], intersector, ao, ray_offset, frame)
         factor[chosen] = np.maximum(factor[chosen], other)
     return factor
 
@@ -334,11 +363,12 @@ def face_towards_light(normals, double_sided, lights):
 
 
 def light(points, normals, double_sided, intersector, lights, ray_offset, bounce=None, bounce_groups=None, ao=None,
-          bounce_intensity=1.0):
+          bounce_intensity=1.0, frame=fixed_frame):
     """Radiance from the scene lights at each point, in the unit of irradiance over pi.
 
-    The sun and sky come from shadow rays against `intersector`, the same fixed directions at every point so equal
-    surroundings give equal light. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
+    The sun and sky come from shadow rays against `intersector`. Every hemisphere term (sky, local occlusion,
+    bounce) casts one direction set in each point's `frame`: `fixed_frame` traces the same directions at every
+    point, `turned_frame` turns them per point. `bounce` is a PathLight whose bounced light is added; `bounce_groups` gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
     and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
@@ -347,42 +377,46 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
     """
     lights = baked_lights(lights)
     n = face_towards_light(normals, double_sided, lights)
-    occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset)
-    radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity)
+    occlusion = None if ao is None else open_side_occlusion(points, normals, double_sided, intersector, ao, ray_offset,
+                                                             frame)
+    radiance = lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao,
+                        bounce_intensity, frame)
     both = np.nonzero(double_sided)[0]
     if len(both):
         groups = None if bounce_groups is None else bounce_groups[both]
         other = lit_side(points[both], -n[both], intersector, lights, ray_offset,
-                         None if occlusion is None else occlusion[both], bounce, groups, ao, bounce_intensity)
+                         None if occlusion is None else occlusion[both], bounce, groups, ao, bounce_intensity, frame)
         brighter = other.sum(axis=1) > radiance[both].sum(axis=1)
         radiance[both[brighter]] = other[brighter]
     return radiance
 
 
-def lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity):
+def lit_side(points, n, intersector, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity,
+             frame):
     """The light at each point on the side its unit normal `n` faces."""
-    ctx = SimpleNamespace(normals=n, origin=points + n * ray_offset, intersector=intersector, occlusion=occlusion)
+    ctx = SimpleNamespace(points=points, normals=n, origin=points + n * ray_offset, intersector=intersector,
+                          occlusion=occlusion, frame=frame)
     radiance = np.zeros((len(points), 3))
     for scene_light in lights:
         radiance += LIGHTS[scene_light["type"]][1](scene_light, ctx)
     if bounce is None:
         return radiance
-    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups) * bounce_intensity
+    bounced = bounced_light(bounce, points, n, ray_offset, bounce_groups, frame) * bounce_intensity
     if ao is not None and ao.indirect:
         bounced = bounced * occlusion[:, None]
     return radiance + bounced
 
 
-def bounced_light(bounce, points, normals, ray_offset, groups=None):
+def bounced_light(bounce, points, normals, ray_offset, groups=None, frame=fixed_frame):
     """`bounce.bounce` for every point; with `groups`, once per group on the group's mean normal."""
     if groups is None:
-        return bounce.bounce(points, normals, ray_offset)
+        return bounce.bounce(points, normals, ray_offset, frame)
     _, first, inverse = np.unique(groups, return_index=True, return_inverse=True)
     inverse = inverse.reshape(-1)
     total = np.stack([np.bincount(inverse, weights=normals[:, axis]) for axis in range(3)], axis=1)
     length = np.linalg.norm(total, axis=1, keepdims=True)
     mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), normals[first])
-    return bounce.bounce(points[first], mean, ray_offset)[inverse]
+    return bounce.bounce(points[first], mean, ray_offset, frame)[inverse]
 
 
 def encode_srgb8(linear):

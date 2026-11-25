@@ -80,7 +80,7 @@ or skinned renderer.
 
 | Component | Fields | What it is |
 |---|---|---|
-| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
+| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `seal_views`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
 | `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
 | `light` | `type`, `color`, `intensity`; `mode` | A directional light; see [light](#light). |
@@ -90,7 +90,8 @@ or skinned renderer.
 
 | A scene with | Must carry | May also carry |
 |---|---|---|
-| a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility | `[indirect]`, when a renderer bakes `[bake].indirect` |
+| a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility and `seal_views` | `[indirect]`, when a renderer bakes `[bake].indirect` |
+| a fitted renderer (`fit`) | `[bake]`'s `aa_samples` and `denoise`, beside what a baked renderer carries | |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
@@ -105,7 +106,7 @@ is in [Mesh-Import.md](../offline/Mesh-Import.md#import-options).
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
+| `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }`, `aa_samples`, `denoise` | Scene-wide tracing settings. | Required by a baked renderer; `aa_samples` and `denoise` required by a fitted renderer, rejected without one. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant linear light for bakes and skinned renderers. | Absent: zero intensity. | [ambient](#ambient) |
@@ -120,6 +121,24 @@ the bake. The image compares albedo with the result of a renderer whose
 `bake = true` light is then [fitted](../offline/Appearance-Fit.md).
 
 ![Albedo against the fitted bake](../../images/render/import-light.png)
+
+#### bake: reference traces
+
+`aa_samples` and `denoise` set how the reference renders a fit learns from are
+traced ([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)).
+A fitted renderer needs both. They are in the reference set's bake key and not
+in a vertex bake's, which never reads them.
+
+| Field | Meaning |
+|---|---|
+| `aa_samples` | Rays per pixel along each side, at least 1: `aa_samples`² primary rays per pixel. |
+| `denoise` | `true` filters each render with Open Image Denoise<sup>[[143]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
+
+```toml
+[bake]
+aa_samples = 4      # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
+```
 
 #### bake: indirect
 
@@ -217,6 +236,7 @@ normal_weight = 1.0
 | `colour_set` | nonnegative integer | Selects an external LCOL set on a colourless mesh. | Mesh-owned colours. | [colour_set](#colour_set) |
 | `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
+| `seal_views` | `every_ms`, `size` | Adds the camera path's frames to the views a sealed import is checked from. | Off: probes in the camera's region alone. | [seal_views](#seal_views) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
@@ -227,7 +247,7 @@ normal_weight = 1.0
 #### bake renderer
 
 `bake = true` writes this renderer's lit mesh; otherwise it draws the shared
-imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
+imported albedo mesh. `shading`, `visibility`, `seal_views`, `fit`, and `indirect` require
 `bake = true`. A baked renderer's transform must be identity. Its output is
 `<scene>.<object>.bundle`; an albedo renderer uses `<variant>.bundle`. An import is
 packed only through the scenes that place it. The same import can have
@@ -424,6 +444,14 @@ objects with `mode = "baked"` in file order, then `[sky]`, then `[ambient]`. The
 source, so its shadows are hard. A double-sided face is lit on both sides and
 keeps the brighter.
 
+#### seal_views
+
+An import with [`seal_seams`](../offline/Mesh-Import.md#seal_seams) is checked for sky showing through its
+walls from probes in the camera's `region`. `seal_views` adds the camera path's own frames to those views:
+one every `every_ms`. `size` is the panel's width and height in pixels, and each frame is traced through a
+square view that covers it, as for [path visibility](#visibility-camera_path). A gap only a path pose sees is
+then closed too. It needs a camera with a `path`.
+
 ### Camera options
 
 | Option | Keys | What it does | Default | Option link |
@@ -439,7 +467,7 @@ any other camera is refused because no bake step reads it.
 
 | Key | Meaning |
 |---|---|
-| `region = { min, max }` | the box the camera may occupy; region visibility casts from points inside it |
+| `region = { min, max }` | the box the camera may occupy; region visibility casts from points inside it, and a sealed import's probes stand in it |
 | `path = { animation, node }` | the clip the camera flies: `animation` is its `NAME.anim.toml` ([Animation-Tracks.md](../animation/Animation-Tracks.md)), relative to the scene file, and `node` the glTF node in it that is the camera. The clip's id is `NAME` and it travels in the scene's pack; `<node>/translation` must fit a track name's 31 bytes |
 | `background` | 0xRRGGBB, default black: the colour a pixel no mesh covers shows, on the panel and in the source reference |
 
