@@ -445,9 +445,10 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     if (status == ASSET_OK) {
         status = scene_asset_open(entry, asset);
     }
-    if (status == ASSET_OK && (asset->constraint_count != 0 || asset->hinge_count != 0)) {
-        return scene_failure_make(SCENE_ERR_UNSUPPORTED, ASSET_OK,
-                                  asset->constraint_count != 0 ? "constraint" : "hinge");
+    const bool has_constraints =
+        status == ASSET_OK && (asset->position_constraint_count != 0 || asset->aim_constraint_count != 0);
+    if (status == ASSET_OK && (has_constraints || asset->hinge_count != 0)) {
+        return scene_failure_make(SCENE_ERR_UNSUPPORTED, ASSET_OK, has_constraints ? "constraint" : "hinge");
     }
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }

@@ -76,28 +76,54 @@ class SceneTimelineTests(SceneFiles):
 
     def test_timeline_constraint_and_hinge_round_trip(self):
         head = '[timeline]\nclip = "clips/fly.anim.toml"\nwrap = "loop"\n'
-        camera = lens() + ('[objects.constraint]\nfollow = "camera"\nlook_at = "camera"\n'
-                           'offset = [0, 60, 180]\nlook_offset = [0, 30, 10]\nbind = "target_yaw"\n'
-                           'lag_ms = 400\nhandoff_ms = 600\nweight = 0.5\n'
-                           '[objects.hinge]\naxis = [1, 0, 0]\nmin = -1.25\nmax = 1.25\nangle = 0.25\n')
+        camera = lens() + """[objects.position_constraint]
+binding_mode = "lock_to_target_with_world_up"
+translation_offset = [0, 60, 180]
+weight = 0.5
+sources = [{ target = "camera" }, { target = "camera", weight = 0 }]
+[objects.aim_constraint]
+world_up_type = "object_rotation_up"
+world_up_object = "camera"
+rotation_offset = [0, 90, 0]
+sources = [{ target = "camera", weight = 0.25 }]
+[objects.hinge]
+axis = [1, 0, 0]
+min = -1.25
+max = 1.25
+angle = 0.25
+"""
         entry = self.entry(renderer("a.import.toml") + camera, head)
         decoded = scene_asset.decode(entry)
         self.assertEqual(decoded["timeline"], [dict(clip="fly", wrap=scene_asset.WRAPS["loop"])])
-        self.assertEqual(decoded["constraints"], [dict(entity=1, follow=name_hash("camera"),
-            look_at=name_hash("camera"), offset=(0, 60, 180), look_offset=(0, 30, 10),
-            bind=scene_asset.BINDS["target_yaw"], lag_ms=400, handoff_ms=600, weight=0.5)])
-        self.assertEqual(decoded["hinges"], [dict(entity=1, axis=(1, 0, 0), min=-1.25, max=1.25, angle=0.25)])
+        self.assertEqual(decoded["position_constraints"], [dict(entity=1,
+            binding_mode=scene_asset.BINDS["lock_to_target_with_world_up"],
+            source_count=2, source_first=0, translation_offset=(0, 60, 180), weight=0.5)])
+        self.assertEqual(decoded["sources"], [dict(target=name_hash("camera"), weight=weight)
+                                             for weight in (1, 0, 0.25)])
+        aim, = decoded["aim_constraints"]
+        self.assertEqual(aim["world_up_object"], 1)
+        self.assertEqual(aim["world_up_type"], scene_asset.WORLD_UP["object_rotation_up"])
+        self.assertEqual(aim["source_first"], 2)
+        self.assertEqual(aim["aim_vector"], (0, 0, -1))
+        self.assertEqual(aim["up_vector"], (0, 1, 0))
+        self.assertEqual(aim["world_up_vector"], (0, 1, 0))
+        self.assertEqual(aim["weight"], 1)
+        self.assertAlmostEqual(aim["rotation_offset"][1], math.sqrt(0.5))
+        self.assertAlmostEqual(aim["rotation_offset"][3], math.sqrt(0.5))
         packed = scene_asset.decode(to_engine(scene_asset.TYPE, entry))
-        self.assertEqual(packed["constraints"][0]["offset"], (0, 60, -180))
-        self.assertEqual(packed["constraints"][0]["look_offset"], (0, 30, -10))
+        self.assertEqual(packed["position_constraints"][0]["translation_offset"], (0, 60, -180))
+        self.assertEqual(packed["aim_constraints"][0]["aim_vector"], (0, 0, 1))
+        self.assertEqual(packed["aim_constraints"][0]["rotation_offset"][1], -aim["rotation_offset"][1])
         self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
 
     def test_decoder_refuses_bad_motion_rows(self):
         head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
-        camera = lens() + '[objects.constraint]\n[objects.hinge]\naxis = [0, 1, 0]\nmin = 0\nmax = 0\n'
+        camera = lens() + ('[objects.position_constraint]\nsources = [{target = "camera"}]\n'
+                           '[objects.aim_constraint]\nsources = [{target = "camera"}]\n'
+                           '[objects.hinge]\naxis = [0, 1, 0]\nmin = 0\nmax = 0\n')
         entry = self.entry(renderer("a.import.toml") + camera, head)
-        timeline, constraint, hinge = (scene_asset.PARTS.index(part) for part in
-                                       ("timeline", "constraints", "hinges"))
+        timeline, position, aim, hinge = (scene_asset.PARTS.index(part) for part in
+                                          ("timeline", "position_constraints", "aim_constraints", "hinges"))
         offsets = 1 + len(scene_asset.PARTS)
         header = HEADER.unpack_from(entry)
         timeline_start = header[offsets + timeline]
@@ -109,7 +135,7 @@ class SceneTimelineTests(SceneFiles):
                 broken = bytearray(entry)
                 broken[at] = value
                 scene_asset.decode(broken)
-        for part in (timeline, constraint, hinge):
+        for part in (timeline, position, aim, hinge):
             with self.subTest(part=part), self.assertRaisesRegex(SceneError, "at most one|duplicate"):
                 start = header[offsets + part]
                 stride = scene_asset.ROWS[part].size
@@ -136,16 +162,20 @@ class SceneTimelineTests(SceneFiles):
 
     def test_invalid_object_settings(self):
         settings = {
-            "constraint": {
-                'follow = "missing"': "follow",
-                'look_at = "missing"': "look_at",
-                'bind = "surface"': "bind",
-                'offset = [0, nan, 0]': "offset",
-                'look_offset = [0, 0]': "look_offset",
-                'lag_ms = -1': "lag_ms",
-                'handoff_ms = -1': "handoff_ms",
-                'weight = -0.5': "weight",
-                'weight = 1.5': "weight",
+            "position_constraint": {
+                'sources = []': "sources",
+                'sources = [{ target = "" }]': "target",
+                'sources = [{ target = "missing" }]': "target",
+                'sources = [{ target = "camera", weight = 2 }]': "weight",
+                'sources = [{ target = "camera" }]\nbinding_mode = "surface"': "binding_mode",
+                'sources = [{ target = "camera" }]\ntranslation_offset = [0, nan, 0]': "translation_offset",
+                'sources = [{ target = "camera" }]\nweight = -0.5': "weight",
+            },
+            "aim_constraint": {
+                'sources = [{ target = "camera" }]\naim_vector = [0, 0, 0]': "aim_vector",
+                'sources = [{ target = "camera" }]\nup_vector = [0, 0, 0]': "up_vector",
+                'sources = [{ target = "camera" }]\nworld_up_type = "object_up"': "world_up_object",
+                'sources = [{ target = "camera" }]\nworld_up_object = "camera"': "world_up_object",
             },
             "hinge": {
                 'axis = [0, 0, 2]\nmin = 0\nmax = 1': "axis",
