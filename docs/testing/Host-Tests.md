@@ -147,6 +147,7 @@ Rules:
 - Suite registrations and Unity's wrapper supply the runner's pointer edges themselves.
 - Runner overhead is the deepest measured path from the main-task entry to the kind's endpoint: `call_protected`, `shell_step_app`, `scene_shell_render` or `app_boot_init`. The boot root is `boot_anim_run`.
 - Missing paths and non-static frames fail.
+- A root or edge naming a function that is defined only in a first-party source the build did not compile is skipped, so a perf-scoped image is checked against the same specs; a name defined nowhere fails.
 
 Every root has the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s
 reserve, the derived runner frames and the target context

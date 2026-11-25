@@ -33,6 +33,14 @@ SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_co
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
+BINDING_MODES = ("world_space", "lock_to_target", "lock_to_target_with_world_up")
+WORLD_UP_TYPES = ("scene_up", "object_up", "object_rotation_up", "vector", "none")
+WORLD_UP_OBJECT_TYPES = frozenset(("object_up", "object_rotation_up"))
+CONSTRAINT_SOURCES_MAX = read_define(SCENE_OWNER.with_name("scene_format.h"), "SCENE_CONSTRAINT_SOURCES_MAX")
+SCENE_FORWARD = (0.0, 0.0, -1.0)
+SCENE_UP = (0.0, 1.0, 0.0)
+ZERO_VECTOR = (0.0, 0.0, 0.0)
+FULL_WEIGHT = 1.0
 
 LIGHT_MODES = ("realtime", "baked")
 LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
@@ -261,6 +269,13 @@ def load_visibility(table, where="visibility"):
     return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
                            size=size,
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
+
+
+def load_seal_views(table, where):
+    """The camera path's frames as views for a sealed import's probes (r3d/leaks.py): sampled every `every_ms`
+    at `size` pixels, through a square view that covers the panel held either way up."""
+    check_keys(table, ("every_ms", "size"), where)
+    return SimpleNamespace(every_ms=count(table["every_ms"], f"{where}.every_ms"), size=pixel_size(table["size"], f"{where}.size"))
 
 
 LEGACY_PROCESS_HOMES = {
@@ -644,13 +659,52 @@ def load_timeline(table, base):
     return clip
 
 
-def load_constraint(table, where):
-    defaults = dict(follow=None, look_at=None, offset=(0.0, 0.0, 0.0), look_offset=(0.0, 0.0, 0.0),
-                    bind="world", lag_ms=0.0, handoff_ms=0.0, weight=1.0)
-    check_keys(table, (), where, optional=defaults)
-    readers = dict(follow=identifier, look_at=identifier, offset=vector, look_offset=vector,
-                   bind=text, lag_ms=number, handoff_ms=number, weight=number)
-    return SimpleNamespace(**(defaults | {key: readers[key](value, f"{where}.{key}") for key, value in table.items()}))
+def constraint_weight(value, where):
+    weight = number(value, where)
+    if not 0 <= weight <= FULL_WEIGHT:
+        raise SettingsError(f"{where} must be in 0..1")
+    return weight
+
+
+def load_constraint(table, where, readers, defaults):
+    check_keys(table, ("sources",), where, optional=(*readers, "weight"))
+    sources = table["sources"]
+    if not isinstance(sources, list) or not 1 <= len(sources) <= CONSTRAINT_SOURCES_MAX:
+        raise SettingsError(f"{where}.sources must have 1..{CONSTRAINT_SOURCES_MAX} entries")
+    parsed = []
+    for index, source in enumerate(sources):
+        spot = f"{where}.sources[{index}]"
+        check_keys(source, ("target",), spot, optional=("weight",))
+        parsed.append(SimpleNamespace(target=text(source["target"], f"{spot}.target"),
+                                      weight=constraint_weight(source.get("weight", FULL_WEIGHT), f"{spot}.weight")))
+    values = {key: reader(table[key], f"{where}.{key}") for key, reader in readers.items() if key in table}
+    return SimpleNamespace(**(defaults | values), sources=parsed,
+                           weight=constraint_weight(table.get("weight", FULL_WEIGHT), f"{where}.weight"))
+
+
+def load_position_constraint(table, where):
+    constraint = load_constraint(table, where, dict(binding_mode=text, translation_offset=vector),
+                                 dict(binding_mode=BINDING_MODES[0], translation_offset=ZERO_VECTOR))
+    if constraint.binding_mode not in BINDING_MODES:
+        raise SettingsError(f"{where}.binding_mode must be one of {', '.join(BINDING_MODES)}")
+    return constraint
+
+
+def load_aim_constraint(table, where):
+    readers = dict(aim_vector=vector, up_vector=vector, world_up_type=text, world_up_vector=vector,
+                   world_up_object=text, rotation_offset=vector)
+    defaults = dict(aim_vector=SCENE_FORWARD, up_vector=SCENE_UP, world_up_type=WORLD_UP_TYPES[0],
+                    world_up_vector=SCENE_UP, world_up_object=None, rotation_offset=ZERO_VECTOR)
+    constraint = load_constraint(table, where, readers, defaults)
+    if constraint.world_up_type not in WORLD_UP_TYPES:
+        raise SettingsError(f"{where}.world_up_type must be one of {', '.join(WORLD_UP_TYPES)}")
+    object_up = constraint.world_up_type in WORLD_UP_OBJECT_TYPES
+    if object_up != (constraint.world_up_object is not None):
+        raise SettingsError(f"{where}.world_up_object is required for object_up and object_rotation_up only")
+    for key in ("aim_vector", "up_vector"):
+        if not any(getattr(constraint, key)):
+            raise SettingsError(f"{where}.{key} must be nonzero")
+    return constraint
 
 
 def load_hinge(table, where):
@@ -661,7 +715,7 @@ def load_hinge(table, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "seal_views", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -691,18 +745,21 @@ def load_renderer(component, base, where):
             raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
     visibility = load_visibility(component["visibility"], f"{where}.visibility") if "visibility" in component else None
     fit = load_fit(component["fit"], variant, f"{where}.fit") if "fit" in component else None
+    seal_views = load_seal_views(component["seal_views"], f"{where}.seal_views") if "seal_views" in component else None
+    if seal_views and not (settings.simplify and settings.simplify.seal_seams):
+        raise SettingsError(f"{where}.seal_views is read by no step: {component['mesh']!r} does not seal its seams")
     indirect = True
     if "indirect" in component:
         if boolean(component["indirect"], f"{where}.indirect"):
             raise SettingsError(f"{where}.indirect can only be false")
         indirect = False
-    if not bake and (face_samples or visibility or fit or not indirect):
-        raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    if not bake and (face_samples or visibility or seal_views or fit or not indirect):
+        raise SettingsError(f"{where} bake = true is required for shading, visibility, seal_views, fit or indirect")
     colour_set = component.get("colour_set")
     if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
         raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           fit=fit, indirect=indirect, colour_set=colour_set)
+                           seal_views=seal_views, fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
@@ -718,7 +775,7 @@ def albedo_jobs(settings):
     jobs = []
     for variant in settings.variants:
         renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
-                                   fit=None, indirect=True)
+                                   seal_views=None, fit=None, indirect=True)
         jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}{BUNDLE_SUFFIX}", None))
     return jobs
 
@@ -728,7 +785,7 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 def load_object(value, base, where):
     check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator",
-                                                       "constraint", "hinge", *COMPONENTS))
+                                                       "position_constraint", "aim_constraint", "hinge", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
@@ -756,7 +813,10 @@ def load_object(value, base, where):
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
         obj.component = load_camera(value[kind], base, spot)
-    obj.constraint = load_constraint(value["constraint"], f"{where}.constraint") if "constraint" in value else None
+    obj.position_constraint = (load_position_constraint(value["position_constraint"], f"{where}.position_constraint")
+                               if "position_constraint" in value else None)
+    obj.aim_constraint = (load_aim_constraint(value["aim_constraint"], f"{where}.aim_constraint")
+                          if "aim_constraint" in value else None)
     obj.hinge = load_hinge(value["hinge"], f"{where}.hinge") if "hinge" in value else None
     obj.animator = None
     if "animator" in value:
@@ -791,11 +851,15 @@ def load_indirect_look(table):
 
 
 def load_bake(table):
-    """The scene's bake settings: ray offset, colour merging, bounced light and local occlusion."""
-    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("indirect", "ao"))
+    """The scene's bake settings: ray offset, colour merging, bounced light, local occlusion, and how a fit's
+    reference renders are traced (aa_samples, denoise: None when absent; no vertex bake reads them)."""
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake",
+               optional=("indirect", "ao", "aa_samples", "denoise"))
     bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
-                           indirect=None, ao=None)
+                           indirect=None, ao=None,
+                           aa_samples=count(table["aa_samples"], "scene.bake.aa_samples") if "aa_samples" in table else None,
+                           denoise=boolean(table["denoise"], "scene.bake.denoise") if "denoise" in table else None)
     if "indirect" in table:
         bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
@@ -826,13 +890,20 @@ def load_demo_assets(path) -> list[str]:
         raise SettingsError(f"{path}: {error}") from error
 
 
+def flight_camera(scene):
+    """The lens of the scene's first camera with a path: the flythrough a path tool samples. The scene camera
+    (the first) may have none, its fits trained on probes over its region."""
+    return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "timeline"))
+    check_keys(values, ("objects",), "scene",
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "timeline"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -909,6 +980,13 @@ def load_scene(path):
             raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
+    fitted = any(item.renderer.fit for item in jobs)
+    for name in ("aa_samples", "denoise"):
+        present = bake is not None and getattr(bake, name) is not None
+        if fitted and not present:
+            raise SettingsError(f"scene.bake.{name} is required: a renderer is fitted to references")
+        if present and not fitted:
+            raise SettingsError(f"scene.bake.{name} is read by no placed mesh: only a fit's references read it")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   ("camera region", region is not None, "camera_region" in sources)):
@@ -918,6 +996,8 @@ def load_scene(path):
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
+    if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
+        raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "
