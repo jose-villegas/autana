@@ -17,12 +17,12 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import threading
 import time
 import types
 import unittest
 import urllib.error
 import zipfile
+from http import HTTPStatus
 from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
@@ -30,9 +30,10 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
 from bake import bake, produce  # noqa: E402
+import http_get  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
+from test_r3d_import import (FIT, FIT_HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
                              write_import, write_scene)
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
@@ -556,6 +557,14 @@ class StageTests(unittest.TestCase):
             for path, name in expected.items():
                 self.assertIn((path, name), reached, stage)
 
+    def test_a_traced_pose_keys_the_source_it_is_traced_from_and_the_files_it_writes(self):
+        # A pose store serves a pose under this key, so what chooses its source (hidden cards, the variant) and its
+        # files (normals) must move it, not only the set's key.
+        units, _ = bake.stage_units("reference_pose")
+        reached = {name for unit in units if unit.path.name == "reference_render.py" for name in unit.names}
+        self.assertTrue({"reference_source", "lit_source", "reference_variant", "pose_state", "REFERENCE_NORMALS",
+                         "_write_pose"} <= reached, reached)
+
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
@@ -651,7 +660,7 @@ def write_fitted_tree(root, names=("fit",), visibility=PATH):
         renderer(name=name, extra='variant = "mesh"\nbake = true\n' + visibility
                  + FIT.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
         for index, name in enumerate(names))
-    return write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
+    return write_scene(root, objects + sun_object() + camera(path=True, region=False), FIT_HEAD)
 
 
 def row_of(item, sha256, **fields):
@@ -1083,6 +1092,36 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(spaced["reference"], trained["reference"])
         self.assertNotEqual(spaced["fit"], trained["fit"])
 
+    def test_a_sealed_start_is_keyed_by_the_camera_and_by_its_seal_views_poses(self):
+        self.job.renderer.visibility = None
+        self.job.settings.simplify.seal_seams = False
+        unsealed = self.keys()
+        self.scene.camera.component.near_z += 1.0
+        self.assertEqual(unsealed["start"], self.keys()["start"], "an unsealed start without visibility reads no camera")
+        self.job.settings.simplify.seal_seams = True
+        sealed = self.keys()
+        self.scene.camera.component.near_z += 1.0
+        self.assertNotEqual(sealed["start"], self.keys()["start"], "the probes stand by the camera's near plane")
+        sealed = self.keys()
+        rows = bake.Poses({})
+        self.job.renderer.seal_views = types.SimpleNamespace(every_ms=33, size=(8, 6))
+        viewed = self.keys(rows)
+        self.assertNotEqual(sealed["start"], viewed["start"])
+        self.assertTrue(rows.used, "the path's frames are counted by their sampled poses")
+        self.job.renderer.seal_views.every_ms += 1
+        spaced = self.keys()
+        self.assertNotEqual(viewed["start"], spaced["start"])
+        self.job.renderer.seal_views.size = (6, 8)
+        self.assertNotEqual(spaced["start"], self.keys()["start"])
+
+    def test_a_sealed_albedo_mesh_is_keyed_by_the_camera_too(self):
+        self.job.bake = None
+        self.job.settings.simplify.seal_seams = True
+        before = bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({}))
+        self.scene.camera.component.near_z += 1.0
+        self.assertNotEqual(before, bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({})),
+                            "the seal's probes stand by the camera whether the mesh is lit or not")
+
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
 
@@ -1262,22 +1301,89 @@ class CpuVendorTests(FittedBakeCase):
         self.assertNotIn("vendor", path.read_text())
 
 
-class FitGpuTests(FittedBakeCase):
-    """A fit's bytes differ between GPU models: a fit's make names its GPU, and its lock row keeps it."""
+def adopted_keys(case, rows, sha256, suffix):
+    """The keys produce.adopt takes into case.cache from `rows` ({name: a row's host fields}, keyed by the name),
+    on an AuthenticAMD host with case.GPU."""
+    rows = [{"key": name * 8, "sha256": sha256, "suffix": suffix, **fields} for name, fields in rows.items()]
+    with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
+            mock.patch.object(bake, "gpu_name", return_value=case.GPU):
+        return [row["key"] for row in produce.adopt(rows, case.cache)]
+
+
+class GpuRowTests(FittedBakeCase):
+    """A GPU bake's bytes differ between GPU models: a make on the GPU, a fit or a reference set traced on CUDA,
+    names its GPU, and its lock row keeps it."""
 
     GPU = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
-    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_fit(self):
+    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_make_on_the_gpu(self):
         tree = self.root / "one.bundle"
         tree.write_bytes(b"fit baked")
         with mock.patch.object(bake, "NVIDIA_SMI_NAME", (sys.executable, "-c", f"print({self.GPU!r}); print('x')")):
             self.assertEqual(bake.gpu_name(), self.GPU)
-            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache)["gpu"], self.GPU)
+            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache, on_gpu=True)["gpu"],
+                             self.GPU)
             self.assertNotIn("gpu", produce.record(bake_of("j" * 64, tree), tree, self.cache))
         for absent in ((str(self.root / "no-nvidia-smi"),), (sys.executable, "-c", "pass")):
             with self.subTest(absent=absent), mock.patch.object(bake, "NVIDIA_SMI_NAME", absent):
                 self.assertIsNone(bake.gpu_name())
-                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache))
+                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache,
+                                                       on_gpu=True))
+
+    def test_the_driver_is_read_from_nvidia_smi(self):
+        with mock.patch.object(bake, "NVIDIA_SMI_DRIVER", (sys.executable, "-c", "print('581.57'); print('x')")):
+            self.assertEqual(bake.gpu_driver(), "581.57")
+        with mock.patch.object(bake, "NVIDIA_SMI_DRIVER", (str(self.root / "no-nvidia-smi"),)):
+            self.assertIsNone(bake.gpu_driver())
+
+    def test_a_reference_set_and_its_poses_are_kept_apart_per_variant_gpu_and_driver(self):
+        machines = [("cuda_ad_rgb", self.GPU, "581.57"), ("llvm_ad_rgb", self.GPU, "581.57"),
+                    ("cuda_ad_rgb", "NVIDIA GeForce RTX 2060", "581.57"), ("cuda_ad_rgb", self.GPU, "590.10")]
+        folders, stores = set(), set()
+        for variant, gpu, driver in machines:
+            module = types.SimpleNamespace(reference_variant=lambda variant=variant: variant)
+            with mock.patch.dict(sys.modules, {"r3d.reference_render": module}), \
+                    mock.patch.object(bake, "gpu_name", return_value=gpu), \
+                    mock.patch.object(bake, "gpu_driver", return_value=driver), \
+                    mock.patch.object(produce, "keyed_folder", side_effect=lambda folder, make: folders.add(folder)), \
+                    mock.patch.object(produce, "read_references"):
+                produce.reference_set("r" * 64, None, None, self.cache)
+                stores.add(produce.PoseStore(self.cache, "p" * 64).key)
+        self.assertEqual((len(folders), len(stores)), (len(machines), len(machines)))
+
+    def test_a_fit_and_a_reference_set_name_the_gpu_and_a_reference_set_bakes_only_on_cuda(self):
+        start = self.root / "start.bundle"
+        start.write_bytes(b"start")
+        item = dataclasses.replace(bake_of("r" * 64, self.root / "set.tar.xz", kind="reference"), stages={})
+        fit = dataclasses.replace(bake_of("f" * 64, self.root / "fit.bundle", kind="fit"), stages={},
+                                  scene=types.SimpleNamespace(path=self.root))
+
+        def fit_stub(*args, target, **kwargs):
+            target.write_bytes(b"fit")
+
+        for variant, baked in (("cuda_ad_rgb", True), ("llvm_ad_rgb", False)):
+            modules = {"r3d.reference_render": types.SimpleNamespace(reference_variant=lambda variant=variant: variant),
+                       "r3d.reference_set": types.SimpleNamespace(reference_inputs=mock.MagicMock(),
+                                                                  pack_references=lambda *args: b"packed",
+                                                                  unpack_references=lambda *args: None),
+                       "r3d.fit.stage": types.SimpleNamespace(fit=fit_stub)}
+            with self.subTest(variant=variant), mock.patch.dict(sys.modules, modules), \
+                    mock.patch.object(bake, "gpu_name", return_value=self.GPU), \
+                    mock.patch.object(produce, "reference_set", return_value=self.root), \
+                    mock.patch.object(produce, "input_file", return_value=start):
+                if baked:
+                    self.assertEqual(produce.produce_reference(item, self.cache, None)["gpu"], self.GPU)
+                else:
+                    with self.assertRaisesRegex(bake.SettingsError, "cuda_ad_rgb only"):
+                        produce.produce_reference(item, self.cache, None)
+                self.assertEqual(produce.produce_fit(fit, self.cache, {})["gpu"], self.GPU)
+
+    def test_a_rerun_adopts_a_gpu_row_only_on_the_same_gpu_and_a_cpu_row_on_any(self):
+        here = {"host": f"{platform.system()} {platform.machine()}", "cpu_vendor": "AuthenticAMD"}
+        rows = {"same": {**here, "gpu": self.GPU}, "other": {**here, "gpu": "NVIDIA GeForce RTX 2060"},
+                "cpu": here}
+        self.assertEqual(sorted(adopted_keys(self, rows, REFERENCE_SHA256, bake.REFERENCE_SUFFIX)),
+                         ["cpu" * 8, "same" * 8])
 
     def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
         fit = self.fit(MADE_SHA256)
@@ -1318,7 +1424,7 @@ class KeptWorkTests(FittedBakeCase):
             produced.append(item.output)
             path = self.root / item.output
             path.write_text(item.key, encoding="utf-8")
-            return produce.record(item, path, cache)
+            return produce.record(item, path, cache, on_gpu=True)
 
         argv = ["bake", "--kind", "fit", str(self.root), "--cache", str(cache), "--out", str(self.out)]
         with mock.patch.object(bake, "read_lock_tables", return_value={"bake": self.lock, "poses": {}}), \
@@ -1385,12 +1491,7 @@ class KeptWorkTests(FittedBakeCase):
         rows = {"like": here, "vendor": {**here, "cpu_vendor": "GenuineIntel"},
                 "host": {**here, "host": "Windows AMD64" if platform.system() != "Windows" else "Linux x86_64"},
                 "unnamed": {"host": here["host"]}}
-        rows = [{"key": name * 8, "sha256": FIT_SHA256, "suffix": bake.BUNDLE_SUFFIX, **fields}
-                for name, fields in rows.items()]
-        with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
-                mock.patch.object(bake, "gpu_name", return_value=self.GPU):
-            adopted = produce.adopt(rows, self.cache)
-        self.assertEqual([row["key"] for row in adopted], ["like" * 8])
+        self.assertEqual(adopted_keys(self, rows, FIT_SHA256, bake.BUNDLE_SUFFIX), ["like" * 8])
         self.assertEqual(sorted(path.stem for path in (self.cache / produce.KEY_INDEX).glob("*.json")), ["like" * 8])
 
     def test_a_bake_killed_mid_fit_leaves_every_finished_fit_uploadable(self):
@@ -1621,10 +1722,61 @@ class LockTests(unittest.TestCase):
                                  {"name": "other", "expired": False, "archive_download_url": "never"}]}
         replies = {"zip": archive.getvalue()}
         with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
-                mock.patch.object(bake, "github_get", side_effect=lambda url, token: replies.get(url, json.dumps(listing).encode())) as get:
+                mock.patch.object(bake, "github_get", side_effect=lambda url, token, **_: replies.get(url, json.dumps(listing).encode())) as get:
             bake.run_files(7, self.root / "run")
         self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
         self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
+
+    ARCHIVE = "https://api.github.com/repos/o/r/actions/artifacts/1/zip"
+
+    @staticmethod
+    def zipped():
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as zipped:
+            zipped.writestr("files/a.bundle", b"mesh")
+        return archive.getvalue()
+
+    def read_archive(self, replies):
+        """run_files over one listed artifact whose archive answers `replies` in turn (a status code
+        or zipped()'s bytes); returns the archive's URL opens and the sleeps between them."""
+        listing = json.dumps({"artifacts": [{"name": "bakes-cpu", "expired": False, "archive_download_url": self.ARCHIVE}]})
+        pending = iter(replies)
+        opens = []
+
+        def urlopen(director, request, timeout):
+            if request.full_url != self.ARCHIVE:
+                return io.BytesIO(listing.encode())
+            opens.append(request.full_url)
+            reply = next(pending)
+            if isinstance(reply, int):
+                raise urllib.error.HTTPError(self.ARCHIVE, reply, "Not Found", {}, None)
+            return io.BytesIO(reply)
+
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", autospec=True, side_effect=urlopen), \
+                mock.patch("time.sleep") as sleep:
+            bake.run_files(7, self.root / "run")
+        return opens, sleep.call_count
+
+    def test_an_archive_that_404s_right_after_upload_is_fetched_once_it_is_ready(self):
+        opens, sleeps = self.read_archive([HTTPStatus.NOT_FOUND, self.zipped()])
+        self.assertEqual(len(opens), 2)
+        self.assertEqual(sleeps, 1)
+        self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
+
+    def test_an_archive_that_keeps_404ing_fails_loudly_after_the_bounded_retries(self):
+        with self.assertRaises(urllib.error.HTTPError) as failed:
+            self.read_archive([HTTPStatus.NOT_FOUND] * http_get.GET_ATTEMPTS)
+        self.assertEqual(failed.exception.code, HTTPStatus.NOT_FOUND)
+        self.assertIn(f"failed after {http_get.GET_ATTEMPTS} attempts", "".join(failed.exception.__notes__))
+
+    def test_a_404_elsewhere_is_not_retried(self):
+        gone = urllib.error.HTTPError("url", HTTPStatus.NOT_FOUND, "Not Found", {}, None)
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", side_effect=gone) as opened, \
+                mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
+            bake.run_status(7)
+        self.assertEqual(opened.call_count, 1)
 
     def test_a_runs_status_is_read_through_the_api(self):
         with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
@@ -1939,35 +2091,12 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(len(made), 1, "a done folder is not made again")
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
 
-    def test_a_reference_set_still_writing_pose_files_tells_the_stage_guard_and_an_idle_one_does_not(self):
-        folder = self.root / "partial"
-        folder.mkdir()
-        told, polled = [], threading.Event()
-        real_wait = threading.Event.wait
-
-        def wait(event, timeout=None):
-            # Each poll returns at once and is counted, so the test never sleeps a poll's length.
-            if timeout == produce.POSE_PROGRESS_POLL_S:
-                polled.set()
-            return real_wait(event, 0.01)
-
-        with mock.patch("process_tree.progressed", side_effect=lambda: told.append(1)),              mock.patch.object(threading.Event, "wait", wait):
-            with produce.poses_progress(folder):
-                self.assertTrue(real_wait(polled, 5))
-                self.assertEqual(told, [], "no pose file yet: no progress")
-                (folder / "0000.png").write_bytes(b"pose")
-                deadline = time.monotonic() + 5
-                while not told and time.monotonic() < deadline:
-                    time.sleep(0.01)
-                self.assertEqual(len(told), 1)
-                time.sleep(0.1)
-            self.assertEqual(len(told), 1, "the same files again are no progress")
-
     def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
-        renders = []
+        renders, told = [], []
 
-        def prepare(inputs, partial):
+        def prepare(inputs, partial, store=None, progress=None):
             renders.append(inputs)
+            progress()  # one traced pose, with or without a pose store
             (partial / "frame.png").write_bytes(b"frame")
 
         def read(fresh=None):
@@ -1975,14 +2104,17 @@ class ProduceTests(unittest.TestCase):
 
         with mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
              mock.patch("r3d.reference_set.prepare_references", side_effect=prepare), \
+             mock.patch.object(produce, "trace_machine", return_value=["cuda_ad_rgb", "GPU", "1.0"]), \
+             mock.patch("process_tree.progressed", side_effect=lambda: told.append(1)), \
              contextlib.redirect_stdout(io.StringIO()) as printed:
             read()
             read()
-            shared = self.cache / produce.REFERENCES / ("k" * 64) / produce.DONE
+            shared = produce.reference_folder(self.cache, "k" * 64) / produce.DONE
             made_at = shared.stat().st_mtime_ns
             read(self.root / "again")
             read(self.root / "again")
         self.assertEqual(len(renders), 2, "a set is rendered when missing, and once more in a run made again")
+        self.assertEqual(len(told), 2, "each traced pose of a set without a pose store tells the stage's guard")
         self.assertEqual(shared.stat().st_mtime_ns, made_at, "a run made again leaves the shared set alone")
         self.assertTrue((self.root / "again" / ("k" * 64) / produce.DONE).is_file())
         self.assertEqual(printed.getvalue().splitlines(),
@@ -1999,8 +2131,13 @@ class ProduceTests(unittest.TestCase):
             os.utime(references / name, (age, age))
         produce.read_references(references / "read")
         produce.read_references(references / "absent")
+        poses = self.cache / produce.REFERENCE_POSES
+        for name, age in {"stale-pose": stale, "recent-pose": recent}.items():
+            (poses / name).mkdir(parents=True)
+            os.utime(poses / name, (age, age))
         produce.prune_references(self.cache, now)
         self.assertEqual(sorted(path.name for path in references.iterdir()), ["new", "read"])
+        self.assertEqual([path.name for path in poses.iterdir()], ["recent-pose"], "a traced pose ages like a set")
 
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()

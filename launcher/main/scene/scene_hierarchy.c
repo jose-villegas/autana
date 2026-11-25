@@ -188,7 +188,7 @@ scene_row_parent(const scene_t* scene, scene_row_t row) {
 void
 scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
     scene_t* scene = root->scene;
-    const bool watched = scene != NULL && scene->asset.constraint_count != 0
+    const bool watched = scene != NULL && scene_has_constraints(&scene->asset)
                          && (row == SCENE_ROW_ROOT || !(scene->flags[row] & SCENE_PROTECTED_TRANSFORM)
                              || scene_hinge_index(&scene->asset, row) < 0);
     const uint8_t placed = SCENE_FLAG_PLACED | (watched ? SCENE_FLAG_CONSTRAINT_INPUT : 0);
@@ -220,41 +220,16 @@ scene_row_local(const scene_root_t* root, scene_row_t row) {
     return row == SCENE_ROW_ROOT ? root->local : root->scene->locals[row];
 }
 
-static transformf_t
-local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time) {
-    transformf_t local = scene->locals[row];
-    if (time != NULL) {
-        scene_timeline_sample_local(scene, row, time, &local);
-    }
-    return local;
-}
-
-transformf_t
-scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time) {
-    if (row == SCENE_ROW_ROOT) {
-        return root->local;
-    }
-    transformf_t world = local_at(root->scene, row, time);
-    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
-        const transformf_t parent = local_at(root->scene, e, time);
-        world = transformf_compose(&parent, &world);
-    }
-    return transformf_compose(&root->local, &world);
-}
-
-vec3f_t
-scene_row_sample_point(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time, vec3f_t point) {
-    for (scene_row_t e = row; e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
-        const transformf_t local = local_at(root->scene, e, time);
-        const mat4f_t matrix = transformf_compute_matrix(&local);
-        point = mat4f_apply(&matrix, point);
-    }
-    return root->placed ? mat4f_apply(&root->world, point) : point;
-}
-
 transformf_t
 scene_row_world(const scene_root_t* root, scene_row_t row) {
-    return scene_row_sample_world(root, row, NULL);
+    transformf_t world = scene_row_local(root, row);
+    if (row == SCENE_ROW_ROOT) {
+        return world;
+    }
+    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
+        world = transformf_compose(&root->scene->locals[e], &world);
+    }
+    return transformf_compose(&root->local, &world);
 }
 
 mat4f_t

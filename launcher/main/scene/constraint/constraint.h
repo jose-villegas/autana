@@ -1,27 +1,24 @@
-/* constraint: timeline bindings for scene follow and look-at. */
+/* Constraints blend a scene object's position and rotation toward weighted inputs. */
 #pragma once
 
 #include "anim/anim_binding.h"
-#include "anim/anim_tracks_format.h"
+#include "scene/scene_format.h"
 
-#define ANIM_COMPONENT_CONSTRAINT ASSET_TYPE('C', 'N', 'S', 'T')
+#define ANIM_COMPONENT_POSITION_CONSTRAINT ASSET_TYPE('C', 'P', 'O', 'S')
+#define ANIM_COMPONENT_AIM_CONSTRAINT      ASSET_TYPE('C', 'A', 'I', 'M')
+
+#define CONSTRAINT_WEIGHT_FIELD_LIST                                                                                   \
+    ANIM_FIELD(scene_constraint_weights_t, weight, ANIM_VALUE_FLOAT),                                                  \
+        ANIM_FIELD(scene_constraint_weights_t, weight0, ANIM_VALUE_FLOAT),                                             \
+        ANIM_FIELD(scene_constraint_weights_t, weight1, ANIM_VALUE_FLOAT),                                             \
+        ANIM_FIELD(scene_constraint_weights_t, weight2, ANIM_VALUE_FLOAT),                                             \
+        ANIM_FIELD(scene_constraint_weights_t, weight3, ANIM_VALUE_FLOAT)
 
 enum {
-    CONSTRAINT_FIELD_FOLLOW,
-    CONSTRAINT_FIELD_LOOK_AT,
-    CONSTRAINT_FIELD_LAG_MS,
-    CONSTRAINT_FIELD_HANDOFF_MS,
-    CONSTRAINT_FIELD_OFFSET,
-    CONSTRAINT_FIELD_LOOK_OFFSET,
-    CONSTRAINT_FIELD_WEIGHT,
-    CONSTRAINT_FIELD_COUNT,
-    CONSTRAINT_TARGET_COUNT = CONSTRAINT_FIELD_LAG_MS,
-    CONSTRAINT_STEP_COUNT = CONSTRAINT_FIELD_OFFSET,
+    CONSTRAINT_WEIGHT_FIELD,
+    CONSTRAINT_FIRST_SOURCE_FIELD,
+    CONSTRAINT_WEIGHT_FIELD_COUNT = CONSTRAINT_FIRST_SOURCE_FIELD + SCENE_CONSTRAINT_SOURCES_MAX
 };
 
-extern const anim_component_fields_t CONSTRAINT_FIELDS;
-
-static inline bool
-scene_constraint_duration_fits(float ms) {
-    return ms >= 0.0F && ms < (float)ANIM_TRACKS_DURATION_MAX;
-}
+extern const anim_component_fields_t POSITION_CONSTRAINT_FIELDS;
+extern const anim_component_fields_t AIM_CONSTRAINT_FIELDS;

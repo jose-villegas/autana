@@ -75,7 +75,7 @@ transformf_scale_is_even(const transformf_t* t) {
     return most - least <= TRANSFORMF_MATRIX_TOLERANCE * largest;
 }
 
-/* The frame's scale axes must be nonzero. */
+/* Maps a point into the frame. The scale axes must be nonzero. */
 static inline vec3f_t
 transformf_inverse_point(const transformf_t* frame, vec3f_t point) {
     const vec3f_t axes = quatf_rotate(quatf_conjugate(frame->rotation), vec3f_sub(point, frame->position));

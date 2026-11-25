@@ -12,18 +12,13 @@ typedef struct {
     const char* name;
     anim_value_t type;
     uint16_t offset;
-    uint8_t flags;
+    bool step_only;
 } anim_field_t;
-
-enum { ANIM_FIELD_FLAG_STEP = 1U << 0, ANIM_FIELD_FLAG_ALLOW_NONE = 1U << 1 };
 
 /* One declared field of struct `type`: its name is the member's own, so the
  * two cannot drift. */
-
-#define ANIM_FIELD(type, member, value_type)      {#member, (value_type), offsetof(type, member), 0}
-#define ANIM_FIELD_STEP(type, member, value_type) {#member, (value_type), offsetof(type, member), ANIM_FIELD_FLAG_STEP}
-#define ANIM_FIELD_STEP_OPTIONAL_NAME(type, member, value_type)                                                        \
-    {#member, (value_type), offsetof(type, member), ANIM_FIELD_FLAG_STEP | ANIM_FIELD_FLAG_ALLOW_NONE}
+#define ANIM_FIELD(type, member, value_type)      {#member, (value_type), offsetof(type, member), false}
+#define ANIM_FIELD_STEP(type, member, value_type) {#member, (value_type), offsetof(type, member), true}
 
 typedef struct {
     uint32_t component;

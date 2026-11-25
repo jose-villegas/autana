@@ -16,11 +16,12 @@ renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
 each key the SHA-256 of the bytes made for it.
-A bake that traces rays (a mesh, a reference set) makes other bytes on another CPU vendor, so the
-Bakes workflow makes them all on one self-hosted runner (docs/assets/Bakes.md); a run records each
-row's host and CPU vendor, and a rerun adopts only what an earlier attempt made on a matching one.
+A mesh bake traces rays on the CPU and makes other bytes on another CPU model; a reference set traces on
+the CUDA GPU and makes other bytes on another GPU model. So the Bakes workflow makes them all on one
+self-hosted runner (docs/assets/Bakes.md); a run records each row's host and CPU vendor, and the GPU of a
+bake made on one, and a rerun adopts only what an earlier attempt made on a matching host.
 
-A fitted renderer has a CPU start (`<entry>.start.bundle`), a CPU reference set
+A fitted renderer has a CPU start (`<entry>.start.bundle`), a GPU reference set
 (`<entry>.reference.tar.xz`, reference_set.pack_references), a GPU fit without rest levels
 (`<entry>.fit.bundle`) and CPU levels (`<entry>.bundle`). Each later key names its inputs' locked
 bytes; only the final bundle enters a pack. The reference set is keyed on what it reads
@@ -85,6 +86,7 @@ import tomllib
 import urllib.error
 import urllib.request
 import zipfile
+from http import HTTPStatus
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 REPO = TOOLS.parents[1]
@@ -92,7 +94,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO / "scripts/gates"))
 sys.path.insert(0, str(REPO / "scripts/lib"))
 from autana_config import user_cache_dir
-from http_get import get
+from http_get import get, transient
 
 from build import packages  # noqa: E402
 from build.c_enum import read_enum  # noqa: E402
@@ -100,7 +102,7 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, flight_camera, source_digest  # noqa: E402
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -120,11 +122,13 @@ PLACE_WAIT_S = 0.05
 RUN_ARTIFACTS = "bakes-*"
 CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # A lock row's fields, in file order: "host" is the system and machine a run made the bytes on, since a
-# bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on; a seeded row has neither.
+# bake is reproducible only on one kind of host, and "gpu" the GPU a bake made on one ran on (a fit, a reference
+# set traced on CUDA); a seeded row has neither.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
+NVIDIA_SMI_DRIVER = ("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
 GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
 # submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
@@ -134,7 +138,11 @@ STAGES = {
     "mesh": ("r3d/mesh_import.py:write_baked",),
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
-                  "r3d/reference_render.py:render_sets"),
+                  "r3d/reference_set.py:poses_text", "r3d/reference_render.py:render_sets",
+                  "r3d/reference_render.py:reference_variant"),
+    # One traced pose of a reference set (produce.PoseStore): the source it is traced from and its trace and files.
+    "reference_pose": ("r3d/reference_render.py:reference_source", "r3d/reference_render.py:pose_state",
+                       "r3d/reference_render.py:_write_pose"),
     "fit": ("r3d/fit/stage.py:fit", "r3d/reference_set.py:unpack_references"),
     "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
@@ -667,7 +675,7 @@ def import_recipe(settings, tools):
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
-def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
+def mesh_recipe(job, scene, tools, poses, unavailable=None):
     """What a lit or albedo mesh is made from, without its fit and without paths."""
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
@@ -681,6 +689,13 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+    simplify = job.settings.simplify
+    if simplify and simplify.seal_seams and scene.camera is not None:
+        # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.
+        camera = recipe.setdefault("camera", camera_inputs(scene))
+        views = job.renderer.seal_views
+        if views is not None:
+            camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
     return recipe
 
 
@@ -716,6 +731,14 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
     return recipe
 
 
+def pose_recipe(recipe):
+    """What one traced pose of a reference set reads besides its own pose text: the reference recipe without what
+    only chooses the poses (their size and spacing, the sampled camera path and the probes)."""
+    camera = {name: value for name, value in recipe["camera"].items() if name != "poses"}
+    return {**{name: value for name, value in recipe.items() if name not in ("size", "poses", "probes")},
+            "camera": camera}
+
+
 def stage_keys(job, scene, tools, starts=None, poses=None):
     """A mesh key or the start, reference, fit and levels keys of a fitted renderer. `starts` maps
     dependency keys to locked byte digests; each later key waits while its inputs' bytes are unknown.
@@ -730,6 +753,8 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
 
         recipe = reference_recipe(reference_inputs(job, scene), tools, poses, unavailable)
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
+        reference_pose = None if unavailable else digest(["reference pose", pose_recipe(recipe),
+                                                          tools["reference_pose"]])
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
@@ -738,7 +763,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
-        keys = {"start": start, "start_sha256": start_sha256, "reference": reference,
+        keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "reference_pose": reference_pose,
                 "reference_sha256": reference_sha256, "fit": fit, "fit_sha256": fit_sha256, "levels": levels}
     if unavailable:
         keys["reason"] = poses.reason(unavailable)
@@ -851,7 +876,8 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                     output=f"{entry}{REFERENCE_MARKER}{REFERENCE_SUFFIX}", source=asker, holder=holder,
                     kind="reference", key=keys["reference"], suffix=REFERENCE_SUFFIX,
                     tree=source.with_name(f"{entry}{REFERENCE_MARKER}{REFERENCE_SUFFIX}"), job=job, scene=scene,
-                    stages={"reference": keys["reference"], **reason}, packed=False))
+                    stages={"reference": keys["reference"], "reference_pose": keys["reference_pose"], **reason},
+                    packed=False))
                 fitted = Bake(output=f"{entry}{FIT_MARKER}{suffix}", source=asker, holder=holder, kind="fit",
                               key=keys["fit"], suffix=suffix, tree=source.with_name(f"{entry}{FIT_MARKER}{suffix}"),
                               job=job, scene=scene, stages=keys, start=start, reference=reference, packed=False)
@@ -1175,19 +1201,27 @@ class KeepRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def github_get(url, token):
+def archive_pending(error):
+    """Whether an artifact archive's download may still succeed: GitHub answers 404 for a while after
+    the artifact is listed, before its archive can be fetched."""
+    return transient(error) or (isinstance(error, urllib.error.HTTPError) and error.code == HTTPStatus.NOT_FOUND)
+
+
+def github_get(url, token, retryable=transient):
     """GET with the token; a redirect (an artifact's storage link, signed already) is followed
-    without it, since the storage refuses a request that carries one."""
+    without it, since the storage refuses a request that carries one. `retryable` says which
+    failures get's bounded backoff repeats."""
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
                                                    "Accept": "application/vnd.github+json"})
     try:
-        return get(request, timeout=DOWNLOAD_TIMEOUT_S, opener=urllib.request.build_opener(KeepRedirect))
+        return get(request, timeout=DOWNLOAD_TIMEOUT_S, opener=urllib.request.build_opener(KeepRedirect),
+                   retryable=retryable)
     except urllib.error.HTTPError as error:
         location = error.headers.get("Location")
         error.close()
         if error.code not in (301, 302, 303, 307, 308) or not location:
             raise
-    return get(location, timeout=DOWNLOAD_TIMEOUT_S)
+    return get(location, timeout=DOWNLOAD_TIMEOUT_S, retryable=retryable)
 
 
 def run_files(run, folder):
@@ -1197,7 +1231,7 @@ def run_files(run, folder):
     listing = json.loads(github_get(f"{API_URL}/actions/runs/{run}/artifacts?per_page=100", token))
     for artifact in listing["artifacts"]:
         if fnmatch.fnmatch(artifact["name"], RUN_ARTIFACTS) and not artifact["expired"]:
-            data = github_get(artifact["archive_download_url"], token)
+            data = github_get(artifact["archive_download_url"], token, retryable=archive_pending)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 archive.extractall(pathlib.Path(folder) / artifact["name"])
     return folder
@@ -1217,12 +1251,22 @@ def cpu_vendor():
 
 def gpu_name():
     """The first GPU nvidia-smi names (NVIDIA GeForce RTX 2060), None where there is none."""
+    return first_gpu(NVIDIA_SMI_NAME)
+
+
+def gpu_driver():
+    """The first GPU's driver version as nvidia-smi gives it (581.57), None where there is none."""
+    return first_gpu(NVIDIA_SMI_DRIVER)
+
+
+def first_gpu(query):
+    """The first line nvidia-smi answers `query` with, None without nvidia-smi or an answer."""
     try:
-        names = subprocess.run(NVIDIA_SMI_NAME, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
+        lines = subprocess.run(query, capture_output=True, text=True, timeout=GPU_QUERY_TIMEOUT_S,
                                stdin=subprocess.DEVNULL).stdout.splitlines()
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return names[0].strip() if names and names[0].strip() else None
+    return lines[0].strip() if lines and lines[0].strip() else None
 
 
 def from_made(bake, lock, made):

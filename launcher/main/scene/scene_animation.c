@@ -52,9 +52,13 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
     for (int i = 0; i < asset->skinned_renderer_count; i++) {
         attach_component(refs, asset->skinned_renderers[i].entity, SCENE_COMPONENT_ANIMATOR, NULL);
     }
-    for (int i = 0; i < asset->constraint_count; i++) {
-        attach_component(refs, asset->constraints[i].entity, SCENE_COMPONENT_CNST,
-                         scene == NULL ? NULL : &scene->constraints[i].values);
+    for (int i = 0; i < asset->position_constraint_count; i++) {
+        attach_component(refs, asset->position_constraints[i].entity, SCENE_COMPONENT_CPOS,
+                         scene == NULL ? NULL : &scene->positions[i].inputs.weights);
+    }
+    for (int i = 0; i < asset->aim_constraint_count; i++) {
+        attach_component(refs, asset->aim_constraints[i].entity, SCENE_COMPONENT_CAIM,
+                         scene == NULL ? NULL : &scene->aims[i].inputs.weights);
     }
     for (int i = 0; i < asset->hinge_count; i++) {
         attach_component(refs, asset->hinges[i].entity, SCENE_COMPONENT_HNGE, scene == NULL ? NULL : &scene->hinges[i]);
@@ -207,14 +211,9 @@ scalar_keys_fit(const anim_track_t* curve, bool (*fits)(float)) {
     return true;
 }
 
-static bool
-weight_fits(float value) {
-    return value >= 0.0F && value <= 1.0F;
-}
-
 scene_failure_t
 scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
-                           const char* clip, int self, scene_field_mask_t* owned, anim_binding_location_t* locations) {
+                           const char* clip, int self, scene_field_mask_t* owned) {
     for (int i = 0; i < tracks->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(tracks, i, &binding);
@@ -222,23 +221,19 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
-        if (locations != NULL) {
-            locations[i] = location;
-        }
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
-        const bool scale = binding.component == ANIM_COMPONENT_TRANSFORM
-                           && ANIM_POSE_TRANSFORM_FIELDS.fields[location.field].offset == offsetof(transformf_t, scale);
-        const bool protected_transform = binding.component == ANIM_COMPONENT_TRANSFORM
-                                         && scene_constraint_covers(claims->protected_rows, entity)
-                                         && !(scale && scene_hinge_index(claims->asset, entity) >= 0);
-        if ((owned != NULL && (bit & ~SCENE_PROPERTY_FIELDS)) || protected_transform
+        const bool constraint =
+            location.component == SCENE_COMPONENT_CPOS || location.component == SCENE_COMPONENT_CAIM;
+        const bool protected = scene_constraint_covers(claims->protected_rows, entity);
+        if ((owned != NULL && location.component > SCENE_COMPONENT_LENS)
+            || (owned != NULL && location.component == SCENE_COMPONENT_TRANSFORM && protected
+                && scene_hinge_index(claims->asset, entity) < 0)
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
-            || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
-                && !scalar_keys_fit(&binding.curve, weight_fits))
-            || (binding.component == ANIM_COMPONENT_CONSTRAINT
-                && (location.field == CONSTRAINT_FIELD_LAG_MS || location.field == CONSTRAINT_FIELD_HANDOFF_MS)
-                && !scalar_keys_fit(&binding.curve, scene_constraint_duration_fits))
+            || (constraint
+                && (location.field >= CONSTRAINT_FIRST_SOURCE_FIELD
+                                          + scene_constraint_source_count(claims->asset, entity, location.component)
+                    || !scalar_keys_fit(&binding.curve, scene_constraint_weight_fits)))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }

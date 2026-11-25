@@ -31,8 +31,8 @@ scene_hinge_index(const scene_asset_t* asset, scene_row_t row) {
     return -1;
 }
 
-void
-scene_hinge_apply_pose(const scene_hinge_t* hinge, float angle, transformf_t* local) {
+static void
+apply_pose(const scene_hinge_t* hinge, float angle, transformf_t* local) {
     const transformf_t pose = hinge_pose(&hinge->joint, angle);
     local->position = pose.position;
     local->rotation = pose.rotation;
@@ -49,7 +49,7 @@ scene_hinge_step(scene_t* scene, bool applied) {
         const scene_hinge_t* hinge = &scene->hinges[i];
         const transformf_t* local = &scene->locals[row];
         transformf_t pose = *local;
-        scene_hinge_apply_pose(hinge, hinge->angle, &pose);
+        apply_pose(hinge, hinge->angle, &pose);
         if (memcmp(&local->rotation, &pose.rotation, sizeof pose.rotation) != 0
             || memcmp(&local->position, &pose.position, sizeof pose.position) != 0) {
             scene_row_set_local(scene->root, row, pose);

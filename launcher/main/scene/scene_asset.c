@@ -145,20 +145,51 @@ vector_finite(vec3f_t value) {
 }
 
 scene_row_t
-scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash) {
-    for (int i = first; i < asset->entity_count; i++) {
-        if (asset->names[i].hash == hash) {
-            return (scene_row_t)i;
+scene_asset_find_row(const scene_asset_t* scene, scene_row_t first, name_hash_t target) {
+    for (scene_row_t i = first; i < scene->entity_count; i++) {
+        if (scene->names[i].hash == target) {
+            return i;
         }
     }
     return SCENE_ROW_NONE;
 }
 
 static bool
-constraint_fits(const scene_asset_t* scene, const scene_asset_constraint_t* c) {
-    return c->entity < scene->entity_count && c->pad == 0 && c->bind <= SCENE_ASSET_BIND_TARGET_YAW
-           && vector_finite(c->offset) && vector_finite(c->look_offset) && scene_constraint_duration_fits(c->lag_ms)
-           && scene_constraint_duration_fits(c->handoff_ms) && c->weight >= 0.0F && c->weight <= 1.0F;
+source_range_fits(const scene_asset_t* scene, uint16_t first, uint8_t count) {
+    return count > 0 && count <= SCENE_CONSTRAINT_SOURCES_MAX && first + count <= scene->source_count;
+}
+
+static bool
+position_constraint_fits(const scene_asset_t* scene, const scene_asset_position_constraint_t* position) {
+    return position->entity < scene->entity_count && position->pad == 0
+           && position->binding_mode <= SCENE_ASSET_BIND_LOCK_TO_TARGET_WITH_WORLD_UP
+           && source_range_fits(scene, position->source_first, position->source_count)
+           && scene_constraint_weight_fits(position->weight) && vector_finite(position->translation_offset);
+}
+
+static bool
+direction_fits(vec3f_t direction) {
+    return vector_finite(direction) && (direction.x != 0.0F || direction.y != 0.0F || direction.z != 0.0F);
+}
+
+static bool
+aim_constraint_fits(const scene_asset_t* scene, const scene_asset_aim_constraint_t* aim) {
+    const bool object_up = aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_UP
+                           || aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_ROTATION_UP;
+    const quatf_t rotation = aim->rotation_offset;
+    return aim->entity < scene->entity_count && aim->world_up_type <= SCENE_ASSET_WORLD_UP_NONE
+           && (object_up ? aim->world_up_object < scene->entity_count
+                         : aim->world_up_object == SCENE_ASSET_WORLD_UP_OBJECT_NONE)
+           && source_range_fits(scene, aim->source_first, aim->source_count)
+           && scene_constraint_weight_fits(aim->weight) && direction_fits(aim->aim_vector)
+           && direction_fits(aim->up_vector) && vector_finite(aim->world_up_vector) && isfinite(rotation.x)
+           && isfinite(rotation.y) && isfinite(rotation.z) && isfinite(rotation.w);
+}
+
+static bool
+constraint_source_fits(const scene_asset_t* scene, const scene_asset_constraint_source_t* source) {
+    return scene_constraint_weight_fits(source->weight)
+           && scene_asset_find_row(scene, 0, source->target) != SCENE_ROW_NONE;
 }
 
 static bool
@@ -232,7 +263,9 @@ static const part_layout_t LAYOUT[SCENE_ASSET_PART_COUNT] = {
     PART_LAYOUT(places, copy_count),
     {sizeof(r3d_copy_turn_t), offsetof(scene_asset_t, turns), offsetof(scene_asset_t, copy_count)},
     PART_LAYOUT(timeline, timeline_count),
-    PART_LAYOUT(constraints, constraint_count),
+    PART_LAYOUT(position_constraints, position_constraint_count),
+    PART_LAYOUT(aim_constraints, aim_constraint_count),
+    PART_LAYOUT(sources, source_count),
     PART_LAYOUT(hinges, hinge_count),
 };
 
@@ -254,7 +287,9 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
         case SCENE_ASSET_PLACES: return true;
         case SCENE_ASSET_TURNS: return turn_fits(row);
         case SCENE_ASSET_TIMELINE: return timeline_fits(row);
-        case SCENE_ASSET_CONSTRAINTS: return constraint_fits(scene, row);
+        case SCENE_ASSET_POSITION_CONSTRAINTS: return position_constraint_fits(scene, row);
+        case SCENE_ASSET_AIM_CONSTRAINTS: return aim_constraint_fits(scene, row);
+        case SCENE_ASSET_CONSTRAINT_SOURCES: return constraint_source_fits(scene, row);
         case SCENE_ASSET_HINGES: return hinge_fits(scene, row);
         default: return false;
     }
@@ -304,7 +339,8 @@ check_rows(const scene_asset_t* scene) {
             }
         }
         if (part == SCENE_ASSET_LIGHTS || part == SCENE_ASSET_SKINS || part == SCENE_ASSET_ANIMATORS
-            || part == SCENE_ASSET_CONSTRAINTS || part == SCENE_ASSET_HINGES || part == SCENE_ASSET_BATCHES) {
+            || part == SCENE_ASSET_POSITION_CONSTRAINTS || part == SCENE_ASSET_AIM_CONSTRAINTS
+            || part == SCENE_ASSET_HINGES || part == SCENE_ASSET_BATCHES) {
             const uint16_t limit = part == SCENE_ASSET_BATCHES ? scene->renderer_count : scene->entity_count;
             const asset_status_t status = indices_unique(rows, layout->stride, count, limit);
             if (status != ASSET_OK) {

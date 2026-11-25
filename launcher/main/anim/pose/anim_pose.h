@@ -31,6 +31,8 @@ void anim_sample_pose(const anim_joint_bound_t* bound, int count, float seconds,
         ANIM_FIELD(transformf_t, scale, ANIM_VALUE_VEC3)
 
 enum {
+    ANIM_POSE_POSITION_FIELD,
+    ANIM_POSE_ROTATION_FIELD,
     ANIM_POSE_TRANSFORM_FIELD_COUNT =
         sizeof((const anim_field_t[]){ANIM_POSE_TRANSFORM_FIELD_LIST}) / sizeof(anim_field_t)
 };

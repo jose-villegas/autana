@@ -126,15 +126,16 @@ blocks = [{t = 0, clip = "idle"}, {t = 1.0025, clip = "walk", blend = 250}]
 
 def motion_entry(root):
     timeline = '[timeline]\nclip = "probe.anim.toml"\nwrap = "loop"\n'
-    fields = '''[objects.constraint]
-follow = "red"
-look_at = "green"
-bind = "target_yaw"
-offset = [1, 2, 3]
-look_offset = [4, 5, 6]
-lag_ms = 7
-handoff_ms = 8
+    fields = '''[objects.position_constraint]
+sources = [{ target = "red" }, { target = "green", weight = 0.25 }]
+binding_mode = "lock_to_target_with_world_up"
+translation_offset = [1, 2, 3]
 weight = 0.5
+[objects.aim_constraint]
+sources = [{ target = "green" }]
+aim_vector = [4, 5, 6]
+world_up_type = "object_rotation_up"
+world_up_object = "camera"
 [objects.hinge]
 axis = [0, 1, 0]
 min = -0.75

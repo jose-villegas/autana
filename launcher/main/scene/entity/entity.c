@@ -156,15 +156,26 @@ scene_ready_at(int index) {
     return ready(&scene_roots[index]);
 }
 
+static bool
+row_within(const scene_t* scene, scene_row_t row, scene_row_t ancestor) {
+    if (ancestor == SCENE_ROW_ROOT) {
+        return true;
+    }
+    for (scene_row_t e = row; e != SCENE_ROW_NONE && e >= ancestor; e = scene_row_parent(scene, e)) {
+        if (e == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* The first entity named `name` below `top` in one READY scene. */
 static entity_t
 find_in(const scene_root_t* record, scene_row_t top, name_hash_t name) {
     const scene_t* scene = record->scene;
-    const scene_row_t first = top == SCENE_ROW_ROOT ? 0 : top + 1;
-    for (scene_row_t r = scene_asset_find_row(&scene->asset, first, name); r != SCENE_ROW_NONE;
-         r = scene_asset_find_row(&scene->asset, r + 1, name)) {
-        if (scene_asset_row_within(&scene->asset, r, top)) {
-            return scene_row_entity(scene, r);
+    for (int r = top == SCENE_ROW_ROOT ? 0 : top + 1; r < scene->asset.entity_count; r++) {
+        if (scene->asset.names[r].hash == name && row_within(scene, (scene_row_t)r, top)) {
+            return scene_row_entity(scene, (scene_row_t)r);
         }
     }
     return ENTITY_NONE;
@@ -194,7 +205,7 @@ entity_next(entity_t within, entity_t after) {
         r = from + 1;
     }
     for (; r < scene->asset.entity_count; r++) {
-        if (scene_asset_row_within(&scene->asset, (scene_row_t)r, top)) {
+        if (row_within(scene, (scene_row_t)r, top)) {
             return scene_row_entity(scene, (scene_row_t)r);
         }
     }
@@ -266,7 +277,7 @@ entity_is_within(entity_t entity, entity_t ancestor) {
     if (row == SCENE_ROW_ROOT) {
         return top == SCENE_ROW_ROOT;
     }
-    return scene_asset_row_within(&record->scene->asset, row, top);
+    return row_within(record->scene, row, top);
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

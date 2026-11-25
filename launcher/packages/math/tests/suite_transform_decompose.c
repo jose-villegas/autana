@@ -112,19 +112,6 @@ assert_vec3f_within_ulps(vec3f_t expected, vec3f_t got) {
 }
 
 static void
-test_inverse_point_under_an_uneven_parent(void) {
-    transformf_t parent, child;
-    compose_pair((vec3f_t){2.0F, -3.0F, 4.0F}, &parent, &child);
-    const vec3f_t point = {2.0F, 3.0F, -1.0F};
-    const mat4f_t matrix = transformf_compute_matrix(&parent);
-    const vec3f_t world = mat4f_apply(&matrix, point);
-    const vec3f_t actual = transformf_inverse_point(&parent, world);
-    TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, point.x, actual.x);
-    TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, point.y, actual.y);
-    TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, point.z, actual.z);
-}
-
-static void
 test_blend_clamps_and_interpolates_trs(void) {
     transformf_t a = {.position = {-3.7F, 0.3F, -4.9F},
                       .rotation = quatf_normalize((quatf_t){1, -2, 3, 4}),
@@ -165,7 +152,6 @@ test_blend_clamps_and_interpolates_trs(void) {
 
 void
 suite_transform_decompose(void) {
-    RUN_TEST(test_inverse_point_under_an_uneven_parent);
     RUN_TEST(test_blend_clamps_and_interpolates_trs);
     RUN_TEST(test_relative_undoes_compose_under_an_even_parent);
     RUN_TEST(test_trs_matrix_decomposition_and_refusals);

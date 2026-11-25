@@ -79,7 +79,7 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
         for (int c = 0; c < old->layer.clip_count; c++) {
             const scene_animator_clip_t* clip = &old->clips[c];
             const scene_failure_t result =
-                scene_animation_claim_clip(claims, targets, &clip->tracks, clip->id, owner, owned, NULL);
+                scene_animation_claim_clip(claims, targets, &clip->tracks, clip->id, owner, owned);
             if (result.status != SCENE_OK) {
                 return result;
             }
@@ -93,8 +93,7 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
         for (int c = 0; c < count; c++) {
             anim_tracks_t tracks;
             (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks, NULL);
-            const scene_failure_t result =
-                scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned, NULL);
+            const scene_failure_t result = scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned);
             if (result.status != SCENE_OK) {
                 return result;
             }
@@ -155,7 +154,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed);
         }
     }
-    const size_t bytes = scene->asset.entity_count * sizeof(scene_field_mask_t);
+    const size_t bytes = scene->asset.entity_count * sizeof *scene->writes;
     scene_field_mask_t* writes = needs_claims ? memory_alloc(2 * bytes, MEMORY_APP) : NULL;
     scene_failure_t result = scene_failure_make(SCENE_OK, ASSET_OK, failed);
     if (needs_claims) {
@@ -176,9 +175,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
                 scene_free_kept(a->storage);
                 result = scene_failure_make(SCENE_ERR_ASSET, status, failed);
             } else if (needs_claims) {
-                for (int e = 0; e < scene->asset.entity_count; e++) {
-                    scene->writes[e] = (scene_property_mask_t)writes[e];
-                }
+                memcpy(scene->writes, writes, bytes);
             }
         }
     }

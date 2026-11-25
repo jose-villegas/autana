@@ -20,11 +20,11 @@ import perf_compare as tool
 import seed_statistics as stats
 
 
-def chained_seed(fake):
-    """Later requests on a flash carry the build id the fake derives from its seed."""
+def chained_seed(fake, seed=None):
+    """Later requests on a flash carry `seed`, or else the build id the fake derives from its seed."""
     def runner(command, log, timeout):
         if 'suite' in command and '--layout-seed' not in command:
-            command = command + ['--layout-seed', command[command.index('--expect-build-id') + 1].split('-')[0]]
+            command = command + ['--layout-seed', seed or command[command.index('--expect-build-id') + 1].split('-')[0]]
         return fake(command, log, timeout)
     return runner
 
@@ -294,10 +294,7 @@ class CaptureRulesTests(unittest.TestCase):
                 '#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 1\n')
             args.suite = [('suite', 'quiet,heavy', '-')]
             fake = FakeAutana(root)
-            def runner(command, log, timeout):
-                if 'suite' in command and '--layout-seed' not in command:
-                    command = command + ['--layout-seed', '3']
-                return fake(command, log, timeout)
+            runner = chained_seed(fake, '3')
             record = capture.run_flash(args, 3, runner)
             self.assertEqual([command[command.index('--test') + 1] for command in fake.calls], ['quiet', 'heavy'])
             self.assertIn('--flash', fake.calls[0])
@@ -401,10 +398,7 @@ class CaptureRulesTests(unittest.TestCase):
             args.project, args.runs = args.project_a, 2
             args.suite = [('suite', 'quiet', 'table'), ('suite', 'heavy', 'table')]
             fake = FakeAutana(root)
-            def runner(command, log, timeout):
-                if 'suite' in command and '--layout-seed' not in command:
-                    command = command + ['--layout-seed', '3']
-                return fake(command, log, timeout)
+            runner = chained_seed(fake, '3')
             def table(template, path, output, project, timeout):
                 output.write_bytes(path.read_bytes())
                 return output

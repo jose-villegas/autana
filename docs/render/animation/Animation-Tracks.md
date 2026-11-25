@@ -50,6 +50,8 @@ onto engine fields:
 | node `scale` | `TRNS` | `scale` | `VEC3` |
 | `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../../Citations.md#khronos-khr-animation-pointer)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 | `/nodes/N/extensions/AUTANA_scene_fields/CCCC/field` pointer | `CCCC` | C field name | Declared `ANIM_VALUE_*` |
+| Position constraint scene-field pointer | `CPOS` | `weight`, `weight0` through `weight3` | `FLOAT` |
+| Aim constraint scene-field pointer | `CAIM` | `weight`, `weight0` through `weight3` | `FLOAT` |
 
 The `yfov` pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
@@ -219,10 +221,8 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 
 [`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
 component tags and field tables from C. A field declared with
-`ANIM_FIELD_STEP` requires `interp = "step"`.
-
-In track form, NAME keys use step interpolation and take strings.
-An empty string (`""`) encodes no name (`NAME_HASH_NONE`).
+`ANIM_FIELD_STEP` requires `interp = "step"`. Name values are authored
+as strings and use step interpolation.
 
 An omitted offset member defaults to zero position or identity rotation.
 

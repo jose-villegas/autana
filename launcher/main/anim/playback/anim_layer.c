@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "collections/sort.h"
+
 void
 anim_layer_init(anim_layer_t* l, const anim_clip_t* clips, int count, anim_pose_t shown, anim_pose_t frozen) {
     assert(count >= 0 && count <= ANIM_LAYER_CLIP_NONE);
@@ -80,15 +82,17 @@ anim_layer_pose(anim_layer_t* layer, const anim_skeleton_t* skeleton, const anim
     return &layer->shown;
 }
 
+SORT_DEFINE_LAST_AT_MOST(block_key_at, uint32_t)
+
 float
 anim_block_curve_step(const anim_block_curve_t* curve, uint32_t ms, float fallback) {
-    const int key = anim_track_key_at_ms(curve->times_ms, curve->count, ms);
+    const int key = block_key_at(curve->times_ms, curve->count, ms);
     return key < 0 ? fallback : curve->values[key];
 }
 
 static uint64_t
 speed_integral(const anim_block_curve_t* speed, uint32_t from, uint32_t t_ms) {
-    int next = anim_track_key_at_ms(speed->times_ms, speed->count, from) + 1;
+    int next = block_key_at(speed->times_ms, speed->count, from) + 1;
     uint32_t rate = ANIM_PLAYHEAD_SPEED_ONE;
     (void)anim_playhead_speed_q16(anim_block_curve_step(speed, from, 1.0F), &rate);
     uint64_t ticks = 0;
@@ -115,13 +119,13 @@ anim_blocks_sample(const anim_blocks_t* blocks, const anim_clip_t* clips, anim_w
     anim_block_sample_t sample = {.current.clip = ANIM_LAYER_CLIP_NONE, .previous.clip = ANIM_LAYER_CLIP_NONE};
     anim_playhead_init(&sample.current.playhead, wrap);
     anim_playhead_init(&sample.previous.playhead, wrap);
-    const int key = anim_track_key_at_ms(blocks->starts_ms, blocks->count, t_ms);
+    const int key = block_key_at(blocks->starts_ms, blocks->count, t_ms);
     if (key < 0) {
         return sample;
     }
     sample_block_slot(blocks, clips, key, t_ms, &sample.current);
     const uint32_t start = blocks->starts_ms[key];
-    const int blend_key = anim_track_key_at_ms(blocks->blend.times_ms, blocks->blend.count, start);
+    const int blend_key = block_key_at(blocks->blend.times_ms, blocks->blend.count, start);
     if (key > 0 && blend_key >= 0) {
         sample.blend_ms = (uint32_t)blocks->blend.values[blend_key];
         const uint32_t elapsed = t_ms - start;

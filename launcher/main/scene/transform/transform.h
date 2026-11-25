@@ -1,8 +1,7 @@
 /*
  * Local TRS is in the parent's frame. World pose includes every ancestor.
- * When applied, either driver overwrites app position and rotation. A hinge
- * keeps app scale. A constraint rebuilds authored or keyed local TRS, then
- * applies follow to position and look-at to rotation.
+ * Position constraints rebuild local position and aim constraints rebuild
+ * local rotation. Hinges rebuild both and preserve local scale.
  */
 #pragma once
 

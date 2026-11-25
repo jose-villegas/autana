@@ -23,6 +23,14 @@ cosine-weighted, so it is even on the disc seen from above, for any $R$.
 
 ![The first 8, 32 and 128 fixed directions seen from above](../../images/render/bake-directions.png)
 
+A bake keeps this frame fixed, so equal surroundings give equal light. A
+reference render turns each point's frame about its normal by its own angle,
+hashed from the point's coordinates<sup>[[142]](../../Citations.md#steele-2014)</sup>.
+With one fixed frame, neighbouring pixels on a flat surface trace the same rays
+and share one error, which shows as straight-edged light and dark patches. Turned
+frames leave grain instead, which the scene's
+[`[bake]` `denoise`](../scene/Scene-Files.md#bake-reference-traces) removes.
+
 ## Local-occlusion implementation
 
 The [`ao` setting](../scene/Scene-Files.md#bake-ao) darkens a point that has geometry
@@ -83,7 +91,7 @@ at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
 
 | Rule | Why |
 |---|---|
-| Same first directions per point, fixed path seed | The same tree and the same partition of points give the same bytes |
+| Same first directions per point in a bake, a hashed turn per point in a reference; fixed path seed | The same tree and the same partition of points give the same bytes |
 | One gather for the vertex copies a crease splits | Bounced light changes slowly; copies that differ only in it would stop merging |
 | A double-sided surface is lit on both sides and keeps the brighter | A card in the sun takes its sunlit side, a curtain in shade its open side |
 | A ray reaching a one-sided triangle from behind finds no light | Light does not pass through shells |
