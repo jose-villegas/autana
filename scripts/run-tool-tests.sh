@@ -141,10 +141,6 @@ case "$SHARD" in 1/1) RUN="$BUILD_DIR/run-tool-tests" ;; *) RUN="$BUILD_DIR/run-
     awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
         { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
           load[least] += $1 > 1 ? $1 : 1; if (least == s[1]) print $3 }' >"$UNIT_DIR/order"
-# Every native library is built here, one at a time, so no two files build one
-# at once: on Windows the second cannot replace a library the first has loaded.
-[ -z "$PYTHON" ] || { echo "== native libraries =="; "$PYTHON" "$REPO_ROOT/launcher/tools/native/prebuild.py"; } \
-    >>"$QUIET_LOG" 2>&1 || :
 [ ! -s "$UNIT_DIR/order" ] || xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
 sort "$UNIT_DIR/order" >"$RUN.order"
 

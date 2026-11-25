@@ -118,7 +118,7 @@ class OccludedLightTest(unittest.TestCase):
 
     def test_the_indirect_light_is_scaled_only_when_asked(self):
         class Constant:
-            def bounce(self, points, normals, ray_offset):
+            def bounce(self, points, normals, ray_offset, frame):
                 return np.ones((len(points), 3))
 
         plain = self.lit([], 1.0, bounce=Constant())

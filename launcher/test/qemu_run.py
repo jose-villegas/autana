@@ -85,6 +85,7 @@ from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs, results, suite_failure_signs)  # (the board tool's own verdict)
 from console_protocol import ANSI  # noqa: E402
+from local_port import free_port  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
@@ -171,12 +172,6 @@ def efuse_with_mac(image):
 def psram_mib():
     profile = device_profile.load(None, None)
     return device_profile.require(profile, "DP_PSRAM_BYTES", int) // MEBIBYTE_BYTES
-
-
-def free_port():
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
 
 
 def merge_flash(build_dir, out_path, python):
