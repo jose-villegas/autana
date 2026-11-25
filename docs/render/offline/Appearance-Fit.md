@@ -171,8 +171,9 @@ Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learn
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
 clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
 shortest start edge from its start (a seam-held point follows its target): the
-fit refines the start in place, and a corner cannot slide across its own face. Where nothing is drawn the renderer shows the scene's
-clear colour, as the device and reference do.
+fit refines the start in place, and a corner cannot slide across its own face.
+Where nothing is drawn the renderer shows the scene's clear colour, as the
+device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
 import at its writer and is not lit again. A fit is judged on held-out poses by
