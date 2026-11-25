@@ -73,9 +73,10 @@ number of quantisation ticks per model unit.
 
 #### materials
 
-`[materials].double_sided` lists materials whose faces draw from both sides. A listed material that the source
-closes into a shell, with every edge shared by two triangles of any material, draws one-sided. Cloth built as two
-skins is closed, and culling its far skin keeps it hidden where the simplified skins cross. The import logs each.
+`[materials].double_sided` lists materials whose faces draw from both sides. Cloth is often built as two skins
+joined at the hem, a closed shell. In a scene whose camera has a region, the import keeps the skin facing the
+region's centre and drops the other, which still casts light, so the simplified skins cannot cross. The import
+logs what it drops.
 
 ### Skin lighting
 
