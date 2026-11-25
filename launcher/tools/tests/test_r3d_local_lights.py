@@ -17,7 +17,7 @@ try:
     from r3d.sh_probe_bake import basis, direct_term
 except ImportError:
     np = None
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 OFFSET = 0.01
 FLOAT32 = 1e-6
@@ -54,7 +54,7 @@ def bake(points, normals, lights, intersector):
     return light(points, normals, np.zeros(len(points), bool), intersector, lights, OFFSET)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PointLightTests(unittest.TestCase):
     def setUp(self):
@@ -89,7 +89,7 @@ class PointLightTests(unittest.TestCase):
                                       bake(self.points, self.normals, lights, self.open))
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SpotLightTests(unittest.TestCase):
     def test_a_spot_is_its_point_light_inside_the_cone_zero_outside_and_a_squared_ramp_between(self):
@@ -120,7 +120,7 @@ class SpotLightTests(unittest.TestCase):
         self.assertEqual(floor[0, 0], 0.0)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeSunUnchangedTests(unittest.TestCase):
     """The probe sun formula from before point and spot lights, kept here as the reference."""
@@ -138,7 +138,7 @@ class ProbeSunUnchangedTests(unittest.TestCase):
         np.testing.assert_array_equal(direct_term(box, points, [light_], OFFSET)[0], before)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeTermTests(unittest.TestCase):
     def test_a_probe_sees_the_point_light_from_its_direction_unless_a_box_stands_between(self):
