@@ -7,7 +7,7 @@ import numpy as np
 
 from r3d.geometry import face_normals
 from r3d.import_settings import PUNCTUAL_LIGHTS
-from r3d.light import AlphaTest, baked_lights, light_rays, light_visible
+from r3d.light import AlphaTest, baked_lights, light_rays
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, SEED
@@ -28,6 +28,15 @@ def basis(directions):
 
 def project(directions, radiance):
     return (4 * math.pi / len(directions)) * np.einsum('nk,...nc->...kc', basis(directions), radiance)
+
+
+def light_visible(intersector, origin, toward, reach, traced):
+    """Which NumPy origins see the light: the `traced` ones (indices) whose shadow ray toward it, no farther than
+    `reach`, is clear. Every other origin is unlit and traces no ray."""
+    rays = np.ascontiguousarray(np.broadcast_to(toward, origin.shape)[traced])
+    seen = np.zeros(len(origin), dtype=bool)
+    seen[traced] = ~intersector.blocked(origin[traced], rays, None if reach is None else reach[traced])
+    return seen
 
 
 def direct_term(query, points, lights, floor):

@@ -517,15 +517,6 @@ def light_rays(light, origin, floor):
     return toward, distance, falloff
 
 
-def light_visible(intersector, origin, toward, reach, traced):
-    """Which NumPy origins see the light: the `traced` ones (indices) whose shadow ray toward it, no farther than
-    `reach`, is clear. Every other origin is unlit and traces no ray."""
-    rays = np.ascontiguousarray(np.broadcast_to(toward, origin.shape)[traced])
-    seen = np.zeros(len(origin), dtype=bool)
-    seen[traced] = ~intersector.blocked(origin[traced], rays, None if reach is None else reach[traced])
-    return seen
-
-
 def bake_local(light, ctx):
     """A point or spot light: one shadow ray toward it, no farther than the light, and the cosine of the angle to the
     normal times the light's falloff. Points the light cannot reach trace no ray."""

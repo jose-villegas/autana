@@ -13,6 +13,7 @@ try:
     from tests import soup
     from tests.soup import lamp, sun
     from r3d.light import light
+    from r3d.ray_query import RayQuery
     from r3d.sh_probe_asset import COEFFICIENTS
     from r3d.sh_probe_bake import basis, direct_term
 except ImportError:
@@ -44,10 +45,31 @@ def expected(points, normals, position, range_):
     return cosine * window / distance ** 2
 
 
+def under(points, half=2.0):
+    """The points below a 4 by 4 sheet centred over the origin."""
+    return (np.abs(points[:, 0]) < half) & (np.abs(points[:, 2]) < half)
+
+
 def box_at(centre, extents):
     part = soup.box(extents)
     part.apply_translation(centre)
     return soup.rays(part)
+
+
+class SolidFrom:
+    """A hit filter: triangles from `first` on are solid, the ones before it are looked through."""
+
+    def __init__(self, first):
+        self.first = first
+
+    def device(self, query):
+        return lambda prim, where, active: active & (prim >= self.first)
+
+
+def filtered(parts, solid_from=0):
+    """The ray queries of `parts` joined, through a hit filter that looks through the triangles before `solid_from`."""
+    joined = soup.concatenate(parts)
+    return RayQuery(joined.vertices, joined.faces, hit_filter=SolidFrom(solid_from))
 
 
 def bake(points, normals, lights, intersector):
@@ -87,6 +109,27 @@ class PointLightTests(unittest.TestCase):
         lights = [lamp([0, HEIGHT, 0], RANGE)]
         np.testing.assert_array_equal(bake(self.points, self.normals, lights, above),
                                       bake(self.points, self.normals, lights, self.open))
+
+    def test_through_a_hit_filter_a_blocker_beyond_the_light_casts_no_shadow(self):
+        # The filtered path steps through hits; a solid hit past the light must not shadow it.
+        slab = soup.box([4.0, 0.2, 4.0])
+        slab.apply_translation([0.0, HEIGHT + 0.5, 0.0])
+        lights = [lamp([0, HEIGHT, 0], RANGE)]
+        np.testing.assert_array_equal(bake(self.points, self.normals, lights, filtered([slab])),
+                                      bake(self.points, self.normals, lights, self.open))
+
+    def test_through_a_hit_filter_a_looked_through_sheet_before_the_light_leaves_the_solid_one_beyond_it_unseen(self):
+        sheet = soup.box([4.0, 0.02, 4.0])
+        sheet.apply_translation([0.0, HEIGHT / 2, 0.0])
+        slab = soup.box([4.0, 0.2, 4.0])
+        slab.apply_translation([0.0, HEIGHT + 0.5, 0.0])
+        lights = [lamp([0, HEIGHT, 0], RANGE)]
+        query = filtered([sheet, slab], solid_from=len(sheet.faces))
+        np.testing.assert_array_equal(bake(self.points, self.normals, lights, query),
+                                      bake(self.points, self.normals, lights, self.open))
+        solid_sheet = filtered([sheet, slab])
+        lit = bake(self.points, self.normals, lights, self.open)[:, 0] > 0
+        np.testing.assert_array_equal(bake(self.points, self.normals, lights, solid_sheet)[lit & under(self.points)], 0.0)
 
 
 @needs_llvm
