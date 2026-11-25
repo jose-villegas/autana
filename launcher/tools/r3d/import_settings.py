@@ -168,7 +168,7 @@ def face_sample_options(value, where):
 
 FIT_GROUPS = {
     "prune": ("coverage_every_ms",),
-    "poses": ("size", "train_every_ms", "held_out_every_ms"),
+    "poses": ("size", "samples", "denoise", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = ("budget",) + tuple(key for keys in FIT_GROUPS.values() for key in keys)
@@ -195,12 +195,13 @@ def load_fit(value, variant, where):
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
     fit = SimpleNamespace(**{key: values.get(key) for key in FIT_KEYS})
-    for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+    for key in ("budget", "samples", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         if getattr(fit, key) is not None:
             setattr(fit, key, count(values[key], f"{where}.{key}"))
     if getattr(variant, "ceiling", None) is not None and fit.budget is not None and fit.budget > variant.ceiling:
         raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
+    fit.denoise = boolean(values["denoise"], f"{where}.poses.denoise")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
     for key in ("surface_weight", "surface_margin"):
@@ -767,15 +768,11 @@ def load_indirect_look(table):
 
 
 def load_bake(table):
-    """The scene's bake settings: ray offset, colour merging, bounced light, local occlusion, and how a fit's
-    reference renders are traced (aa_samples, denoise: None when absent; no vertex bake reads them)."""
-    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake",
-               optional=("indirect", "ao", "aa_samples", "denoise"))
+    """The scene's bake settings: ray offset, colour merging, bounced light and local occlusion."""
+    check_keys(table, ("ray_offset", "colour_merge_step"), "scene.bake", optional=("indirect", "ao"))
     bake = SimpleNamespace(ray_offset=number(table["ray_offset"], "scene.bake.ray_offset"),
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
-                           indirect=None, ao=None,
-                           aa_samples=count(table["aa_samples"], "scene.bake.aa_samples") if "aa_samples" in table else None,
-                           denoise=boolean(table["denoise"], "scene.bake.denoise") if "denoise" in table else None)
+                           indirect=None, ao=None)
     if "indirect" in table:
         bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
@@ -895,13 +892,6 @@ def load_scene(path):
             raise SettingsError("scene.bake.ao.indirect is read by no placed mesh: no baked renderer takes bounced light")
     if "indirect" in values and not bounced:
         raise SettingsError("scene indirect settings is read by no placed mesh")
-    fitted = any(item.renderer.fit for item in jobs)
-    for name in ("aa_samples", "denoise"):
-        present = bake is not None and getattr(bake, name) is not None
-        if fitted and not present:
-            raise SettingsError(f"scene.bake.{name} is required: a renderer is fitted to references")
-        if present and not fitted:
-            raise SettingsError(f"scene.bake.{name} is read by no placed mesh: only a fit's references read it")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   ("camera region", region is not None, "camera_region" in sources)):
