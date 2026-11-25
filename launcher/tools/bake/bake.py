@@ -642,7 +642,7 @@ def import_recipe(settings, tools):
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
-def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
+def mesh_recipe(job, scene, tools, poses, unavailable=None):
     """What a lit or albedo mesh is made from, without its fit and without paths."""
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
