@@ -256,16 +256,16 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    with recorder.step("far skins", len(tri_v)) as step:
-        # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but,
-        # like a carded material, keeps casting light.
-        listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
-        region = None if scene is None else scene.region
-        shell = np.zeros(len(tri_v), dtype=bool)
-        if listed.any() and region is not None:
-            piece = closed_shells(src.p, tri_v)
-            shell = np.isin(piece, piece[listed & (piece >= 0)])
-        if shell.any():
+    # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but, like a
+    # carded material, keeps casting light.
+    listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
+    region = scene.region if scene is not None and listed.any() else None
+    shell = np.zeros(len(tri_v), dtype=bool)
+    if region is not None:
+        piece = closed_shells(src.p, tri_v)
+        shell = np.isin(piece, piece[listed & (piece >= 0)])
+    if shell.any():
+        with recorder.step("far skins", len(tri_v)) as step:
             far = far_skins(src.p, tri_v, shell, np.mean(region, axis=0))
             log(f"far skins dropped: {int(far.sum())} of {int(shell.sum())} triangles of the closed shells of "
                 f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}")
@@ -274,7 +274,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             tri_v, tri_t, tri_m = tri_v[~far], tri_t[~far], tri_m[~far]
             src.tri_o = src.tri_o[~far]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
-        step["triangles_out"] = len(tri_v)
+            step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
     if not carve or scene is None:
         meshes = tuple(rule for rule in meshes if "triangles" in rule)
