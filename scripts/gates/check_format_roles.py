@@ -30,6 +30,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+from markdown_fences import fences  # noqa: E402
 PAGES = ROOT / "docs/assets/formats"
 # Light fills under dark labels, so a box reads on either theme's background.
 FILLS = {"identity": "fill: #8fb3ee", "count": "fill: #93d6b0", "offset": "fill: #f4a885", "code": "fill: #c7aaee",
@@ -42,7 +44,6 @@ MARKERS = ("⬜", "🟦", "🟧", "🟩", "🟪")  # the squares fields carried 
 DEFAULT_BITS_PER_ROW = 32
 BITS = re.compile(r"bitsPerRow: (\d+)")
 CSS_LINE = re.compile(r'^  themeCSS: ".*"\n', re.M)
-BLOCK = re.compile(r"```mermaid\n(.*?)```", re.S)
 FIELD = re.compile(r'^(?P<at>\d+(?:-\d+)?): "(?P<label>.*)"$', re.M)
 HEADER = re.compile(r"\]\(((?:\.\./)+launcher/main/[^)]+\.h)\)")
 DEFINE = re.compile(r"^#define\s+([A-Z0-9_]+)", re.M)
@@ -112,10 +113,9 @@ def filled(page):
     legend = page.name == "README.md"
     wrong = []
 
-    def block(match):
-        body = match.group(1)
+    def block(body):
         if "packet-beta" not in body:
-            return match.group(0)
+            return body
         new = FIELD.sub(lambda field: f'{field["at"]}: "{unmarked(field["label"])}"', body)
         labels = [field["label"] for field in FIELD.finditer(new)]
         roles = [LEGEND[label] if legend else role(label, defines) for label in labels]
@@ -126,9 +126,15 @@ def filled(page):
         if new != body:
             title = re.search(r"^title (.*)$", body, re.M)
             wrong.append(f"{page.relative_to(ROOT).as_posix()}: {title[1] if title else 'a packet diagram'}")
-        return f"```mermaid\n{new}```"
+        return new
 
-    return BLOCK.sub(block, text), wrong
+    pieces, at = [], 0
+    for fence in fences(text):
+        if fence.language == "mermaid" and fence.close:
+            head, *body, tail = text[fence.start:fence.end].splitlines(keepends=True)
+            pieces += [text[at:fence.start], head, block("".join(body)), tail]
+            at = fence.end
+    return "".join(pieces) + text[at:], wrong
 
 
 def main():

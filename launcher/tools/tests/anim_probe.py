@@ -34,6 +34,7 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from r3d.batch.copy_batches import f32  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
 NODES = ("camera", "arm", "hand")
@@ -144,10 +145,6 @@ def probe_entry():
     return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
 
 
-def single(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
-
-
 def sample_times(track, duration_ms):
     """(seconds, exact) to sample a track at: its keys, either side of its
     ends, and the clip's clock every EVERY_MS ms, looping."""
@@ -156,9 +153,9 @@ def sample_times(track, duration_ms):
     out = [(t, copies or not track["quaternion"] or t in (times[0], times[-1])) for t in times]
     out += [(times[0] - 0.25, True), (times[-1] + 0.25, True)]
     for t_ms in range(0, UNTIL_MS, EVERY_MS):
-        seconds = single((t_ms % duration_ms) * 0.001)
+        seconds = f32((t_ms % duration_ms) * 0.001)
         out.append((seconds, copies or seconds <= times[0] or seconds >= times[-1]))
-    return [(single(seconds), exact and not track["quaternion"]) for seconds, exact in out]
+    return [(f32(seconds), exact and not track["quaternion"]) for seconds, exact in out]
 
 
 def reference_entry(entry):
