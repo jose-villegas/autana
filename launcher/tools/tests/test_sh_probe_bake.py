@@ -17,6 +17,7 @@ from r3d.sh_probe_settings import DIRECTIONS, SPP
 from r3d.views.probes import sphere_directions
 from bake import bake
 from asset.engine_frame import AXIS_SIGNS, Z_AXIS
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def golden_record():
@@ -139,6 +140,7 @@ class ProbeTests(unittest.TestCase):
                              sh.Y1 * 3 / math.sqrt(14), sh.Y1 / math.sqrt(14)])[:, None]
         np.testing.assert_allclose(sh.project(direction, colour), 4 * math.pi * expected * colour)
 
+    @needs_llvm
     def test_sun_against_traced_disc(self):
         from r3d.ray_query import RayQuery
         from r3d import mitsuba_reference

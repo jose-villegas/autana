@@ -18,6 +18,7 @@ from scene import scene_edit  # noqa: E402
 from test_r3d_import import (  # noqa: E402
     FIT, HEAD, NO_LEVELS, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object, tree_scenes,
     write_import, write_scene)
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 SUN_LINE = "rotation = [40.0, 30.0, 0.0]   # toward the front: above and to the right\n"
 BOX_POSITION = "position = [1.0, 2.0, 3.0]  # on the table\n"
@@ -497,6 +498,7 @@ class RecordedPoses:
 
 
 class FeedsBakesTreeTests(unittest.TestCase):
+    @needs_llvm
     def test_feeds_bakes_is_true_exactly_where_a_bake_samples_the_path(self):
         """On every scene in the tree whose camera has a path, read's feeds_bakes says whether any of its bakes'
         keys samples that path (bake.stage_keys asking Poses for it): the rule stays the bake's."""

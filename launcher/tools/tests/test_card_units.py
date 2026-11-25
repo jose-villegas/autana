@@ -28,6 +28,7 @@ from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
 from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 # A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
@@ -88,6 +89,7 @@ class SharedOwnerTests(unittest.TestCase):
         self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
 
+    @needs_llvm
     def test_reference_sets_accept_materials_once(self):
         source = self.source
         job = NS(settings=NS(cards=NS(), alpha_keep=.5))
@@ -141,6 +143,7 @@ class CardContractTests(unittest.TestCase):
         for count in range(5):
             self.assertEqual(bool(mip[divmod(count, 4)]), count >= MASK1_MIP_KEPT)
 
+    @needs_llvm
     def test_probe_weights_visibility_distance_lens_and_accumulation(self):
         points = np.array([[0., 0., 0.], [0., 0., -5.], [12., 0., 0.]])
         weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)

@@ -20,6 +20,7 @@ from r3d.objects import carve, detail, objects_report
 from test_mesh_bundle import bundle_fixture
 from test_r3d_carve import odd_scene
 from test_r3d_detail import FOCAL, NEAR, sphere
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class DerivedDetailTests(unittest.TestCase):
@@ -66,6 +67,7 @@ class DerivedDetailTests(unittest.TestCase):
             {i: rule for i in range(3)}, NS(position_scale=4), NS(renderer=renderer), NS(camera=camera))
         self.assertTrue(all(value is rule for value in selected.values()))
 
+    @needs_llvm
     def test_uncarved_import_avoids_views_and_carved_import_needs_no_rules(self):
         from r3d.import_settings import load_import_settings, albedo_jobs
         with tempfile.TemporaryDirectory() as directory:
@@ -89,6 +91,7 @@ class DerivedDetailTests(unittest.TestCase):
             self.assertEqual(len(carved.shapes), 1)
             self.assertEqual(len(carved.shapes[0]['copies']), 2)
 
+    @needs_llvm
     def test_the_ceiling_pays_a_prototype_once_however_many_copies_draw_it(self):
         from r3d.import_settings import load_import_settings, albedo_jobs
         with tempfile.TemporaryDirectory() as directory:
