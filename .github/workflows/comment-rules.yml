@@ -206,6 +206,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: sh scripts/run-tool-tests.sh
 
+      # Each file's seconds and slowest tests, which show where the step's time goes.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tool-tests-linux-log
+          path: |
+            launcher/test/build/run-tool-tests.log
+            launcher/test/build/run-tool-tests.times
+          retention-days: 14
+          if-no-files-found: ignore
+
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}
         with: {step: record}

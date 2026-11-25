@@ -26,6 +26,9 @@
 # script's job is to prove the suites pass, so a language it could not even
 # run is a failure, not something to wave through quietly.
 #
+# Each file's block in the log ends with its slowest tests' seconds
+# (unittest --durations), so a slow file says where its time goes.
+#
 # Default output is the verdict and test count. A passing run can emit
 # thousands of characters; the full stream, each file's output in one block
 # in a fixed order, is in the printed log path.
@@ -49,7 +52,7 @@ if [ "${1:-}" = --unit ]; then
     started=$(date +%s)
     case "$2" in
         *.mjs) node --test "$REPO_ROOT/$2" ;;
-        *) "$PYTHON" -u -m unittest discover -s "$REPO_ROOT/$(dirname -- "$2")" -p "$(basename -- "$2")" ;;
+        *) "$PYTHON" -u -m unittest discover --durations "$DURATIONS" -s "$REPO_ROOT/$(dirname -- "$2")" -p "$(basename -- "$2")" ;;
     esac >"$out.log" 2>&1 && rc=0 || rc=$?
     # unittest before Python 3.12 passes a file in which it found no test.
     if [ "$rc" -eq 0 ] && grep -aq '^Ran 0 tests' "$out.log"; then
@@ -100,7 +103,9 @@ fi
 # shellcheck source=lib/python.sh
 . "$REPO_ROOT/scripts/lib/python.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
-export PYTHON UNIT_DIR
+# The slowest tests a file's block in the log names.
+DURATIONS=10
+export PYTHON UNIT_DIR DURATIONS
 
 quiet_begin "$QUIET_LOG"
 # Passing tests print fixture text ("test_clip:FAIL:", argparse "error:"); only
