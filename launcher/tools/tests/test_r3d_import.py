@@ -31,6 +31,20 @@ except ImportError:
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
 
+
+def setUpModule():
+    # A fit key samples its camera clip through track_host, whose program() asks the compiler for the
+    # program's headers on every call to see whether to rebuild. No source changes while this file runs,
+    # so the program is found once and every sample runs that same build.
+    from anim import track_host
+    try:
+        built = track_host.program()
+    except track_host.TrackHostError:
+        return
+    patcher = mock.patch.object(track_host, "program", return_value=built)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\nname = "mesh"\n'
