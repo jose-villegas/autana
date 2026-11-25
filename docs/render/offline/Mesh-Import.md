@@ -9,7 +9,7 @@ drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 flowchart TB
     subgraph Cut["1 · Choose triangles"]
     direction LR
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Drop far skins<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Far skins one-sided<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
     subgraph Light["2 · Colour vertices"]
     direction LR
@@ -75,9 +75,9 @@ number of quantisation ticks per model unit.
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
 
-Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import drops the skin
-facing away from its centre, so the simplified skins cannot cross; that skin still casts light. Open sheets
-stay whole.
+Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the skin facing away from
+its centre is drawn from its own side only: where simplification pushes it through the near skin it hides,
+and from behind it shows its own colour. Open sheets draw both sides throughout.
 
 ### Skin lighting
 
