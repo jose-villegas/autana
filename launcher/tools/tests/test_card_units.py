@@ -40,8 +40,7 @@ class SharedOwnerTests(unittest.TestCase):
                          tri_m=np.array([0]), names=['leaf'], textures=[None], uv=np.zeros((3, 2)))
 
     def test_rgba_samples_opaque_colour_too(self):
-        texture = NS(levels=[np.ones((1, 1, 4))],
-                     sample=lambda uv, lod: np.tile([0.2, 0.3, 0.4, 1.0], (len(uv), 1)))
+        texture = NS(levels=[np.tile([0.2, 0.3, 0.4, 1.0], (1, 1, 1))])
         source = self.source
         source.textures = [texture]
         alpha = AlphaTest(source, 0.5)
@@ -61,10 +60,12 @@ class SharedOwnerTests(unittest.TestCase):
         self.assertEqual(query.call_count, 1)
 
     def test_camera_filter_combines_hidden_and_alpha(self):
-        source = NS(camera_hidden=np.array([True, False, False]),
-                    alpha_test=NS(tested=np.array([True])))
-        source.alpha_test = type('Alpha', (), {'tested': np.array([True]),
-            '__call__': lambda self, hits, where: hits != 1})()
+        # Triangle 0 is hidden, triangle 1 is on a fully cut texel, triangle 2 is opaque.
+        cut, opaque = (NS(levels=[np.full((1, 1, 4), alpha)]) for alpha in (0.0, 1.0))
+        source = NS(p=np.eye(3), tri_v=np.zeros((3, 3), int) + [0, 1, 2], tri_t=np.zeros((3, 3), int) + [0, 1, 2],
+                    tri_m=np.array([1, 0, 1]), names=['cut', 'opaque'], textures=[cut, opaque], uv=np.zeros((3, 2)),
+                    camera_hidden=np.array([True, False, False]))
+        source.alpha_test = AlphaTest(source, 0.5)
         keep = mesh_source.camera_filter(source)
         np.testing.assert_array_equal(keep(np.arange(3), np.zeros((3, 3))), [False, False, True])
         self.assertIsNone(mesh_source.camera_filter(NS()))
@@ -95,7 +96,6 @@ class SharedOwnerTests(unittest.TestCase):
                 patch.object(reference_render, 'load_source', return_value=source), \
                 patch.object(reference_render, 'RayQuery'), patch.object(reference_render, 'path_light_for'), \
                 patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [[0.] * 6])), \
-                patch.object(reference_render, 'gpu_workers', return_value=1), \
                 patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),
@@ -157,11 +157,11 @@ class CardContractTests(unittest.TestCase):
         for z, visible in ((0.5, True), (2., False)):
             self.assertEqual(z < VISIBILITY_MARGIN, visible)
             wall = np.array([[-20., -20., z], [20., -20., z], [0., 20., z]])
-            query = RayQuery(wall, np.array([[0, 1, 2]]), 'scalar_rgb')
+            query = RayQuery(wall, np.array([[0, 1, 2]]), 'llvm_ad_rgb')
             weight = probe_weights(points[:1], [PROBE_FACE], query, 1.0, near_floor=0.)
             self.assertEqual(bool(weight[0]), visible)
         surface = RayQuery(np.array([[-20., -20., 0.], [20., -20., 0.], [0., 20., 0.]]),
-                           np.array([[0, 1, 2]]), 'scalar_rgb')
+                           np.array([[0, 1, 2]]), 'llvm_ad_rgb')
         self.assertGreater(probe_weights(points[:1], [PROBE_FACE], surface, 1.0, near_floor=0.)[0], 0)
 
     def test_probe_weight_floor_bounds_a_sample_close_to_the_probe(self):
@@ -192,7 +192,7 @@ class CardContractTests(unittest.TestCase):
         def plane(*args, epsilon, **kwargs):
             return [card_from(np.zeros(3), np.array([0., 0., 1.]), p * [1, 1, 0], epsilon)]
         views = ProbeViews([], [], {'spacing': 1.})
-        with patch.object(emit, 'choose_cards', side_effect=plane), patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+        with patch.object(emit, 'choose_cards', side_effect=plane), patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             for epsilon, kept in ((1., False), (3., True)):
                 shape, report = emit.make_shape(source, 0, NS(epsilon=epsilon, area_cost=0.), 0, .5,
                                                 views=views, query=None)

@@ -237,13 +237,12 @@ class CardTests(unittest.TestCase):
 
     def test_samples_drop_transparent_uvs_and_keep_triangle_weights(self):
         from r3d.cards.choose import samples
-        from unittest.mock import Mock
         p, t = quads(True)
         uv = p[:, :2] / SIDE + 0.5
-        texture = Mock()
-        texture.levels = [np.zeros((1, 1, 4))]
-        texture.sample.side_effect = lambda uv, lod: np.column_stack([
-            np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+        # Opaque where u >= 0.5: the bilinear alpha crosses 0.5 exactly there.
+        level = np.ones((CHECKER_TEXELS, CHECKER_TEXELS, 4))
+        level[:, :CHECKER_TEXELS // 2, 3] = 0.0
+        texture = SimpleNamespace(levels=[level])
         for seed in SEEDS:
             sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
             points, normals, area = samples(sub, np.random.default_rng(seed), 0.5)
@@ -253,11 +252,8 @@ class CardTests(unittest.TestCase):
             np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1)
             triangle_area = (SIDE / SUBDIVISIONS) ** 2 / 2
             np.testing.assert_allclose(area, triangle_area / SAMPLES_PER_TRIANGLE)
-            texture.sample.side_effect = lambda uv, lod: np.zeros((len(uv), 4))
-            self.assertEqual(choose_cards(p, t, uv=uv, tri_uv=t, texture=texture,
-                                          keep_alpha=0.5, seed=seed), [])
-            texture.sample.side_effect = lambda uv, lod: np.column_stack([
-                np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+            clear = SimpleNamespace(levels=[np.zeros_like(level)])
+            self.assertEqual(choose_cards(p, t, uv=uv, tri_uv=t, texture=clear, keep_alpha=0.5, seed=seed), [])
 
     def test_area_cost_can_stop_selection(self):
         p, t = quads(True)
@@ -319,16 +315,17 @@ class CardTests(unittest.TestCase):
             self.assertEqual(mask.shape, (CARD_MASK_TEXELS // 8,) * 2)
 
     def test_trimmed_mask_keeps_parent_texel_size(self):
-        from unittest.mock import Mock
         p, t = quads()
         uv = p[:, :2] / SIDE + 0.5
         card = dict(c=np.zeros(3), a=np.eye(3)[0], b=np.eye(3)[1], n=np.eye(3)[2],
                     lo=np.full(2, -SIDE / 2), hi=np.full(2, SIDE / 2), depth=(-CARD_EPSILON, CARD_EPSILON),
                     texel_size=SIDE / CARD_MASK_TEXELS)
-        texture = Mock()
-        texture.levels = [np.zeros((1, 1, 4))]
-        texture.sample.side_effect = lambda uv, lod: np.column_stack([
-            np.ones((len(uv), 3)), ((uv > 0.25) & (uv < 0.75)).all(axis=1).astype(float)])
+        # Opaque where both texture coordinates lie in 0.25..0.75.
+        side = CHECKER_TEXELS
+        level = np.ones((side, side, 4))
+        level[..., 3] = 0.0
+        level[side // 4:3 * side // 4, side // 4:3 * side // 4, 3] = 1.0
+        texture = SimpleNamespace(levels=[level])
         sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
         query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
         trimmed, mask, _, _ = bake_card(card, query)
@@ -405,8 +402,8 @@ class CardTests(unittest.TestCase):
             query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
             baked = bake_card(card, query)
             self.assertIsNotNone(baked)
-            sub.uv = np.tile([0.25, 0.5], (len(p), 1))
-            empty = bake_card(card, query)
+            sub = with_triangles(sub, t, t, sub.tri_m, uv=np.tile([0.25, 0.5], (len(p), 1)))
+            empty = bake_card(card, RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5)))
             self.assertIsNone(empty)
 
     def test_the_replaced_material_still_casts_light_but_not_visibility(self):

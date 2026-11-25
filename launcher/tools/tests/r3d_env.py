@@ -40,5 +40,6 @@ def have_llvm():
     return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
 
 
-needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "needs Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
-needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
+# Ray queries and the bake's light run as Dr.Jit kernels: on the LLVM variant in tests, which needs libLLVM.
+needs_llvm = unittest.skipIf(not have_llvm(), "ray queries run on the LLVM variant: pip install -r "
+                                               "launcher/tools/r3d/requirements.txt and libLLVM")

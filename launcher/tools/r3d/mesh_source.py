@@ -56,8 +56,9 @@ def camera_filter(source, *, alpha=True):
     hidden = hidden if hidden is not None and hidden.any() else None
     if alpha is None and hidden is None:
         return None
-    return lambda hits, where: ((True if hidden is None else ~hidden[hits]) &
-                               (True if alpha is None else alpha(hits, where)))
+    from r3d.light import AlphaTest
+
+    return AlphaTest(source, None if alpha is None else alpha.keep_alpha, hidden)
 
 
 PATH_LIGHTS = {}

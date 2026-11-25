@@ -16,7 +16,7 @@ from r3d.import_settings import SettingsError, LIGHT_MODE_BAKED
 from r3d import import_settings
 from r3d.simplify import Allocation, simplify
 from r3d.objects.object_error import nearest_source
-from soup import edge_counts, sphere, split_sphere, subdivided
+from soup import Open, edge_counts, sphere, split_sphere, subdivided
 
 
 @contextmanager
@@ -266,7 +266,7 @@ class MeshPolicyTests(unittest.TestCase):
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
         scene = SimpleNamespace(lights=[{'type': 'directional', 'mode': LIGHT_MODE_BAKED, 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))
-        query = SimpleNamespace(blocked=lambda origin, direction: np.zeros(len(origin), dtype=bool))
+        query = Open()
         with patch.object(mesh_import, 'load_source', return_value=src), \
              patch.object(mesh_import, 'RayQuery', return_value=query) as rays, \
              watched_simplify() as run, \

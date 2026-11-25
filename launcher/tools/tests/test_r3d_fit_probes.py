@@ -23,7 +23,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 
@@ -260,7 +260,7 @@ class PrepareReferencesTests(unittest.TestCase):
                 self.assertEqual(query.hit_filter.keep_alpha, keep_alpha)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeSourceTests(unittest.TestCase):
     def test_an_alpha_masked_obj_keeps_its_cut_card_for_the_probes_and_finds_its_cut_texture(self):
@@ -268,7 +268,7 @@ class ProbeSourceTests(unittest.TestCase):
         from r3d import ray_query
 
         self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
-        ray_query.VARIANT = "scalar_rgb"
+        ray_query.VARIANT = "llvm_ad_rgb"
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             pixels = np.full((4, 4, 4), 255, dtype=np.uint8)

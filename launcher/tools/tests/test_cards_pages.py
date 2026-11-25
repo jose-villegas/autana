@@ -108,9 +108,9 @@ class CardSamplingTests(unittest.TestCase):
             points[:, 2] = PLANE_Z - VISIBILITY_MARGIN
             normals = np.tile([0., 0., 1.], (len(points), 1))
             faces = [np.array([0., 0., EYE_Z, 0., 0., -1.])]
-            wall = RayQuery(source.p, source.tri_v, "scalar_rgb")
+            wall = RayQuery(source.p, source.tri_v, "llvm_ad_rgb")
             np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0, near_floor=0.), 0)
-            cut = RayQuery(source.p, source.tri_v, "scalar_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
+            cut = RayQuery(source.p, source.tri_v, "llvm_ad_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
             weight = probe_weights(points, faces, cut, 1.0, near_floor=0.)
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
@@ -130,7 +130,7 @@ class CardSamplingTests(unittest.TestCase):
             positions = np.array([[-1., -1., z], [1., -1., z], [-1., 1., z], [1., 1., z]])
             sub = with_triangles(SimpleNamespace(p=positions, textures=[None]),
                                  tris, tris, np.zeros(len(tris), int))
-            query = RayQuery(positions, tris, "scalar_rgb", hit_filter=AlphaTest(sub, .5))
+            query = RayQuery(positions, tris, "llvm_ad_rgb", hit_filter=AlphaTest(sub, .5))
             mask, _, _ = bake_pixels(card, query)
             self.assertEqual(bool(mask.any()), kept, z)
 

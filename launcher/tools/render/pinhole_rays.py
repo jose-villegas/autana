@@ -36,7 +36,6 @@ from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
 
-SCALAR_VARIANT = 'scalar_rgb'
 LLVM_VARIANT = 'llvm_ad_rgb'
 VIDEO_SCALE = 2
 PIXEL_SAMPLES = 1
@@ -147,8 +146,8 @@ def rays(args, scene):
     camera = flight_camera(scene)
     rgb = camera.background
     sky = expand_565((rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff))
-    drawn = mesh_query(args.mesh, SCALAR_VARIANT)
-    against = [(str(path), mesh_query(path, SCALAR_VARIANT)) for path in args.against]
+    drawn = mesh_query(args.mesh, LLVM_VARIANT)
+    against = [(str(path), mesh_query(path, LLVM_VARIANT)) for path in args.against]
     wanted = None if args.frames is None else set(args.frames)
     found = set()
     for index, video_frame in enumerate(read_video(args.video)[1]):

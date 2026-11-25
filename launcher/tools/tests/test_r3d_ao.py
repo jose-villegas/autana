@@ -19,7 +19,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def corner():
@@ -39,7 +39,7 @@ def floor_points(*xs):
     return points, np.tile([0.0, 0.0, 1.0], (len(xs), 1))
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LocalOcclusionTest(unittest.TestCase):
     def factor(self, xs, **settings):
@@ -73,14 +73,14 @@ class LocalOcclusionTest(unittest.TestCase):
     def test_strength_scales_the_darkening_linearly(self):
         full, half, none = (self.factor([1.0], strength=s)[0] for s in (1.0, 0.5, 0.0))
         self.assertEqual(none, 1.0)
-        self.assertAlmostEqual(1.0 - half, 0.5 * (1.0 - full), places=9)
+        self.assertAlmostEqual(1.0 - half, 0.5 * (1.0 - full), places=6)  # float32 on the device
 
     def test_the_same_surroundings_give_the_same_factor(self):
         a, b = self.factor([3.0])[0], self.factor([3.0])[0]
         self.assertEqual(a, b)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OccludedLightTest(unittest.TestCase):
     AMBIENT = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 0.5}
@@ -118,8 +118,11 @@ class OccludedLightTest(unittest.TestCase):
 
     def test_the_indirect_light_is_scaled_only_when_asked(self):
         class Constant:
-            def bounce(self, points, normals, ray_offset):
-                return np.ones((len(points), 3))
+            def device_bounce(self, points, normals, ray_offset, side=0):
+                import drjit as dr
+                import mitsuba as mi
+
+                return dr.full(mi.Color3f, 1.0, dr.width(points))
 
         plain = self.lit([], 1.0, bounce=Constant())
         scaled = self.lit([], 1.0, bounce=Constant(), ao=ao(indirect=True))
@@ -129,7 +132,7 @@ class OccludedLightTest(unittest.TestCase):
         self.assertLess(scaled[0], plain[0])
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class OcclusionMapTest(unittest.TestCase):
     def fixture(self, ao):

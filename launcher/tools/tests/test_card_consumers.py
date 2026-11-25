@@ -39,7 +39,7 @@ class AlphaConsumerTests(unittest.TestCase):
         self.root = pathlib.Path(directory.name)
         self.source = checker_source(directory.name)
         self.source.alpha_test = AlphaTest(self.source, KEEP_ALPHA)
-        self.variant = patch.object(ray_query, 'VARIANT', 'scalar_rgb')
+        self.variant = patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb')
         self.variant.start()
         self.addCleanup(self.variant.stop)
 

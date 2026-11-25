@@ -20,7 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def write_reference_tree(work, sets=None):
@@ -136,7 +136,7 @@ LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceRenderTest(unittest.TestCase):
-    @needs_mitsuba
+    @needs_llvm
     def test_main_reports_occlusion_value_error_on_serial_path(self):
         import contextlib
         import io
@@ -162,19 +162,19 @@ class ReferenceRenderTest(unittest.TestCase):
         self.assertIn(message, stderr.getvalue())
         occlusion.assert_called_once()
 
-    @needs_mitsuba
+    @needs_llvm
     def test_an_unshadowed_plane_is_exact_lambert(self):
         source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[1.0, 1.0, 1.0]]], atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_tilted_sun_scales_the_value_by_the_cosine_to_the_normal(self):
         source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.8, 0.0, 0.6]), LOOK_DOWN, 1, 1, 0.1, 1)
-        np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], atol=1e-12, rtol=0)
+        np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], rtol=1e-6)  # float32 on the device
 
-    @needs_mitsuba
+    @needs_llvm
     def test_subpixels_land_in_their_own_pixel_and_average_to_its_coverage(self):
         # The quad covers -0.5 < x < 0 and y > 0.5 of a view spanning -1..1: of the 2 x 2 pixels only the
         # top-left is reached, by its upper-right subpixel, one of its four.
@@ -182,7 +182,7 @@ class ReferenceRenderTest(unittest.TestCase):
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(picture[..., 0], [[0.25, 0.0], [0.0, 0.0]], atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
         # Double-sided and wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
@@ -192,7 +192,7 @@ class ReferenceRenderTest(unittest.TestCase):
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_single_sided_face_seen_from_behind_is_passed_as_the_device_culls_it(self):
         # Two crossing shells, as a reduced source leaves them: the eye at z = 1 meets the back of a face at z = 0.5
         # first. The device culls it and draws the floor at z = 0; double-sided, it is drawn itself.
@@ -206,14 +206,14 @@ class ReferenceRenderTest(unittest.TestCase):
         locations = primary_hits(source, job, LOOK_DOWN, 1, 1, 0.1, 1)[2]
         np.testing.assert_allclose(locations[:, 2], [0.5], atol=1e-6)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_back_face_over_its_twin_draws_the_twin(self):
         # The two sides of a thin wall share positions: whichever the tracer meets, the eye sees the front one.
         source = plane_source(square(up=False), square(), square(-1.0))
         faces = primary_hits(source, *sun_scene([0.0, 0.0, 1.0])[:1], LOOK_DOWN, 1, 1, 0.1, 1)[4]
         self.assertIn(faces[0], (2, 3))
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
         source = plane_source(square())
         away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
@@ -347,10 +347,13 @@ class ReferenceSetTests(unittest.TestCase):
 @unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
-        def bounce(self, points, normals, ray_offset):
-            return np.full((len(points), 3), 0.25)
+        def device_bounce(self, points, normals, ray_offset, side=0):
+            import drjit as dr
+            import mitsuba as mi
 
-    @needs_mitsuba
+            return dr.full(mi.Color3f, 0.25, dr.width(points))
+
+    @needs_llvm
     def test_the_reference_adds_the_bounce_to_each_hit(self):
         source = plane_source(square())
         without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
@@ -420,13 +423,12 @@ def render_one_set(job, **patches):
 
 @unittest.skipIf(np is None, "needs NumPy")
 class PoseStoreTests(unittest.TestCase):
-    """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone, in this
-    process or in CUDA workers alike."""
+    """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone."""
 
-    def render(self, poses_text, cache, out, key="render", workers=1, store=True):
-        """render_sets of one poses file holding `poses_text` with a PoseStore under `key` (none unless `store`), its
-        poses traced here or by `workers` workers; returns the poses traced, each of which told progress once. A
-        traced pose's files hold its pose line, so a set shows which pose each index got."""
+    def render(self, poses_text, cache, out, key="render", store=True):
+        """render_sets of one poses file holding `poses_text` with a PoseStore under `key` (none unless `store`);
+        returns the poses traced, each of which told progress once. A traced pose's files hold its pose line, so a
+        set shows which pose each index got."""
         import contextlib
         import io
         from unittest.mock import patch
@@ -443,20 +445,12 @@ class PoseStoreTests(unittest.TestCase):
                 done(index)
             return 0, 1
 
-        def fake_workers(inputs, plans, samples, done, count):
-            self.assertEqual(count, workers)
-            for plan in plans:
-                _out, target, _folders, _missing, poses, size = plan
-                fake_render(None, None, None, poses, *size, samples, target, done=lambda index: done(plan, index))
-
         poses = out.parent / f"{out.name}.txt"
         poses.write_text(poses_text)
         inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
         with patch.object(reference_render, "lit_source", return_value=object()), \
                 patch.object(reference_render, "render_poses", side_effect=fake_render), \
                 patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
-                patch.object(reference_render, "gpu_workers", return_value=workers), \
-                patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
                 patch.object(produce.keys, "gpu_name", return_value="GPU"), \
                 patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -470,28 +464,26 @@ class PoseStoreTests(unittest.TestCase):
         from r3d.fitted_variant import poses_text
         from r3d.reference_render import POSE_SUFFIXES
 
-        for workers in (1, 3):
-            with self.subTest(workers=workers):
-                poses = [[0.0, 0.0, float(z), 0.0, 0.0, -1.0] for z in (1, 2, 3)]
-                with tempfile.TemporaryDirectory() as directory:
-                    root = pathlib.Path(directory)
-                    cache = root / "cache"
-                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, poses), cache, root / "first", workers=workers), poses)
-                    moved = poses[:1] + [[0.0, 0.0, 9.0, 0.0, 0.0, -1.0]] + poses[2:]
-                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "second", workers=workers), [moved[1]])
-                    for index, pose in enumerate(moved):
-                        for suffix in POSE_SUFFIXES:
-                            self.assertEqual((root / "second" / f"{index:04d}{suffix}").read_text(), repr(pose))
-                    self.assertFalse((root / "second" / ".tracing").exists())
-                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "third"), [],
-                                     "every pose is held")
-                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "fourth", key="other")),
-                                     3, "another render key traces every pose")
-                    self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
-                                     "another pose size traces every pose")
-                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "sixth",
-                                                     workers=workers, store=False)), 3,
-                                     "without a store every pose is traced, each telling progress")
+        poses = [[0.0, 0.0, float(z), 0.0, 0.0, -1.0] for z in (1, 2, 3)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            cache = root / "cache"
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, poses), cache, root / "first"), poses)
+            moved = poses[:1] + [[0.0, 0.0, 9.0, 0.0, 0.0, -1.0]] + poses[2:]
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "second"), [moved[1]])
+            for index, pose in enumerate(moved):
+                for suffix in POSE_SUFFIXES:
+                    self.assertEqual((root / "second" / f"{index:04d}{suffix}").read_text(), repr(pose))
+            self.assertFalse((root / "second" / ".tracing").exists())
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "third"), [],
+                             "every pose is held")
+            self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "fourth", key="other")),
+                             3, "another render key traces every pose")
+            self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
+                             "another pose size traces every pose")
+            self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "sixth", store=False)),
+                             3,
+                             "without a store every pose is traced, each telling progress")
 
 
 # A floor and a wall in OBJ: a scene a spawned worker loads from its file.
@@ -514,75 +506,12 @@ f 5/1 7/1 8/1
 
 
 @unittest.skipIf(np is None, "needs NumPy")
-class WorkerTraceTests(unittest.TestCase):
-    """Poses traced by spawned CUDA workers are the bytes one process writes for them."""
-
-    @needs_mitsuba
-    def test_two_cuda_workers_write_the_files_one_process_writes(self):
-        import contextlib
-        import io
-        import tempfile
-        from unittest.mock import patch
-        from r3d import reference_render
-        from r3d.fitted_variant import poses_text
-        from r3d.reference_set import ReferenceInputs
-
-        if reference_render.reference_variant() != "cuda_ad_rgb":
-            self.skipTest("needs Mitsuba's CUDA variant")
-        with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / "box.obj").write_text(WALL_OBJ)
-            (root / "box.mtl").write_text("newmtl white\nKd 0.8 0.8 0.8\n")
-            settings = SimpleNamespace(source={"path": root / "box.obj"}, path=root / "box.obj", alpha_keep=None,
-                                       double_sided=set(), cards=None, seed=1)
-            inputs = ReferenceInputs(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None, indirect=None),
-                                     lights=[soup.sun([0.3, 0.2, -1.0], [1.0, 1.0, 1.0], 1.0)], indirect=None,
-                                     tonemap_white=2.0, camera=SimpleNamespace(background=0x123456), size=(8, 8),
-                                     poses={})
-            poses = root / "poses.txt"
-            poses.write_text(poses_text(8, 8, 1.0, 0.01, [(LOOK_DOWN + [x, 0.0, 2.0, 0.0, 0.0, 0.0]).tolist()
-                                                         for x in (-0.5, 0.0, 0.5, 1.0)]))
-            for workers in (1, 2):
-                with patch.object(reference_render, "gpu_workers", return_value=workers), \
-                        contextlib.redirect_stdout(io.StringIO()):
-                    reference_render.render_sets(inputs, [(poses, root / str(workers))])
-            names = sorted(path.name for path in (root / "1").iterdir())
-            self.assertEqual(len(names), 4 * len(reference_render.POSE_SUFFIXES))
-            self.assertEqual(sorted(path.name for path in (root / "2").iterdir()), names)
-            for name in names:
-                self.assertEqual((root / "1" / name).read_bytes(), (root / "2" / name).read_bytes(), name)
-
-
-class GpuWorkerTests(unittest.TestCase):
-    """CUDA poses go to as many worker processes as host and GPU memory hold; off CUDA to this process."""
-
-    def workers(self, variant, poses, room):
-        from unittest.mock import patch
-        from r3d import process_budget as budget
-        from r3d import reference_render
-        available = tuple(floor + room * cost for floor, cost in zip(budget.FLOORS, budget.REFERENCE_GPU_BYTES))
-        with patch.object(reference_render, "reference_variant", return_value=variant), \
-                patch.object(reference_render.sys, "platform", "linux"), \
-                patch.object(budget, "available_bytes", return_value=available), \
-                patch.object(budget, "cores_available", return_value=32):
-            return reference_render.gpu_workers(poses)
-
-    def test_cuda_takes_the_workers_memory_holds_and_no_more_than_the_poses(self):
-        self.assertEqual(self.workers("cuda_ad_rgb", 100, 3), 3)
-        self.assertEqual(self.workers("cuda_ad_rgb", 2, 3), 2)
-        self.assertEqual(self.workers("cuda_ad_rgb", 100, 0), 1, "one process even without room for a worker")
-
-    def test_off_cuda_or_for_one_pose_this_process_traces(self):
-        self.assertEqual(self.workers("llvm_ad_rgb", 100, 3), 1)
-        self.assertEqual(self.workers("cuda_ad_rgb", 1, 3), 1)
-
-
 @unittest.skipIf(np is None, "needs NumPy")
 class RepeatTests(unittest.TestCase):
     """A reference set is the fit's target, and a fit magnifies a one-pixel change into a different mesh, so the set
     must repeat byte for byte however often its scene is built (ray_query.py: OptiX may build a different tree)."""
 
-    @needs_mitsuba
+    @needs_llvm
     @needs_llvm
     def test_a_reference_repeats_byte_for_byte_from_a_scene_built_again(self):
         from r3d.path_bake import PathLight
@@ -640,40 +569,6 @@ class RepeatTests(unittest.TestCase):
                 render_one_set(None, lit_source={"return_value": object()},
                                render_poses={"side_effect": failure, "return_value": (0, 1)})
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
-
-
-@needs_mitsuba
-@unittest.skipIf(np is None, "needs NumPy")
-class SkyStreamingTests(unittest.TestCase):
-    def test_sky_directions_are_streamed_and_match_list(self):
-        from unittest.mock import patch
-        from r3d import light as lighting
-        source = plane_source(square())
-        original = lighting.unshadowed_count
-        sky = {"type": "sky", "mode": LIGHT_MODE_BAKED, "rays": 7, "color": [.5, .7, .9], "intensity": .8}
-        points = np.array([[0., 0., .5], [.2, .3, .1]])
-        normals = np.array([[0., 0., -1.], [0., 0., 1.]])
-
-        def render():
-            return lighting.light(points, normals, np.array([False, False]), source.intersector, [sky], .01)
-
-        def streamed(intersector, origin, directions):
-            self.assertFalse(isinstance(directions, list))
-            return original(intersector, origin, directions)
-
-        with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
-            actual = render()
-
-        def list_bake_sky(light, ctx):
-            n = ctx.normals
-            tu, tv = lighting.tangent_frame(n)
-            directions = [tu * x + tv * y + n * z for x, y, z in lighting.sky_directions(light['rays'])]
-            visible = original(ctx.intersector, ctx.origin, directions) / light['rays']
-            return visible[:, None] * np.array(light['color']) * light['intensity']
-
-        with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
-            expected = render()
-        self.assertEqual(actual.tobytes(), expected.tobytes())
 
 
 POSE_BARRIER = None

@@ -8,7 +8,6 @@ import tempfile
 import unittest
 from copy import copy
 from types import SimpleNamespace
-from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -21,8 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.r3d_env import have_llvm  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 CARD_Z, PLANE_Z, EYE_Z = 1.0, 0.0, 3.0
 HALF = 1.0
@@ -77,8 +75,9 @@ class AlphaTestTests(unittest.TestCase):
     def test_a_hit_is_solid_where_the_texel_at_its_uv_is_kept(self):
         triangles, locations = self.card_hits()
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles, locations), SOLID)
-        self.source.uv += [2.0, -1.0]
-        np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles, locations), SOLID,
+        shifted = copy(self.source)  # a source's device table is built once, so a changed source is a new one
+        shifted.uv = self.source.uv + [2.0, -1.0]
+        np.testing.assert_array_equal(light.AlphaTest(shifted, KEEP_ALPHA)(triangles, locations), SOLID,
                                       "texture coordinates outside 0..1 should repeat")
 
     def test_opaque_and_untextured_materials_are_solid_without_a_sample(self):
@@ -87,8 +86,8 @@ class AlphaTestTests(unittest.TestCase):
         opaque.levels = [np.ones_like(level) for level in opaque.levels]
         self.source.textures[1] = opaque
         alpha = light.AlphaTest(self.source, KEEP_ALPHA)
-        with mock.patch.object(opaque, "sample", side_effect=AssertionError("opaque texture sampled")):
-            np.testing.assert_array_equal(alpha(triangles + 2, locations), True)
+        self.assertFalse(alpha.tested[1], "an opaque texture is not sampled")
+        np.testing.assert_array_equal(alpha(triangles + 2, locations), True)
         self.source.textures[1] = None
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles + 2, locations), True)
         np.testing.assert_array_equal(alpha(np.zeros(0, dtype=int), np.zeros((0, 3))), [])
@@ -98,13 +97,11 @@ class AlphaTestTests(unittest.TestCase):
         colour = np.array([[[0.2, 0.4, 0.6, 1.0]]])
         texture = Texture.from_levels([colour])
         self.source.textures[0] = texture
-        alpha = light.AlphaTest(self.source, KEEP_ALPHA)
-        with mock.patch.object(texture, "sample", wraps=texture.sample) as sample:
-            actual = alpha.rgba(hits, points)
-        self.assertEqual(sample.call_count, 1)
-        np.testing.assert_allclose(actual, np.repeat(colour[0], len(hits), axis=0))
-        self.source.textures[0] = None
-        np.testing.assert_array_equal(alpha.rgba(hits, points), 1.)
+        np.testing.assert_allclose(light.AlphaTest(self.source, KEEP_ALPHA).rgba(hits, points),
+                                   np.repeat(colour[0], len(hits), axis=0), rtol=1e-6)
+        untextured = copy(self.source)
+        untextured.textures = [None] + self.source.textures[1:]
+        np.testing.assert_array_equal(light.AlphaTest(untextured, KEEP_ALPHA).rgba(hits, points), 1.)
 
     def test_a_material_is_alpha_tested_when_any_texel_is_at_or_under_the_opaque_line(self):
         def texture(alpha_min):
@@ -126,9 +123,10 @@ class AlphaTestTests(unittest.TestCase):
             level[row, column, 3] = alpha
             # The coarser level averages the texel away; only level 0 still cuts it.
             texture.levels = [level.copy(), np.ones((TEXELS // 2, TEXELS // 2, 4))]
-            self.source.textures[0] = texture
+            source = copy(self.source)
+            source.textures = [copy(texture)] + self.source.textures[1:]
             with self.subTest(alpha=alpha):
-                np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangle, location), [solid])
+                np.testing.assert_array_equal(light.AlphaTest(source, KEEP_ALPHA)(triangle, location), [solid])
 
     def test_drop_masked_keeps_the_triangles_mostly_opaque(self):
         source = checker_source(self.directory, plane=False)
@@ -147,7 +145,7 @@ class AlphaTestTests(unittest.TestCase):
         np.testing.assert_array_equal(tri_v, source.tri_v[keep])
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FilteredQueryTests(unittest.TestCase):
     def setUp(self):
@@ -163,7 +161,7 @@ class FilteredQueryTests(unittest.TestCase):
 
     def test_every_query_method_passes_the_cut_texels(self):
         origins, directions = checker_rays()
-        for variant in ("scalar_rgb", "llvm_ad_rgb") if have_llvm() else ("scalar_rgb",):
+        for variant in ("llvm_ad_rgb",):
             with self.subTest(variant=variant):
                 query = self.query(variant)
                 where, rays, faces = query.first_hit(origins, directions)

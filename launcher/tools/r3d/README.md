@@ -348,10 +348,10 @@ A reference set traces its rays and bounced light on the fastest variant the mac
 (`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
 A bake takes `cuda_ad_rgb` only (`produce.REFERENCE_VARIANT`) and fails on any other, so a locked set is always a
 GPU trace; tools that only look at a set may trace one on the CPU.
-A pose's trace is NumPy-bound on the CPU and leaves the GPU mostly idle, so on CUDA spawned worker processes trace
-the poses side by side (`reference_render.gpu_workers`), as many as free host and GPU memory hold at
-`process_budget.REFERENCE_GPU_BYTES` each. Each pose is traced alone with its own seeds, so its files do not depend
-on the worker. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
+A pose stays on the device from its camera rays to each hit's colour and normal (`reference_render.trace`), in
+launches of at most `ray_query.LAUNCH` rays, so one process keeps the GPU busy and the set's poses are traced in
+it one after another. Each pose is traced alone with its own seeds, so its files do not depend on what was traced
+before it. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
 
 OptiX does not promise the same acceleration structure from the same
 triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>, and a shadow ray grazing an edge hits or

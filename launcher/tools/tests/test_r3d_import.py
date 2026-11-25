@@ -21,7 +21,7 @@ from anim_probe import write_camera_clip  # noqa: E402
 try:
     import numpy as np
     from tests.soup import sun
-    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
+    from tests import soup
 
     from r3d import mesh_import, mesh_source, ray_query
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
@@ -29,7 +29,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
@@ -768,7 +768,7 @@ class AuthoredImportTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "output.directory is gone"):
                 load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n'))
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_baked_renderer_writes_its_mesh_beside_the_scene_named_by_scene_and_object(self):
         objects = renderer(extra="bake = true\n") + sun_object()
         with tempfile.TemporaryDirectory() as directory:
@@ -779,7 +779,7 @@ class AuthoredImportTests(unittest.TestCase):
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_fitted_renderer_without_a_gpu_writes_its_cpu_start(self):
         objects = (renderer(extra='bake = true\nvariant = "mesh"\n' + FIT) + sun_object()
                    + camera(path=True, region=False))
@@ -793,7 +793,7 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertLessEqual(len(lit.tris), 10)
         self.assertIn("CUDA", err.getvalue())
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_lit_bake_welds_on_its_own_position_scale_so_a_small_model_keeps_its_triangles(self):
         size = 0.01  # model units far below one: a centimetre cube modelled in metres
         scale = 65536
@@ -807,14 +807,8 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertEqual(len(lit.tris), 12)
 
 
-class ClearIntersector:
-    def blocked(self, origins, directions):
-        return np.zeros(len(origins), dtype=bool)
-
-
-
 def radiance(lights, normal, double_sided):
-    return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
+    return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), soup.Open(),
                  lights, 0.5)
 
 
@@ -825,7 +819,7 @@ class LightListTests(unittest.TestCase):
             sun([0, 1, 0], [1, 0, 0], 2),
             sun([0, 1, 0], [0, 1, 0], 3),
         ]
-        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
+        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), soup.Open())
         first = light(*args, lights, 0.5)
         np.testing.assert_allclose(first, [[2.0, 3.0, 0.0]])
         np.testing.assert_allclose(light(*args, lights[::-1], 0.5), first)
@@ -968,7 +962,7 @@ class PathLightForTests(unittest.TestCase):
         self.assertEqual(built.call_count, 1)
 
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
-        other_variant = "llvm_ad_rgb" if ray_query.VARIANT == "scalar_rgb" else "scalar_rgb"
+        other_variant = "cuda_ad_rgb" if ray_query.VARIANT != "cuda_ad_rgb" else "llvm_ad_rgb"
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
         with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:

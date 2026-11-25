@@ -499,7 +499,7 @@ class InstancesFigureTests(unittest.TestCase):
         from r3d.ray_query import RayQuery
 
         wall = np.array([[-5., -5., -5.], [5., -5., -5.], [5., 5., -5.], [-5., 5., -5.]])
-        query = RayQuery(wall, np.array([[0, 1, 2], [0, 2, 3]]), variant='scalar_rgb')
+        query = RayQuery(wall, np.array([[0, 1, 2], [0, 2, 3]]), variant='llvm_ad_rgb')
         for z, expected in ((-10., False), (-2., True)):
             _, visible = edge_visibility(query, np.zeros(3), np.array([-1., 0., z]), np.array([1., 0., z]), 0.001)
             self.assertTrue((visible == expected).all())
@@ -511,7 +511,7 @@ class InstancesFigureTests(unittest.TestCase):
         pose, size, lens, near = np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1.
         edge = np.array([[0.2, 0.1, -0.5], [0.2, 0.1, -2.]])
         boxes = np.tile(edge, (1, 4, 1))
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)), \
                 patch('r3d.objects.instances_figure.edge_visibility', wraps=edge_visibility) as sampled:
             segments, owners = visible_segments(boxes, np.array([7]), pose, size, lens, near, query)
@@ -527,7 +527,7 @@ class InstancesFigureTests(unittest.TestCase):
 
         size = (100, 80)
         boxes = np.tile(np.array([[0., 0., -2.], [10., 0., -2.]]), (1, 4, 1))
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)):
             segments, owners = visible_segments(boxes, np.array([3]), np.array([0., 0., 0., 0., 0., -1.]),
                                                size, 0.6, 1., query)
@@ -541,7 +541,7 @@ class InstancesFigureTests(unittest.TestCase):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
 
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         for offset in ([100., 0., -5.], [0., 0., 5.]):
             with self.subTest(offset=offset):
                 boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset])
@@ -556,7 +556,7 @@ class InstancesFigureTests(unittest.TestCase):
 
         boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset
                           for offset in ([100., 0., -5.], [-2., 0., -10.], [0., 0., 5.], [2., 0., -10.])])
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         segments, owners = visible_segments(boxes, np.array([11, 23, 37, 49]),
                                            np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1., query)
         self.assertEqual(set(owners), {23, 49})

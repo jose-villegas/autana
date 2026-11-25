@@ -25,7 +25,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 try:
     from tests import soup
@@ -891,7 +891,7 @@ class RefineTests(unittest.TestCase):
             self.assertEqual(bool(refined.double[k]), bool(double[parents[0]]))
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None or soup is None, "the r3d environment is not installed")
 class PathVisibilityTests(unittest.TestCase):
     def test_a_pose_keeps_what_it_sees_and_passes_through_culled_faces(self):
