@@ -40,6 +40,7 @@ def assert_fakes_ended(case, calls):
     while alive and time.monotonic() < deadline:
         time.sleep(POLL_SECONDS)
         alive = [call for call in alive if fake_running(call)]
+    alive = [dict(call, start_now=process_start(call["pid"])) for call in alive]
     case.assertEqual(alive, [], "fakes outlived their job")
 
 

@@ -105,6 +105,8 @@ fi
 . "$REPO_ROOT/scripts/lib/python.sh"
 # shellcheck source=lib/native_path.sh
 . "$REPO_ROOT/scripts/lib/native_path.sh"
+# shellcheck source=../launcher/tools/build/find_cc.sh
+. "$REPO_ROOT/launcher/tools/build/find_cc.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 # The slowest tests a file's block in the log names; unittest has
 # --durations from Python 3.12.
@@ -141,34 +143,52 @@ mkdir -p "$UNIT_DIR"
 
 # Several suites compile the same sources: run_tests.sh's host build, each in
 # a build dir of its own, and a scene renderer per suite. With ccache on PATH,
-# each compiler they can find (cc, gcc, clang, or $CC) is a same-named copy of
-# ccache in a folder first on PATH, ccache's masquerade, so a translation unit
-# compiled once, in this run or a cached earlier one, is not compiled again.
-# The real compiler's folder follows the copies on PATH because on Windows a
-# copy loads ccache's DLLs from there. CCACHE_NOHASHDIR lets two build dirs
-# share an object; a hit's debug info names the first one's folder.
+# each compiler they can find (FIND_CC_NAMES, or $CC) is a same-named copy of
+# ccache in a folder put first on PATH, ccache's masquerade: a copy runs the
+# compiler of its name found next on PATH, so a translation unit compiled once,
+# in this run or a cached earlier one, is not compiled again. A $CC given as a
+# path gets a copy only where PATH finds that same file. On Windows a copy loads
+# DLLs from its own folder first, so the DLLs ccache imports from beside it are
+# copied too. If a copy cannot run a compiler, PATH stays as it was. ccache
+# waits on a held lock forever, so a cached run goes through ccache_watch.py,
+# which stops it naming the lock; the log ends with the cache's statistics.
+# CCACHE_NOHASHDIR lets two build dirs share an object; a hit's debug info names
+# the first one's folder.
 cache_compilers() {
     ccache=$(command -v ccache) || return 0
-    exe=""
-    [ ! -f "$ccache.exe" ] || exe=.exe
     masks="$UNIT_DIR/compilers"
     mkdir -p "$masks"
-    real_dirs=""
-    for name in ${CC:+"$CC"} cc gcc clang; do
-        real=$(command -v "$name") || continue
-        mask="$masks/$(basename -- "$name" .exe)$exe"
-        if [ ! -e "$mask" ]; then
-            if [ -n "$exe" ]; then cp "$ccache.exe" "$mask"; else ln -s "$ccache" "$mask"; fi
-            # shellcheck disable=SC1007
-            real_dirs="$real_dirs$(CDPATH= cd -- "$(dirname -- "$real")" && pwd):"
-        fi
+    exe=""
+    if [ -f "$ccache.exe" ]; then
+        exe=.exe
+        home=$(dirname -- "$ccache")
+        objdump -p "$ccache.exe" 2>/dev/null | sed -n 's/.*DLL Name: //p' | while read -r dll; do
+            [ ! -f "$home/$dll" ] || cp "$home/$dll" "$masks/"
+        done
+    fi
+    cc=""
+    # shellcheck disable=SC2086
+    for name in ${CC:+"$CC"} $FIND_CC_NAMES; do
+        base=$(basename -- "$name" .exe)
+        real=$(command -v "$base") || continue
+        case "$name" in
+            */*)
+                # shellcheck disable=SC1007
+                [ "$(CDPATH= cd -- "$(dirname -- "$real")" && pwd)/$(basename -- "$real" .exe)" =                   "$(CDPATH= cd -- "$(dirname -- "$name")" 2>/dev/null && pwd)/$base" ] || continue ;;
+        esac
+        mask="$masks/$base$exe"
+        [ -e "$mask" ] || if [ -n "$exe" ]; then cp "$ccache.exe" "$mask"; else ln -s "$ccache" "$mask"; fi
+        [ -n "$cc" ] || cc=$mask
         [ "$name" != "${CC:-}" ] || CC=$(to_native "$mask")
     done
-    PATH="$masks:$real_dirs$PATH"
+    [ -n "$cc" ] && CCACHE_DISABLE=1 "$cc" --version >/dev/null 2>&1 || return 0
+    PATH="$masks:$PATH"
+    WATCH=$(to_native "$REPO_ROOT/launcher/tools/build/ccache_watch.py")
     CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR:-1}
     export PATH CCACHE_NOHASHDIR ${CC:+CC}
 }
-cache_compilers
+WATCH=""
+[ -z "$PYTHON" ] || cache_compilers
 # This run's seconds and files; a shard's go in files of its own, and every
 # seconds file is read.
 case "$SHARD" in 1/1) RUN="$BUILD_DIR/run-tool-tests" ;; *) RUN="$BUILD_DIR/run-tool-tests.${SHARD%/*}" ;; esac
@@ -182,7 +202,10 @@ case "$SHARD" in 1/1) RUN="$BUILD_DIR/run-tool-tests" ;; *) RUN="$BUILD_DIR/run-
     awk -v shard="$SHARD" 'BEGIN { split(shard, s, "/") }
         { least = 1; for (k = 2; k <= s[2]; k++) if (load[k] < load[least]) least = k
           load[least] += $1 > 1 ? $1 : 1; if (least == s[1]) print $3 }' >"$UNIT_DIR/order"
-[ ! -s "$UNIT_DIR/order" ] || xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
+if [ ! -s "$UNIT_DIR/order" ]; then :
+elif [ -n "$WATCH" ]; then "$PYTHON" "$WATCH" -- xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
+else xargs -P "$JOBS" -n 1 sh "$0" --unit <"$UNIT_DIR/order"
+fi
 sort "$UNIT_DIR/order" >"$RUN.order"
 
 : >"$UNIT_DIR/times"
@@ -195,6 +218,7 @@ while IFS= read -r file; do
     cat "$out.time" >>"$UNIT_DIR/times" 2>/dev/null || true
     quiet_record "$file" "$(cat "$out.status" 2>/dev/null || echo 1)"
 done <"$RUN.order"
+[ -z "$WATCH" ] || { echo "== ccache =="; ccache --show-stats; } >>"$QUIET_LOG" 2>&1 || :
 # A file's time depends on what ran beside it, so what is kept is the mean with
 # last run's, not this run's alone, or the shares swing from run to run.
 awk 'NR == FNR { known[$3] = $1; next } { print known[$2] ? int((known[$2] + $1 + 1) / 2) : $1, $2 }' \

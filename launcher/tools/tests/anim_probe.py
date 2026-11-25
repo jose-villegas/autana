@@ -127,16 +127,18 @@ def has_compiler():
 
 
 def build_sampler_once():
-    """Builds track_host and has track_host.program() return that build until the calling test file ends.
+    """Builds track_host and has track_host.program() return that build until the calling test file ends,
+    while track_host.SOURCES is what it was built from; a test that points SOURCES elsewhere builds anew.
 
     program() asks the compiler for the program's headers on every call to see whether to rebuild, which
-    costs more than the sample it serves, and a test file does not change the sources it builds from. Call
-    it from setUpModule. Without a compiler it does nothing."""
+    costs more than the sample it serves. Call it from setUpModule. Without a compiler it does nothing."""
+    build, sources = track_host.program, track_host.SOURCES
     try:
-        built = track_host.program()
-    except track_host.TrackHostError:
+        built = build()
+    except (track_host.TrackHostError, OSError):
         return
-    patcher = mock.patch.object(track_host, "program", return_value=built)
+    patcher = mock.patch.object(track_host, "program",
+                                side_effect=lambda: built if track_host.SOURCES == sources else build())
     patcher.start()
     unittest.addModuleCleanup(patcher.stop)
 
