@@ -3,6 +3,8 @@
 
 import pathlib
 
+from r3d.import_settings import flight_camera  # noqa: F401 - the path tools' name for it
+
 
 def read_poses(path):
     """Read a track sampler pose file as (width, height, lens, near, poses)."""
@@ -92,6 +94,16 @@ def sample_camera_path(animation, node, every_ms, width, height, lens, near):
 
     width, height, lens, near, rows = sample_camera_rows(animation, node, every_ms, width, height, lens, near)
     return width, height, lens, near, [np.array(row, dtype=float) for row in rows]
+
+
+def path_poses(camera, size, every_ms, either_way_up=True):
+    """The poses along `camera`'s path every `every_ms` at `size`, through a
+    square view that covers the panel held either way up unless
+    `either_way_up` is False."""
+    width, height = size
+    poses = sample_camera_path(camera.path.animation, camera.path.node, every_ms, width, height,
+                               camera.half_fov_short_tan, camera.near_z)
+    return either_way(*poses) if either_way_up else poses
 
 
 def sample_camera_rows(animation, node, every_ms, width, height, lens, near):

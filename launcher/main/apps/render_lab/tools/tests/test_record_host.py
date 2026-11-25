@@ -32,8 +32,8 @@ BUDGET_TRIANGLES = 1200
 RECORDED = {
     "herd": ["--scene", "herd-8"],
     "water": ["--quarter", "0", "--scene", "water", "--console", "0:water tour"],
-    "sponza": ["--scene", "sponza-fitted-full"],
-    "budget": ["--scene", "sponza-fitted-full", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
+    "sponza": ["--scene", "sponza"],
+    "budget": ["--scene", "sponza", "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
 
 

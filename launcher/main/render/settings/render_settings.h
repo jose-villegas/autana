@@ -26,12 +26,14 @@ typedef enum {
 /* The longest lod.blend_px a pack may set: past it a group would blend
  * across most of the band where it stays coarse. */
 #define RENDER_LOD_BLEND_PX_MAX 4.0F
+/* The most frames lod.pick_every may spread the pick over. */
+#define RENDER_LOD_PICK_EVERY_MAX 8
 
 typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
-    int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int pick_every; /* advanced [1, RENDER_LOD_PICK_EVERY_MAX]: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
     int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
     int blend; /* basic [0, RENDER_LOD_BLEND_COUNT): 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced (0.0, RENDER_LOD_BLEND_PX_MAX]: the error past a switch over which a blend fades out; longer is softer, moves more */
@@ -54,6 +56,9 @@ typedef struct {
 #define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
+/* Steps per texel in which the span target and the tune override hold
+ * texture.affine_bend, rounded. */
+#define RENDER_TEXTURE_BEND_STEPS    16
 /* The last mip level a texture has: the largest level setting a pack may name. */
 #define RENDER_TEXTURE_LEVEL_MAX     7
 
@@ -61,6 +66,7 @@ typedef struct {
     int divide_px; /* basic [0, RENDER_TEXTURE_DIVIDE_PX_MAX]: fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend */
     float affine_bend; /* advanced [0.0, RENDER_TEXTURE_BEND_MAX]: texels a triangle may bend and still step affine; larger is faster, bends more */
     int affine_level; /* advanced [0, RENDER_TEXTURE_LEVEL_MAX]: first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide */
+    int far_level; /* basic [0, RENDER_TEXTURE_LEVEL_MAX]: first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level */
 } render_texture_settings_t;
 
 /* small_fill.style: the colour kernel above the always-flat side. */

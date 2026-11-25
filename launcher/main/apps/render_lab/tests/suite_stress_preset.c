@@ -127,7 +127,7 @@ release(void) {
 }
 
 static bool
-same_source(const r3d_dynamic_source_t* a, const r3d_dynamic_source_t* b) {
+same_source(const r3d_mesh_source_t* a, const r3d_mesh_source_t* b) {
     return a->vertex_count == b->vertex_count && a->triangle_count == b->triangle_count
            && memcmp(a->positions, b->positions, sizeof(vec3f_t) * (size_t)a->vertex_count) == 0
            && memcmp(a->colors, b->colors, sizeof(uint8_t[3]) * (size_t)a->vertex_count) == 0
@@ -152,7 +152,7 @@ test_every_preset_has_its_row(void) {
 }
 
 static bool
-fixture_pair(const stress_params_t* p, uint32_t later_ms, r3d_dynamic_source_t pair[FIXTURE_SETS]) {
+fixture_pair(const stress_params_t* p, uint32_t later_ms, r3d_mesh_source_t pair[FIXTURE_SETS]) {
     if (!fixture_begin(p, FIXTURE_SETS)) {
         return false;
     }
@@ -165,7 +165,7 @@ static void
 test_every_preset_mesh_is_whole_and_repeats(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        r3d_dynamic_source_t pair[FIXTURE_SETS];
+        r3d_mesh_source_t pair[FIXTURE_SETS];
         if (!fixture_pair(p, 0, pair)) {
             continue;
         }
@@ -185,7 +185,7 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
 static void
 mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
     capacity.textured = source.uvs != NULL;
@@ -226,7 +226,7 @@ test_a_per_frame_mesh_fits_all_through_its_wave(void) {
     r3d_dynamic_mesh_t mesh;
     TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
     for (int step = 0; step < WAVE_STEPS; step++) {
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, (uint32_t)(step * WAVE_STEP_MS), &f.at[0], &source));
         TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
     }
@@ -238,7 +238,7 @@ static void
 test_only_a_per_frame_preset_moves(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        r3d_dynamic_source_t pair[FIXTURE_SETS];
+        r3d_mesh_source_t pair[FIXTURE_SETS];
         if (!fixture_pair(p, WAVE_LATER_MS, pair)) {
             continue;
         }
@@ -352,7 +352,7 @@ test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
         if (!fixture_begin(p, 1)) {
             continue;
         }
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
         TEST_ASSERT_EQUAL(i == STRESS_TWO_SIDED, source.double_sided);
         release();
@@ -363,7 +363,7 @@ test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
 /* The widest per-channel spread of a triangle's corners, in RGB565 units, packed and measured as the small-fill
  * gate does. */
 static int
-corner_spread(const r3d_dynamic_source_t* s, int t) {
+corner_spread(const r3d_mesh_source_t* s, int t) {
     unsigned low[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
     unsigned high[3] = {0, 0, 0};
     for (int k = 0; k < 3; k++) {
@@ -398,7 +398,7 @@ test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
     TEST_ASSERT_GREATER_THAN_INT(R3D_SPAN_SMALL_MAX_SIDE, narrowest);
     TEST_ASSERT_LESS_OR_EQUAL_INT(gate.ceiling, widest);
     fixture_begin(p, 1);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     for (int t = 0; t < source.triangle_count; t++) {
         for (int side = narrowest; side <= widest; side++) {
@@ -415,7 +415,7 @@ test_mixed_copies_split_colour_modes(void) {
     for (int copy = 0; copy < STRESS_MIX_LEVELS; copy++) {
         const stress_params_t p = stress_copy_params(&stress_presets[STRESS_MIX], copy);
         fixture_begin(&p, 1);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(&p, 0, &f.at[0], &source));
         int uniform = 0;
         for (int t = 0; t < source.triangle_count; t++) {
@@ -434,7 +434,7 @@ test_uniform_presets_have_equal_corner_colours_and_large_coverage(void) {
     for (int i = 0; i < (int)(sizeof presets / sizeof presets[0]); i++) {
         const stress_params_t* p = &stress_presets[presets[i]];
         fixture_begin(p, 1);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
         for (int t = 0; t < source.triangle_count; t++) {
             TEST_ASSERT_EQUAL_INT(0, corner_spread(&source, t));
@@ -480,7 +480,7 @@ test_card_has_holes_colour_steps_and_scene_size_bins(void) {
     const stress_params_t* p = &stress_presets[STRESS_CARD];
     counted_fixture(p);
     TEST_ASSERT_LESS_THAN_INT(2 * p->cuts * p->cuts, stress_triangle_count(p));
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     int stepped = 0;
     for (int t = 0; t < source.triangle_count; t++) {
@@ -581,7 +581,7 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
 
 /* Whether (x, y) is inside triangle t of `src`, seen down z, either winding. */
 static bool
-covers(const r3d_dynamic_source_t* src, int t, float x, float y) {
+covers(const r3d_mesh_source_t* src, int t, float x, float y) {
     const vec3f_t* p[3];
     for (int k = 0; k < 3; k++) {
         p[k] = &src->positions[src->triangles[t][k]];
@@ -619,9 +619,22 @@ test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
                                    stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
 }
 
+/* stress-textured-far is stress-textured's plane, many and small: the same
+ * shape, surface and camera, its copies drawn smaller than the one plane. */
+static void
+test_the_textured_far_twin_differs_by_its_copies_and_size_alone(void) {
+    const stress_params_t* near = &stress_presets[STRESS_TEXTURED];
+    stress_params_t far = stress_presets[STRESS_TEXTURED_FAR];
+    TEST_ASSERT_GREATER_THAN_INT(near->copies, far.copies);
+    TEST_ASSERT_GREATER_THAN_FLOAT(stress_cut_px(&far, DEFAULT_SHORT_PX), stress_cut_px(near, DEFAULT_SHORT_PX));
+    far.copies = near->copies;
+    far.coverage_percent = near->coverage_percent;
+    TEST_ASSERT_EQUAL_MEMORY(near, &far, sizeof far);
+}
+
 /* Cards of `source` over sample (sx, sy) of a FOLIAGE_SAMPLES grid on the unit square. */
 static int
-cards_over(const r3d_dynamic_source_t* source, int sx, int sy) {
+cards_over(const r3d_mesh_source_t* source, int sx, int sy) {
     const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
     const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
     int depth = 0;
@@ -653,7 +666,7 @@ static void
 test_foliage_cards_overlap_and_span_their_texture_corner_to_corner(void) {
     const stress_params_t* p = &stress_presets[STRESS_FOLIAGE_NEAR];
     mesh_fixture(p);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     int covered = 0;
     int layers = 0;
@@ -988,6 +1001,7 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
     RUN_TEST(test_foliage_presets_differ_from_their_twins_by_the_mask_alone);
+    RUN_TEST(test_the_textured_far_twin_differs_by_its_copies_and_size_alone);
     RUN_TEST(test_foliage_cards_overlap_and_span_their_texture_corner_to_corner);
     RUN_TEST(test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card);
 }

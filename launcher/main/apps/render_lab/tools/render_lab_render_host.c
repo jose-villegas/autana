@@ -263,6 +263,14 @@ scene_options(int argc, char** argv, const char* scene, const char* view) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
         return false;
     }
+    if (lab_scene_index(&render_lab, scene) < 0) {
+        (void)fprintf(stderr, "render_lab_render_host: no scene %s; --scene is one of", scene);
+        for (int i = 0; i < render_lab.scene_count; i++) {
+            (void)fprintf(stderr, " %s", render_lab.scenes[i]->key);
+        }
+        (void)fputc('\n', stderr);
+        return false;
+    }
     if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
         (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
         return false;
@@ -274,8 +282,8 @@ scene_options(int argc, char** argv, const char* scene, const char* view) {
     return true;
 }
 
-/* Which names are valid is app_render_lab.c's own knowledge (each scene's
- * .key, lab/lab_scene.h) - this only hands the string through. */
+/* Which scene keys are valid is the lab's own list (each scene's .key,
+ * lab/lab_scene.h); an unknown one is refused with that list. */
 static bool
 options(int argc, char** argv) {
     if (flag(argc, argv, "--stress-runs")) {
@@ -499,6 +507,11 @@ draw(const provider_frame_t* frame) {
     }
 }
 
+static uint32_t
+path_ms(void) {
+    return lab_path_duration_ms(&render_lab);
+}
+
 const frame_provider_t render_lab_provider = {
     .name = "render_lab",
     .quarter = 1,
@@ -510,4 +523,5 @@ const frame_provider_t render_lab_provider = {
     .frame_count = frame_count,
     .setup = setup,
     .draw = draw,
+    .path_ms = path_ms,
 };

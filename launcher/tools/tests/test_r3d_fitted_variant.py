@@ -32,8 +32,8 @@ try:
 except ImportError:
     Image = render_compare = None
 
-# An import that sets neither geometry.probes nor geometry.budget.
-UNSHAPED = SimpleNamespace(probes=None, budget=None)
+# An import without geometry.probes.
+UNSHAPED = SimpleNamespace(probes=None)
 
 
 @unittest.skipIf(mesh_import is None, "needs the r3d environment")
@@ -113,32 +113,40 @@ class PlacedVariantTests(unittest.TestCase):
         except Exception as error:
             raise unittest.SkipTest(f"the Sponza scene does not load here: {error}")
 
+    # Two fitted renderers sharing a variant, one with a variant of its own, and an unfitted one.
+    SHARED = SimpleNamespace(renderers=[fake_job("hall_fit", "s.hall_fit", "s_full"),
+                                        fake_job("hall_other", "s.hall_other", "s_full"),
+                                        fake_job("hall_small", "s.hall_small", "s_small"),
+                                        fake_job("hall", "s.hall", "s_full", fitted=False)])
+
+    def test_the_scenes_fitted_renderer_is_found_by_object_asset_and_variant(self):
+        job = next(item for item in self.sponza.renderers if item.renderer.fit)
+        for name in (job.object.name, job.asset_name, job.renderer.variant.name):
+            self.assertIs(fitted_variant.placed_variant(self.sponza, name), job)
+
     def test_a_scene_object_name_picks_its_own_renderer_even_when_a_variant_is_shared(self):
-        for name in ("atrium_fitted_full", "atrium_flat_fitted", "atrium_fitted"):
-            job = fitted_variant.placed_variant(self.sponza, name)
-            self.assertEqual(job.object.name, name)
-        self.assertEqual(fitted_variant.placed_variant(self.sponza, "atrium_flat_fitted").renderer.variant.name,
-                         "sponza_fitted_full")
+        for name in ("hall_fit", "hall_other", "hall_small"):
+            self.assertEqual(fitted_variant.placed_variant(self.SHARED, name).object.name, name)
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "hall_other").renderer.variant.name, "s_full")
 
     def test_an_asset_name_picks_its_own_renderer(self):
-        job = fitted_variant.placed_variant(self.sponza, "sponza.atrium_flat_fitted")
-        self.assertEqual(job.object.name, "atrium_flat_fitted")
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "s.hall_other").object.name, "hall_other")
 
     def test_a_variant_only_one_fitted_object_uses_names_that_object(self):
-        self.assertEqual(fitted_variant.placed_variant(self.sponza, "sponza_fitted").object.name, "atrium_fitted")
+        self.assertEqual(fitted_variant.placed_variant(self.SHARED, "s_small").object.name, "hall_small")
 
     def test_a_variant_two_fitted_objects_share_is_refused_naming_both(self):
         with self.assertRaises(fitted_variant.SettingsError) as caught:
-            fitted_variant.placed_variant(self.sponza, "sponza_fitted_full")
+            fitted_variant.placed_variant(self.SHARED, "s_full")
         message = str(caught.exception)
-        self.assertIn("atrium_fitted_full", message)
-        self.assertIn("atrium_flat_fitted", message)
-        self.assertNotIn("atrium_fitted,", message)
+        self.assertIn("hall_fit", message)
+        self.assertIn("hall_other", message)
+        self.assertNotIn("hall_small", message)
 
     def test_unknown_names_and_objects_that_are_not_fitted_are_refused(self):
-        for name in ("no_such_object", "sponza_lite", "atrium", "atrium_flat", "atrium_lite", "sponza"):
+        for name in ("no_such_object", "hall", "s.hall"):
             with self.assertRaisesRegex(fitted_variant.SettingsError, "no fitted variant"):
-                fitted_variant.placed_variant(self.sponza, name)
+                fitted_variant.placed_variant(self.SHARED, name)
 
     def test_an_object_name_wins_over_another_objects_variant_of_the_same_name(self):
         scene = SimpleNamespace(renderers=[fake_job("wanted", "s.wanted", "other"), fake_job("second", "s.second", "wanted")])
@@ -198,6 +206,22 @@ class SweepTests(unittest.TestCase):
             fitted_variant.sweep_main([str(scene), "--variant", "paint", "--budgets", "5", "--out", directory])
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
+
+    def test_probe_import_refuses_sweep_budgets(self):
+        import contextlib
+        import io
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=10)),
+                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())))
+        error = io.StringIO()
+        with unittest.mock.patch.object(fitted_variant, "load_scene"), \
+                unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                unittest.mock.patch.object(fitted_variant, "sweep_references", side_effect=AssertionError("sweep ran")), \
+                contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+            fitted_variant.sweep_main(["scene.toml", "--variant", "mesh", "--budgets", "5", "--out", "out"])
+        self.assertIn("--budgets", error.getvalue())
+        self.assertIn("geometry.probes", error.getvalue())
+        with self.assertRaisesRegex(ValueError, "budget.*geometry.probes"):
+            stage.fit("scene.toml", None, job, pathlib.Path("out"), budget=5)
 
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -291,7 +315,8 @@ class SweepTests(unittest.TestCase):
         start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
-                                   fit=SimpleNamespace(size=(2, 3), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
+                                   fit=SimpleNamespace(size=(2, 3), samples=1, denoise=False, train_every_ms=1,
+                                                       held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path", size=(9, 7)))
         job = SimpleNamespace(settings=SimpleNamespace(path="settings", fit=UNSHAPED), bake=SimpleNamespace(), renderer=renderer,
                               object=SimpleNamespace(name="tiny"))
@@ -309,6 +334,7 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(render.call_count, 1)
         self.assertEqual(prepare.call_args.args[0].size, renderer.fit.size)
         inputs, sets = render.call_args.args
+        self.assertEqual((inputs.samples, inputs.denoise), (renderer.fit.samples, renderer.fit.denoise))
         self.assertIsInstance(inputs, fitted_variant.ReferenceInputs)
         self.assertEqual(inputs.size, renderer.fit.size)
         self.assertEqual([folder.name for _poses, folder in sets],
@@ -324,6 +350,8 @@ class SweepTests(unittest.TestCase):
         def fitter(command):
             out = pathlib.Path(command[command.index("--out") + 1])
             out.mkdir(parents=True)
+            self.assertNotIn("--budget", command)
+            self.assertIn("--held-out-poses", command)
             self.assertEqual(command[command.index("--object") + 1], job.object.name)
             for key in ("surface_weight", "surface_margin"):
                 self.assertEqual(float(command[command.index("--" + key.replace("_", "-")) + 1]), getattr(recipe, key))
@@ -331,7 +359,7 @@ class SweepTests(unittest.TestCase):
 
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
-                              settings=SimpleNamespace(fit=UNSHAPED), renderer=SimpleNamespace(
+                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())), renderer=SimpleNamespace(
             fit=recipe, variant=SimpleNamespace(name="variant_name")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
@@ -344,7 +372,8 @@ class SweepTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):
-        fit = SimpleNamespace(size=(8, 6), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
+        fit = SimpleNamespace(size=(8, 6), samples=1, denoise=False, train_every_ms=1, held_out_every_ms=2,
+                              coverage_every_ms=3)
         scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
         size = (8, 6)
         for source in ("camera_region", None):

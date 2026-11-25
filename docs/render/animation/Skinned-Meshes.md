@@ -168,102 +168,17 @@ the glTF clips and the default settings.
 
 ### Ambient irradiance
 
-Ambient is irradiance over pi, like the direct lights.
+Ambient is flat, or sampled from a baked probe grid given by
+`scene_set_probes()` at each skinned renderer's bounds centre; the technique,
+from the bake to the per-vertex shading, is [Light Probes](../frame/Light-Probes.md).
 
-Ambient is either flat or sampled from a world-space L1 SH grid at each
-skinned renderer's last resolved bounds centre. The grid is borrowed through
-`scene_set_probes()`; `NULL` restores the scene's flat ambient.
-
-Cosine convolution gives $`E(n) = \mathrm{constant} + \mathrm{gradient} \cdot n`$, with
-$`A_0 = \pi`$ and $`A_1 = 2\pi/3`$.<sup>[[128]](../../Citations.md#ramamoorthi-hanrahan-2001)</sup>
-Four RGB radiance coefficients become one constant and a channel-row matrix.
-
-`sh1_rgb_t` uses the real basis order Y00, Y1−1 (+y), Y10 (+z), Y11 (+x),
-with normalisation `SH1_Y00` and `SH1_Y1`.<sup>[[129]](../../Citations.md#sloan-2008)</sup>
-
-| Input | Per mover | Per vertex |
-|---|---|---|
-| Flat ambient | Scene colour × intensity; zero gradient | Direct modes add the constant; table mode bakes it. |
-| Probe grid | Clamp and trilinearly sample packed coefficients, then convolve. | Add sampled ambient; table mode corrects its baked constant. |
-
-The shared table includes the scene's flat ambient. Probe overrides correct
-that constant per renderer, so moving through probes needs no table rebuild.
-
-Table-mode probe shading normalises nonzero normals for the gradient.
-A zero normal uses the ambient constant. Probe ambient lives on the skin
-job's stack; scenes keep no per-entity SH cache.
-
-### Contact shadows
-
-`scene_set_contact(renderer, &contact)` draws contact
-shadows after geometry, before composition. Zero strength disables them.
-Covered pixels halve their RGB565 channels, using geometry's lens and fitted depth scale.
-
-```mermaid
-flowchart LR
-    Repose["Repose or world change"] --> Mask["Build SILHOUETTE mask"]
-    Mask --> Fill["Fill"]
-    Lights["First drawn scene with lights"] -->|none| SH["Mover SH L1"]
-    SH -->|isotropic or absent| Up["Straight up"]
-    Lights --> Fill
-    SH --> Fill
-    Up --> Fill
-    Fill --> Bounds["Cache footprints and bounds"] --> Draw["Draw"]
-```
-
-| Shape | Footprint | Build cost | Fallback |
-|---|---|---|---|
-| `SCENE_CONTACT_BLOB` | Squared disc falloff $`(1 - d^{2})^{2}`$; radius is the smaller horizontal half extent of the world box. | One ellipse at fill. | None. |
-| `SCENE_CONTACT_FEET` | Constant-radius discs at posed leaf joints within `CONTACT_JOINT_BAND` times rig height of the lowest leaf. Radius is `CONTACT_RADIUS_FRACTION` times the nearest positive contact spacing (rig height when there is one contact or all contacts coincide). | Bind-space leaf selection on activation; joint positions at fill. | No footprint without usable contacts. |
-| `SCENE_CONTACT_SILHOUETTE` | Union of posed joint ellipses over the world box's xz rectangle; soft cell-width edges, with no blur or height fade. | Skin-weighted bind ellipsoids on first silhouette fill; mask cells at fill after pose or world changes. | BLOB when skin or mask allocation is unavailable. |
-
-![BLOB and SILHOUETTE under the same low contact light](../../images/render/contact-silhouette.png)
-
-![Enlarged BLOB and SILHOUETTE contact coverage](../../images/render/contact-silhouette.crops.png)
-
-`scene_contact_t.warp` defaults off: footprints stay
-centred at the mover or posed contact joint, with no stretch.
-
-![BLOB, FEET and SILHOUETTE during one run, with warp off and on](../../images/render/contact-warp.gif)
-
-Warp is a ground-plane approximation of Blinn's planar projection: it shifts a footprint ellipse
-away from the light and stretches it along that direction.<sup>[[133]](../../Citations.md#blinn-1988)</sup>
-
-The offset is $`r \tan\theta`$, with θ measured from vertical; the stretch is `1/e`,
-where $`e = \cos\theta`$ is clamped to `CONTACT_LIGHT_ELEVATION_MIN`.
-
-`r` is the footprint's radius: the smaller horizontal half extent of the world
-box, or the contact radius for FEET.
-
-The brightest positive-luminance light in the first drawn scene with one wins.
-Otherwise, the mover's sampled SH L1 dominant direction supplies the direction;
-an isotropic or absent probe field uses straight up.
-
-Radial footprints share a divide-free homogeneous ellipse test. SILHOUETTE maps
-ground intersections to mask bytes with one reciprocal per pixel.
-Overlapping footprints darken once; joint height changes neither radius nor strength.
-
-Fill caches the footprints used by draw and their union with geometry bounds.
-Partial redraw unions previous and current bounds, including light-direction changes.
-Near-clipped projected corners bound the visited rows.
-
-SILHOUETTE fits axis-aligned bind-space ellipsoids from skin-weighted vertex means
-and spreads, with radii of `CONTACT_MASK_SPREAD` standard deviations.
-Mask building projects them through the skin palette and world transform.
-
-The proxy approximates bulk contact: thin details and articulated gaps need
-not match the mesh silhouette. Work scales with joints and covered mask cells,
-independently of triangles. Sampling uses the renderer's world rectangle.
-
-Each active SILHOUETTE renderer has a `CONTACT_MASK_SIDE`²-byte mask and a separate
-`MEMORY_FAST` allocation of one `contact_joint_t` per joint. Both allocations
-are freed with the skin buffers.
+`scene_set_contact()` configures a skinned renderer’s [contact shadow](../frame/Contact-Shadows.md).
 
 ## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
-- Indirect lighting requires a supplied probe grid; the runtime does not generate grids.
+- Indirect lighting requires a probe grid, baked only for a scene whose import asks for one ([limits](../frame/Light-Probes.md#8-limits)).
 - Influences per vertex are set per pack build, not per rig.
 
 The frame perf harness holds the display quarter, so gravity cannot change

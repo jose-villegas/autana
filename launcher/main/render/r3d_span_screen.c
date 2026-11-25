@@ -44,7 +44,7 @@ typedef struct {
     const r3d_span_vertex_t* a;
     screen_plane_t z, r, g, b;
     uint16_t cap;
-    const uint16_t* face;
+    uint32_t face;
     bool writing;
 } screen_fill_t;
 
@@ -60,8 +60,8 @@ screen_pixel(const r3d_span_target_t* target, const screen_fill_t* fill, const r
         r3d_span_write(target, y, x, x, (int32_t)depth << R3D_DEPTH_SHIFT, 0);
     } else if (depth > row->depth[x]) {
         row->depth[x] = depth;
-        row->color[x] = fill->face != NULL
-                            ? *fill->face
+        row->color[x] = fill->face != R3D_SPAN_FACE_NONE
+                            ? (uint16_t)fill->face
                             : r3d_span_pack_rgb(screen_value(&fill->r, fx, fy), screen_value(&fill->g, fx, fy),
                                                 screen_value(&fill->b, fx, fy));
     }
@@ -93,7 +93,7 @@ screen_row(const r3d_span_target_t* target, const screen_fill_t* fill, const r3d
  * a float plane. */
 void
 r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                         const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool writing) {
+                         const r3d_span_vertex_t* c, uint32_t face, uint16_t mask, bool writing) {
     const recti_t box = r3d_span_window_box(target, r3d_span_extent_limits(a, b, c, 0, 0).centres);
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {

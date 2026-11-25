@@ -5,6 +5,14 @@ meshlets the clusters are. Its entry is [LMSH](../../assets/formats/LMSH.md); a 
 colours are [LCOL](../../assets/formats/LCOL.md) sets. How a mesh is made is
 [Mesh-Import.md](Mesh-Import.md); drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 
+Card shapes carry [LUVS](../../assets/formats/LUVS.md) page coordinates and
+[MASK1 LTEX](../../assets/formats/LTEX.md) masks beside their mesh. Each page
+has its own clusters; chart zero names the page and every triangle uses it.
+
+Cards use corner colours through LCOL and have no coarser levels. Loading a
+renderer whose LUVS names MASK1 opens its cutting textures automatically,
+including carved copies identified by their shape id.
+
 ## Clusters and the tree
 
 Triangles group into **clusters**, the leaves of a tree rooted at `nodes[0]`:
@@ -40,7 +48,7 @@ Coarse clusters hang in runs under nodes of their own.
 *The importer's clusterizer call on a flat patch, limit 16: whole meshlets in
 emitted order, since meshoptimizer has no per-triangle hook.*
 
-![Clusters painted by the meshlets debug view](../../images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../images/render/sponza-view-meshlets.png)
 
 ![Clusters and submitted triangles against the meshlet size](../../images/render/meshlets/meshlet-size-trade.png)
 

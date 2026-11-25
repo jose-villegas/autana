@@ -44,8 +44,8 @@ typedef struct {
     /* Suites only: just before a test frame renders, so a setting a test
      * changed reaches that frame (lab_test.h). */
     void (*test_render)(void);
-    /* The lab's own menu rows, under the scene's. */
-    lab_controls_fn settings;
+    /* The lab's own menu rows, under the scene's, for the scene showing. */
+    lab_settings_fn settings;
 } lab_hooks_t;
 
 /* The lab's running state: its own, never set by the app. */
@@ -72,8 +72,8 @@ typedef struct {
     const lab_scene_t* const* scenes;
     int scene_count;
     lab_hooks_t hooks;
-    /* The scene lab_enter() shows; NULL or unknown is scenes[0]. A switch
-     * writes it, so a later entry shows the same scene. */
+    /* The scene lab_enter() shows, NULL for scenes[0]; a key no scene has
+     * asserts. A switch writes it, so a later entry shows the same scene. */
     const char* start_key;
     /* The camera a scene activates on entry; NULL is its first. */
     const char* start_camera;
@@ -108,6 +108,9 @@ void lab_frame(lab_t* lab, uint32_t dt_ms, const input_t* input);
 void lab_exit(lab_t* lab);
 
 const lab_scene_t* lab_current(const lab_t* lab);
+
+/* The index of the scene whose key is `key`, -1 when no scene has it. */
+int lab_scene_index(const lab_t* lab, const char* key);
 
 /* Whether the BOOT menu shows in place of the scene. */
 bool lab_menu_open(const lab_t* lab);

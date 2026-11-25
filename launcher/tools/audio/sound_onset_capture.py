@@ -17,7 +17,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
-from console_protocol import reply_prefix
+from console_protocol import TUNE_ERR, reply_prefix
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import US_PER_SECOND
@@ -91,7 +91,7 @@ def capture(args):
                 for name, value in values.items():
                     reply = run('tune', name, value).stdout.strip()
                     record(arm, f'tune {name} {value}', reply.replace('\n', ' '))
-                    if f'{name}={value}' not in reply or 'TUNE_ERR' in reply:
+                    if f'{name}={value}' not in reply or TUNE_ERR in reply:
                         raise ValueError(f'tunable not applied: {name}; use --hot-tunables')
                 record(arm, 'settings', json.dumps(values, sort_keys=True))
                 for event in EVENTS:

@@ -5,7 +5,7 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> holds the app's images in overview/ and render/.
+# <out-tree> holds the app's images in overview/, and the figures render pages show in render/.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
 # Renderer output goes to logs under <work-dir>.
@@ -14,23 +14,22 @@ set -eu
 
 . scripts/lib/run.sh
 
-OUT_TREE=$1
-OUT=$OUT_TREE/overview
+OUT=$1/overview
+RENDER_OUT=$1/render
 W=$2
-run mkdir -p "$W" "$OUT"
+run mkdir -p "$W" "$OUT" "$RENDER_OUT"
 
 contact_images() {
     CONTACT_FRAMES=60
     CONTACT_DT=100
     CONTACT_CROPS=3
-    run mkdir -p "$OUT_TREE/render"
     for shape in 0 2; do
         run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
             --contact-shape "$shape" --contact-warp 0 \
             --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
             -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
     done
-    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-silhouette.png" \
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER_OUT/contact-silhouette.png" \
         --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
         --label-a BLOB --label-b SILHOUETTE --crops "$CONTACT_CROPS" > "$W/contact-silhouette-compare.log"
 
@@ -40,26 +39,22 @@ contact_images() {
         run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
     done
 
-    # Each tile samples the same run time and camera; the crop keeps the subject and ground contact.
     CONTACT_VIDEO_FRAMES=185
-    CONTACT_VIDEO_DT=100
     CONTACT_VIDEO_FPS=5
     CONTACT_VIDEO_CROP="112 96 336 320"
-    for shape in 0 1 2; do
+    for entry in 0:blob 1:feet 2:silhouette; do
+        shape=${entry%%:*}
+        name=${entry#*:}
         for warp in 0 1; do
+            clip="$W/contact-$name-warp-$warp"
             run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
-                --frames "$CONTACT_VIDEO_FRAMES" --dt "$CONTACT_VIDEO_DT" \
+                --frames "$CONTACT_VIDEO_FRAMES" --dt "$CONTACT_DT" \
                 --contact-shape "$shape" --contact-warp "$warp" \
-                -o "$W/contact-$shape-$warp.bmp" --video "$W/contact-$shape-$warp.avi" \
-                > "$W/contact-$shape-$warp-console.log" 2> "$W/contact-$shape-$warp.log"
+                -o "$clip.bmp" --video "$clip.avi" > "$clip-console.log" 2> "$clip.log"
+            run "$PYTHON" launcher/tools/docs/figures.py gif "$clip.avi" \
+                "$RENDER_OUT/contact-$name-warp-$warp.gif" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP
         done
     done
-    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT_TREE/render/contact-warp.gif" \
-        --video-row BLOB "$W/contact-0-0.avi" "$W/contact-0-1.avi" \
-        --video-row FEET "$W/contact-1-0.avi" "$W/contact-1-1.avi" \
-        --video-row SILHOUETTE "$W/contact-2-0.avi" "$W/contact-2-1.avi" \
-        --label-a "warp off" --label-b "warp on" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP \
-        > "$W/contact-warp.log"
 
 }
 
@@ -80,51 +75,9 @@ run "$PYTHON" launcher/tools/docs/figures.py gif "$W/butterflies-motion.avi" \
     "$OUT/render-lab-butterflies.gif" --fps "1000/$BUTTERFLY_DT"
 
 # The start of the flythrough, on the fitted full mesh.
-run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
+run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" --fps 8 --seconds 6
-
-# The capybara's clips in the order the scene lists them, each blended into
-# the next as the BLEND slider does and shown for an equal CLIP_MS share of
-# the loop, then back to the first so the loop restarts where it began, as
-# the camera turns once around it. The first clip's share is split across
-# the loop's two ends. The return to the first clip blends over RETURN_BLEND_MS,
-# slower than the others; the loop ends once it has finished.
-CLIP_DT=40
-CLIP_MS=2500
-CLIP_BLEND_MS=500
-RETURN_BLEND_MS=1500
-clip_frame() { echo $(($1 / CLIP_DT)); }
-clips=$("$W/render_lab_render" --quarter 1 --no-hud --scene capybara --frames 1 --console 0:clips \
-    -o "$W/capybara-clips.bmp" 2> "$W/capybara-clips.log" | sed -n 's/^RENDER clip=\([^ ]*\) .*/\1/p')
-if [ -z "$clips" ]; then
-    echo "doc_images.sh: the capybara scene lists no clips; see $W/capybara-clips.log" >&2
-    exit 1
-fi
-set -- $clips
-first=$1
-shift
-later=$*
-set --
-at=$((CLIP_MS / 2))
-for clip in $later; do
-    set -- "$@" --console "$(clip_frame "$at"):clip $clip $CLIP_BLEND_MS"
-    at=$((at + CLIP_MS))
-done
-set -- "$@" --console "$(clip_frame "$at"):clip $first $RETURN_BLEND_MS"
-return_ms=$((CLIP_MS / 2))
-if [ "$RETURN_BLEND_MS" -gt "$return_ms" ]; then
-    return_ms=$RETURN_BLEND_MS
-fi
-loop_ms=$((at + return_ms))
-run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara --dt "$CLIP_DT" \
-    --frames "$(clip_frame "$loop_ms")" --set render_lab.orbit_ms="$loop_ms" "$@" \
-    -o "$W/capybara-motion.bmp" --video "$W/capybara-motion.avi" > "$W/capybara-console.log" 2> "$W/capybara.log"
-if grep -q "^RENDER_ERR" "$W/capybara-console.log"; then
-    echo "doc_images.sh: the renderer refused a clip command; see $W/capybara-console.log" >&2
-    exit 1
-fi
-run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" --fps 25/2
 
 # The water scene's swing (`water swing`), landscape as the other clips:
 # rocked hard and then calmer, leaned back so the surface shows, its small
@@ -152,12 +105,17 @@ done
 contact_images
 
 # The biggest herd walking for 12 s at its own pace, so each gait's feet keep
-# to the ground, while the orbit makes a fifth of a turn.
+# to the ground, while the orbit makes a fifth of a turn. The camera starts at
+# HERD_ZOOM hundredths of the distance that fits the whole walk (orbit_zoom):
+# close enough that the copies read, far enough that most stay in view and the
+# meadow fills the bottom corners.
 HERD_FRAMES=150
 HERD_DT=80
 HERD_TURNS=5
+HERD_ZOOM=65
 run "$W/render_lab_render" --quarter 1 --no-hud --scene herd-8 --frames "$HERD_FRAMES" --dt "$HERD_DT" \
-    --set render_lab.orbit_ms="$((HERD_FRAMES * HERD_DT * HERD_TURNS))" -o "$W/herd-motion.bmp" \
+    --set render_lab.orbit_ms="$((HERD_FRAMES * HERD_DT * HERD_TURNS))" --set render_lab.orbit_zoom="$HERD_ZOOM" \
+    -o "$W/herd-motion.bmp" \
     --video "$W/herd-motion.avi" 2> "$W/herd.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/herd-motion.avi" "$OUT/render-lab-herd.gif" --fps "1000/$HERD_DT"
 
@@ -170,3 +128,10 @@ run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames
     2> "$W/capybara-sponza.log"
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-sponza-motion.avi" "$OUT/render-lab-capybara-sponza.gif" \
     --fps "1000/$CAPYBARA_SPONZA_DT"
+
+# One still of the same run, early enough that the capybara is close and its
+# contact blob shows on the floor.
+CAPYBARA_SPONZA_BLOB_FRAMES=30
+run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza --frames "$CAPYBARA_SPONZA_BLOB_FRAMES" \
+    -o "$W/capybara-sponza-blob.bmp" 2> "$W/capybara-sponza-blob.log"
+run "$PYTHON" launcher/tools/docs/figures.py png "$W/capybara-sponza-blob.bmp" "$RENDER_OUT/contact-blob-atrium.png"

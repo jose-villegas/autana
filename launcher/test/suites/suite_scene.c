@@ -306,6 +306,16 @@ static const scene_spec_t SCENES[] = {
      {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, ""}},
      false,
      false},
+    /* a still camera first, then one flying the clip "flight", and a red quad */
+    {"test_still_then_flight",
+     3,
+     1,
+     2,
+     {{"visitor", CAMERA_AT(0)}, {"camera", IDENTITY}, {"red", IDENTITY}},
+     {{2, "red"}},
+     {{0, CLEAR_RGB, ""}, {1, CLEAR_RGB, "flight"}},
+     false,
+     false},
     {.id = "test_aliases",
      .entity_count = 2,
      .camera_count = 2,
@@ -3674,6 +3684,18 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
 }
 
 static void
+test_the_flight_camera_is_the_first_on_a_path_else_the_first(void) {
+    fixture();
+    entity_t still_then_flight = load("test_still_then_flight");
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("visitor")).id,
+                             camera_first(still_then_flight).id);
+    TEST_ASSERT_EQUAL_UINT32(entity_find(still_then_flight, name_hash("camera")).id,
+                             camera_flight(still_then_flight).id);
+    entity_t twin = load("test_twin");
+    TEST_ASSERT_EQUAL_UINT32(camera_first(twin).id, camera_flight(twin).id);
+}
+
+static void
 test_a_camera_without_a_path_follows_its_entitys_transform(void) {
     fixture();
     entity_t pair = show("test_pair");
@@ -4741,6 +4763,53 @@ test_mesh_open_resolves_optional_levels(void) {
             TEST_ASSERT_NULL(mesh.cluster_lod);
         }
     }
+}
+
+/* Each copy's level is kept from frame to frame, so a checkpoint holds it: a
+ * restore puts back the bits changed after it. The bits are held as
+ * allocated, even after the renderer is given a mesh with fewer levels. */
+static void
+test_a_checkpoint_holds_each_copys_level(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const asset_view_t levels = levelled_quads();
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 4);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES);
+    memcpy(mesh, levelled_mesh, RIG_MESH_BYTES);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    memcpy(test_pack_add(&pack, "red" LLOD_NAME_SUFFIX, LLOD_ASSET, levels.size), levels.data, levels.size);
+    /* A batch's copies take their colours from the sets, one set a copy. */
+    uint8_t* colours = test_pack_add(&pack, "red.colors", LCOL_ASSET,
+                                     LCOL_HEADER_SIZE + (LCOL_TEST_SETS * RIG_VERTICES * LCOL_RGB888_BYTES));
+    test_pack_put16(colours + LCOL_AT_VERSION, LCOL_VERSION);
+    test_pack_put16(colours + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+    test_pack_put32(colours + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colours + LCOL_AT_COUNT, RIG_VERTICES);
+    const batch_case_t spec = {.id = "levelled", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_entry(&pack, &spec);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    scene_t* scene = (scene_t*)resolved(load("test_batch"));
+    const scene_renderer_t* r = &scene->renderers[0];
+    TEST_ASSERT_NOT_NULL(r->batch);
+    TEST_ASSERT_EQUAL_INT(LEVEL_GROUPS, r->mesh.lod_group_count);
+    TEST_ASSERT_NOT_NULL(scene->lod_bits);
+    const size_t bytes = r->lod_words * sizeof(uint32_t);
+    uint32_t kept[R3D_LOD_STATE_WORDS(LEVEL_GROUPS) * BATCH_COPIES];
+    TEST_ASSERT_EQUAL_size_t(sizeof kept, bytes);
+    for (size_t w = 0; w < bytes / sizeof(uint32_t); w++) {
+        scene->lod_bits[w] = (uint32_t)w + 1U;
+    }
+    memcpy(kept, scene->lod_bits, sizeof kept);
+    ((scene_renderer_t*)r)->mesh.lod_group_count = 0;
+    checkpoint_t saved = {0};
+    scene_checkpoint_capture(&saved, scene);
+    TEST_ASSERT_FALSE(saved.failed);
+    memset(scene->lod_bits, 0, sizeof kept);
+    TEST_ASSERT_TRUE(checkpoint_restore(&saved));
+    TEST_ASSERT_EQUAL_MEMORY(kept, scene->lod_bits, sizeof kept);
+    checkpoint_clear(&saved);
 }
 
 static void
@@ -8431,6 +8500,22 @@ test_textures_draw_the_quad_other_than_plain(void) {
     TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
 }
 
+/* A renderer whose pack mesh has an LUVS sibling has textures before any is
+ * opened and after; one without, and an entity with no renderer, have none. */
+static void
+test_has_textures_reads_the_pack_mesh(void) {
+    fixture();
+    make_textured_pack(TEXTURE_PATTERN);
+    const entity_t scene = show("test_pair");
+    const entity_t red = entity_find(scene, name_hash("red"));
+    const entity_t green = entity_find(scene, name_hash("green"));
+    TEST_ASSERT_TRUE(renderer_has_textures(red));
+    TEST_ASSERT_FALSE(renderer_has_textures(green));
+    TEST_ASSERT_FALSE(renderer_has_textures(ENTITY_NONE));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    TEST_ASSERT_TRUE(renderer_has_textures(red));
+}
+
 /* Another mesh does not draw or keep the textures opened for the one it
  * replaced: with other counts the LUVS no longer fits and asking again is
  * refused, still drawing plain. */
@@ -8704,6 +8789,7 @@ run_scene_suite(void) {
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_textures_draw_the_quad_other_than_plain);
+    RUN_TEST(test_has_textures_reads_the_pack_mesh);
     RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
     RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);
     RUN_TEST(test_a_mesh_with_face_colours_draws_textured_triangles_plain);
@@ -8804,6 +8890,7 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_mesh_open_resolves_optional_levels);
+    RUN_TEST(test_a_checkpoint_holds_each_copys_level);
     RUN_TEST(test_morph_reader_attaches_a_well_formed_entry);
     RUN_TEST(test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers);
     RUN_TEST(test_morph_reader_exposes_each_vertexs_landing_triangle_and_weights);
@@ -8919,6 +9006,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_compose_with_no_framebuffer_writes_nothing);
     RUN_TEST(test_leaving_an_app_while_paused_lifts_the_pause);
     RUN_TEST(test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name);
+    RUN_TEST(test_the_flight_camera_is_the_first_on_a_path_else_the_first);
     RUN_TEST(test_a_camera_without_a_path_follows_its_entitys_transform);
     RUN_TEST(test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch);
     RUN_TEST(test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time);

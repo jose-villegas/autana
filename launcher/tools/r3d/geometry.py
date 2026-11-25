@@ -24,6 +24,16 @@ def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 
 
+def hit_barycentrics(p, tri_v, hits, locations):
+    """Barycentric weights of ray hits at `locations` on their triangles `hits`, from unsigned area ratios."""
+    faces = tri_v[hits]
+    a, b, c = p[faces[:, 0]], p[faces[:, 1]], p[faces[:, 2]]
+    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
+    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
+    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
+    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
+
+
 def face_normals(p, tris):
     """Each triangle's unit normal and its area."""
     normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])

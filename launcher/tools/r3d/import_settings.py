@@ -13,6 +13,8 @@ import re
 import tomllib
 from types import SimpleNamespace
 
+from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+
 from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
@@ -31,6 +33,9 @@ SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_co
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
+
+LIGHT_MODES = ("realtime", "baked")
+LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
 
 RESERVED_LIGHTS = ("point", "spot")
 
@@ -63,6 +68,12 @@ def check_keys(table, required, where, optional=()):
     for name in table:
         if name not in required and name not in optional:
             raise SettingsError(f"{where}.{name} is not a known setting")
+
+
+def load_fields(table, fields, where):
+    """Read a closed table of required, typed fields as a namespace."""
+    check_keys(table, tuple(fields), where)
+    return SimpleNamespace(**{name: reader(table[name], f"{where}.{name}") for name, reader in fields.items()})
 
 
 def text(value, where):
@@ -156,39 +167,41 @@ def face_sample_options(value, where):
 
 
 FIT_GROUPS = {
-    "prune": ("budget", "coverage_every_ms"),
-    "poses": ("size", "train_every_ms", "held_out_every_ms"),
+    "prune": ("coverage_every_ms",),
+    "poses": ("size", "samples", "denoise", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
-FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
+FIT_KEYS = ("budget",) + tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
 
 def load_fit(value, variant, where):
     """The grouped recipe of a variant the appearance fit makes offline from
-    the mesh the import bakes at `triangles`: `prune` names the budget and
-    coverage poses, `poses` names training and held-out camera-path poses and
+    the mesh the import bakes at `triangles`: `prune` names coverage poses
+    and a path fit's budget, `poses` names training and held-out camera-path poses and
     `optimise` holds settings. What a fit made is recorded in launcher/bakes.lock
     (bake/bake.py), not here."""
     if "hashes" in value:
         raise SettingsError(f"{where}.hashes is gone: launcher/bakes.lock records what a fit made")
     for group, keys in FIT_GROUPS.items():
-        for key in keys:
+        for key in (("budget",) if group == "prune" else ()) + keys:
             if key in value:
                 raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
     check_keys(value, FIT_GROUPS, where)
     values = {}
     for group, keys in FIT_GROUPS.items():
         table = value[group]
-        check_keys(table, keys, f"{where}.{group}")
+        check_keys(table, keys, f"{where}.{group}", optional=("budget",) if group == "prune" else ())
         values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
-    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
-    for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
-        setattr(fit, key, count(values[key], f"{where}.{key}"))
-    if getattr(variant, "ceiling", None) is not None and fit.budget > variant.ceiling:
+    fit = SimpleNamespace(**{key: values.get(key) for key in FIT_KEYS})
+    for key in ("budget", "samples", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+        if getattr(fit, key) is not None:
+            setattr(fit, key, count(values[key], f"{where}.{key}"))
+    if getattr(variant, "ceiling", None) is not None and fit.budget is not None and fit.budget > variant.ceiling:
         raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
+    fit.denoise = boolean(values["denoise"], f"{where}.poses.denoise")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
     for key in ("surface_weight", "surface_margin"):
@@ -196,7 +209,7 @@ def load_fit(value, variant, where):
         if value < 0:
             raise SettingsError(f"{where}.{key} must be nonnegative")
         setattr(fit, key, value)
-    if fit.budget > variant.triangles:
+    if fit.budget is not None and fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit
 
@@ -251,6 +264,13 @@ def load_visibility(table, where="visibility"):
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
+def load_seal_views(table, where):
+    """The camera path's frames as views for a sealed import's probes (r3d/leaks.py): sampled every `every_ms`
+    at `size` pixels, through a square view that covers the panel held either way up."""
+    check_keys(table, ("every_ms", "size"), where)
+    return SimpleNamespace(every_ms=count(table["every_ms"], f"{where}.every_ms"), size=pixel_size(table["size"], f"{where}.size"))
+
+
 LEGACY_PROCESS_HOMES = {
     "alpha_mask": "[geometry] alpha_mask",
     "visibility": "objects.mesh_renderer.visibility",
@@ -273,8 +293,8 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "morph",
-                                                "probes", "budget"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "cards", "thin", "simplify", "meshlet_triangles", "lod", "morph",
+                                                "probes"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     steps.morph = boolean(table.get("morph", MORPH), "geometry.morph")
@@ -286,30 +306,39 @@ def load_geometry(table, steps):
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
         steps.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
+    steps.cards = None
+    if "cards" in table or steps.alpha_keep is not None:
+        cards = table.get("cards", {})
+        where = "geometry.cards"
+        check_keys(cards, (), where, optional=("epsilon", "area_cost", "never", "always"))
+        if steps.alpha_keep is None:
+            raise SettingsError("geometry.cards needs geometry.alpha_mask")
+        epsilon = number(cards.get("epsilon", CARD_EPSILON), f"{where}.epsilon")
+        cost = number(cards.get("area_cost", CARD_AREA_COST), f"{where}.area_cost")
+        if epsilon <= 0:
+            raise SettingsError(f"{where}.epsilon must be positive")
+        if cost < 0:
+            raise SettingsError(f"{where}.area_cost must be nonnegative")
+        never = strings(cards.get("never", []), f"{where}.never")
+        always = strings(cards.get("always", []), f"{where}.always")
+        if set(never) & set(always):
+            raise SettingsError("geometry.cards names a material in both never and always")
+        steps.cards = SimpleNamespace(never=never, always=always, epsilon=epsilon, area_cost=cost)
     if "thin" in table:
-        thin = table["thin"]
-        check_keys(thin, ("material", "keep"), "geometry.thin")
-        steps.thin = SimpleNamespace(material=text(thin["material"], "geometry.thin.material"),
-                                     keep=number(thin["keep"], "geometry.thin.keep"))
+        steps.thin = load_fields(table["thin"], {"material": text, "keep": number}, "geometry.thin")
     if "simplify" in table:
-        simplify = table["simplify"]
-        check_keys(simplify, ("dense_edge", "props", "props_share", "seal_seams", "colour_deviation"), "geometry.simplify")
-        steps.simplify = SimpleNamespace(
-            dense_edge=number(simplify["dense_edge"], "geometry.simplify.dense_edge"),
-            props=set(strings(simplify["props"], "geometry.simplify.props")),
-            props_share=number(simplify["props_share"], "geometry.simplify.props_share"),
-            seal_seams=boolean(simplify["seal_seams"], "geometry.simplify.seal_seams"),
-            colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
+        steps.simplify = load_fields(table["simplify"], {
+            "dense_edge": number, "props": lambda value, where: set(strings(value, where)),
+            "props_share": number, "seal_seams": boolean, "colour_deviation": number}, "geometry.simplify")
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
-    steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None,
-                                budget=load_budget(table["budget"]) if "budget" in table else None)
-    if (steps.fit.probes or steps.fit.budget) and not steps.simplify:
-        raise SettingsError("geometry.probes and geometry.budget shape a fit, which needs geometry.simplify")
+    steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None)
+    if steps.fit.probes is not None and not steps.simplify:
+        raise SettingsError("geometry.probes shapes a fit, which needs geometry.simplify")
 
 
 def load_probes(table, where="geometry.probes"):
-    """Extra fit views from probes spread through the camera's region (r3d/fit/probes.py): `spacing`
+    """Extra fit views from probes spread through the camera's region (r3d/views/probes.py): `spacing`
     world units apart, each face `face` pixels square; an unset one is the probes' own default."""
     check_keys(table, (), where, optional=("spacing", "face"))
     probes = SimpleNamespace(spacing=number(table["spacing"], f"{where}.spacing") if "spacing" in table else None,
@@ -317,18 +346,6 @@ def load_probes(table, where="geometry.probes"):
     if probes.spacing is not None and probes.spacing <= 0:
         raise SettingsError(f"{where}.spacing must be positive")
     return probes
-
-
-def load_budget(table, where="geometry.budget"):
-    """A settled prune budget: each fitted renderer tries `step`, 2 `step`, ... up to its fit.prune.budget and
-    stops at the first whose held-out holes fall by less than the `settle` share of the step before. Without
-    geometry.budget the prune keeps fit.prune.budget."""
-    check_keys(table, ("step", "settle"), where)
-    budget = SimpleNamespace(step=count(table["step"], f"{where}.step"),
-                             settle=number(table["settle"], f"{where}.settle"))
-    if not 0 <= budget.settle < 1:
-        raise SettingsError(f"{where}.settle must be at least 0 and below 1")
-    return budget
 
 
 SEAM_POLICIES = ("weld", "lock", "free")
@@ -440,8 +457,8 @@ def load_import_settings(path):
     steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None, fit=None)
     load_process(values.get("process", {}), steps)
     load_geometry(values.get("geometry", {}), steps)
-    if steps.seed_given and not steps.thin:
-        raise SettingsError("process.seed needs geometry.thin")
+    if steps.seed_given and not steps.thin and steps.alpha_keep is None:
+        raise SettingsError("process.seed needs geometry.thin or geometry.alpha_mask")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -473,7 +490,8 @@ def load_import_settings(path):
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, morph=steps.morph, fit=steps.fit,
-        variants=variants, skin_lighting=lighting)
+        variants=variants, skin_lighting=lighting,
+        cards=steps.cards)
 
 
 def source_files(settings):
@@ -567,7 +585,7 @@ def load_environment_light(kind, table, where):
     """Sky and ambient are scene settings, not objects."""
     fields = LIGHT_FIELDS[kind]
     check_keys(table, tuple(fields), where)
-    light = {"type": kind}
+    light = {"type": kind, "mode": LIGHT_MODE_BAKED}
     for name, reader in fields.items():
         light[name] = READERS[reader](table[name], f"{where}.{name}")
     return light_values(light, where)
@@ -581,8 +599,11 @@ def load_light(component, rotation, where):
     if kind != "directional":
         raise SettingsError(f"{where}.type must be directional: sky and ambient are scene settings")
     fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name != "direction"}
-    check_keys(component, ("type", *fields), where)
-    light = {"type": kind, "direction": rotate(rotation, LIGHT_AXIS)}
+    check_keys(component, ("type", *fields), where, optional=("mode",))
+    mode = component.get("mode", LIGHT_MODE_REALTIME)
+    if mode not in LIGHT_MODES:
+        raise SettingsError(f"{where}.mode must be one of {', '.join(LIGHT_MODES)}")
+    light = {"type": kind, "mode": mode, "direction": rotate(rotation, LIGHT_AXIS)}
     for name, reader in fields.items():
         light[name] = READERS[reader](component[name], f"{where}.{name}")
     return light_values(light, where)
@@ -617,7 +638,7 @@ def load_camera_path(path, base, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "seal_views", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -647,18 +668,21 @@ def load_renderer(component, base, where):
             raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
     visibility = load_visibility(component["visibility"], f"{where}.visibility") if "visibility" in component else None
     fit = load_fit(component["fit"], variant, f"{where}.fit") if "fit" in component else None
+    seal_views = load_seal_views(component["seal_views"], f"{where}.seal_views") if "seal_views" in component else None
+    if seal_views and not (settings.simplify and settings.simplify.seal_seams):
+        raise SettingsError(f"{where}.seal_views is read by no step: {component['mesh']!r} does not seal its seams")
     indirect = True
     if "indirect" in component:
         if boolean(component["indirect"], f"{where}.indirect"):
             raise SettingsError(f"{where}.indirect can only be false")
         indirect = False
-    if not bake and (face_samples or visibility or fit or not indirect):
-        raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    if not bake and (face_samples or visibility or seal_views or fit or not indirect):
+        raise SettingsError(f"{where} bake = true is required for shading, visibility, seal_views, fit or indirect")
     colour_set = component.get("colour_set")
     if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
         raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           fit=fit, indirect=indirect, colour_set=colour_set)
+                           seal_views=seal_views, fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
@@ -674,7 +698,7 @@ def albedo_jobs(settings):
     jobs = []
     for variant in settings.variants:
         renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
-                                   fit=None, indirect=True)
+                                   seal_views=None, fit=None, indirect=True)
         jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}{BUNDLE_SUFFIX}", None))
     return jobs
 
@@ -750,10 +774,7 @@ def load_bake(table):
                            colour_merge_step=count(table["colour_merge_step"], "scene.bake.colour_merge_step"),
                            indirect=None, ao=None)
     if "indirect" in table:
-        indirect = table["indirect"]
-        check_keys(indirect, ("bounces", "rays"), "scene.bake.indirect")
-        bake.indirect = SimpleNamespace(bounces=count(indirect["bounces"], "scene.bake.indirect.bounces"),
-                                        rays=count(indirect["rays"], "scene.bake.indirect.rays"))
+        bake.indirect = load_fields(table["indirect"], {"bounces": count, "rays": count}, "scene.bake.indirect")
     if "ao" in table:
         ao = table["ao"]
         check_keys(ao, ("distance", "rays"), "scene.bake.ao", optional=("strength", "indirect"))
@@ -782,13 +803,20 @@ def load_demo_assets(path) -> list[str]:
         raise SettingsError(f"{path}: {error}") from error
 
 
+def flight_camera(scene):
+    """The lens of the scene's first camera with a path: the flythrough a path tool samples. The scene camera
+    (the first) may have none, its fits trained on probes over its region."""
+    return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
     path = pathlib.Path(path).resolve()
     with open(path, "rb") as source:
         values = tomllib.load(source)
-    check_keys(values, ("objects",), "scene", optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
+    check_keys(values, ("objects",), "scene",
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -847,6 +875,10 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:
+        if item.renderer.fit and ((item.renderer.fit.budget is None) == (item.settings.fit.probes is None)):
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit.prune.budget is "
+                                + ("required without geometry.probes" if item.settings.fit.probes is None else
+                                   "refused with geometry.probes; the variant's triangles is the budget"))
         if item.renderer.fit and camera_path is None and item.settings.fit.probes is None:
             raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path "
                                 "or its import's geometry.probes")
@@ -869,6 +901,8 @@ def load_scene(path):
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
+    if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
+        raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "

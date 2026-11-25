@@ -221,7 +221,7 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
-                          "few-copies", "carved-near", "carved-far", "textured", "record", "foliage-near",
+                          "few-copies", "carved-near", "carved-far", "textured", "textured-far", "record", "foliage-near",
                           "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs",
                           "skinned-feet-blobs", "skinned-silhouette-blobs", "skinned-silhouette-warped", "skinned-blob-warped", "contact-blobs",
                           "butterflies", "few-butterflies", "cull-setup", "baked-tree", "small-grain", "small-dither",

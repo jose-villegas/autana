@@ -104,6 +104,15 @@ class Sections(unittest.TestCase):
         serial = next(s for s in self.sections if s.headings[-1] == "Serial port")
         self.assertIn("autana monitor 30", serial.body)
 
+    def test_a_shorter_fence_inside_a_longer_one_does_not_close_it(self):
+        text = "# Top\n\n````markdown\n```\n# not a heading\n```\n````\n"
+        sections = docs_search.markdown_sections("docs/A.md", text)
+        self.assertEqual([s.headings for s in sections], [("Top",)])
+        self.assertEqual(docs_search.blocks(text), ["# Top", "\n".join(text.splitlines()[2:])])
+
+    def test_a_tilde_mermaid_block_is_dropped(self):
+        self.assertEqual(docs_search.blocks("a\n\n~~~mermaid\nA-->B\n~~~\nb\n"), ["a", "b"])
+
     def test_a_section_carries_its_heading_path_and_line_range(self):
         warm = next(s for s in self.sections if s.headings[-1] == "Warm reset")
         self.assertEqual(warm.headings, ("Flashing Guide", "Baud rate", "Warm reset"))

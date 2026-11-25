@@ -16,6 +16,7 @@ third_party/upstream/meshoptimizer. Every mesh is written unless one is named.
 """
 
 import argparse
+from dataclasses import replace
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -43,14 +44,18 @@ from r3d.light import (  # noqa: E402
 from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
-from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
+from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
 from r3d.obj import alpha_tested
 from r3d.objects.budget import ceiling_split, prototype_groups
 from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
+from r3d.cards import emit as card_emit
+from r3d.cards.emit import QUAD_CORNERS
+from r3d.texture import texture_asset, uv_transfer
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
+from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
@@ -94,12 +99,15 @@ def shade_unlit(src, material, mp, mt):
 
 
 def fidelity_poses(scene, object_name, frames, dt):
-    """frames + 1 poses of the scene camera's path, dt ms apart from time zero,
-    at the pose size of OBJECT_fitted's `fit.poses.size`, so the traced reference matches the
-    one that renderer was fitted against."""
+    """frames + 1 poses of the scene camera's path, dt ms apart from time zero, at the fit size of
+    `object_name`'s fitted renderer, so the traced reference matches the one it was fitted against."""
     from anim import track_host
-    job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
-    camera = scene.camera.component
+    from r3d.import_settings import SettingsError
+    from r3d.poses import flight_camera
+    job = next((item for item in scene.renderers if item.object.name == object_name), None)
+    if job is None or not job.renderer.fit:
+        raise SettingsError(f"{scene.path}: {object_name} is not a fitted renderer")
+    camera = flight_camera(scene)
     return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.fit.size,
                             camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,
                             number_format=".9g")
@@ -112,6 +120,21 @@ def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
         return visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
                                  visibility.margin)
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
+
+
+def seal_camera(scene, renderer):
+    """Where a sealed import's probes stand (simplify's Allocation.camera): the scene camera's region and near
+    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
+    if scene is None or scene.camera is None:
+        return None
+    camera = (scene.region, scene.camera.component.near_z)
+    views = getattr(renderer, "seal_views", None)
+    if views is None:
+        return camera
+    from r3d.poses import flight_camera, path_poses
+
+    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
+    return (*camera, (width, height, lens, poses))
 
 
 def thin_meshes(src, selected, thin, seed):
@@ -132,6 +155,20 @@ def thin_meshes(src, selected, thin, seed):
             rows = np.flatnonzero(src.tri_o == int(instance.object_name))
             keep[rows[np.asarray(instance.triangle_order, dtype=int)]] = retained
     return keep
+
+
+def thin_choice(src, tri_v, tri_m, settings, renderer, seen, selected):
+    """(per triangle, the share thinning keeps; its piece): the thin rule's material, and with
+    simplify on, every aggregate of a cut-out material at the simplify ratio (the budget over the triangles seen).
+    Carved objects are left to their own thinning."""
+    names = {settings.thin.material} if settings.thin else set()
+    cut = alpha_tested(src.textures) if settings.simplify else np.zeros(len(src.names), dtype=bool)
+    candidates = np.isin(tri_m, [i for i, name in enumerate(src.names) if cut[i] or name in names])
+    piece = np.full(len(tri_v), -1)
+    if np.any(candidates):
+        piece[candidates] = pieces(src.p, tri_v[candidates], tri_m[candidates])
+    ratio = renderer.variant.triangles / max(seen, 1) if settings.simplify else 1
+    return thin_keep(tri_m, src.tri_o, piece, settings.thin, cut, ratio, src.names, skip=selected), piece
 
 
 def carve_selection(src, tri_v, tri_m, selected, settings, job, scene):
@@ -164,9 +201,30 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(src.tri_v)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
+    accepted_cards, card_report = [], None
+    # The replaced material leaves the geometry but keeps casting light: the light bake's occluders and bounce
+    # source hold it, so the surfaces the cards are drawn over keep its shadows.
+    light_only = None
+    if settings.cards is not None:
+        with recorder.step("cards", len(tri_v)) as step:
+            accepted_cards, card_report = card_emit.carded(src, settings, scene)
+            step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
+        for name, report in card_report.items():
+            share = "always" if report['forced'] else f"{report['see_through']:.3f}"
+            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f} "
+                f"(all area {report['covered_area']:.3f}), "
+                f"accepted={report['accepted']}")
+        selected_cards = np.isin(tri_m, [material for material, _, _ in accepted_cards])
+        if selected_cards.any():
+            light_only = tri_v[selected_cards], tri_t[selected_cards], tri_m[selected_cards]
+            tri_v, tri_t, tri_m = tri_v[~selected_cards], tri_t[~selected_cards], tri_m[~selected_cards]
+            src.tri_o = src.tri_o[~selected_cards]
+            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     with recorder.step("alpha mask", len(tri_v)) as step:
         if settings.alpha_keep is not None:
             tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
+            if light_only is not None:
+                light_only = drop_masked(src.p, src.uv, *light_only, src.textures, settings.alpha_keep)[:3]
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
@@ -182,7 +240,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         intersector = None
         visibility = renderer.visibility
         if visibility or job.bake:
-            intersector = RayQuery(src.p, tri_v)
+            intersector = RayQuery(src.p, tri_v) if len(tri_v) else None
+        # Visibility is the drawn geometry's own; light also meets the replaced material.
+        light_src = src if light_only is None else with_triangles(src, *(np.concatenate([a, b]) for a, b in
+                                                                         zip((tri_v, tri_t, tri_m), light_only)))
+        occluder = intersector if light_only is None or not job.bake else RayQuery(src.p, light_src.tri_v)
         double_names = settings.double_sided
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
@@ -190,43 +252,39 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
-        if settings.thin:
-            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
-            seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+        points, held = src.p, np.zeros(len(tri_v), dtype=bool)
+        keep, piece = thin_choice(src, tri_v, tri_m, settings, renderer, int(seen.sum()), selected)
+        if np.any(keep < 1):
+            kept, points, tri_v = thin(src.p, tri_v, piece, keep, rng)
+            seen &= kept
+            held = keep < 1
         if selected:
             carved = np.isin(src.tri_o, list(selected))
             seen[carved] = carved_keep[carved]
         step["triangles_out"] = int(seen.sum())
-    shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
+    shown_v, shown_m, shown_o, shown_h = tri_v[seen], tri_m[seen], src.tri_o[seen], held[seen]
     mesh_report = {}
     shapes = [] if carve else None
     with recorder.step("light", len(shown_v)) as step:
-        bounce = path_light_for(src, job, scene)
+        bounce = path_light_for(light_src, job, scene)
         if settings.simplify:
             log("splitting evenly")
-            wp, wt = weld_keeping(src.p, shown_v)
-            dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o]), settings.simplify.dense_edge)
-            dm, do = ownership.T
-            parts = [(material, do[dm == material], *compact(dp, dt[dm == material]))
-                     for material in range(len(src.names)) if np.any(dm == material)]
+            wp, wt = weld_keeping(points, shown_v)
+            dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o, shown_h]),
+                                        settings.simplify.dense_edge)
+            dm, do, dh = ownership.T
         else:
-            parts = [(material, shown_o[shown_m == material], *compact(src.p, shown_v[shown_m == material]))
-                     for material in range(len(src.names))
-                     if np.any(shown_m == material)]
-        if selected:
-            split_parts = []
-            for material, owners, mp, mt in parts:
-                carved = np.isin(owners, list(selected))
-                for mask in (carved, ~carved):
-                    if np.any(mask):
-                        split_parts.append((material, owners[mask], *compact(mp, mt[mask])))
-            parts = split_parts
-        all_pos, all_rgb, all_tris, all_double, all_mat, all_obj = [], [], [], [], [], []
+            dp, dt, dm, do, dh = points, shown_v, shown_m, shown_o, shown_h
+        carved = np.isin(do, list(selected))
+        parts = [(material, do[mask], hold, *compact(dp, dt[mask]))
+                 for material in range(len(src.names)) for split in (carved, ~carved) for hold in (False, True)
+                 for mask in [(dm == material) & split & (dh.astype(bool) == hold)] if np.any(mask)]
+        all_pos, all_rgb, all_tris, all_double, all_mat, all_obj, all_held = [], [], [], [], [], [], []
         base = 0
-        for material, owners, mp, mt in parts:
+        for material, owners, hold, mp, mt in parts:
             double = src.names[material] in double_names
             if job.bake and not np.all(np.isin(owners, list(selected))):
-                vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce,
+                vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, occluder, bounce,
                                                          labels=owners)
             else:
                 vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
@@ -236,37 +294,76 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             all_double.append(np.full(len(vtris), int(double)))
             all_mat.append(np.full(len(vtris), material))
             all_obj.append(owners)
+            all_held.append(np.full(len(vtris), hold))
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
-        positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
-        tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
+        positions = np.concatenate(all_pos) if all_pos else np.empty((0, 3))
+        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, 3), dtype=int)
+        tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=int)
+        tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
+        tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
         step["triangles_out"] = len(tris)
+    ceiling, room, floor = ceiling_split(renderer)
+    card_triangles = sum(report['triangles'] for _, _, report in accepted_cards)
+    check_ceiling(card_triangles, ceiling)
+    # Cards are paid first: the rest and the carved copies share what they leave.
+    available = None if ceiling is None else ceiling - card_triangles
+    split = (available, None if room is None else room - card_triangles, floor)
     with recorder.step("simplify", len(tris)) as step:
-        if settings.simplify:
+        if settings.simplify and len(tris):
             steps = settings.simplify
-            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
+            budget = renderer.variant.triangles if available is None else min(renderer.variant.triangles, available)
+            mesh_report['rest_budget'] = budget
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, budget,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
-                                                                         detail=derived, split=ceiling_split(renderer) if carve else None,
+                                                                         detail=derived, split=split if carve else None,
                                                                          double_sided=tuple(i for i, name in enumerate(src.names) if name in double_names),
-                                                                         ceiling=ceiling_split(renderer)[0],
+                                                                         ceiling=available,
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, **kw)) if job.bake else None,
+                                                                                                             occluder, bounce, **kw)) if job.bake else None,
                                                                          shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, preserve_corners=True, **kw))
+                                                                                                             occluder, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
-                                                                         report=mesh_report, shapes=shapes),
+                                                                         report=mesh_report, shapes=shapes,
+                                                                         held=np.concatenate(all_held),
+                                                                         camera=seal_camera(scene, renderer) if steps.seal_seams else None),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
-    check_ceiling(len(tris), ceiling_split(renderer)[0])
+    from r3d.objects.instances import Instance
+
+    for _, card_shape, _ in accepted_cards:
+        p, albedo = card_shape['positions'], card_shape['albedo']
+        if job.bake:
+            radiance = light(p, card_shape['normals'], np.ones(len(p), bool), intersector, scene.lights,
+                             job.bake.ray_offset, bounce, ao=job.bake.ao,
+                             bounce_intensity=scene.indirect.intensity)
+            colours = to_srgb8(albedo * radiance, scene.tonemap_white)
+        else:
+            colours = encode_srgb8(albedo)
+        instance = Instance(card_shape['owner'], np.eye(3), np.zeros(3), False, 0.0)
+        card_shape['copies'] = [(instance, (p, colours, card_shape['tris'], card_shape['labels']))]
+        shapes = [] if shapes is None else shapes
+        shapes.append(card_shape)
+    if card_report is not None:
+        mesh_report['cards'] = card_report
+        if 'ceiling' in mesh_report:
+            mesh_report['ceiling'] = ceiling
+        mesh_report['scene_total'] = mesh_report['output_triangles'] = (
+            mesh_report.get('scene_total', len(tris)) + card_triangles)
+    # The ceiling caps what is stored: a prototype once however many copies draw it, and each card.
+    stored = mesh_report.get('stored_total', len(tris)) + card_triangles
+    if card_report is not None:
+        mesh_report['stored_total'] = stored
+    check_ceiling(stored, ceiling)
     if derived is not None and "passes" in mesh_report:
         mesh_report["detail"], mesh_report["authoring"] = detail_report(derived.shapes, mesh_report["passes"],
                                                                         src.object_names, derived.focal)
-    return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
+    return SimpleNamespace(src=src, intersector=occluder, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 
@@ -345,36 +442,52 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     which may differ in sidedness), with colour sets following its baked array order."""
     from r3d.objects.instances import place
 
+    masked = "vertex_uvs" in shape
+    flat = job.renderer.face_samples and not masked
     double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
     groups = prototype_groups(shape, double_sided)
     entries, rows = [], []
     for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]
         first_name = geometry.src.object_names[int(first.object_name)]
-        mesh_id = mesh_bundle.shape_id(job.asset_name, shape['rule'], first_name)
+        mesh_id = mesh_bundle.shape_id(shape.get('name', job.asset_name), shape['rule'], first_name)
         reflect = np.diag([-1 if mirrored else 1, 1, 1])
         p, _, t, labels = lit
         local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
         tris = np.arange(len(local)).reshape(-1, 3)
         double = np.isin(labels, double_sided).astype(int)
+        if masked:
+            double[:] = 1
+        options = dict(vertex_uvs=shape['vertex_uvs'][t].reshape(-1, 2),
+                       vertex_pages=np.repeat(shape['page_of_card'], len(QUAD_CORNERS))[t].ravel()) if masked else {}
         colours = []
         for instance, (p, rgb, t, labels) in copies:
-            if job.renderer.face_samples:
+            if flat:
                 placed = SimpleNamespace(**vars(geometry))
                 placed.positions, placed.tris, placed.tri_mat = p, t, labels
                 colours.append(flat_colours(job, scene, placed, job.renderer.face_samples))
             else:
                 colours.append(rgb[t].reshape(-1, 3))
         keys = np.concatenate(colours, axis=1)
-        mesh = build_lit_mesh(local, None if job.renderer.face_samples else keys,
-                              tris, double, face_rgb=keys if job.renderer.face_samples else None,
+        mesh = build_lit_mesh(local, None if flat else keys,
+                              tris, double, face_rgb=keys if flat else None,
                               colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
-                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
-                              **geometry.scale)
-        encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
-        keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod and not masked,
+                              **geometry.scale, **options)
+        if masked:
+            luvs = uv_transfer.card_luvs(mesh, mesh.vertex_uvs, mesh.page_of_cluster)
+            entries.append((uv_transfer.name_for_mesh(mesh_id), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs)))
+            coloured = SimpleNamespace(**vars(mesh))
+            coloured.rgb = mesh.colour_keys[:, :lcol_asset.STRIDES[lcol_asset.RGB888]]
+            for page, texture in enumerate(shape['pages']):
+                tint = uv_transfer.drawn_tint(coloured, luvs, page)
+                texture = replace(texture, tint=tuple(int(round(c)) for c in tint))
+                entries.append((uv_transfer.texture_name(mesh_id, page), texture_asset.TYPE,
+                                texture_asset.pack_ltex(texture)))
+        encoding = lcol_asset.RGB565 if flat else lcol_asset.RGB888
+        keys = mesh.face_keys if flat else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
-        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
+        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if flat
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
         entries.extend(bundle_entries(mesh_id, mesh, morph_blob if job.settings.morph else None))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
@@ -389,12 +502,16 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
 
 
 def bake(job, scene, out_dir):
-    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted variant is made by
-    fitted_variant.py on a CUDA GPU, which bake/bake.py runs."""
-    if job.renderer.fit:
-        log(f"{job.asset_name}: a fit, made by fitted_variant.py on a CUDA GPU (bake/bake.py bake --kind fit)")
-        return
+    """Bakes one mesh into `out_dir`. `scene` is None for a bare import. A fitted renderer's fit needs a CUDA
+    GPU (bake/bake.py bake --kind fit runs fitted_variant.py), so here it gets the CPU method: its start, the
+    import simplified to the fit's budget, with levels."""
     mesh = write_baked(job, scene, out_dir, job.asset_name)
+    if job.renderer.fit:
+        from r3d.lod.levels_stage import levels
+
+        path = pathlib.Path(out_dir) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
+        path.write_bytes(levels(path.read_bytes(), job.asset_name, job.settings.lod, job.settings.meshlet_triangles))
+        log(f"{job.asset_name}: its CPU start with levels; the fit needs a CUDA GPU (bake/bake.py bake --kind fit)")
     log(f"emitted {len(mesh.pos)} vertices, {len(mesh.tris)} triangles, {len(mesh.clusters)} clusters, {len(mesh.nodes)} nodes")
 
 

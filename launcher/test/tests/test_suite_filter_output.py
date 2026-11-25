@@ -106,22 +106,22 @@ class TestCaseOutputTests(unittest.TestCase):
 
     def test_each_case_is_named_by_its_segments_and_left_out_ones_are_skipped(self):
         self.assertEqual(probes(host_runner.run(CASES)), [
-            "test_case/sponza-fitted/portrait", "test_case/sponza-fitted/landscape",
-            "test_case/sponza-fitted-full/portrait", "test_case/sponza-fitted-full/landscape",
+            "test_case/bistro/portrait", "test_case/bistro/landscape",
+            "test_case/bistro-textured/portrait", "test_case/bistro-textured/landscape",
             "test_case/capybara/front/portrait"])
 
     def test_a_scene_pattern_picks_its_own_cases_and_not_a_longer_scene(self):
-        self.assertEqual(probes(host_runner.run(f"{CASES} sponza-fitted")),
-                         ["test_case/sponza-fitted/portrait", "test_case/sponza-fitted/landscape"])
+        self.assertEqual(probes(host_runner.run(f"{CASES} bistro")),
+                         ["test_case/bistro/portrait", "test_case/bistro/landscape"])
 
     def test_a_group_pattern_picks_one_take(self):
-        self.assertEqual(probes(host_runner.run(f"{CASES} capybara/front,sponza-fitted-full/landscape")),
-                         ["test_case/sponza-fitted-full/landscape", "test_case/capybara/front/portrait"])
+        self.assertEqual(probes(host_runner.run(f"{CASES} capybara/front,bistro-textured/landscape")),
+                         ["test_case/bistro-textured/landscape", "test_case/capybara/front/portrait"])
 
     def test_every_case_is_listed_by_its_full_name(self):
         output = host_runner.run(f"{CASES} capybara")
         self.assertIn("SUITE_TEST name=test_case/capybara/front/portrait selected=1", output)
-        self.assertIn("SUITE_TEST name=test_case/sponza-fitted/portrait selected=0", output)
+        self.assertIn("SUITE_TEST name=test_case/bistro/portrait selected=0", output)
 
     def test_a_part_of_a_segment_picks_nothing_and_is_counted_unmatched(self):
         output = host_runner.run(f"{CASES} sponza-fitt,capybara")

@@ -16,12 +16,12 @@ try:
     from r3d import mesh_import
     from r3d.bake_fidelity import write_variant
     from r3d.bake_fidelity import parse_spec
-    from r3d.import_settings import SettingsError
+    from r3d.import_settings import LIGHT_MODE_BAKED, SettingsError
     from r3d.light import face_samples, light
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 from test_r3d_import import AMBIENT, CUBE, TONEMAP, renderer, sun_object, write_import, write_scene  # noqa: E402
 
 FLAT_BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
@@ -33,7 +33,7 @@ SMALL_FACE = ("v 20 0 0\nv 21 0 0\nv 20 1 0\nf 9 10 11\n"
 
 
 def sun_only():
-    return [{"type": "directional", "direction": [0.8, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}]
+    return [soup.sun([0.8, 1.0, 0.0], [1.0, 1.0, 1.0], 1.0)]
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -45,7 +45,7 @@ class PlacementTests(unittest.TestCase):
         self.assertGreater(np.ptp(face_samples(4)[:, 1]), 0.1)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SunTests(unittest.TestCase):
     def radiance_at(self, x):
@@ -57,7 +57,7 @@ class SunTests(unittest.TestCase):
 
     def test_the_sun_is_a_point_so_a_shadow_edge_is_hard(self):
         # The wall's top edge shades the floor from x = 3.2 on: just before it the sun lights fully, just after, not at all.
-        self.assertAlmostEqual(self.radiance_at(3.0), 1.0 / np.hypot(0.8, 1.0), places=9)
+        self.assertAlmostEqual(self.radiance_at(3.0), 1.0 / np.hypot(0.8, 1.0), places=6)
         self.assertEqual(self.radiance_at(3.4), 0.0)
 
 
@@ -65,8 +65,8 @@ class SunTests(unittest.TestCase):
 class SkyRaysKnobTests(unittest.TestCase):
     def test_sky_rays_replaces_the_sky_lights_ray_count_only_and_leaves_the_scene_alone(self):
         from types import SimpleNamespace
-        lights = [sun_only()[0], {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.0, "rays": 48},
-                  {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
+        lights = [sun_only()[0], {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0, "rays": 48},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
         scene = SimpleNamespace(lights=lights, tonemap_white=0.35, indirect=SimpleNamespace(intensity=1.0))
         job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.5, ao=None))
         geometry = SimpleNamespace(src=SimpleNamespace(names=["m"]), positions=None, tris=None, tri_mat=None, intersector=None,
@@ -94,43 +94,39 @@ class SpecTests(unittest.TestCase):
             parse_spec("sky=64,colour=red", None, 1.0)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class DeclaredVariantTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = pathlib.Path(temporary.name)
+        (self.root / "m.obj").write_text(CUBE + SMALL_FACE)
+        (self.root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
+        write_import(self.root, output='[output]\n', body=FLAT_VARIANT)
+        self.scene_path = write_scene(
+            self.root, renderer(extra=FLAT_RENDERER) + sun_object(mode=LIGHT_MODE_BAKED),
+            head=TONEMAP + AMBIENT + FLAT_BAKE, name="mesh.scene.toml")
+
     def test_the_declared_variant_is_the_bake_the_importer_writes_byte_for_byte(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = pathlib.Path(tmp)
-            (root / "m.obj").write_text(CUBE + SMALL_FACE)
-            (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-            write_import(root, output='[output]\n', body=FLAT_VARIANT)
-            scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
-                                     name="mesh.scene.toml")
-            with mock.patch("r3d.mesh_import.REPO", root):
-                self.assertEqual(mesh_import.main([str(scene_path), "--out", str(root)]), 0)
-                scene = mesh_import.load_scene(scene_path)
-                job = scene.renderers[0]
-                geometry = mesh_import.bake_geometry(job, scene)
-                written = write_variant(job, scene, geometry, "", root / "scratch")
-            tracked = (root / "mesh.mesh.bundle").read_bytes()
-            self.assertEqual(written.read_bytes(), tracked)
-            self.assertGreater(len(set(np.unique(geometry.tri_mat))), 0)
+        with mock.patch("r3d.mesh_import.REPO", self.root):
+            self.assertEqual(mesh_import.main([str(self.scene_path), "--out", str(self.root)]), 0)
+            scene = mesh_import.load_scene(self.scene_path)
+            job = scene.renderers[0]
+            geometry = mesh_import.bake_geometry(job, scene)
+            written = write_variant(job, scene, geometry, "", self.root / "scratch")
+        tracked = (self.root / "mesh.mesh.bundle").read_bytes()
+        self.assertEqual(written.read_bytes(), tracked)
+        self.assertGreater(len(set(np.unique(geometry.tri_mat))), 0)
 
     def test_a_different_sample_count_changes_the_bake(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = pathlib.Path(tmp)
-            (root / "m.obj").write_text(CUBE + SMALL_FACE)
-            (root / "m.mtl").write_text("newmtl m\nKd 0.5 0.25 0.125\n")
-            write_import(root, output='[output]\n', body=FLAT_VARIANT)
-            scene_path = write_scene(root, renderer(extra=FLAT_RENDERER) + sun_object(), head=TONEMAP + AMBIENT + FLAT_BAKE,
-                                     name="mesh.scene.toml")
-            with mock.patch("r3d.mesh_import.REPO", root):
-                scene = mesh_import.load_scene(scene_path)
-                job = scene.renderers[0]
-                geometry = mesh_import.bake_geometry(job, scene)
-                declared = write_variant(job, scene, geometry, "", root / "a")
-                other = write_variant(job, scene, geometry, "samples=fixed:1,place=centroid",
-                                      root / "b")
-            self.assertNotEqual(declared.read_bytes(), other.read_bytes())
+        with mock.patch("r3d.mesh_import.REPO", self.root):
+            scene = mesh_import.load_scene(self.scene_path)
+            job = scene.renderers[0]
+            geometry = mesh_import.bake_geometry(job, scene)
+            declared = write_variant(job, scene, geometry, "", self.root / "a")
+            other = write_variant(job, scene, geometry, "samples=fixed:1,place=centroid", self.root / "b")
+        self.assertNotEqual(declared.read_bytes(), other.read_bytes())
 
 
 if __name__ == "__main__":

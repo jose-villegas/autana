@@ -20,8 +20,8 @@ flowchart LR
 | Visibility | triangles, the camera's region or path → the seen triangles | the renderer's `visibility` | [Scene-Files.md](../scene/Scene-Files.md#visibility-camera_region) |
 | Thin | seen triangles → a share of one material's, for dense foliage | `geometry.thin` | [Mesh-Import.md](Mesh-Import.md#thin) |
 | Light | triangles, the scene's lights → a colour per vertex or face; rays traced by Mitsuba<sup>[[15]](../../Citations.md#mitsuba3)</sup> on the CPU | `[bake]`, `[indirect]`, `[sky]`, `[ambient]`, `tonemap_white` | [Bake-Method.md](Bake-Method.md), [Scene-Files.md](../scene/Scene-Files.md#bake) |
-| Simplify | lit triangles → each variant at its budget | `geometry.simplify`, each variant's `triangles` | [Mesh-Import.md](Mesh-Import.md#simplify) |
-| Fit | a variant, reference renders → the fitted mesh; CUDA GPU | the renderer's `fit` | [Appearance-Fit.md](Appearance-Fit.md) |
+| Simplify | lit triangles → the variant at its budget: the fit's start | `geometry.simplify`, the variant's `triangles` | [Mesh-Import.md](Mesh-Import.md#simplify) |
+| Fit | the start, reference renders → the fitted mesh; CUDA GPU, else the start is the mesh | the renderer's `fit` | [Appearance-Fit.md](Appearance-Fit.md) |
 | Meshlets | the final mesh → clusters and nodes inside a `.bundle` | `geometry.meshlet_triangles` | [Baked-Mesh.md](Baked-Mesh.md#meshlets) |
 | Asset pack | a scene, its meshes and clip → one pack per root | an app's demo assets | [Building-Packs.md](../../assets/Building-Packs.md#packs) |
 

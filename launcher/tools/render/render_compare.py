@@ -8,12 +8,12 @@
         --bake LABEL A.avi [--bake LABEL B.avi ...] [--sheet-frames 2,4]
         [--reference-sheet PNG]
 
-    render_compare.py --out sheet.png --still-column LABEL FILE [--still-column ...]
-
     render_compare.py --out sheet.png --reference-stills TITLE REFERENCE A B
         --label-a TEXT --label-b TEXT [--crops N]
 
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
+
+For --material-ids usage, see launcher/tools/r3d/README.md.
 
 --reference-stills writes the reference sheet of one frame from three PNGs:
 the reference, A and B, then A's and B's dE heatmaps; with --crops N,
@@ -59,9 +59,9 @@ Needs Pillow and numpy, and ffmpeg for --video.
 """
 
 import argparse
+import csv
 import pathlib
-import shutil
-import subprocess
+import shlex
 import sys
 from dataclasses import dataclass
 
@@ -70,6 +70,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 from check_avi import read_video
 from colour_maths import GAMMA, expand_565, lab
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
+from video_encode import VideoWriter
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from r3d import material_ids
+from render import reference_poses
 
 HOLE_RED = (255, 0, 0)
 LABEL_BAR = 22
@@ -682,15 +688,6 @@ def video_summary(all_stats, dt_ms):
     )
 
 
-def _ffmpeg_command(ffmpeg, size, fps, out):
-    return (
-        [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24"]
-        + ["-s", "%dx%d" % size, "-r", "%g" % fps, "-i", "-"]
-        + ["-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-crf", "16", "-preset", "medium"]
-        + ["-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
-    )
-
-
 def worst_frames(all_stats, count):
     """Indices of the count frames that differ most: holes first, then changed pixels."""
     order = sorted(range(len(all_stats)), key=lambda i: (all_stats[i].holes_a + all_stats[i].holes_b, all_stats[i].changed), reverse=True)
@@ -731,11 +728,9 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
     fps_b, frames_b = read_video(path_b)
     if fps_a != fps_b:
         raise ValueError("frame rate %g vs %g: render both with the same --dt" % (fps_a, fps_b))
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise RuntimeError("ffmpeg not found; --video needs it to pack the frames")
     dt_ms = 1000.0 / fps_a
-    process, lines, all_stats = None, [CSV_HEADER], []
+    writer = VideoWriter(out, fps or fps_a)
+    lines, all_stats = [CSV_HEADER], []
     try:
         for index, (raw_a, raw_b) in enumerate(zip(frames_a, frames_b)):
             a, b = Image.fromarray(raw_a), Image.fromarray(raw_b)
@@ -743,15 +738,9 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             all_stats.append(stats)
             lines.append(frame_line(index, dt_ms, stats))
             picture = compose_frame(a, b, clear, gain, label_a, label_b, frame_note(index, dt_ms, stats))
-            if process is None:
-                command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
-                process = subprocess.Popen(command, stdin=subprocess.PIPE)
-            process.stdin.write(picture.tobytes())
+            writer.add(picture)
     finally:
-        if process is not None:
-            process.stdin.close()
-            if process.wait() != 0:
-                raise RuntimeError("ffmpeg failed writing %s" % out)
+        writer.close()
     if not all_stats:
         raise ValueError("no frames to compare")
     if csv_path:
@@ -790,7 +779,10 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
     first frame when None. `keep`, a dict of frame index to None, is filled
     with the (render, reference) pairs of those frames; `sink(fps, index,
     render, reference)` is called for every frame. The first `first` video
-    frames are skipped, for references that cover only a later segment."""
+    frames are skipped, for references that cover only a later segment. A
+    reference set that records its poses refuses a frame drawn elsewhere
+    (reference_poses.checker)."""
+    stands = reference_poses.checker(path, reference_dir)
     fps, frames = read_video(path)
     references = sorted(pathlib.Path(reference_dir).glob("*.png"))
     values = []
@@ -800,6 +792,8 @@ def reference_video(path, reference_dir, scale=None, heatmaps=None, keep=None, s
             continue
         if index >= len(references):
             raise ValueError("more video frames than reference images")
+        if stands is not None:
+            stands(position, index)
         render = Image.fromarray(raw)
         reference = Image.open(references[index])
         if scale is None:
@@ -862,27 +856,6 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
     return lines
 
 
-class VideoWriter:
-    """Packs RGB pictures of one size into an H.264 mp4 through ffmpeg."""
-
-    def __init__(self, out, fps):
-        self.out, self.fps, self.process = out, fps, None
-
-    def add(self, picture):
-        if self.process is None:
-            ffmpeg = shutil.which("ffmpeg")
-            if ffmpeg is None:
-                raise RuntimeError("ffmpeg not found; writing %s needs it to pack the frames" % self.out)
-            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps, self.out), stdin=subprocess.PIPE)
-        self.process.stdin.write(picture.convert("RGB").tobytes())
-
-    def close(self):
-        if self.process is not None:
-            self.process.stdin.close()
-            if self.process.wait() != 0:
-                raise RuntimeError("ffmpeg failed writing %s" % self.out)
-
-
 class ReferenceVideoWriter:
     """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
 
@@ -919,6 +892,138 @@ def video_sheet(rows, out, label_a, label_b, fps, crop):
     save_gif(shown, out, 1000 / fps)
 
 
+MATERIAL_PANEL_MIN = 180
+MATERIAL_VIEWS = 4
+MATERIAL_EMPTY = (24, 24, 24)
+MATERIAL_CLASS_COLOURS = ((24, 24, 24), (60, 190, 110), (130, 150, 160),
+                          (255, 180, 20), (230, 45, 80), (100, 120, 255), (190, 90, 220), (40, 205, 230))
+
+
+def material_id_inputs(scene_path, object_name, poses_path, ids_dir, selectors=()):
+    """Verified reference and captured material maps for a scene renderer."""
+    from functools import partial
+    from types import SimpleNamespace
+
+    from bake import bake
+    from r3d.import_settings import load_scene
+    from r3d.ray_query import RayQuery
+    from r3d.reference_render import drawn_hits, source_for
+    from r3d.scene_asset import world_placement
+    from r3d.texture.texture_settings import renderer_textures
+
+    scene = load_scene(scene_path)
+    source, job = source_for(scene, object_name, lit=False)
+    root = pathlib.Path(ids_dir)
+    capture_log = root / 'capture.poses.csv'
+    _, _, lens, _, logged = reference_poses.capture_poses(capture_log)
+    check = reference_poses.checker(root / 'capture', pathlib.Path(poses_path).parent, poses_path, lens=lens)
+    if check is None:
+        raise ValueError('reference poses are missing')
+    for frame in range(len(logged)):
+        check(frame, frame)
+    bundle = job.asset_path
+    texture_pack = None
+    if job.asset_path.resolve().is_relative_to(bake.REPO):
+        kind = 'levels' if job.renderer.fit else 'mesh'
+        bundle = bake.fetch(bake.locked_bake(scene_path, object_name, kind))
+        if renderer_textures(scene_path, object_name) is not None:
+            texture_pack = bake.fetch(bake.locked_bake(scene_path, object_name, 'texture'))
+    placement = world_placement(scene, job.object)
+    drawn_objects = set() if (material_ids.EXCLUDE, material_ids.NOT_DRAWN) in selectors else None
+    drawn, textured = material_ids.drawn_ids(root, bundle, source, placement, texture_pack,
+                                             drawn_objects=drawn_objects)
+    views = reference_poses.capture_views(capture_log)
+    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    query = SimpleNamespace(first_hit=partial(drawn_hits, source, double_materials))
+    references, objects = material_ids.source_ids(source, query, views, placement)
+    excluded, totals = None, []
+    if selectors:
+        excluded = material_ids.exclusion_ids(source, references, objects, selectors, drawn_objects or ())
+        totals = material_ids.material_exclusions(references, objects, excluded, selectors, source)
+    has_texture = [texture is not None for texture in source.textures]
+    return references, drawn, textured, source.names, has_texture, (excluded, totals)
+
+
+def material_id_sheet(references, drawn, textured, names, has_texture, out, reference=None,
+                      views=MATERIAL_VIEWS, crops=0, *, selectors=(), exclusions=(None, ())):
+    """Worst material disagreements, their shared material palette and per-material CSV totals."""
+    from docs.figures import index_hue
+
+    if not references or len(references) != len(drawn) or len(drawn) != len(textured) or views < 1:
+        raise ValueError('material comparison needs matching frames and positive --views')
+    excluded, excluded_rows = exclusions
+    if excluded is None:
+        excluded = [None] * len(references)
+    classes = [material_ids.diff_classes(ref, own, pattern, has_texture, skip)
+               for ref, own, pattern, skip in zip(references, drawn, textured, excluded)]
+    arguments = shlex.join([arg for selector in selectors for arg in selector])
+    header = 'Exclusions: ' + (arguments or '(none)')
+    header = header.replace('\r', r'\r').replace('\n', r'\n')
+    header_width = _font().getbbox(header)[2] + LABEL_BAR
+    ranked = sorted(range(len(classes)), key=lambda i: -np.isin(classes[i], material_ids.DISAGREEMENTS).sum())[:views]
+    palette = np.array([MATERIAL_EMPTY] + [index_hue(i, byte=True) for i in range(len(names))], dtype=np.uint8)
+    class_palette = np.asarray(MATERIAL_CLASS_COLOURS, dtype=np.uint8)
+    rows, crop_entries, shown = [], [], set()
+    labels = ['reference materials', 'drawn materials', 'diff classes']
+    if reference:
+        labels.insert(0, 'reference shaded')
+    for frame in ranked:
+        ref, own, diff = references[frame], drawn[frame], classes[frame]
+        shown.update(int(i) for i in np.unique(np.concatenate([ref.ravel(), own.ravel()])) if i >= 0)
+        pictures = [Image.fromarray(palette[ref + 1]), Image.fromarray(palette[own + 1]),
+                    Image.fromarray(class_palette[diff])]
+        if reference:
+            path = pathlib.Path(reference) / f'{frame:04d}.png'
+            if not path.is_file():
+                raise ValueError(f'missing reference image for frame {frame}: {path}')
+            with Image.open(path) as image:
+                shade = image.convert('RGB').resize(pictures[0].size)
+            pictures.insert(0, shade)
+        width = max(MATERIAL_PANEL_MIN, pictures[0].width)
+        rows.append([(f'{frame}: {label}', captioned(picture, '', width))
+                     for label, picture in zip(labels, pictures)])
+        if crops:
+            empty, plain = np.asarray(MATERIAL_EMPTY, dtype=np.uint8), class_palette[material_ids.AGREE_PLAIN]
+            reference_mask = np.where((ref == material_ids.EMPTY)[..., None], empty, plain)
+            blank = (own == material_ids.EMPTY) & (diff != material_ids.EXCLUDED)
+            drawn_mask = np.where(blank[..., None], empty, plain)
+            drawn_mask[np.isin(diff, [material_ids.MISS, material_ids.WRONG_MATERIAL])] = HOLE_RED
+            clusters = find_clusters(Image.fromarray(reference_mask), Image.fromarray(drawn_mask),
+                                     MATERIAL_EMPTY, count=crops)
+            crop_entries.append((f'frame {frame}', pictures, clusters))
+    canvas = captioned(still_sheet(rows), header, header_width)
+    legend = [(names[i], tuple(palette[i + 1])) for i in sorted(shown)]
+    legend += list(zip(material_ids.CLASS_NAMES, MATERIAL_CLASS_COLOURS))
+    result = Image.new('RGB', (canvas.width, canvas.height + len(legend) * LABEL_BAR), 'white')
+    result.paste(canvas, (0, 0))
+    painter = ImageDraw.Draw(result)
+    for row, (name, colour) in enumerate(legend):
+        y = canvas.height + row * LABEL_BAR
+        painter.rectangle((0, y, LABEL_BAR, y + LABEL_BAR - 1), fill=colour)
+        painter.text((LABEL_BAR + 4, y), name, fill='black', font=_font())
+    out = pathlib.Path(out)
+    result.save(out)
+    reports = (
+        ('.csv', ['material', 'name', *material_ids.CLASS_NAMES],
+         material_ids.material_table(references, drawn, classes, names)),
+        ('.confusions.csv', ['reference_material', 'drawn_material', 'pixels'],
+         material_ids.material_confusions(references, drawn, classes)),
+        ('.excluded.csv', ['selector', 'object', 'name', 'material', 'pixels'], excluded_rows),
+    )
+    for suffix, fields, totals in reports:
+        with out.with_suffix(suffix).open('w', newline='', encoding='utf-8') as handle:
+            handle.write(f'# {header}\n')
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(totals)
+    crop_out = pathlib.Path(crops_path(str(out)))
+    if any(clusters for _title, _pictures, clusters in crop_entries):
+        captioned(crop_sheet(crop_entries, labels), header, header_width).save(crop_out)
+    else:
+        crop_out.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
@@ -953,7 +1058,25 @@ def main():
     parser.add_argument("--label-a", help="what A shows; required with --row, --video and the reference sheet or mp4")
     parser.add_argument("--label-b", help="what B shows; required with --row and --video")
     parser.add_argument("--crops", type=int, default=0)
+    parser.add_argument('--material-ids', nargs=4, metavar=('SCENE', 'OBJECT', 'POSES', 'IDS_DIR'))
+    for option, metavar, parse, help_text in (
+        (material_ids.EXCLUDE_MATERIAL, 'GLOB', str, 'exclude matching source materials'),
+        (material_ids.EXCLUDE_OBJECT, 'GLOB', str, 'exclude matching source objects'),
+        (material_ids.EXCLUDE, 'SELECTOR', material_ids.selector, material_ids.SELECTOR_HELP),
+    ):
+        parser.add_argument(option, metavar=metavar, dest='selectors', action='append', default=[],
+                            type=lambda value, option=option, parse=parse: (option, parse(value)), help=help_text)
+    parser.add_argument('--reference', metavar='DIR')
+    parser.add_argument('--views', type=int, default=MATERIAL_VIEWS)
     args = parser.parse_args()
+    if args.material_ids:
+        *inputs, exclusions = material_id_inputs(*args.material_ids, selectors=args.selectors)
+        material_id_sheet(*inputs, args.out, reference=args.reference, views=args.views, crops=args.crops,
+                          selectors=args.selectors, exclusions=exclusions)
+        return
+
+    if args.selectors:
+        parser.error('exclusion options require --material-ids')
 
     if (args.row or args.video or args.reference_crops or args.reference_stills) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")

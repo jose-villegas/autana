@@ -43,6 +43,26 @@ def load_glb_source(settings):
                            colors=np.array(mesh.colors, dtype=np.float64))
 
 
+def with_triangles(src, tri_v, tri_t, tri_m, **attributes):
+    """`src` with other triangles and optional replacement vertex, UV or material arrays; `src`'s SurfaceTable is
+    not carried over, so the copy does not keep `src` alive."""
+    kept = {key: value for key, value in vars(src).items() if key != "_surface_table"}
+    return SimpleNamespace(**(kept | dict(tri_v=tri_v, tri_t=tri_t, tri_m=tri_m) | attributes))
+
+
+def camera_filter(source, *, alpha=True):
+    """A hit filter for hidden materials and, with `alpha`, cut texels; None when neither applies."""
+    alpha = getattr(source, "alpha_test", None) if alpha else None
+    alpha = alpha if alpha is not None and alpha.tested.any() else None
+    hidden = getattr(source, "camera_hidden", None)
+    hidden = hidden if hidden is not None and hidden.any() else None
+    if alpha is None and hidden is None:
+        return None
+    from r3d.light import AlphaTest
+
+    return AlphaTest(source, None if alpha is None else alpha.keep_alpha, hidden)
+
+
 PATH_LIGHTS = {}
 
 
@@ -55,7 +75,9 @@ def path_light_for(src, job, scene, variant=None):
     settings = job.settings
     boost = scene.indirect.albedo_boost
     variant = variant or ray_query.VARIANT
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant)
+    alpha = getattr(src, "alpha_test", None)
+    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant,
+           None if alpha is None else alpha.keep_alpha)
     if key not in PATH_LIGHTS:
         PATH_LIGHTS.clear()
         PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost, variant)

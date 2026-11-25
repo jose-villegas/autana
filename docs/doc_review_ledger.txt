@@ -4,3 +4,5 @@ docs/render/animation/Skinned-Meshes.md	2026-11-13
 docs/render/frame/README.md	2026-11-13
 launcher/main/apps/render_lab/tools/README.md	2026-11-15
 docs/kinematics/Hinge.md	2026-11-17
+docs/render/frame/Texture-Mapping.md	2026-11-18
+docs/image/Colour.md	2026-11-20

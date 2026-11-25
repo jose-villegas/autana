@@ -4,9 +4,10 @@
  * u and v packed in one word. An INDEX4 span divides u and v by depth every
  * texture.divide_px pixels or more (render settings) and steps affine
  * between; 0 steps affine across the span. A pixel is one colormap load: the
- * texel's colour at the vertex light's dithered level. A MASK1 texture's span
- * steps affine, skips the pixels whose texel is 0 and draws the rest in its
- * one colour.
+ * texel's colour at the vertex light's dithered level. An INDEX4 level from
+ * texture.far_level on draws untextured in one colour, its corners' mean:
+ * the surface's mean lit colour. A MASK1 texture's span steps affine, skips the
+ * pixels whose texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
 
@@ -41,7 +42,6 @@
 /* A Bayer threshold, 0..15, in 1/256 of a level. */
 #define DITHER_SHIFT (LIGHT_FRAC - 4)
 #define DEPTH_MAX    ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
-#define CORNERS      3
 /* Affine bends u and v by about the triangle's texel extent times the
  * relative spread of its inverse depth, divided by this. */
 #define BEND_SPREAD  4.0F
@@ -56,13 +56,15 @@ static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
-_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.affine_level can name every level");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1,
+               "texture.affine_level and far_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
 R3D_PATH(cut, "texture.cut");
 R3D_PATH(divided, "texture.divided");
 R3D_PATH(affine, "texture.affine");
+R3D_PATH(far, "texture.far");
 
 static inline float
 plane_at(const r3d_span_plane_t* p, float x, float y) {
@@ -297,6 +299,23 @@ pick_level(const setup_t* su, const r3d_texture_t* texture) {
     return level;
 }
 
+/* Whether mip `level` is a level from setting level `from` on (0: none). */
+static inline bool
+level_from(int level, uint8_t from) {
+    return from != 0 && level >= from;
+}
+
+/* Whether mip `level` is an INDEX4 level from target->texture_far_level on,
+ * drawn untextured. */
+static inline bool
+is_far(const r3d_span_target_t* target, const r3d_texture_t* texture, int level) {
+    return texture->format == R3D_TEXTURE_INDEX4 && level_from(level, target->texture_far_level);
+}
+
+/* What set_up() left: nothing to draw, a far level for r3d_span_triangle_mean(), or
+ * `su` set up. */
+typedef enum { SET_UP_EMPTY, SET_UP_FAR, SET_UP_DONE } set_up_result_t;
+
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
 light_level(const r3d_span_vertex_t* v) {
@@ -329,16 +348,16 @@ r3d_texture_segment_px(int divide_px, float affine_bend, float extent, float z_n
  * stays the affine planes' pick. It sits at the flash tail, apart from
  * set_up(). */
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
-set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-              const r3d_texture_t* texture, recti_t whole, setup_t* su) {
+set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3D_SPAN_CORNERS],
+              const vec2f_t uv[R3D_SPAN_CORNERS], const r3d_texture_t* texture, recti_t whole, setup_t* su) {
     const float z_near = mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z));
     const float z_far = mathf_min(v[0]->z, mathf_min(v[1]->z, v[2]->z));
     const float side = (float)mathi_max(whole.w, whole.h);
     const float extent =
         mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy)) * side;
     su->divide = r3d_texture_segment_px(target->texture_divide_px,
-                                        (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
-                                        z_near, z_far, side);
+                                        (float)target->texture_bend_steps * (1.0F / (float)RENDER_TEXTURE_BEND_STEPS),
+                                        extent, z_near, z_far, side);
     r3d_span_frame_t f;
     if (su->divide == 0 || !r3d_span_frame_of(v[0], v[1], v[2], whole.x, whole.y, &f)) {
         su->divide = 0;
@@ -349,9 +368,9 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     /* The start of the tile holding vertex 0. */
     const float tile = (float)(1U << texture->size_log2);
     const vec2f_t origin = {uv[0].x - mathf_repeat(uv[0].x, tile), uv[0].y - mathf_repeat(uv[0].y, tile)};
-    float s_q[CORNERS];
-    float t_q[CORNERS];
-    for (int i = 0; i < CORNERS; i++) {
+    float s_q[R3D_SPAN_CORNERS];
+    float t_q[R3D_SPAN_CORNERS];
+    for (int i = 0; i < R3D_SPAN_CORNERS; i++) {
         s_q[i] = (uv[i].x - origin.x) * scale * v[i]->z;
         t_q[i] = (uv[i].y - origin.y) * scale * v[i]->z;
     }
@@ -363,13 +382,21 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
 }
 
 /* Sets `su` up to fill the triangle's part in window box `box` affine, off
- * the row walks' stack chain: the frame lives only here. */
-static __attribute__((noinline)) bool
-set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS], const vec2f_t uv[CORNERS],
-       const r3d_texture_t* texture, recti_t box, setup_t* su) {
+ * the row walks' stack chain: the frame lives only here. A far INDEX4 level
+ * (is_far()) stops at its mip: r3d_span_triangle_mean() draws it. */
+static __attribute__((noinline)) set_up_result_t
+set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3D_SPAN_CORNERS],
+       const vec2f_t uv[R3D_SPAN_CORNERS], const r3d_texture_t* texture, recti_t box, setup_t* su) {
     r3d_span_frame_t f;
     if (!r3d_span_frame_of(v[0], v[1], v[2], box.x, box.y, &f)) {
-        return false;
+        return SET_UP_EMPTY;
+    }
+    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
+    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
+    const int level = pick_level(su, texture);
+    if (is_far(target, texture, level)) {
+        R3D_PATH_HIT(far);
+        return SET_UP_FAR;
     }
     su->x0 = box.x;
     su->y0 = box.y;
@@ -378,9 +405,6 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     const uint16_t cap =
         target->skip_hidden ? r3d_span_depth_limit(mathf_max(v[0]->z, mathf_max(v[1]->z, v[2]->z))) : R3D_DEPTH_NEAREST;
     su->depth_max = cap == R3D_DEPTH_NEAREST ? DEPTH_MAX : (((int32_t)cap << R3D_DEPTH_SHIFT) | 0xFF);
-    su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
-    su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
-    const int level = pick_level(su, texture);
     const float scale = 1.0F / (float)(1U << level);
     su->s = (r3d_span_plane_t){su->s.base * scale, su->s.dx * scale, su->s.dy * scale};
     su->t = (r3d_span_plane_t){su->t.base * scale, su->t.dx * scale, su->t.dy * scale};
@@ -389,7 +413,7 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[CORNERS
     su->sampler =
         (sampler_t){texture->texels[level], mask, mask << side_log2, (uint32_t)(V_INT_SHIFT - side_log2), texture};
     su->level = r3d_span_plane_of(&f, light_level(v[0]), light_level(v[1]), light_level(v[2]));
-    return true;
+    return SET_UP_DONE;
 }
 
 /* r3d_span's walk: the long edge v0-v2 runs the whole height, and v1 lies
@@ -448,21 +472,30 @@ walk_writers(const r3d_span_target_t* target, const setup_t* su, recti_t box, co
     walk_rows(target, su, box, v0, v1, v2, long_on_left, WALK_WRITE);
 }
 
+/* Whether a triangle with window box `box` and doubled area `area2` draws
+ * nothing: off the window, degenerate, or past a debug stop. */
+static inline bool
+draws_nothing(recti_t box, int32_t area2) {
+    return recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0;
+}
+
 /* Sets up `texture` over the triangle, then walks its rows: the INDEX4
- * fill or MASK1's cut, then the target's writers over what it drew. */
-void
-r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                           const r3d_span_vertex_t* c, const vec2f_t uv[CORNERS], const r3d_texture_t* texture) {
+ * fill or MASK1's cut, then the target's writers over what it drew. An
+ * INDEX4 level from far_level on returns false, set up no further. */
+bool
+r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c, const vec2f_t uv[R3D_SPAN_CORNERS], const r3d_texture_t* texture) {
     const recti_t whole = r3d_span_extent_limits(a, b, c, 0, 0).centres;
     const recti_t box = r3d_span_window_box(target, whole);
     const int32_t area2 = r3d_span_area2(a, b, c);
-    if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {
-        return;
+    if (draws_nothing(box, area2)) {
+        return true;
     }
     setup_t su;
-    const r3d_span_vertex_t* const corners[CORNERS] = {a, b, c};
-    if (!set_up(target, corners, uv, texture, box, &su)) {
-        return;
+    const r3d_span_vertex_t* const corners[R3D_SPAN_CORNERS] = {a, b, c};
+    const set_up_result_t set = set_up(target, corners, uv, texture, box, &su);
+    if (set != SET_UP_DONE) {
+        return set == SET_UP_EMPTY;
     }
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
@@ -477,8 +510,7 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
          * most one segment's. So does one reading a level from
          * texture.affine_level on (0: none): its pattern shifts rather than bends. */
         su.divide = 0;
-        if (target->texture_divide_px != 0
-            && (target->texture_affine_level == 0 || sampler_level(&su.sampler) < target->texture_affine_level)
+        if (target->texture_divide_px != 0 && !level_from(sampler_level(&su.sampler), target->texture_affine_level)
             && mathi_max(whole.w, whole.h) > target->texture_divide_px) {
             set_up_divide(target, corners, uv, texture, whole, &su);
         }
@@ -493,4 +525,5 @@ r3d_span_textured_triangle(const r3d_span_target_t* target, const r3d_span_verte
     if (target->writer_count != 0) {
         walk_writers(target, &su, box, v0, v1, v2, long_on_left);
     }
+    return true;
 }
