@@ -22,7 +22,7 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.test_r3d_ray_query import have_llvm  # noqa: E402
+from tests.r3d_env import have_llvm  # noqa: E402
 
 CARD_Z, PLANE_Z, EYE_Z = 1.0, 0.0, 3.0
 HALF = 1.0

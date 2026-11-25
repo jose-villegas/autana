@@ -353,8 +353,8 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     const float extent =
         mathf_max(mathf_abs(su->s.dx) + mathf_abs(su->t.dx), mathf_abs(su->s.dy) + mathf_abs(su->t.dy)) * side;
     su->divide = r3d_texture_segment_px(target->texture_divide_px,
-                                        (float)target->texture_bend_steps * (1.0F / (float)R3D_SPAN_BEND_STEPS), extent,
-                                        z_near, z_far, side);
+                                        (float)target->texture_bend_steps * (1.0F / (float)RENDER_TEXTURE_BEND_STEPS),
+                                        extent, z_near, z_far, side);
     r3d_span_frame_t f;
     if (su->divide == 0 || !r3d_span_frame_of(v[0], v[1], v[2], whole.x, whole.y, &f)) {
         su->divide = 0;

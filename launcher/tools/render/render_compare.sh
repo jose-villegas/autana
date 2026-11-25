@@ -56,6 +56,9 @@
 # --reference-frames with --reference and --poses alone makes (or finds) that
 # cache and prints its directory, for a caller that scores the frames itself.
 #
+#   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
+# See ../r3d/README.md#material-id-differences.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu
@@ -147,10 +150,6 @@ elif [ -n "$reference" ]; then
     esac
 else
     [ -n "$script" ] && [ -n "$rev_b" ] || usage
-fi
-if [ "$video" = 1 ] && ! command -v ffmpeg > /dev/null 2>&1; then
-    echo "--video needs ffmpeg on PATH." >&2
-    exit 1
 fi
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"

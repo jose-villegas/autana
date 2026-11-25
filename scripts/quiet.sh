@@ -41,12 +41,17 @@ quiet_run() {
         quiet_rc=$?
     fi
 
-    if [ "$quiet_rc" -ne 0 ]; then
-        QUIET_STATUS=$quiet_rc
-        QUIET_FAILED_LABELS="${QUIET_FAILED_LABELS}${QUIET_FAILED_LABELS:+
-}$quiet_label"
-    fi
+    quiet_record "$quiet_label" "$quiet_rc"
     return "$quiet_rc"
+}
+
+# Counts a labelled step's status: a nonzero one fails the run and names the
+# step's section of the log in the verdict.
+quiet_record() {
+    [ "$2" -ne 0 ] || return 0
+    QUIET_STATUS=$2
+    QUIET_FAILED_LABELS="${QUIET_FAILED_LABELS}${QUIET_FAILED_LABELS:+
+}$1"
 }
 
 QUIET_ERROR_PATTERN='FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:'

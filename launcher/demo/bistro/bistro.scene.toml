@@ -1,7 +1,6 @@
 # An open street with a far plane: a plaza and a long lane, walked at eye
 # height and flown over the roofs, on ground that reaches the horizon. Model
-# units are centimetres; y is up. Fitted renderers come first, the standard
-# fitted full at the top, as in the Sponza scene.
+# units are centimetres; y is up.
 tonemap_white = 0.35
 
 [sky]
@@ -24,6 +23,10 @@ ray_offset = 5.0
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }
+# The fit's references, traced with every hemisphere term turned per point (docs/render/scene/Scene-Files.md#bake-reference-traces);
+# no vertex bake reads these two.
+aa_samples = 4      # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 
 [[objects]]
 name = "sun"
@@ -69,87 +72,6 @@ laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
 normal_weight = 1.0
-
-[[objects]]
-name = "street_fitted"
-
-[objects.mesh_renderer]
-mesh = "bistro.import.toml"
-variant = "bistro_fitted"
-bake = true
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
-
-[objects.mesh_renderer.fit.prune]
-budget = 9350
-coverage_every_ms = 20
-
-[objects.mesh_renderer.fit.poses]
-size = [184, 224]
-train_every_ms = 1000
-held_out_every_ms = 5000
-
-[objects.mesh_renderer.fit.optimise]
-steps = 2000
-batch = 8
-laplacian = 10.0
-surface_weight = 10.0
-surface_margin = 0.25
-normal_weight = 1.0
-
-[[objects]]
-name = "street_flat_fitted"
-
-[objects.mesh_renderer]
-mesh = "bistro.import.toml"
-variant = "bistro_fitted_full"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
-
-[objects.mesh_renderer.fit.prune]
-budget = 18678
-coverage_every_ms = 20
-
-[objects.mesh_renderer.fit.poses]
-size = [184, 224]
-train_every_ms = 1000
-held_out_every_ms = 5000
-
-[objects.mesh_renderer.fit.optimise]
-steps = 2000
-batch = 8
-laplacian = 10.0
-surface_weight = 10.0
-surface_margin = 0.25
-normal_weight = 1.0
-
-[[objects]]
-name = "street"
-
-[objects.mesh_renderer]
-mesh = "bistro.import.toml"
-variant = "bistro"
-bake = true
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
-
-[[objects]]
-name = "street_lite"
-
-[objects.mesh_renderer]
-mesh = "bistro.import.toml"
-variant = "bistro_lite"
-bake = true
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
-
-[[objects]]
-name = "street_flat"
-
-[objects.mesh_renderer]
-mesh = "bistro.import.toml"
-variant = "bistro"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
 
 [[objects]]
 name = "ground"

@@ -71,6 +71,17 @@ class FormatRolesTests(unittest.TestCase):
             with mock.patch.object(check_format_roles, "ROOT", folder):
                 self.assertEqual(check_format_roles.filled(page)[1], [])
 
+    def test_a_diagram_quoted_in_a_longer_fence_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            (folder / "launcher/main").mkdir(parents=True)
+            (folder / "launcher/main/thing.h").write_text(HEADER, encoding="utf-8")
+            page = folder / "docs/formats/THING.md"
+            page.parent.mkdir(parents=True)
+            page.write_text("````markdown\n" + PAGE + "````\n", encoding="utf-8")
+            with mock.patch.object(check_format_roles, "ROOT", folder):
+                self.assertEqual(check_format_roles.filled(page), (page.read_text(encoding="utf-8"), []))
+
 
 if __name__ == "__main__":
     unittest.main()

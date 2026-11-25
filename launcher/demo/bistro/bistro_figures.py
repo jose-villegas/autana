@@ -21,7 +21,7 @@ PRODUCER = Producer(area="render", needs=("host", "bakes"), run=("--cc", "{cc}",
                              "bistro-street-divide.png", "bistro-street-far-levels.png",
                              "bistro-street-far-levels.crops.png", "texture-mip-levels.png"))
 STREET = ("--scene", "launcher/demo/bistro/bistro.scene.toml", "--object", "street_fitted_full",
-          "--reference", "bistro.street_fitted.reference.tar.xz", "--frame", "10", "--dt", "1000",
+          "--reference", "bistro.street_fitted_full.reference.tar.xz", "--frame", "10", "--dt", "1000",
           "--title", "Bistro street, fitted full: cobblestones and beige brick textured",
           "--image", "bistro-street-textured.png", "--divides", "1,0,16,8", "--divide-image", "bistro-street-divide.png",
           "--far-frame", "47", "--far-image", "bistro-street-far-levels.png",

@@ -41,7 +41,8 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
 }
 
 static gfx_color_t
-pixel_color(const void* pixel, uint16_t clear_color) {
+pixel_color(const void* pixel, size_t width, uint16_t clear_color) {
+    (void)width;
     const int tested = ((const raster_overdraw_px_t*)pixel)->tested;
     if (tested == 0) {
         return clear_color;

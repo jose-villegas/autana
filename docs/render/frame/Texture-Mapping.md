@@ -68,7 +68,7 @@ and never divides.
 Each texture finds its flat level when it opens, from its own texels: the
 first level from which every colour every level uses draws, at each light
 level of the colormap, within one just noticeable
-difference<sup>[[136]](../../Citations.md#w3c-css-color-4)</sup> of the
+difference<sup>[[144]](../../Citations.md#w3c-css-color-4)</sup> of the
 pattern's mean, as OKLab measures it (`R3D_TEXTURE_FLAT_JND`). The flat fill
 draws that mean. Each light level counts because the colormap scales the
 tint up to the vertex light, so a dark tint's contrast still shows. There is no

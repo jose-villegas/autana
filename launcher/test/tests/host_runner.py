@@ -13,10 +13,12 @@ from pathlib import Path
 TEST_DIR = Path(__file__).resolve().parents[1]
 REPO = TEST_DIR.parents[1]
 sys.path.insert(0, str(REPO / "scripts" / "device"))
+sys.path.insert(0, str(REPO / "launcher" / "tools" / "build"))
 
 sys.path.insert(0, str(REPO / "scripts" / "device" / "tests"))
 import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
 import device  # noqa: E402
+import build_lock  # noqa: E402
 
 _binary = None
 
@@ -36,8 +38,10 @@ def binary():
 
 
 def run(*requests):
-    """The runner's stdout after each request, in order."""
+    """The runner's stdout after each request, in order, run while holding
+    the build dir, so a run_tests.sh there cannot relink the binary under it."""
     command = [str(binary())]
     for request in requests:
         command += ["--run", request]
-    return subprocess.run(command, capture_output=True, text=True).stdout
+    with build_lock.hold(TEST_DIR / "build"):
+        return subprocess.run(command, capture_output=True, text=True).stdout

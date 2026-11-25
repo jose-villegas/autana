@@ -23,6 +23,14 @@ cosine-weighted, so it is even on the disc seen from above, for any $R$.
 
 ![The first 8, 32 and 128 fixed directions seen from above](../../images/render/bake-directions.png)
 
+A bake keeps this frame fixed, so equal surroundings give equal light. A
+reference render turns each point's frame about its normal by its own angle,
+hashed from the point's coordinates<sup>[[142]](../../Citations.md#steele-2014)</sup>.
+With one fixed frame, neighbouring pixels on a flat surface trace the same rays
+and share one error, which shows as straight-edged light and dark patches. Turned
+frames leave grain instead, which the scene's
+[`[bake]` `denoise`](../scene/Scene-Files.md#bake-reference-traces) removes.
+
 ## Local-occlusion implementation
 
 The [`ao` setting](../scene/Scene-Files.md#bake-ao) darkens a point that has geometry
@@ -76,11 +84,14 @@ $K$ where the next bounce is negligible beside the direct light.
 
 The paths' noise falls as $1/\sqrt{R}$.
 
+Only static meshes are baked. A skinned mesh takes its sky and bounce light
+at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
+
 ![The light each of three bounces adds along the floor, and the relative error against the ray count](../../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |
 |---|---|
-| Same first directions per point, fixed path seed | The same tree and the same partition of points give the same bytes |
+| Same first directions per point in a bake, a hashed turn per point in a reference; fixed path seed | The same tree and the same partition of points give the same bytes |
 | One gather for the vertex copies a crease splits | Bounced light changes slowly; copies that differ only in it would stop merging |
 | A double-sided surface is lit on both sides and keeps the brighter | A card in the sun takes its sunlit side, a curtain in shade its open side |
 | A ray reaching a one-sided triangle from behind finds no light | Light does not pass through shells |
@@ -102,11 +113,9 @@ alpha below `keep_alpha`; the importer's triangle drop applies to drawn geometry
 How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,
 shadows and tone map, at the device render size and supersampled, for the
-poses of the scene's camera path. A host render of any variant, smooth, lite
-or flat, is scored against it. Flat and full beside their fitted variants at
-two poses, each with its ΔE heatmap on one colour scale:
-
-![Reference, flat, flat fitted, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-sheet.png)
+poses of the scene's camera path. A host render of any bake is scored against
+it. The fit's start beside the fitted bake at two poses, each with its ΔE
+heatmap on one colour scale:
 
 ![Reference, full, fitted full, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-full-sheet.png)
 

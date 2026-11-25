@@ -55,3 +55,8 @@ bool render_lab_budget_set_ms(int budget_ms);
  * generates_frames, 0 draws every frame. */
 bool render_lab_framegen_on(void);
 bool render_lab_framegen_set_on(bool on);
+
+/* The tunable render_lab.textures: 1 draws a bake whose pack mesh has
+ * textures with them (renderer_set_textured()), 0 plain. */
+bool render_lab_textures_on(void);
+bool render_lab_textures_set_on(bool on);

@@ -1,6 +1,4 @@
-# The reference scene shares one light rig and camera across its baked variants.
-# Fitted renderers come first, the standard fitted full at the top: doc_images_demo.sh
-# draws the first renderer in pictures of the whole scene.
+# The reference scene: one light rig and camera, and one fitted renderer.
 tonemap_white = 0.35
 
 [sky]
@@ -20,6 +18,10 @@ ray_offset = 0.5
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }
+# The fit's references, traced with every hemisphere term turned per point (docs/render/scene/Scene-Files.md#bake-reference-traces);
+# no vertex bake reads these two.
+aa_samples = 4      # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 
 [[objects]]
 name = "sun"
@@ -32,7 +34,8 @@ color = [1.0, 0.92, 0.78]
 intensity = 3.0
 
 # The scene camera: anywhere in the atrium, on no path. The fits train on
-# probes spread through its region (geometry.probes), so no flight shapes them.
+# probes spread through its region (geometry.probes), so no flight shapes them;
+# only the rest mesh's seal also looks along the flight (seal_views).
 [[objects]]
 name = "visitor"
 
@@ -77,6 +80,7 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
 coverage_every_ms = 20
@@ -94,81 +98,3 @@ surface_weight = 10.0
 surface_margin = 0.25
 normal_weight = 1.0
 
-[[objects]]
-name = "atrium_fitted"
-
-[objects.mesh_renderer]
-mesh = "sponza.import.toml"
-variant = "sponza_fitted"
-bake = true
-visibility = { source = "camera_region", rounds = 160 }
-
-[objects.mesh_renderer.fit.prune]
-coverage_every_ms = 20
-
-[objects.mesh_renderer.fit.poses]
-size = [184, 224]
-train_every_ms = 1000
-held_out_every_ms = 5000
-
-[objects.mesh_renderer.fit.optimise]
-steps = 2000
-batch = 8
-laplacian = 10.0
-surface_weight = 10.0
-surface_margin = 0.25
-normal_weight = 1.0
-
-[[objects]]
-name = "atrium_flat_fitted"
-
-[objects.mesh_renderer]
-mesh = "sponza.import.toml"
-variant = "sponza_fitted_full"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_region", rounds = 160 }
-
-[objects.mesh_renderer.fit.prune]
-coverage_every_ms = 20
-
-[objects.mesh_renderer.fit.poses]
-size = [184, 224]
-train_every_ms = 1000
-held_out_every_ms = 5000
-
-[objects.mesh_renderer.fit.optimise]
-steps = 2000
-batch = 8
-laplacian = 10.0
-surface_weight = 10.0
-surface_margin = 0.25
-normal_weight = 1.0
-
-[[objects]]
-name = "atrium"
-
-[objects.mesh_renderer]
-mesh = "sponza.import.toml"
-variant = "sponza"
-bake = true
-visibility = { source = "camera_region", rounds = 160 }
-
-[[objects]]
-name = "atrium_lite"
-
-[objects.mesh_renderer]
-mesh = "sponza.import.toml"
-variant = "sponza_lite"
-bake = true
-visibility = { source = "camera_region", rounds = 160 }
-
-[[objects]]
-name = "atrium_flat"
-
-[objects.mesh_renderer]
-mesh = "sponza.import.toml"
-variant = "sponza"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_region", rounds = 160 }
