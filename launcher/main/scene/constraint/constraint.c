@@ -1,7 +1,9 @@
 /* Constraints read the placed and timeline-sampled world poses. */
 #include "scene/constraint/constraint.h"
 
+#include <assert.h>
 #include <float.h>
+#include <string.h>
 
 #include "kinematics/rig/rig.h"
 #include "scene/scene_internal.h"
@@ -22,17 +24,15 @@ _Static_assert(SCENE_ASSET_BIND_WORLD_SPACE == RIG_BIND_WORLD && SCENE_ASSET_BIN
 
 #define AIM_DISTANCE_SQUARED_MIN (FLT_EPSILON * FLT_EPSILON)
 
-enum { CONSTRAINT_DRIVEN_TRANSFORM = 1U };
-
 static scene_row_t
 source_row(const scene_asset_t* asset, int index) {
-    return scene_asset_find_row(asset, 0, asset->sources[index].target);
+    return scene_asset_find_row(asset, asset->sources[index].target);
 }
 
 static scene_row_t
 protect_path(scene_claims_t* claims, scene_row_t row) {
     for (; row != SCENE_ROW_NONE; row = scene_asset_parent(claims->asset, row)) {
-        if (claims->protected_rows[row] & (CONSTRAINT_DRIVEN_TRANSFORM | SCENE_HINGE_TRANSFORM)) {
+        if (claims->protected_rows[row] & (SCENE_CLAIM_DRIVEN | SCENE_HINGE_TRANSFORM)) {
             return row;
         }
         claims->protected_rows[row] |= SCENE_PROTECTED_TRANSFORM;
@@ -41,18 +41,20 @@ protect_path(scene_claims_t* claims, scene_row_t row) {
 }
 
 static scene_row_t
-protect_sources(scene_claims_t* claims, scene_row_t owner, int first, int count) {
+protect_inputs(scene_claims_t* claims, scene_row_t owner, int first, int count, scene_row_t up) {
     scene_row_t driver = protect_path(claims, scene_asset_parent(claims->asset, owner));
     for (int i = 0; driver == SCENE_ROW_NONE && i < count; i++) {
         driver = protect_path(claims, source_row(claims->asset, first + i));
     }
-    return driver;
+    return driver == SCENE_ROW_NONE ? protect_path(claims, up) : driver;
 }
 
 static void
 claim_transform(scene_claims_t* claims, scene_row_t row, int field) {
-    claims->protected_rows[row] |= CONSTRAINT_DRIVEN_TRANSFORM | SCENE_PROTECTED_TRANSFORM;
-    (void)scene_field_claim(claims, row, scene_field_bit(SCENE_COMPONENT_TRANSFORM, field));
+    claims->protected_rows[row] |= SCENE_CLAIM_DRIVEN | SCENE_PROTECTED_TRANSFORM;
+    const bool claimed = scene_field_claim(claims, row, scene_field_bit(SCENE_COMPONENT_TRANSFORM, field));
+    assert(claimed);
+    (void)claimed;
 }
 
 static scene_failure_t
@@ -60,6 +62,19 @@ hinge_conflict(const scene_asset_t* asset, scene_row_t owner) {
     const anim_binding_t hinge = {
         .path = asset->names[owner].name, .component = ANIM_COMPONENT_HINGE, .field = HINGE_FIELDS.fields[0].name};
     return scene_binding_failure(ASSET_ERR_FORMAT, &hinge);
+}
+
+static scene_failure_t
+driven_failure(const scene_claims_t* claims, scene_row_t row) {
+    if (claims->protected_rows[row] & SCENE_HINGE_TRANSFORM) {
+        return hinge_conflict(claims->asset, row);
+    }
+    const scene_field_mask_t position = scene_field_bit(SCENE_COMPONENT_TRANSFORM, ANIM_POSE_POSITION_FIELD);
+    const int field = claims->writes[row] & position ? ANIM_POSE_POSITION_FIELD : ANIM_POSE_ROTATION_FIELD;
+    const anim_binding_t binding = {.path = claims->asset->names[row].name,
+                                    .component = ANIM_COMPONENT_TRANSFORM,
+                                    .field = ANIM_POSE_TRANSFORM_FIELDS.fields[field].name};
+    return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
 }
 
 scene_failure_t
@@ -85,19 +100,18 @@ scene_constraint_claim(scene_claims_t* claims) {
     }
     for (int i = 0; i < asset->position_constraint_count; i++) {
         const scene_asset_position_constraint_t* row = &asset->position_constraints[i];
-        const scene_row_t driver = protect_sources(claims, row->entity, row->source_first, row->source_count);
+        const scene_row_t driver =
+            protect_inputs(claims, row->entity, row->source_first, row->source_count, SCENE_ROW_NONE);
         if (driver != SCENE_ROW_NONE) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, asset->names[driver].name);
+            return driven_failure(claims, driver);
         }
     }
     for (int i = 0; i < asset->aim_constraint_count; i++) {
         const scene_asset_aim_constraint_t* row = &asset->aim_constraints[i];
-        scene_row_t driver = protect_sources(claims, row->entity, row->source_first, row->source_count);
-        if (driver == SCENE_ROW_NONE) {
-            driver = protect_path(claims, row->world_up_object);
-        }
+        const scene_row_t driver =
+            protect_inputs(claims, row->entity, row->source_first, row->source_count, row->world_up_object);
         if (driver != SCENE_ROW_NONE) {
-            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, asset->names[driver].name);
+            return driven_failure(claims, driver);
         }
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, "");
@@ -148,12 +162,12 @@ scene_constraint_open(scene_t* scene) {
 
 static float
 weight_at(const scene_constraint_inputs_t* inputs, int field) {
-    return fminf(fmaxf(inputs->weights.values[field], 0.0F), 1.0F);
+    return mathf_clamp(inputs->weights.values[field], 0.0F, 1.0F);
 }
 
 static bool
-weighted_position(const scene_t* scene, const scene_constraint_inputs_t* inputs, int count,
-                  const scene_asset_position_constraint_t* position, vec3f_t* result) {
+weighted_position(const scene_t* scene, const scene_constraint_inputs_t* inputs, int count, vec3f_t offset,
+                  rig_bind_t bind, vec3f_t from, vec3f_t* result) {
     float weights[SCENE_CONSTRAINT_SOURCES_MAX];
     float sum = 0.0F;
     for (int i = 0; i < count; i++) {
@@ -167,19 +181,11 @@ weighted_position(const scene_t* scene, const scene_constraint_inputs_t* inputs,
     for (int i = 0; i < count; i++) {
         if (weights[i] > 0.0F) {
             const transformf_t target = scene_row_world(scene->root, inputs->targets[i]);
-            const vec3f_t point = position == NULL ? target.position
-                                                   : rig_follow_position(&target, position->translation_offset,
-                                                                         (rig_bind_t)position->binding_mode);
+            const vec3f_t point = vec3f_sub(rig_follow_position(&target, offset, bind), from);
             *result = vec3f_add(*result, vec3f_scale(point, weights[i] / sum));
         }
     }
     return true;
-}
-
-static transformf_t
-owner_frame(const scene_t* scene, scene_row_t owner) {
-    const scene_row_t parent = scene_row_parent(scene, owner);
-    return scene_row_world(scene->root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
 }
 
 static void
@@ -187,16 +193,23 @@ apply_position(scene_t* scene, const scene_asset_position_constraint_t* row, con
     transformf_t* local = &scene->locals[row->entity];
     const float weight = weight_at(&c->inputs, CONSTRAINT_WEIGHT_FIELD);
     vec3f_t next = c->own, target;
-    if (weight > 0.0F && weighted_position(scene, &c->inputs, row->source_count, row, &target)) {
-        const transformf_t frame = owner_frame(scene, row->entity);
+    if (weight > 0.0F
+        && weighted_position(scene, &c->inputs, row->source_count, row->translation_offset,
+                             (rig_bind_t)row->binding_mode, vec3f_zero(), &target)) {
+        const transformf_t frame = scene_row_parent_world(scene->root, row->entity);
         if (fabsf(frame.scale.x) >= FLT_MIN && fabsf(frame.scale.y) >= FLT_MIN && fabsf(frame.scale.z) >= FLT_MIN) {
-            transformf_set_position(local, c->own);
-            const vec3f_t own = transformf_compose(&frame, local).position;
-            next = transformf_inverse_point(&frame, vec3f_lerp(own, target, weight));
+            const vec3f_t mapped = transformf_inverse_point(&frame, target);
+            const vec3f_t blended =
+                weight == 1.0F ? mapped : vec3f_add(vec3f_scale(c->own, 1.0F - weight), vec3f_scale(mapped, weight));
+            if (isfinite(blended.x) && isfinite(blended.y) && isfinite(blended.z)) {
+                next = blended;
+            }
         }
     }
-    transformf_set_position(local, next);
-    scene->flags[row->entity] |= SCENE_FLAG_PLACED;
+    if (memcmp(&local->position, &next, sizeof next) != 0) {
+        transformf_set_position(local, next);
+        scene->flags[row->entity] |= SCENE_FLAG_PLACED;
+    }
 }
 
 static vec3f_t
@@ -225,27 +238,30 @@ static void
 apply_aim(scene_t* scene, const scene_asset_aim_constraint_t* row, const scene_aim_constraint_t* c) {
     const float weight = weight_at(&c->inputs, CONSTRAINT_WEIGHT_FIELD);
     quatf_t next = c->own;
-    vec3f_t target;
-    if (weight > 0.0F && weighted_position(scene, &c->inputs, row->source_count, NULL, &target)) {
+    if (weight > 0.0F) {
         const vec3f_t from = scene_row_world(scene->root, row->entity).position;
-        const vec3f_t direction = vec3f_sub(target, from);
-        if (vec3f_dot(direction, direction) > AIM_DISTANCE_SQUARED_MIN) {
-            const quatf_t frame = owner_frame(scene, row->entity).rotation;
-            const quatf_t own = quatf_normalize(quatf_mul(frame, c->own));
-            const quatf_t aimed = aim_world_rotation(scene, row, c, from, direction, own);
-            const quatf_t offset = quatf_mul(aimed, row->rotation_offset);
-            const quatf_t blended = quatf_nlerp(own, offset, weight);
-            next = quatf_normalize(quatf_mul(quatf_conjugate(frame), blended));
+        vec3f_t direction;
+        if (weighted_position(scene, &c->inputs, row->source_count, vec3f_zero(), RIG_BIND_WORLD, from, &direction)) {
+            if (vec3f_dot(direction, direction) > AIM_DISTANCE_SQUARED_MIN) {
+                const quatf_t frame = scene_row_parent_world(scene->root, row->entity).rotation;
+                const quatf_t own = quatf_mul(frame, c->own);
+                const quatf_t aimed = aim_world_rotation(scene, row, c, from, direction, own);
+                const quatf_t offset = quatf_mul(aimed, row->rotation_offset);
+                next = quatf_nlerp(c->own, quatf_mul(quatf_conjugate(frame), offset), weight);
+            }
         }
     }
-    transformf_set_rotation(&scene->locals[row->entity], next);
-    scene->flags[row->entity] |= SCENE_FLAG_PLACED;
+    transformf_t* local = &scene->locals[row->entity];
+    if (memcmp(&local->rotation, &next, sizeof next) != 0) {
+        transformf_set_rotation(local, next);
+        scene->flags[row->entity] |= SCENE_FLAG_PLACED;
+    }
 }
 
 static bool
 path_placed(const scene_t* scene, scene_row_t row) {
     for (; row != SCENE_ROW_NONE; row = scene_row_parent(scene, row)) {
-        if (scene->flags[row] & SCENE_FLAG_CONSTRAINT_INPUT) {
+        if (scene->flags[row] & SCENE_FLAG_PENDING_PLACEMENT) {
             return true;
         }
     }
@@ -254,28 +270,21 @@ path_placed(const scene_t* scene, scene_row_t row) {
 
 static bool
 inputs_placed(const scene_t* scene, const scene_constraint_inputs_t* inputs, scene_row_t owner, int count) {
-    if (path_placed(scene, owner)) {
-        return true;
-    }
     for (int i = 0; i < count; i++) {
         if (weight_at(inputs, CONSTRAINT_FIRST_SOURCE_FIELD + i) > 0.0F && path_placed(scene, inputs->targets[i])) {
             return true;
         }
     }
-    return false;
+    return path_placed(scene, owner);
 }
 
 void
 scene_constraint_step(scene_t* scene, bool applied) {
-    if (!scene_has_constraints(&scene->asset) || (!applied && !scene->constraint_inputs_placed)) {
-        return;
-    }
     for (int i = 0; i < scene->asset.position_constraint_count; i++) {
         const scene_asset_position_constraint_t* row = &scene->asset.position_constraints[i];
         const scene_position_constraint_t* c = &scene->positions[i];
         if (applied || inputs_placed(scene, &c->inputs, row->entity, row->source_count)) {
             apply_position(scene, row, c);
-            scene->flags[row->entity] |= SCENE_FLAG_CONSTRAINT_INPUT;
         }
     }
     for (int i = 0; i < scene->asset.aim_constraint_count; i++) {
@@ -286,8 +295,4 @@ scene_constraint_step(scene_t* scene, bool applied) {
             apply_aim(scene, row, c);
         }
     }
-    for (int row = 0; row < scene->asset.entity_count; row++) {
-        scene->flags[row] &= (uint8_t)~SCENE_FLAG_CONSTRAINT_INPUT;
-    }
-    scene->constraint_inputs_placed = false;
 }

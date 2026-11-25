@@ -1,8 +1,36 @@
 # Position and aim constraints
 
-The scene row wires each constraint to its sources. Timeline curves sample
-weights at the current time, so seek and playback give the same pose.
-Cross two source weights to transfer influence between them.
+Each constraint object names its sources in the scene file; the scene resolves them at load.
+Timeline curves sample weights at the current time, so seek and playback give the same pose.
+
+In the scene file, attach a position constraint to the camera.
+
+```toml
+[[objects]]
+name = "camera"
+
+[objects.position_constraint]
+sources = [{ target = "follow_target" }, { target = "next_target", weight = 0.0 }]
+```
+
+In its timeline's [keys file](../animation/Animation-Tracks.md#keys-files),
+cross the two source weights to transfer influence.
+
+```toml
+animation = "change_target"
+
+[[tracks]]
+object = "camera"
+field = "CPOS.weight0"
+interp = "linear"
+keys = [{ t = 0, v = 1 }, { t = 1, v = 0 }]
+
+[[tracks]]
+object = "camera"
+field = "CPOS.weight1"
+interp = "linear"
+keys = [{ t = 0, v = 0 }, { t = 1, v = 1 }]
+```
 
 ## Position constraint
 
@@ -15,15 +43,15 @@ by their sum. A zero sum leaves the owner's position in place.
 
 | Field | Meaning |
 |---|---|
-| `weight` | Influence from 0 to 1. Defaults to 1. Zero gives the owner's pose. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
-| `sources` | Ordered sources up to `SCENE_CONSTRAINT_SOURCES_MAX`. <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| `sources[].target` | Name of a scene object. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
-| `sources[].weight` | Relative influence from 0 to 1. Defaults to 1. <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| `translation_offset` | Offset from each source in its binding frame. Defaults to zero. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
-| `binding_mode` | `world_space` (default), `lock_to_target` for target rotation, or `lock_to_target_with_world_up` for target yaw. <sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup> |
+| `weight` | Influence from 0 to 1. Defaults to 1. Zero gives the owner's pose.<sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
+| `sources` | Ordered sources up to `SCENE_CONSTRAINT_SOURCES_MAX`.<sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
+| `sources[].target` | Name of a scene object.<sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
+| `sources[].weight` | Defaults to 1. The engine clamps source weights to 0..1 and normalises them by their sum.<sup>[[148]](../../Citations.md#unity-constraints)</sup> |
+| `translation_offset` | Offset from each source in its binding frame. Defaults to zero.<sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
+| `binding_mode` | `world_space` (default), `lock_to_target` for target rotation, or `lock_to_target_with_world_up` for target yaw.<sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup> |
 
-Lag and damping are omitted because Cinemachine Position Damping depends on
-the previous frame and would make seek differ from playback.
+Cinemachine Follow's Position Damping (Tracker settings) is not carried
+over: it depends on the previous frame, so a seek would differ from playback.
 <sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup>
 
 ## Aim constraint
@@ -36,16 +64,16 @@ leaves the owner's rotation in place.
 
 | Field | Meaning |
 |---|---|
-| `weight` | Influence from 0 to 1. Defaults to 1. Zero gives the owner's rotation. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| `sources` | Ordered sources up to `SCENE_CONSTRAINT_SOURCES_MAX`. <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| `sources[].target` | Name of a scene object. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| `sources[].weight` | Relative influence from 0 to 1. Defaults to 1. <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| `aim_vector` | Local aim axis. Defaults to authored `[0, 0, -1]`, engine +Z. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| `up_vector` | Local up axis. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| `world_up_type` | How to choose the world up reference, described below. <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| `world_up_vector` | Reference vector for `vector` and `object_rotation_up`. Defaults to `[0, 1, 0]`. <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| `world_up_object` | Required scene object for `object_up` and `object_rotation_up`. <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| `rotation_offset` | Euler degrees in the same order as `rotation`. Defaults to zero. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `weight` | Influence from 0 to 1. Defaults to 1. Zero gives the owner's rotation.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `sources` | Ordered sources up to `SCENE_CONSTRAINT_SOURCES_MAX`.<sup>[[148]](../../Citations.md#unity-constraints)</sup> |
+| `sources[].target` | Name of a scene object.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `sources[].weight` | Defaults to 1. The engine clamps source weights to 0..1 and normalises them by their sum.<sup>[[148]](../../Citations.md#unity-constraints)</sup> |
+| `aim_vector` | Local aim axis. Defaults to `[0, 0, -1]`, the forward of a right-handed source. The pack mirrors it to the engine's +Z ([conventions](../../math/Conventions.md)).<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `up_vector` | Local up axis. Defaults to `[0, 1, 0]`.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `world_up_type` | How to choose the world up reference, described below.<sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
+| `world_up_vector` | Nonzero reference vector for `vector` and `object_rotation_up`. Defaults to `[0, 1, 0]`.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `world_up_object` | Required scene object for `object_up` and `object_rotation_up`.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+| `rotation_offset` | Euler degrees in the same order as `rotation`. Defaults to zero.<sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
 
 | World up type | Reference |
 |---|---|
@@ -53,14 +81,17 @@ leaves the owner's rotation in place.
 | `object_up` | Direction from the constrained position to the up object. |
 | `object_rotation_up` | The up object's world rotation applied to `world_up_vector`. |
 | `vector` | `world_up_vector` in world space. |
-| `none` | Use the shortest rotation from the owner's aim direction to the target direction. |
+| `none` | With no up reference, turn the owner by the shortest rotation that carries its current `aim_vector` onto the target. The `up_vector` is unused. |
 
 ## Timeline and ownership
 
-Position owns the object's position and aim owns its rotation. A timeline
-or property animator writing a claimed field fails load. Source and up
-object paths can be placed by the app and sampled by the timeline.
-Property-driven, constrained or hinged transforms on those paths fail load.
+- **Owner.** Position owns the object's position. Aim owns its rotation.
+- **Sampled inputs.** A timeline can sample the sources' and up object's transforms.
+  The constraint's float curves are `weight` and `weight<i>` for each source index `i`
+  below `SCENE_CONSTRAINT_SOURCES_MAX`.
+- **Load failure.** Scene loading fails in these cases.<sup>[[148]](../../Citations.md#unity-constraints)</sup>
+  - A timeline or property animator writes the claimed field.
+  - A constraint drives an owner ancestor, a source, its ancestor, or the up object or its ancestor.
+  - A property animator drives a transform on those paths.
 
-See [Scene Files](Scene-Files.md#constraint-and-hinge) for scene rows and
-track names.
+A constraint re-solves when the timeline applies a sample or a row on an input path has been placed.

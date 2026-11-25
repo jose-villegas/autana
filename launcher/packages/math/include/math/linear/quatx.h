@@ -13,7 +13,7 @@ MATH_DEFINE_QUAT(quatx, vec3x, int32_t, mathx)
 /* The template squares in Q16.16: suitable for nlerp's near-unit blend.
  * Public normalization below also handles arbitrary magnitudes. */
 typedef quatx_t quatx_unit_t;
-MATH_DEFINE_QUAT_NORMALIZE(quatx_unit, vec3x, int32_t, mathx)
+MATH_DEFINE_QUAT_NORMALIZE(quatx_unit, vec3x, int32_t, mathx, quatx_dot)
 
 /* Any nonzero int32 quaternion: component error <= 0.5 + 2^-12 LSB. Zero gives zero. */
 static inline quatx_t

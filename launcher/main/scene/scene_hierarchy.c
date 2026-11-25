@@ -188,13 +188,6 @@ scene_row_parent(const scene_t* scene, scene_row_t row) {
 void
 scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
     scene_t* scene = root->scene;
-    const bool watched = scene != NULL && scene_has_constraints(&scene->asset)
-                         && (row == SCENE_ROW_ROOT || !(scene->flags[row] & SCENE_PROTECTED_TRANSFORM)
-                             || scene_hinge_index(&scene->asset, row) < 0);
-    const uint8_t placed = SCENE_FLAG_PLACED | (watched ? SCENE_FLAG_CONSTRAINT_INPUT : 0);
-    if (watched) {
-        scene->constraint_inputs_placed = true;
-    }
     if (row == SCENE_ROW_ROOT) {
         /* The root is every top-level row's parent: the rule below holds for it too. */
         assert(transformf_scale_is_even(&local));
@@ -203,7 +196,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
         root->placed = !scene_transform_is_identity(&root->world);
         for (int e = 0; scene != NULL && e < scene->asset.entity_count; e++) {
             if (parent_of(scene, (scene_row_t)e) == SCENE_ROW_NONE) {
-                scene->flags[e] |= placed;
+                scene->flags[e] |= SCENE_FLAG_PLACED;
             }
         }
         return;
@@ -212,7 +205,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
      * loader and the importer keep content so. */
     assert(scene->world_slots[row] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
     scene->locals[row] = local;
-    scene->flags[row] |= placed;
+    scene->flags[row] |= SCENE_FLAG_PLACED;
 }
 
 transformf_t
@@ -232,6 +225,12 @@ scene_row_world(const scene_root_t* root, scene_row_t row) {
     return transformf_compose(&root->local, &world);
 }
 
+transformf_t
+scene_row_parent_world(const scene_root_t* root, scene_row_t row) {
+    const scene_row_t parent = scene_row_parent(root->scene, row);
+    return scene_row_world(root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+}
+
 mat4f_t
 scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
     const transformf_t local = scene_row_local(root, row);
@@ -247,12 +246,11 @@ scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
 
 void
 scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world) {
-    const scene_row_t parent = scene_row_parent(root->scene, row);
     if (row == SCENE_ROW_ROOT) {
         scene_row_set_local(root, row, world);
         return;
     }
-    const transformf_t parent_world = scene_row_world(root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+    const transformf_t parent_world = scene_row_parent_world(root, row);
     scene_row_set_local(root, row, transformf_relative(&parent_world, &world));
 }
 

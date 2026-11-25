@@ -79,7 +79,7 @@ The hinge reserves position and rotation. Scale remains writable.
 Constraint owners, targets and their ancestors require unhinged transforms.
 
 See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
-[Scene Files](Scene-Files.md#constraint-and-hinge) for authoring.
+[Scene Files](Scene-Files.md#hinge) for authoring.
 
 ## Timeline step and seek
 

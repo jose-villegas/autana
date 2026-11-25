@@ -31,11 +31,6 @@ test_bind_frames(void) {
     TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(world, (vec3f_t){13, 26, -54})));
     TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(full, (vec3f_t){-48, 14, 19})));
     TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(level, (vec3f_t){-48, 26, -15})));
-
-    const quatf_t pitch = quatf_from_axis_angle(vec3f_unit_x(), QUARTER_TURN);
-    transformf_set_rotation(&target, quatf_mul(pitch, roll));
-    const vec3f_t compound = rig_follow_position(&target, follow_offset, RIG_BIND_TARGET_YAW);
-    TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(compound, (vec3f_t){52, 26, 7})));
 }
 
 static void
@@ -56,29 +51,72 @@ test_follow_ignores_scale_and_zero_offset(void) {
 }
 
 static void
-test_yaw_bind_keeps_heading_through_vertical(void) {
+test_yaw_bind_projects_forward_under_pitch_and_roll(void) {
     transformf_t target = fixture();
-    const quatf_t yaws[] = {quatf_identity(), quatf_from_axis_angle(vec3f_up(), QUARTER_TURN)};
-    const float degrees[] = {45.0F, 89.99F, 90.0F, 90.01F, 135.0F};
-    const float radians_per_degree = MATH_PI / 180.0F;
-    for (size_t i = 0; i < sizeof yaws / sizeof yaws[0]; i++) {
-        const vec3f_t expected = vec3f_add(target.position, quatf_rotate(yaws[i], follow_offset));
-        for (size_t j = 0; j < sizeof degrees / sizeof degrees[0]; j++) {
-            const quatf_t pitch = quatf_from_axis_angle(vec3f_unit_x(), degrees[j] * radians_per_degree);
-            transformf_set_rotation(&target, quatf_mul(yaws[i], pitch));
-            const vec3f_t actual = rig_follow_position(&target, follow_offset, RIG_BIND_TARGET_YAW);
-            TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(expected, actual)));
-        }
+    const float tilt = QUARTER_TURN / 2.0F;
+    const quatf_t pitch = quatf_from_axis_angle(vec3f_unit_x(), tilt);
+    const quatf_t roll = quatf_from_axis_angle(vec3f_forward(), tilt);
+    transformf_set_rotation(&target, quatf_mul(pitch, roll));
+    /* Rx(tilt) Rz(tilt) maps +Z to (0, -sin(tilt), cos(tilt)). */
+    const vec3f_t expected = vec3f_add(target.position, vec3f_forward());
+    const vec3f_t actual = rig_follow_position(&target, vec3f_forward(), RIG_BIND_TARGET_YAW);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec3f_length(vec3f_sub(expected, actual)));
+}
+
+static void
+test_yaw_bind_follows_yaw_and_ignores_single_axis_tilt(void) {
+    transformf_t target = fixture();
+    const quatf_t yaw = quatf_from_axis_angle(vec3f_up(), QUARTER_TURN);
+    const quatf_t tilts[] = {
+        quatf_identity(),
+        quatf_from_axis_angle(vec3f_unit_x(), QUARTER_TURN / 2.0F),
+        quatf_from_axis_angle(vec3f_forward(), QUARTER_TURN / 2.0F),
+        quatf_from_axis_angle(vec3f_forward(), MATH_PI),
+    };
+    const vec3f_t turned_offset = {follow_offset.z, follow_offset.y, -follow_offset.x};
+    const vec3f_t expected = vec3f_add(target.position, turned_offset);
+    for (size_t i = 0; i < sizeof tilts / sizeof tilts[0]; i++) {
+        transformf_set_rotation(&target, quatf_mul(yaw, tilts[i]));
+        const vec3f_t actual = rig_follow_position(&target, follow_offset, RIG_BIND_TARGET_YAW);
+        TEST_ASSERT_FLOAT_WITHIN(FOLLOW_TOLERANCE, 0.0F, vec3f_length(vec3f_sub(expected, actual)));
     }
 }
 
 static void
-test_yaw_bind_pins_the_choice_at_an_inverted_target(void) {
+test_yaw_bind_at_the_poles_uses_world_axes(void) {
     transformf_t target = fixture();
-    transformf_set_rotation(&target, (quatf_t){0, 0, 1, 0});
-    const vec3f_t expected = vec3f_add(target.position, (vec3f_t){-follow_offset.x, follow_offset.y, -follow_offset.z});
-    const vec3f_t actual = rig_follow_position(&target, follow_offset, RIG_BIND_TARGET_YAW);
-    TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+    const quatf_t yaw = quatf_from_axis_angle(vec3f_up(), QUARTER_TURN);
+    const float pitches[] = {-QUARTER_TURN, QUARTER_TURN};
+    const vec3f_t expected = vec3f_add(target.position, follow_offset);
+    for (size_t i = 0; i < sizeof pitches / sizeof pitches[0]; i++) {
+        const quatf_t pitch = quatf_from_axis_angle(vec3f_unit_x(), pitches[i]);
+        transformf_set_rotation(&target, quatf_mul(yaw, pitch));
+        const vec3f_t actual = rig_follow_position(&target, follow_offset, RIG_BIND_TARGET_YAW);
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+    }
+}
+
+static void
+test_yaw_bind_at_projection_threshold(void) {
+    transformf_t target = fixture();
+    const float threshold = 1.0E-4F;
+    const float margin = threshold / 100.0F;
+    const float lengths[] = {threshold + margin, threshold, threshold - margin};
+    const vec3f_t headings[] = {vec3f_unit_x(), vec3f_unit_x(), vec3f_forward()};
+    const float x = sqrtf(0.5F);
+    const float y = threshold + threshold / 4.0F;
+    for (size_t i = 0; i < sizeof lengths / sizeof lengths[0]; i++) {
+        /* The inclusive cutoff needs an exact horizontal length in float. */
+        const float z = (lengths[i] / 2.0F - y * x) / x;
+        const quatf_t rotation = {x, y, z, x};
+        transformf_set_rotation(&target, rotation);
+        const vec3f_t forward = quatf_rotate(target.rotation, vec3f_forward());
+        TEST_ASSERT_EQUAL_MEMORY(&lengths[i], &forward.x, sizeof forward.x);
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, forward.z);
+        const vec3f_t expected = vec3f_add(target.position, headings[i]);
+        const vec3f_t actual = rig_follow_position(&target, vec3f_forward(), RIG_BIND_TARGET_YAW);
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec3f_length(vec3f_sub(expected, actual)));
+    }
 }
 
 static void
@@ -155,8 +193,10 @@ void
 suite_rig(void) {
     RUN_TEST(test_bind_frames);
     RUN_TEST(test_follow_ignores_scale_and_zero_offset);
-    RUN_TEST(test_yaw_bind_keeps_heading_through_vertical);
-    RUN_TEST(test_yaw_bind_pins_the_choice_at_an_inverted_target);
+    RUN_TEST(test_yaw_bind_projects_forward_under_pitch_and_roll);
+    RUN_TEST(test_yaw_bind_follows_yaw_and_ignores_single_axis_tilt);
+    RUN_TEST(test_yaw_bind_at_the_poles_uses_world_axes);
+    RUN_TEST(test_yaw_bind_at_projection_threshold);
     RUN_TEST(test_look_aims_positive_z_with_level_right);
     RUN_TEST(test_look_respects_tilted_up_at_any_scale);
     RUN_TEST(test_look_coincident_points_use_identity);

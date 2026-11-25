@@ -27,6 +27,11 @@
     }                                                                                                                  \
                                                                                                                        \
     /* The inverse of a unit rotation. */                                                                              \
+    static inline T P##_dot(P##_t a, P##_t b) {                                                                        \
+        return OPS##_add(OPS##_add(OPS##_add(OPS##_mul(a.x, b.x), OPS##_mul(a.y, b.y)), OPS##_mul(a.z, b.z)),          \
+                         OPS##_mul(a.w, b.w));                                                                         \
+    }                                                                                                                  \
+                                                                                                                       \
     static inline P##_t P##_conjugate(P##_t q) {                                                                       \
         return (P##_t){OPS##_neg(q.x), OPS##_neg(q.y), OPS##_neg(q.z), q.w};                                           \
     }                                                                                                                  \
@@ -66,21 +71,17 @@
         return V##_add(V##_add(v, V##_scale(t, q.w)), V##_cross(u, t));                                                \
     }
 
-#define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS)                                                                       \
+#define MATH_DEFINE_QUAT_NORMALIZE(P, V, T, OPS, DOT)                                                                  \
     /* normalize = q * (1 / sqrt(qx*qx + qy*qy + qz*qz + qw*qw)). Precondition: `q` is not zero. */                    \
     static inline P##_t P##_normalize(P##_t q) {                                                                       \
-        const T k =                                                                                                    \
-            OPS##_rsqrt(OPS##_add(OPS##_add(OPS##_add(OPS##_mul(q.x, q.x), OPS##_mul(q.y, q.y)), OPS##_mul(q.z, q.z)), \
-                                  OPS##_mul(q.w, q.w)));                                                               \
+        const T k = OPS##_rsqrt(DOT(q, q));                                                                            \
         return (P##_t){OPS##_mul(q.x, k), OPS##_mul(q.y, k), OPS##_mul(q.z, k), OPS##_mul(q.w, k)};                    \
     }                                                                                                                  \
                                                                                                                        \
     /* normalize(a (1 - t) + b t). b is negated when a . b < 0: q and -q are one */                                    \
     /* rotation, and that takes the shorter arc. */                                                                    \
     static inline P##_t P##_nlerp(P##_t a, P##_t b, T t) {                                                             \
-        const T dot = OPS##_add(OPS##_add(OPS##_add(OPS##_mul(a.x, b.x), OPS##_mul(a.y, b.y)), OPS##_mul(a.z, b.z)),   \
-                                OPS##_mul(a.w, b.w));                                                                  \
-        if (dot < OPS##_zero()) {                                                                                      \
+        if (DOT(a, b) < OPS##_zero()) {                                                                                \
             b = (P##_t){OPS##_neg(b.x), OPS##_neg(b.y), OPS##_neg(b.z), OPS##_neg(b.w)};                               \
         }                                                                                                              \
         const T wa = OPS##_sub(OPS##_one(), t);                                                                        \

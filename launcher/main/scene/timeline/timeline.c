@@ -66,8 +66,7 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     anim_playhead_t* clock = &timeline->clock;
     const bool wrapped = anim_playhead_advance(clock, &timeline->tracks.clip, dt_ms);
     const uint32_t now = clock->t_ms;
-    const bool applied =
-        timeline->dirty || now != timeline->applied_ms || (wrapped && scene_has_constraints(&scene->asset));
+    const bool applied = timeline->dirty || now != timeline->applied_ms;
     if (applied) {
         scene_animation_apply_fields(scene, timeline->fields, timeline->field_count, clock, &timeline->tracks.clip);
         timeline_apply_blocks(scene);

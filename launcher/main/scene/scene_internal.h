@@ -51,28 +51,21 @@ typedef struct {
     float intensity;
 } scene_light_t;
 
-#define SCENE_FLAG_ENABLED          1U
-#define SCENE_FLAG_DIRTY            2U
-#define SCENE_FLAG_SKIN_DIRTY       4U
-#define SCENE_FLAG_CHANGED          (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
-#define SCENE_FLAG_ACTIVE           8U  /* enabled, and every ancestor enabled */
-#define SCENE_FLAG_MOVED            16U /* its world changed in this resolve */
+#define SCENE_FLAG_ENABLED           1U
+#define SCENE_FLAG_DIRTY             2U
+#define SCENE_FLAG_SKIN_DIRTY        4U
+#define SCENE_FLAG_CHANGED           (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_FLAG_ACTIVE            8U  /* enabled, and every ancestor enabled */
+#define SCENE_FLAG_MOVED             16U /* its world changed in this resolve */
 /* Its transform was set since its skin was last lit: a copy whose playing
  * clip paces it relights at its next pose, any other at once; a moved light
  * relights every skin at once. */
-#define SCENE_FLAG_RELIGHT          32U
-#define SCENE_FLAG_PLACED           (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
-#define SCENE_FLAG_CONSTRAINT_INPUT 64U
-#define SCENE_PROTECTED_TRANSFORM   128U
-#define SCENE_WORLD_SLOT_NONE       0xFFFFU
-#define SCENE_LIGHT_FAILURE_ALBEDO  "skin vertex colors required"
-#define SCENE_LIGHT_FAILURE_NORMAL  "skin normal transform invalid"
-
-/* A row of one scene's columns: the SCNE entity index. Apps hold entity_t
- * handles; the world (entity.c) turns one into its scene and row. */
-typedef uint16_t scene_row_t;
-#define SCENE_ROW_NONE ((scene_row_t)0xFFFFU)
-#define SCENE_ROW_ROOT ((scene_row_t)0xFFFEU) /* the scene's root entity, outside its columns */
+#define SCENE_FLAG_RELIGHT           32U
+#define SCENE_FLAG_PENDING_PLACEMENT 64U /* placed since the last driver step */
+#define SCENE_FLAG_PLACED            (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT | SCENE_FLAG_PENDING_PLACEMENT)
+#define SCENE_WORLD_SLOT_NONE        0xFFFFU
+#define SCENE_LIGHT_FAILURE_ALBEDO   "skin vertex colors required"
+#define SCENE_LIGHT_FAILURE_NORMAL   "skin normal transform invalid"
 
 #include "scene/scene_asset.h"
 
@@ -165,8 +158,6 @@ enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
 typedef uint32_t scene_field_mask_t;
 
-enum { SCENE_HINGE_TRANSFORM = 1U << 2 };
-
 _Static_assert(SCENE_FIELD_END_ENTY <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
@@ -218,24 +209,26 @@ typedef struct {
     int count;
 } scene_anim_targets_t;
 
+/* Only SCENE_PROTECTED_TRANSFORM is copied into scene flags. */
+enum {
+    SCENE_PROTECTED_TRANSFORM = 128U,
+    SCENE_CLAIM_DRIVEN = 256U,
+    SCENE_HINGE_TRANSFORM = 512U,
+};
+
+_Static_assert(((SCENE_CLAIM_DRIVEN | SCENE_HINGE_TRANSFORM)
+                & (SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED | SCENE_FLAG_ACTIVE | SCENE_FLAG_MOVED | SCENE_FLAG_PLACED
+                   | SCENE_PROTECTED_TRANSFORM))
+                   == 0,
+               "claim-only bits are disjoint from scene flags");
+_Static_assert((SCENE_CLAIM_DRIVEN & SCENE_HINGE_TRANSFORM) == 0, "driver claims are disjoint");
+
 typedef struct {
     const scene_asset_t* asset;
     scene_field_mask_t* writes;
-    uint8_t* protected_rows;
+    uint16_t* protected_rows;
+    const uint8_t* flags;
 } scene_claims_t;
-
-typedef union {
-    struct {
-        float weight, weight0, weight1, weight2, weight3;
-    };
-
-    float values[CONSTRAINT_WEIGHT_FIELD_COUNT];
-} scene_constraint_weights_t;
-
-typedef struct {
-    scene_constraint_weights_t weights;
-    scene_row_t targets[SCENE_CONSTRAINT_SOURCES_MAX];
-} scene_constraint_inputs_t;
 
 typedef struct {
     scene_constraint_inputs_t inputs;
@@ -354,7 +347,6 @@ struct scene {
     scene_position_constraint_t* positions;
     scene_aim_constraint_t* aims;
     scene_hinge_t* hinges;
-    bool constraint_inputs_placed;
     size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
@@ -434,9 +426,10 @@ scene_row_t scene_row_parent(const scene_t* scene, scene_row_t row); /* SCENE_RO
 transformf_t scene_row_local(const scene_root_t* root, scene_row_t row);
 void scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local);
 transformf_t scene_row_world(const scene_root_t* root, scene_row_t row);
-void scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world);
+transformf_t scene_row_parent_world(const scene_root_t* root, scene_row_t row);
 mat4f_t scene_row_world_matrix(const scene_root_t* root, scene_row_t row);
 uint8_t scene_row_flags(const scene_root_t* root, scene_row_t row);
+void scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world);
 void scene_row_set_enabled(scene_root_t* root, scene_row_t row, bool enabled);
 
 /* Numbers the entities with children and allocates their worlds; false when it could not. */
@@ -469,16 +462,13 @@ scene_failure_t scene_constraint_claim(scene_claims_t* claims);
 int scene_constraint_source_count(const scene_asset_t* asset, scene_row_t row, int component);
 void scene_constraint_open(scene_t* scene);
 void scene_constraint_step(scene_t* scene, bool applied);
-scene_row_t scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash);
 
 static inline bool
-scene_has_constraints(const scene_asset_t* asset) {
-    return asset->position_constraint_count != 0 || asset->aim_constraint_count != 0;
-}
-
-static inline bool
-scene_constraint_covers(const uint8_t* rows, scene_row_t row) {
-    return rows != NULL && (rows[row] & SCENE_PROTECTED_TRANSFORM) != 0;
+scene_constraint_covers(const scene_claims_t* claims, scene_row_t row) {
+    const uint16_t flags = claims->protected_rows != NULL ? claims->protected_rows[row]
+                           : claims->flags != NULL        ? claims->flags[row]
+                                                          : 0;
+    return (flags & SCENE_PROTECTED_TRANSFORM) != 0;
 }
 
 static inline scene_row_t

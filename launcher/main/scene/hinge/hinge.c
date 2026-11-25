@@ -43,7 +43,7 @@ void
 scene_hinge_step(scene_t* scene, bool applied) {
     for (int i = 0; i < scene->asset.hinge_count; i++) {
         const scene_row_t row = scene->asset.hinges[i].entity;
-        if (!applied && !(scene->flags[row] & SCENE_FLAG_RELIGHT)) {
+        if (!applied && !(scene->flags[row] & SCENE_FLAG_PENDING_PLACEMENT)) {
             continue;
         }
         const scene_hinge_t* hinge = &scene->hinges[i];

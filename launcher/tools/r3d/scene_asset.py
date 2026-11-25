@@ -50,6 +50,7 @@ BINDS = {name: read_define(OWNER, "SCENE_ASSET_BIND_" + name.upper())
          for name in BINDING_MODES}
 WORLD_UP = {name: read_define(OWNER, "SCENE_ASSET_WORLD_UP_" + name.upper()) for name in WORLD_UP_TYPES}
 WORLD_UP_OBJECT_NONE = read_define(OWNER, "SCENE_ASSET_WORLD_UP_OBJECT_NONE")
+AIM_ROTATION_TOLERANCE = read_define(OWNER, "SCENE_ASSET_AIM_ROTATION_TOLERANCE")
 HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
 
 
@@ -429,10 +430,12 @@ def decode_constraint(part, row, entity_count, total_sources):
     mode, count, first, reference, weight, *values = row
     if not 1 <= count <= CONSTRAINT_SOURCES_MAX or first + count > total_sources:
         raise SceneError(f"{part}: invalid sources range")
-    if not 0 <= weight <= 1 or not all(map(math.isfinite, values)):
+    if not 0 <= weight <= 1:
         raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
     fields = dict(source_count=count, source_first=first, weight=weight)
     if part == "position_constraints":
+        if not all(map(math.isfinite, values)):
+            raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
         if mode not in BINDS.values() or reference:
             raise SceneError(f"{part}: invalid binding_mode or padding")
         return dict(**fields, binding_mode=mode, translation_offset=tuple(values))
@@ -443,11 +446,23 @@ def decode_constraint(part, row, entity_count, total_sources):
         raise SceneError(f"{part}: invalid world_up_object")
     aim = tuple(values[:TRANSFORM_AXES])
     up = tuple(values[TRANSFORM_AXES:2 * TRANSFORM_AXES])
-    if not any(aim) or not any(up):
-        raise SceneError(f"{part}: aim_vector and up_vector must be nonzero")
+    world_up = tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES])
+    rotation = tuple(values[3 * TRANSFORM_AXES:])
+    directions = [("aim_vector", aim), ("up_vector", up)]
+    if mode in (WORLD_UP["vector"], WORLD_UP["object_rotation_up"]):
+        directions.append(("world_up_vector", world_up))
+    for field, direction in directions:
+        if not all(map(math.isfinite, direction)) or not any(direction):
+            raise SceneError(f"{part}: {field} must be finite and nonzero")
+    if not all(map(math.isfinite, rotation)):
+        raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
+    length_squared = 0.0
+    for value in rotation:
+        length_squared = f32(length_squared + f32(value * value))
+    if abs(f32(length_squared - 1)) > f32(AIM_ROTATION_TOLERANCE):
+        raise SceneError(f"{part}: rotation_offset must be a unit quaternion")
     return dict(**fields, world_up_type=mode, world_up_object=reference, aim_vector=aim, up_vector=up,
-                world_up_vector=tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES]),
-                rotation_offset=tuple(values[3 * TRANSFORM_AXES:]))
+                world_up_vector=world_up, rotation_offset=rotation)
 
 
 def decode_hinge(row):

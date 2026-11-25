@@ -225,10 +225,11 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const scene_row_t entity = location.target;
         const bool constraint =
             location.component == SCENE_COMPONENT_CPOS || location.component == SCENE_COMPONENT_CAIM;
-        const bool protected = scene_constraint_covers(claims->protected_rows, entity);
-        if ((owned != NULL && location.component > SCENE_COMPONENT_LENS)
-            || (owned != NULL && location.component == SCENE_COMPONENT_TRANSFORM && protected
-                && scene_hinge_index(claims->asset, entity) < 0)
+        if ((owned != NULL
+             && (location.component == SCENE_COMPONENT_ANIMATOR || constraint
+                 || location.component == SCENE_COMPONENT_HNGE || location.component == SCENE_COMPONENT_ENTY))
+            || (owned != NULL && location.component == SCENE_COMPONENT_TRANSFORM
+                && scene_constraint_covers(claims, entity) && scene_hinge_index(claims->asset, entity) < 0)
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
             || (constraint
                 && (location.field >= CONSTRAINT_FIRST_SOURCE_FIELD
@@ -250,7 +251,12 @@ scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int cou
     anim_apply(fields, count, anim_playhead_sample_seconds(playhead, clip));
     for (int i = 0; i < count; i++) {
         const ptrdiff_t entity = fields[i].dirty - scene->flags;
-        scene->locals[entity].cached = false;
+        transformf_t* local = &scene->locals[entity];
+        const float* target = fields[i].target;
+        if (target == &local->position.x || target == &local->rotation.x || target == &local->scale.x) {
+            scene->flags[entity] |= SCENE_FLAG_PENDING_PLACEMENT;
+        }
+        local->cached = false;
     }
 }
 
@@ -429,6 +435,9 @@ void
 scene_drivers_step(scene_t* scene, bool applied) {
     scene_constraint_step(scene, applied);
     scene_hinge_step(scene, applied);
+    for (int row = 0; row < scene->asset.entity_count; row++) {
+        scene->flags[row] &= (uint8_t)~SCENE_FLAG_PENDING_PLACEMENT;
+    }
 }
 
 void

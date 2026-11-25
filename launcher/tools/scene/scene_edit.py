@@ -24,7 +24,7 @@ A camera's entry in `read` also has its `path`: null on no path, else
 `read-keys` prints a .keys.toml's node, animation and keys. `set-keys` takes the whole new list of keys in order, each
 FROM the index of the key it was in the file, or `new`. A kept key keeps its table, the comment lines above it and its
 layout, with only its changed numbers written; a key no FROM names goes, with the comment lines above it. Nothing is
-written unless the result builds as tools/anim/camera_keys.py builds a path.
+written unless the result builds as tools/anim/keys_file.py builds a path.
 """
 
 import argparse
@@ -38,7 +38,7 @@ import tomllib
 import tomlkit
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from anim import camera_keys, tracks_asset  # noqa: E402
+from anim import keys_file, tracks_asset  # noqa: E402
 from bake import bake  # noqa: E402
 from gltf.gltf_read import KEYS_SUFFIX  # noqa: E402
 from r3d import import_settings  # noqa: E402
@@ -211,10 +211,10 @@ def keys_path(text):
 
 
 def checked_keys(path, text):
-    """The keys file text's values, refused unless camera_keys builds a path from them."""
+    """The keys file text's values, refused unless keys_file builds a path from them."""
     try:
         values = tomllib.loads(text)
-        camera_keys.build(values)
+        keys_file.build(values)
     except (tomllib.TOMLDecodeError, ValueError, OverflowError) as error:
         raise Refused(f"{path}: {error}") from error
     return values

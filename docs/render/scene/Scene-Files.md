@@ -424,47 +424,26 @@ interp = "step"
 keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.0 }]
 ```
 
-### Constraint and hinge
+### Constraint
 
-An object can have [position and aim constraints](Constraint.md). A hinge
-claims both fields, so a constraint on the same object fails load with
-`HNGE.angle`. Constraint inputs and their ancestors must be free of hinges.
+An object can have one position constraint and one aim constraint.
+See [Constraint](Constraint.md) for a copyable example, fields and defaults.
 
-```toml
-[objects.position_constraint]
-weight = 1.0
-translation_offset = [0, 60, 180]
-binding_mode = "lock_to_target_with_world_up"
-sources = [{ target = "follow_target" }, { target = "next_target", weight = 0.0 }]
+| Timeline field | Sample |
+|---|---|
+| `CPOS.weight` | Position constraint influence. |
+| `CAIM.weight` | Aim constraint influence. |
+| `CPOS.weight<i>` | Relative influence of the indexed position source. |
+| `CAIM.weight<i>` | Relative influence of the indexed aim source. |
 
-[objects.aim_constraint]
-aim_vector = [0, 0, -1]
-up_vector = [0, 1, 0]
-world_up_type = "object_rotation_up"
-world_up_vector = [0, 1, 0]
-world_up_object = "up_target"
-rotation_offset = [0, 0, 0]
-sources = [{ target = "look_target" }]
+Weights are float curves. Source index `i` is below `SCENE_CONSTRAINT_SOURCES_MAX`.
+A track naming a source index absent from its scene row fails load and reports the field.
 
-```
+### Hinge
 
-| Component | Field | Meaning and default |
-|---|---|---|
-| Both constraints | `weight` | Constraint influence, 0..1. Defaults to 1. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Both constraints | `sources` | Ordered list of 1 through `SCENE_CONSTRAINT_SOURCES_MAX` sources. Unity averages their contributions by weight. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
-| Source | `target` | Required name of a scene object. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| Source | `weight` | Source influence, 0..1. Defaults to 1. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
-| Position | `translation_offset` | Offset from each source in its binding frame. Defaults to `[0, 0, 0]`. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
-| Position | `binding_mode` | Frame of the offset. Defaults to `world_space`. `lock_to_target` uses the target frame and `lock_to_target_with_world_up` uses its yaw around world up. <sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup> |
-| Aim | `aim_vector` | Nonzero local direction toward the target. Defaults to authored `[0, 0, -1]`, the camera's forward axis. The pack mirrors it to engine +Z. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Aim | `up_vector` | Nonzero local up direction. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Aim | `world_up_type` | Up reference. Defaults to `scene_up`. Other choices are `object_up`, `object_rotation_up`, `vector` and `none`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `world_up_vector` | Up reference vector. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `world_up_object` | Name of a scene object. Required for `object_up` and `object_rotation_up` and forbidden for the other types. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `rotation_offset` | Euler degrees in the same order as `rotation`. Defaults to `[0, 0, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-
-A [hinge](Scene-Components.md#hinge) turns an object about a unit axis in its
-authored local frame. Bounds are in radians, and the default angle is zero.
+Scene loading binds the hinge to the authored local pose. The driver turns
+the object about its unit axis. Bounds are in radians and the starting angle
+defaults to zero.
 
 ```toml
 [objects.hinge]
@@ -485,16 +464,8 @@ field = "HNGE.angle"
 interp = "linear"
 keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.2 }, { t = 1.0, v = 0.0 }]
 ```
-
-| Timeline field | Sample |
-|---|---|
-| `CPOS.weight` | Position constraint influence. |
-| `CAIM.weight` | Aim constraint influence. |
-| `CPOS.weight0` through `CPOS.weight3` | Relative influence of the indexed position source. |
-| `CAIM.weight0` through `CAIM.weight3` | Relative influence of the indexed aim source. |
-
-Weights are float curves. A track naming a source index absent from its
-scene row fails load and reports the field.
+A hinge claims position and rotation. A constraint on the same object
+fails load naming `HNGE.angle`. Constraint input paths must be free of hinges.
 
 ### Light options
 
