@@ -622,10 +622,11 @@ Run the app shots from the repository root with Python, Pillow and numpy:
 PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work
 ```
 
-`tests/test_sky_through_walls.py`
-checks the app flythrough against its sky-through-wall ceilings. A patch of
-enclosed sky counts unless the source mesh (`source/sponza.obj`, pulled from
-Git LFS) shows sky somewhere in it too, in any part of a pixel.
+[`tests/test_sky_through_walls.py`](tests/test_sky_through_walls.py)
+checks the app flythrough against its sky-through-wall ceilings. An enclosed
+sky pixel is not counted when the source mesh
+([`sponza.obj`](../../../../demo/sponza/source/sponza.obj), from Git LFS)
+shows sky in any ray through it or through a pixel beside it.
 
 ## Sponza poses
 

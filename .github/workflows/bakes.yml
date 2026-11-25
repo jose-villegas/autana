@@ -273,7 +273,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python launcher/tools/bake/bake.py fetch
 
-      # The test asks the source mesh whether enclosed sky is sky there too.
+      # The sky-through-walls test traces rays into the source mesh, a Git LFS file the checkout skips.
       - name: Fetch the Sponza source mesh
         run: git lfs pull --exclude="" --include="launcher/demo/sponza/source/sponza.obj"
 
