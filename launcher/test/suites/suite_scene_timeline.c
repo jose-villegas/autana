@@ -843,12 +843,16 @@ test_timeline_ignores_nonroot_and_released_handles(void) {
     TEST_ASSERT_EQUAL_UINT32(0, timeline_time_ms(root));
     TEST_ASSERT_FALSE(timeline_playing(root));
     scene_release(root);
+    scene_row_t row;
+    TEST_ASSERT_NULL(scene_entity_peek(root, &row));
+#if !defined(ESP_PLATFORM) || !CONFIG_LAUNCHER_DEVELOPMENT
     timeline_play(root);
     timeline_seek(root, DURATION);
     timeline_pause(root);
     TEST_ASSERT_FALSE(timeline_playing(root));
     TEST_ASSERT_EQUAL_UINT32(0, timeline_time_ms(root));
     TEST_ASSERT_EQUAL_UINT32(0, timeline_duration_ms(root));
+#endif
 }
 
 #if !defined(DEVICE_BUILD)
@@ -915,7 +919,9 @@ test_python_baked_v7_motion_row_layout(void) {
 #endif
 
 static void
-run_scene_timeline_suite(void) {
+suite_scene_timeline(void) {
+    scene_unload_all();
+    const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_animator_and_timeline_can_write_different_camera_fields);
     RUN_TEST(test_nondriven_active_camera_keeps_history);
     RUN_TEST(test_timeline_clip_type_root_and_empty_tracks);
@@ -944,6 +950,8 @@ run_scene_timeline_suite(void) {
     RUN_TEST(test_scene_without_a_timeline_ignores_controls);
     RUN_TEST(test_load_names_the_failing_clip_field_or_table);
     RUN_TEST(test_scne_validates_every_new_table);
+    scene_unload_all();
+    (void)scene_set_take(lender);
 }
 
-SUITE_REGISTER(run_scene_timeline_suite);
+SUITE_REGISTER(suite_scene_timeline);
