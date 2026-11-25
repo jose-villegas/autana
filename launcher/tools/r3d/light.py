@@ -59,6 +59,7 @@ class SurfaceTable:
         import drjit as dr
 
         self.source, self.mi, self.dr, self.variant = source, mi, dr, mi.variant()
+        self.inputs = table_inputs(source)
         tri_t = np.asarray(source.tri_t)
         uv = np.asarray(getattr(source, "uv", ()), np.float32).reshape(-1, 2)
         self.uv = None if not len(uv) else [mi.Point2f(mi.Float(uv[tri_t[:, corner], 0]),
@@ -139,11 +140,21 @@ class SurfaceTable:
         return normal / self.dr.maximum(self.dr.norm(normal), 1e-12)
 
 
+TABLE_INPUTS = ("tri_v", "tri_t", "tri_m", "uv", "textures", "names", "materials", "corner_normals", "twin", "colors")
+
+
+def table_inputs(source):
+    """The source arrays a SurfaceTable reads (TABLE_INPUTS), as the objects themselves."""
+    return tuple(getattr(source, name, None) for name in TABLE_INPUTS)
+
+
 def surface_table(source, mi):
-    """The source's SurfaceTable on Mitsuba's current variant, built once per source and variant. A copy of the
-    source (with_triangles) inherits the attribute but builds its own table, which replaces it on the copy alone."""
+    """The source's SurfaceTable on Mitsuba's current variant, built once and built again when the variant changes
+    or any array it reads is replaced. A copy of the source (with_triangles) inherits the attribute but builds its
+    own table, which replaces it on the copy alone."""
     table = vars(source).get("_surface_table")
-    if table is None or table.source is not source or table.variant != mi.variant():
+    if (table is None or table.source is not source or table.variant != mi.variant()
+            or any(old is not new for old, new in zip(table.inputs, table_inputs(source)))):
         table = vars(source)["_surface_table"] = SurfaceTable(source, mi)
     return table
 

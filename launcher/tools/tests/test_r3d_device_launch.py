@@ -284,6 +284,13 @@ class SurfaceTableTests(unittest.TestCase):
         np.testing.assert_allclose(albedo, want_albedo, atol=1e-6)
         self.assertIs(light.surface_table(source, self.mi).source, source)
 
+    def test_a_replaced_array_builds_the_table_again_and_a_copy_does_not_hold_the_original_s(self):
+        source = self.source()
+        self.check(source)
+        source.tri_m = np.array([1, 1, 0, 0])
+        self.check(source)
+        self.assertNotIn("_surface_table", vars(self.reversed_copy(source)))
+
     def test_a_copy_answers_from_its_own_triangles_and_the_original_keeps_its_own(self):
         for copy_first in (False, True):
             with self.subTest(copy_first=copy_first):
