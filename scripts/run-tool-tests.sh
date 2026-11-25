@@ -156,6 +156,7 @@ cache_compilers() {
         mask="$masks/$(basename -- "$name" .exe)$exe"
         if [ ! -e "$mask" ]; then
             if [ -n "$exe" ]; then cp "$ccache.exe" "$mask"; else ln -s "$ccache" "$mask"; fi
+            # shellcheck disable=SC1007
             real_dirs="$real_dirs$(CDPATH= cd -- "$(dirname -- "$real")" && pwd):"
         fi
         [ "$name" != "${CC:-}" ] || CC=$(to_native "$mask")
