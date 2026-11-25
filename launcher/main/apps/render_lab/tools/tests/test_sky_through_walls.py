@@ -5,7 +5,7 @@
 Builds the host renderer once, samples the scene camera clip with sample_camera_rows at DT_MS
 intervals for the frame count, then renders that flythrough. A frame is holed when a clear-colour
 render pixel not connected to its top row is a hole: one where the source mesh shows no sky, in none
-of the SUBPIXELS x SUBPIXELS rays through it or through a pixel beside it. Sky the source shows, such
+of the SUBPIXELS x SUBPIXELS rays through it or an enclosed pixel beside it. Sky the source shows, such
 as the roof opening closed in by a beam or a notch in its rim, drawn up to a pixel wider, is no hole.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt) and the scene's source mesh
 (launcher/demo/sponza/source/sponza.obj, Git LFS).
@@ -238,10 +238,12 @@ class SkyThroughWalls(unittest.TestCase):
                              capture_output=True, text=True, timeout=600)
         self.assertEqual(run.returncode, 0, run.stderr[-2000:])
         sky = clear_colour()
-        # A --quarter 1 video draws each render pixel VIDEO_SCALE times across and down.
-        frames = [frame[::VIDEO_SCALE, ::VIDEO_SCALE] for frame in read_video(video)[1]]
-        source = SourceSky(self.scene, self.frames, frames[0].shape[1::-1])
-        counts = [sky_pixels(frame, sky, source.of_frame(index)) for index, frame in enumerate(frames)]
+        counts, source = [], None
+        for index, frame in enumerate(read_video(video)[1]):
+            # A --quarter 1 video draws each render pixel VIDEO_SCALE times across and down.
+            frame = np.ascontiguousarray(frame[::VIDEO_SCALE, ::VIDEO_SCALE])
+            source = source or SourceSky(self.scene, self.frames, frame.shape[1::-1])
+            counts.append(sky_pixels(frame, sky, source.of_frame(index)))
         video.unlink()
         self.assertEqual(len(counts), self.frames)
         # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour

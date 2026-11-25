@@ -626,7 +626,7 @@ PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out 
 checks the app flythrough against its sky-through-wall ceilings. An enclosed
 sky pixel is not counted when the source mesh
 ([`sponza.obj`](../../../../demo/sponza/source/sponza.obj), from Git LFS)
-shows sky in any ray through it or through a pixel beside it.
+shows sky in any ray through it or through an enclosed pixel beside it.
 
 ## Sponza poses
 
