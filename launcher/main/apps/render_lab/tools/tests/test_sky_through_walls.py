@@ -35,7 +35,7 @@ try:
     from r3d.import_settings import load_scene
     from r3d.leaks import CONNECTED
     from r3d.ray_query import RayQuery
-    from pinhole_rays import SCALAR_VARIANT, VIDEO_SCALE, enclosed_sky, pose_rays
+    from pinhole_rays import VIDEO_SCALE, enclosed_sky, pose_rays
     from check_avi import read_video
     from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
@@ -93,7 +93,7 @@ class SourceSky:
         if len(sources) != 1:
             raise ValueError(f"the scene's renderers draw {len(sources)} sources; the test traces one")
         positions, _, tri_v, *_ = load_obj(sources.pop())
-        self.query = RayQuery(positions, tri_v, variant=SCALAR_VARIANT)
+        self.query = RayQuery(positions, tri_v)
         # Frame i is drawn at (i + 1) * DT_MS, so the last frame's pose is one step past the clip's samples.
         self.width, self.height, self.lens, self.near, self.poses = parse_poses(track_host.poses(
             camera.path.animation, camera.path.node, DT_MS, video_size[0] // VIDEO_SCALE, video_size[1] // VIDEO_SCALE,
@@ -152,7 +152,7 @@ class SkyCount(unittest.TestCase):
         # it, the rays near the pixel's sides pass it, as sky beside a flagpole does.
         def wall(half_width):
             corners = np.array([[-half_width, -20, 10], [half_width, -20, 10], [half_width, 20, 10], [-half_width, 20, 10]])
-            return RayQuery(corners, np.array([[0, 1, 2], [0, 2, 3]]), variant=SCALAR_VARIANT)
+            return RayQuery(corners, np.array([[0, 1, 2], [0, 2, 3]]))
         pose = np.array([0.0, 0, 0, 0, 0, 1])
         one = (np.array([0]), np.array([0]))
         self.assertFalse(pixel_sky(wall(5), 1, 1, 1.0, 0.1, pose, *one, samples=1)[0])
