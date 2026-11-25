@@ -12,7 +12,16 @@
 #include "math/linear/vec3x.h"
 #include "math/scalar/mathx.h"
 
-MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, mathx)
+/* Direction must be nonzero and up must be nonparallel. */
+static inline quatx_t
+transformx_aim_rotation(vec3x_t direction, vec3x_t up) {
+    const vec3x_t forward = vec3x_normalize(direction);
+    const vec3x_t right = vec3x_normalize(vec3x_cross(up, forward));
+    const vec3x_t above = vec3x_cross(forward, right);
+    return quatx_from_basis(right, above, forward);
+}
+
+MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, transformx_aim_rotation)
 
 /* Only for static-storage initializers, where C11 cannot call transformx_identity(). */
 #define TRANSFORMX_IDENTITY                                                                                            \

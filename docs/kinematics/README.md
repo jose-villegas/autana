@@ -14,3 +14,4 @@ and nothing else, allocates nothing, and every header is checked by a host suite
 | [Fly](Fly.md) | A transform flown freely: keys, a level-horizon drag and a wheel-scaled speed |
 | [Profile](Profile.md) | A move along a line in time: rest, ease up, cruise, ease down, rest |
 | [Hinge](Hinge.md) | A joint turned about its rest-frame axis within prescribed angular limits |
+| [Rig](Rig.md) | Stateless follow positions and look rotations |
