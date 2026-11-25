@@ -19,7 +19,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_llvm  # noqa: E402
+from tests.r3d_env import HAVE_MITSUBA, needs_llvm  # noqa: E402
 
 
 def brute_force(positions, tris, origin, direction):
@@ -276,6 +276,27 @@ class RuntimeGuardTests(unittest.TestCase):
         with mock.patch.object(ray_query, "import_mitsuba", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "requirements.txt"):
                 RayQuery(positions, tris)
+
+
+@unittest.skipIf(not HAVE_MITSUBA, "needs Mitsuba")
+class UntracedLlvmTests(unittest.TestCase):
+    """Where LLVM does not trace (Windows, autana-dz1nq), nothing picks it: the ray query refuses it by name and the
+    default variant passes over it."""
+
+    def test_the_llvm_variant_is_refused_where_llvm_does_not_trace(self):
+        positions, tris, _, _ = stack(1, 1.0)
+        with mock.patch.object(ray_query, "LLVM_TRACES", False):
+            with self.assertRaisesRegex(RuntimeError, "autana-dz1nq"):
+                RayQuery(positions, tris, variant="llvm_ad_rgb")
+
+    def test_the_default_variant_passes_over_llvm_where_it_does_not_trace(self):
+        import drjit as dr
+
+        mi = mitsuba_reference.import_mitsuba()
+        tried = []
+        with mock.patch.object(mitsuba_reference, "LLVM_TRACES", False),                 mock.patch.object(dr, "has_backend", return_value=True),                 mock.patch.object(mitsuba_reference, "traces_rays", side_effect=lambda m, v: tried.append(v)):
+            self.assertEqual(mitsuba_reference.default_variant(mi), "scalar_rgb")
+        self.assertNotIn("llvm_ad_rgb", tried)
 
 
 @unittest.skipIf(np is None, "needs NumPy")
