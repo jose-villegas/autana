@@ -26,6 +26,7 @@
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
+#include "scene/constraint/constraint.h"
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
@@ -49,20 +50,22 @@ typedef struct {
     float intensity;
 } scene_light_t;
 
-#define SCENE_FLAG_ENABLED         1U
-#define SCENE_FLAG_DIRTY           2U
-#define SCENE_FLAG_SKIN_DIRTY      4U
-#define SCENE_FLAG_CHANGED         (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
-#define SCENE_FLAG_ACTIVE          8U  /* enabled, and every ancestor enabled */
-#define SCENE_FLAG_MOVED           16U /* its world changed in this resolve */
+#define SCENE_FLAG_ENABLED          1U
+#define SCENE_FLAG_DIRTY            2U
+#define SCENE_FLAG_SKIN_DIRTY       4U
+#define SCENE_FLAG_CHANGED          (SCENE_FLAG_DIRTY | SCENE_FLAG_SKIN_DIRTY)
+#define SCENE_FLAG_ACTIVE           8U  /* enabled, and every ancestor enabled */
+#define SCENE_FLAG_MOVED            16U /* its world changed in this resolve */
 /* Its transform was set since its skin was last lit: a copy whose playing
  * clip paces it relights at its next pose, any other at once; a moved light
  * relights every skin at once. */
-#define SCENE_FLAG_RELIGHT         32U
-#define SCENE_FLAG_PLACED          (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
-#define SCENE_WORLD_SLOT_NONE      0xFFFFU
-#define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
-#define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
+#define SCENE_FLAG_RELIGHT          32U
+#define SCENE_FLAG_PLACED           (SCENE_FLAG_DIRTY | SCENE_FLAG_RELIGHT)
+#define SCENE_FLAG_CONSTRAINT_INPUT 64U
+#define SCENE_PROTECTED_TRANSFORM   128U
+#define SCENE_WORLD_SLOT_NONE       0xFFFFU
+#define SCENE_LIGHT_FAILURE_ALBEDO  "skin vertex colors required"
+#define SCENE_LIGHT_FAILURE_NORMAL  "skin normal transform invalid"
 
 /* A row of one scene's columns: the SCNE entity index. Apps hold entity_t
  * handles; the world (entity.c) turns one into its scene and row. */
@@ -138,7 +141,9 @@ extern const anim_component_fields_t ANIMATOR_FIELDS;
 #define SCENE_COMPONENT_LIST(X)                                                                                        \
     X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
     X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
-    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)
+    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)                                                           \
+    X(CPOS, POSITION_CONSTRAINT_FIELDS, CONSTRAINT_WEIGHT_FIELD_COUNT, ANIMATOR)                                       \
+    X(CAIM, AIM_CONSTRAINT_FIELDS, CONSTRAINT_WEIGHT_FIELD_COUNT, CPOS)
 
 #define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
 
@@ -149,9 +154,9 @@ enum { SCENE_COMPONENT_LIST(SCENE_COMPONENT_ID) SCENE_COMPONENT_COUNT };
 
 enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
-typedef uint16_t scene_field_mask_t;
+typedef uint32_t scene_field_mask_t;
 
-_Static_assert(SCENE_FIELD_BASE_ANIMATOR + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+_Static_assert(SCENE_FIELD_END_CAIM <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 static inline scene_field_mask_t
@@ -199,7 +204,32 @@ typedef struct {
 typedef struct {
     const scene_asset_t* asset;
     scene_field_mask_t* writes;
+    uint8_t* protected_rows;
 } scene_claims_t;
+
+typedef union {
+    struct {
+        float weight, weight0, weight1, weight2, weight3;
+    };
+
+    float values[CONSTRAINT_WEIGHT_FIELD_COUNT];
+} scene_constraint_weights_t;
+
+typedef struct {
+    scene_constraint_weights_t weights;
+    scene_row_t targets[SCENE_CONSTRAINT_SOURCES_MAX];
+} scene_constraint_inputs_t;
+
+typedef struct {
+    scene_constraint_inputs_t inputs;
+    vec3f_t own;
+} scene_position_constraint_t;
+
+typedef struct {
+    scene_constraint_inputs_t inputs;
+    quatf_t own;
+    quatf_t local_aim_inverse;
+} scene_aim_constraint_t;
 
 enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
 
@@ -304,6 +334,9 @@ struct scene {
     transformf_t* locals;
     scene_animator_t* animators;
     scene_timeline_t* timeline;
+    scene_position_constraint_t* positions;
+    scene_aim_constraint_t* aims;
+    bool constraint_inputs_placed;
     size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
@@ -414,6 +447,28 @@ void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_release(scene_t* scene);
 scene_anim_targets_t scene_anim_targets(const scene_asset_t* asset, const scene_t* scene);
 bool scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t field);
+scene_failure_t scene_constraint_claim(scene_claims_t* claims);
+int scene_constraint_source_count(const scene_asset_t* asset, scene_row_t row, int component);
+void scene_constraint_open(scene_t* scene);
+void scene_constraint_step(scene_t* scene, bool applied);
+scene_row_t scene_asset_find_row(const scene_asset_t* asset, scene_row_t first, name_hash_t hash);
+
+static inline bool
+scene_has_constraints(const scene_asset_t* asset) {
+    return asset->position_constraint_count != 0 || asset->aim_constraint_count != 0;
+}
+
+static inline bool
+scene_constraint_covers(const uint8_t* rows, scene_row_t row) {
+    return rows != NULL && (rows[row] & SCENE_PROTECTED_TRANSFORM) != 0;
+}
+
+static inline scene_row_t
+scene_asset_parent(const scene_asset_t* asset, scene_row_t row) {
+    const uint16_t parent = asset->parents[row];
+    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : parent;
+}
+
 scene_failure_t scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets,
                                            const anim_tracks_t* tracks, const char* clip, int self,
                                            scene_field_mask_t* owned);
@@ -426,7 +481,7 @@ scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_a
                                        const scene_field_mask_t* writes, const anim_tracks_t* timeline,
                                        scene_timeline_blocks_t* blocks);
 scene_failure_t scene_timeline_bind(scene_t* scene);
-void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
+bool scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

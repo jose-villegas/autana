@@ -24,6 +24,12 @@ timeline_camera_cut(const scene_t* scene) {
     for (int i = 0; i < timeline->field_count; i++) {
         scene_draw_camera_cut(scene, (scene_row_t)(timeline->fields[i].dirty - scene->flags));
     }
+    for (int i = 0; i < scene->asset.position_constraint_count; i++) {
+        scene_draw_camera_cut(scene, scene->asset.position_constraints[i].entity);
+    }
+    for (int i = 0; i < scene->asset.aim_constraint_count; i++) {
+        scene_draw_camera_cut(scene, scene->asset.aim_constraints[i].entity);
+    }
 }
 
 static void
@@ -39,16 +45,18 @@ timeline_apply_blocks(scene_t* scene) {
     }
 }
 
-void
+bool
 scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     scene_timeline_t* timeline = scene->timeline;
     if (timeline == NULL) {
-        return;
+        return false;
     }
     anim_playhead_t* clock = &timeline->clock;
     const bool wrapped = anim_playhead_advance(clock, &timeline->tracks.clip, dt_ms);
     const uint32_t now = clock->t_ms;
-    if (timeline->dirty || now != timeline->applied_ms) {
+    const bool applied =
+        timeline->dirty || now != timeline->applied_ms || (wrapped && scene_has_constraints(&scene->asset));
+    if (applied) {
         scene_animation_apply_fields(scene, timeline->fields, timeline->field_count, clock, &timeline->tracks.clip);
         timeline_apply_blocks(scene);
         timeline->dirty = false;
@@ -57,6 +65,7 @@ scene_timeline_step(scene_t* scene, uint32_t dt_ms) {
     if (wrapped) {
         timeline_camera_cut(scene);
     }
+    return applied;
 }
 
 static scene_failure_t
@@ -312,7 +321,7 @@ timeline_seek(entity_t root, uint32_t t_ms) {
     scene_timeline_t* timeline = scene->timeline;
     anim_playhead_seek(&timeline->clock, &timeline->tracks.clip, t_ms);
     timeline->dirty = true;
-    scene_timeline_step(scene, 0);
+    scene_constraint_step(scene, scene_timeline_step(scene, 0));
     for (int i = 0; i < timeline->driver_count; i++) {
         scene->animators[timeline->drivers[i].entity].dirty = true;
     }

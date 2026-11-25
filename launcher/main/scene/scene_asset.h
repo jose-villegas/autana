@@ -123,6 +123,11 @@ typedef struct {
     float weight;
 } scene_asset_constraint_source_t;
 
+static inline bool
+scene_constraint_weight_fits(float weight) {
+    return weight >= 0.0F && weight <= 1.0F;
+}
+
 _Static_assert(sizeof(scene_asset_constraint_source_t) == SCENE_ASSET_CONSTRAINT_SOURCE_SIZE
                    && SCNE_FIELD_AT(scene_asset_constraint_source_t, target, CONSTRAINT_SOURCE_AT_TARGET)
                    && SCNE_FIELD_AT(scene_asset_constraint_source_t, weight, CONSTRAINT_SOURCE_AT_WEIGHT),

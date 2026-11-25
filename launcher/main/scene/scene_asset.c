@@ -144,14 +144,14 @@ vector_finite(vec3f_t value) {
     return isfinite(value.x) && isfinite(value.y) && isfinite(value.z);
 }
 
-static bool
-target_fits(const scene_asset_t* scene, name_hash_t target) {
-    for (int i = 0; i < scene->entity_count; i++) {
+scene_row_t
+scene_asset_find_row(const scene_asset_t* scene, scene_row_t first, name_hash_t target) {
+    for (scene_row_t i = first; i < scene->entity_count; i++) {
         if (scene->names[i].hash == target) {
-            return true;
+            return i;
         }
     }
-    return false;
+    return SCENE_ROW_NONE;
 }
 
 static bool
@@ -160,16 +160,11 @@ source_range_fits(const scene_asset_t* scene, uint16_t first, uint8_t count) {
 }
 
 static bool
-constraint_weight_fits(float weight) {
-    return weight >= 0.0F && weight <= 1.0F;
-}
-
-static bool
 position_constraint_fits(const scene_asset_t* scene, const scene_asset_position_constraint_t* position) {
     return position->entity < scene->entity_count && position->pad == 0
            && position->binding_mode <= SCENE_ASSET_BIND_LOCK_TO_TARGET_WITH_WORLD_UP
            && source_range_fits(scene, position->source_first, position->source_count)
-           && constraint_weight_fits(position->weight) && vector_finite(position->translation_offset);
+           && scene_constraint_weight_fits(position->weight) && vector_finite(position->translation_offset);
 }
 
 static bool
@@ -185,14 +180,16 @@ aim_constraint_fits(const scene_asset_t* scene, const scene_asset_aim_constraint
     return aim->entity < scene->entity_count && aim->world_up_type <= SCENE_ASSET_WORLD_UP_NONE
            && (object_up ? aim->world_up_object < scene->entity_count
                          : aim->world_up_object == SCENE_ASSET_WORLD_UP_OBJECT_NONE)
-           && source_range_fits(scene, aim->source_first, aim->source_count) && constraint_weight_fits(aim->weight)
-           && direction_fits(aim->aim_vector) && direction_fits(aim->up_vector) && vector_finite(aim->world_up_vector)
-           && isfinite(rotation.x) && isfinite(rotation.y) && isfinite(rotation.z) && isfinite(rotation.w);
+           && source_range_fits(scene, aim->source_first, aim->source_count)
+           && scene_constraint_weight_fits(aim->weight) && direction_fits(aim->aim_vector)
+           && direction_fits(aim->up_vector) && vector_finite(aim->world_up_vector) && isfinite(rotation.x)
+           && isfinite(rotation.y) && isfinite(rotation.z) && isfinite(rotation.w);
 }
 
 static bool
 constraint_source_fits(const scene_asset_t* scene, const scene_asset_constraint_source_t* source) {
-    return constraint_weight_fits(source->weight) && target_fits(scene, source->target);
+    return scene_constraint_weight_fits(source->weight)
+           && scene_asset_find_row(scene, 0, source->target) != SCENE_ROW_NONE;
 }
 
 static bool

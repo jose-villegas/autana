@@ -413,8 +413,8 @@ and the timeline must write separate fields. Load fails naming
 
 ### Constraint and hinge
 
-An object can have one position constraint, one aim constraint and one hinge.
-`scene_load()` reports `constraint` or `hinge` as unsupported when it finds these rows.
+An object can have one [position constraint and one aim constraint](Constraint.md).
+`scene_load()` reports hinge rows as unsupported.
 
 ```toml
 [objects.position_constraint]
@@ -445,7 +445,7 @@ angle = 0.0
 | Both constraints | `sources` | Ordered list of 1 through `SCENE_CONSTRAINT_SOURCES_MAX` sources. Unity averages their contributions by weight. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
 | Source | `target` | Required name of a scene object. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
 | Source | `weight` | Source influence, 0..1. Defaults to 1. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
-| Position | `translation_offset` | Offset from the blended position. Defaults to `[0, 0, 0]`. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
+| Position | `translation_offset` | Offset from each source in its binding frame. Defaults to `[0, 0, 0]`. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
 | Position | `binding_mode` | Frame of the offset. Defaults to `world_space`. `lock_to_target` uses the target frame and `lock_to_target_with_world_up` uses its yaw around world up. <sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup> |
 | Aim | `aim_vector` | Nonzero local direction toward the target. Defaults to authored `[0, 0, -1]`, the camera's forward axis. The pack mirrors it to engine +Z. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
 | Aim | `up_vector` | Nonzero local up direction. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
@@ -456,6 +456,16 @@ angle = 0.0
 
 A hinge takes a unit axis and ordered bounds in radians.
 Its starting angle defaults to zero.
+
+| Timeline field | Sample |
+|---|---|
+| `CPOS.weight` | Position constraint influence. |
+| `CAIM.weight` | Aim constraint influence. |
+| `CPOS.weight0` through `CPOS.weight3` | Relative influence of the indexed position source. |
+| `CAIM.weight0` through `CAIM.weight3` | Relative influence of the indexed aim source. |
+
+Weights are float curves. A track naming a source index absent from its
+scene row fails load and reports the field.
 
 ### Light options
 
