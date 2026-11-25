@@ -9,6 +9,7 @@ import math
 import os
 import re
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -102,6 +103,29 @@ class Replay(FakeAutana):
 
 
 class NightlyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # The six-commit repository every test starts from, made once: each test takes a copy of it,
+        # which costs one tree copy where making it costs two dozen git launches.
+        temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temp.cleanup)
+        cls.template = Path(temp.name) / "repo"
+        cls.template.mkdir()
+        chain.git(cls.template, "init")
+        chain.git(cls.template, "config", "user.email", "test@example.invalid")
+        chain.git(cls.template, "config", "user.name", "Test")
+        chain.git(cls.template, "config", "core.hooksPath", str(Path(temp.name) / "no-hooks"))
+        header = cls.template / "launcher/test/suites.h"
+        header.parent.mkdir(parents=True)
+        header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
+        (cls.template / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
+        cls.template_commits = []
+        for number in range(6):
+            (cls.template / "code").write_text(str(number))
+            chain.git(cls.template, "add", ".")
+            chain.git(cls.template, "commit", "-qm", f"change (#{100 + number})")
+            cls.template_commits.append(chain.git(cls.template, "rev-parse", "HEAD"))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         marker_env = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(Path(self.temp.name) / "heavy"))
@@ -124,11 +148,7 @@ class NightlyTests(unittest.TestCase):
         close.start()
         self.addCleanup(close.stop)
         self.repo = self.root / "repo"
-        self.repo.mkdir()
-        chain.git(self.repo, "init")
-        chain.git(self.repo, "config", "user.email", "test@example.invalid")
-        chain.git(self.repo, "config", "user.name", "Test")
-        chain.git(self.repo, "config", "core.hooksPath", str(self.root / "no-hooks"))
+        shutil.copytree(self.template, self.repo)
         plugged = patch.object(chain, "plugged_boards", return_value=["20E8", "2124"])
         self.plugged_patch = plugged
         plugged.start()
@@ -137,16 +157,7 @@ class NightlyTests(unittest.TestCase):
         self.local_patch = patch.object(chain, "local_boards", return_value=[])
         self.local_patch.start()
         self.addCleanup(self.local_patch.stop)
-        self.commits = []
-        header = self.repo / "launcher/test/suites.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
-        (self.repo / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
-        for number in range(6):
-            (self.repo / "code").write_text(str(number))
-            chain.git(self.repo, "add", ".")
-            chain.git(self.repo, "commit", "-qm", f"change (#{100 + number})")
-            self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.commits = list(self.template_commits)
         self.clock = Clock(22, 30)
         self.args = SimpleNamespace(repo=self.repo, out=self.root / "out", data=self.root / "data",
                                     board="20E8", lane="0/2", previous=None, tip=self.commits[-1],
