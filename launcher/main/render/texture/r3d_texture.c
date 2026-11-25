@@ -128,8 +128,9 @@ colours_used(const r3d_texture_t* t, int level) {
 }
 
 /* The first level of `t` from which every level draws flat unseen: each
- * colour it uses draws like the pattern's mean at every light level.
- * `levels` when none does, for MASK1, or with texture.flat_levels at 0. */
+ * colour it uses draws like the pattern's mean at every light level, or
+ * R3D_TEXTURE_FLAT_LEVEL_MAX if that comes sooner. `levels` for MASK1, or
+ * with texture.flat_levels at 0. */
 static uint8_t
 flat_level_of(const r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
     int level = t->levels;

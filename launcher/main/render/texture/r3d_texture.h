@@ -63,7 +63,8 @@ typedef struct {
     uint8_t format;                                /* R3D_TEXTURE_INDEX4 or R3D_TEXTURE_MASK1 */
     uint8_t size_log2;                             /* level 0's side */
     uint8_t levels;                                /* level 0 and its mips, each half the last */
-    uint8_t flat_level; /* INDEX4: the first level drawn flat, found at open from its colours; levels: none.
+    uint8_t flat_level; /* INDEX4: the first level drawn flat, found at open from its colours,
+                         * R3D_TEXTURE_FLAT_LEVEL_MAX at the latest; levels: none.
                          * 0, as a zeroed struct holds, draws every level flat */
     /* Panel RGB565 of each colour's albedo at each light level: a span
      * reads one a pixel. A streamer may point `texels` elsewhere: the span
