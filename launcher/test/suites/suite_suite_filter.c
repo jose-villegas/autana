@@ -61,7 +61,7 @@ filter_fixture_suite(void) {
     RUN_TEST(test_water_fits);
 }
 
-static const char* const case_scenes[] = {"sponza-fitted", "sponza-fitted-full"};
+static const char* const case_scenes[] = {"bistro", "bistro-textured"};
 static const char* const case_quarters[] = {"portrait", "landscape"};
 
 static void
@@ -243,7 +243,12 @@ test_an_unknown_or_overlong_suite_is_not_found(void) {
     TEST_ASSERT_FALSE(request("no_such_suite fire").found);
     char name[SUITE_NAME_MAX + 3];
     pattern_of(name, SUITE_NAME_MAX + 1);
-    TEST_ASSERT_FALSE(request(name).found);
+    const suite_run_t overlong = request(name);
+    TEST_ASSERT_FALSE(overlong.found);
+    /* The run names it as asked: a harness waits for that name, and an
+     * emptied one left it waiting until the capture went idle. */
+    TEST_ASSERT_EQUAL_INT((int)strlen(name), overlong.name_length);
+    TEST_ASSERT_EQUAL_STRING_LEN(name, overlong.name, overlong.name_length);
 }
 
 typedef struct {

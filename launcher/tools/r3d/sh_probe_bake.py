@@ -9,8 +9,8 @@ from r3d.geometry import face_normals
 from r3d.light import AlphaTest, baked_lights
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
-from r3d.path_bake import PathLight, BATCH, SEED
-from r3d.ray_query import RayQuery
+from r3d.path_bake import PathLight, SEED
+from r3d.ray_query import LAUNCH, RayQuery
 from r3d.sh_probe_settings import load
 from r3d.sh_probe_asset import CHANNELS, COEFFICIENTS, L1_AXES, encode
 from r3d.views.probes import classify, probe_points, spacing_for, sphere_directions
@@ -93,7 +93,7 @@ def bake(job, scene):
     transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1, transport.scene.masked), 'hide_emitters': False})
     directions = sphere_directions(requested.directions)
     coefficients = np.zeros((len(points), COEFFICIENTS, CHANNELS))
-    chunk_size = max(1, BATCH // requested.directions)
+    chunk_size = max(1, LAUNCH // requested.directions)
     selected = np.flatnonzero(outside)
     for chunk_index, start in enumerate(range(0, len(selected), chunk_size)):
         indices = selected[start:start + chunk_size]

@@ -35,9 +35,12 @@ typedef struct {
     entity_t camera;
 } lab_orbit_t;
 
-/* Fits the orbit to `subject` as `camera`'s lens sees it, at home, and places
- * the camera. False when the camera has no lens. */
-bool lab_orbit_fit(lab_orbit_t* orbit, entity_t camera, spheref_t subject, const lab_orbit_frame_t* frame);
+/* Fits the orbit to `subject` as `camera`'s lens sees it and places the
+ * camera at home: `home_zoom` times the distance that fits the subject from
+ * every angle (1 fits it), kept within the frame's zoom. False when the
+ * camera has no lens. */
+bool lab_orbit_fit(lab_orbit_t* orbit, entity_t camera, spheref_t subject, const lab_orbit_frame_t* frame,
+                   float home_zoom);
 
 /* The finger's turn this frame, with `home_edge` (shell_home_edge()) left to
  * the home swipe; then, when `turn_ms` is above 0, a full turn about the

@@ -56,6 +56,9 @@
 # --reference-frames with --reference and --poses alone makes (or finds) that
 # cache and prints its directory, for a caller that scores the frames itself.
 #
+#   render_host --scene ID --object OBJECT --view triangles --ids DIR -o frame.bmp
+# See ../r3d/README.md#material-id-differences.
+#
 # POSIX sh, like the rest of this directory.
 
 set -eu
@@ -148,10 +151,6 @@ elif [ -n "$reference" ]; then
 else
     [ -n "$script" ] && [ -n "$rev_b" ] || usage
 fi
-if [ "$video" = 1 ] && ! command -v ffmpeg > /dev/null 2>&1; then
-    echo "--video needs ffmpeg on PATH." >&2
-    exit 1
-fi
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"
 
@@ -234,6 +233,12 @@ print(digest.hexdigest()[:16])' "$(to_native "$reference")" "$(to_native "$poses
         "$r3d_python" "$(to_native "$TOOLS_DIR/../r3d/reference_render.py")" "$(to_native "$reference")" \
         --poses "$(to_native "$poses")" --skip 1 --out "$(to_native "$cache")" --samples "$samples" >&2 || exit 1
         : > "$cache/done"
+    fi
+    # The poses the frames stand at, frame i at pose i past the skipped one,
+    # which render_compare.py holds a scored video to (reference_poses.py).
+    if [ ! -f "$cache/poses.txt" ]; then
+        awk '/^pose / && !skipped { skipped = 1; next } { print }' "$poses" > "$cache/poses.txt.part" \
+            && mv "$cache/poses.txt.part" "$cache/poses.txt" || exit 1
     fi
     echo "$cache"
 }

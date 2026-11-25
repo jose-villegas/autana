@@ -50,6 +50,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
+# The fit refines a shape in place: no free point leaves its start by more than this many of its shortest start
+# edges (shortest_edge), however rarely the colour views see it, so a corner cannot slide across its own face and
+# widen the outline; a seam-held point follows its target (hold_seams).
+MOVE_REACH = 1.0
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
@@ -604,6 +608,17 @@ def uniform_laplacian(points, edges):
     return points - total / count.clamp_min(1.0)
 
 
+def shortest_edge(start, edges):
+    """Each point's shortest start edge; a point without edges takes the start's mean edge length."""
+    import torch
+
+    length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)
+    shortest = torch.full((len(start),), torch.inf, dtype=start.dtype, device=start.device)
+    for endpoint in (0, 1):
+        shortest.scatter_reduce_(0, edges[:, endpoint], length, reduce="amin")
+    return torch.where(torch.isfinite(shortest), shortest, length.mean())[:, None]
+
+
 def vertex_scale(start, edges):
     """Each point's mean start edge length, capped at the start's mean edge length
     so large parts keep the global hold; points without edges take the global
@@ -847,6 +862,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
         log(holds.line())
     step_scale = point_scale / point_scale.max()
+    reach = MOVE_REACH * shortest_edge(start, edges) / step_scale
 
     def held_positions():
         points = start + step_scale * delta
@@ -959,6 +975,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
+            # A point moves step_scale * delta, so a cap of MOVE_REACH shortest edges bounds its row of delta.
+            length = delta.norm(dim=1, keepdim=True)
+            delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:

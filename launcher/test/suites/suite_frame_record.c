@@ -120,7 +120,7 @@ static void
 draw_frame(void) {
     const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(context, rig->instance, RASTER_RIG_QUADS, &view, 0));
-    frame_record_frame(context, &context->raster, DT_MS);
+    render_context_record_frame(context, DT_MS);
 }
 
 /* Every record in what the sink took, in order. */
@@ -380,6 +380,22 @@ carried(uint16_t index, uint8_t kind, uint16_t type) {
     return found_record;
 }
 
+/* One colour per triangle of the rig's quad, as a mesh lit per face carries. */
+static const uint16_t quad_face_colours[2] = {1, 2};
+
+static void
+test_a_mesh_lit_per_face_is_recorded_as_lit_per_face(void) {
+    open_recording(-1);
+    rig->quad[0].mesh.face_colors = quad_face_colours;
+    draw_frame();
+    find_records();
+    frame_record_mesh_t lit_per_face, lit_per_vertex;
+    memcpy(&lit_per_face, mesh_record(0, FRAME_RECORD_MESH, 0)->body, sizeof lit_per_face);
+    memcpy(&lit_per_vertex, mesh_record(0, FRAME_RECORD_MESH, 1)->body, sizeof lit_per_vertex);
+    TEST_ASSERT_TRUE(lit_per_face.faces);
+    TEST_ASSERT_FALSE(lit_per_vertex.faces);
+}
+
 static void
 test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_new_pose(void) {
     open_recording(-1);
@@ -417,11 +433,11 @@ test_a_posed_mesh_names_its_bind_and_its_palette_rides_each_keyframe_and_each_ne
 static const vec3f_t triangle_positions[3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
 static const uint8_t triangle_colours[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
 static const uint16_t triangle_indices[1][3] = {{0, 1, 2}};
-static const r3d_dynamic_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true, NULL};
+static const r3d_mesh_source_t triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, true, NULL};
 /* The same triangle textured: its UVs in LUVS's form. */
 static const int16_t triangle_uvs[3][2] = {{0, 0}, {256, 0}, {0, 256}};
-static const r3d_dynamic_source_t textured_triangle = {
-    triangle_positions, triangle_colours, 3, triangle_indices, 1, false, triangle_uvs};
+static const r3d_mesh_source_t textured_triangle = {triangle_positions, triangle_colours, 3, triangle_indices, 1, false,
+                                                    triangle_uvs};
 
 static void
 test_a_built_mesh_carries_its_source_whole_each_keyframe_and_each_build(void) {
@@ -472,7 +488,7 @@ test_a_textured_built_mesh_carries_its_uvs_after_its_triangles(void) {
 static void
 generate_frame(void) {
     context->frame.generated = true;
-    frame_record_frame(context, &context->raster, DT_MS);
+    render_context_record_frame(context, DT_MS);
     context->frame.generated = false;
 }
 
@@ -610,13 +626,106 @@ test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state(void) {
         draw_frame();
     }
     const size_t before = sink->size;
-    frame_record_frame(context, &context->raster, DT_MS);
+    render_context_record_frame(context, DT_MS);
     TEST_ASSERT_EQUAL_UINT32(before, sink->size);
     TEST_ASSERT_EQUAL_UINT32(1, frame_record_counts().dropped);
     draw_frame();
     find_records();
     TEST_ASSERT_EQUAL_UINT8(FRAME_RECORD_KEYFRAME | FRAME_RECORD_AFTER_DROP, frame_of(KEYFRAME_EVERY).flags);
     TEST_ASSERT_EQUAL_INT(1, count_in_frame(KEYFRAME_EVERY, FRAME_RECORD_LODSTATE));
+}
+
+static frame_record_choice_t
+choice_of(int k) {
+    frame_record_choice_t choice;
+    const found_t* record = first_in_frame(k, FRAME_RECORD_CHOICE);
+    TEST_ASSERT_EQUAL_UINT32(sizeof choice, record->length);
+    memcpy(&choice, record->body, sizeof choice);
+    return choice;
+}
+
+/* A drawn frame at scale 50, its step set off the fixed scale's -1 by hand, then the generated frame after it. */
+static void
+test_a_choice_carries_the_contexts_own_step_scale_size_and_generated_flag(void) {
+    open_recording(-1);
+    render_context_set_scale(context, 50);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    TEST_ASSERT_TRUE(render_context_draw(context, rig->instance, RASTER_RIG_QUADS, &view, 0));
+    context->frame.step = 2;
+    const int drawn_width = context->frame.width;
+    const int drawn_height = context->frame.height;
+    TEST_ASSERT_EQUAL_INT(W / 2, drawn_width);
+    TEST_ASSERT_EQUAL_INT(H / 2, drawn_height);
+    render_context_record_frame(context, DT_MS);
+    generate_frame();
+    find_records();
+    const frame_record_choice_t drawn = choice_of(0);
+    TEST_ASSERT_EQUAL_INT16(2, drawn.step);
+    TEST_ASSERT_EQUAL_UINT8(50, drawn.scale_percent);
+    TEST_ASSERT_EQUAL_UINT16(drawn_width, drawn.width);
+    TEST_ASSERT_EQUAL_UINT16(drawn_height, drawn.height);
+    TEST_ASSERT_EQUAL_UINT8(0, drawn.generated);
+    const frame_record_choice_t generated = choice_of(1);
+    TEST_ASSERT_EQUAL_INT16(2, generated.step);
+    TEST_ASSERT_EQUAL_UINT8(50, generated.scale_percent);
+    TEST_ASSERT_EQUAL_UINT16(drawn_width, generated.width);
+    TEST_ASSERT_EQUAL_UINT16(drawn_height, generated.height);
+    TEST_ASSERT_EQUAL_UINT8(1, generated.generated);
+}
+
+/* The frame's SETTINGS record is the caller's own, not the copy the tunables override for the draw. */
+static void
+test_a_settings_record_is_the_callers_own_not_the_tuned_copy(void) {
+    knob = tune_find(tune_shared(), TUNE_NAME(render, cull));
+    TEST_ASSERT_NOT_NULL(knob);
+    open_recording(-1);
+    suite_set_test_cleanup(reset_knob);
+    render_settings_t own = RENDER_SETTINGS_DEFAULT;
+    own.lod.tolerance_px = 3.25F;
+    own.lod.pick_every = 3;
+    render_context_set_settings(context, &own);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), knob->name, own.cull ? 0 : 1));
+    draw_frame();
+    TEST_ASSERT_TRUE(context->drawn_settings.cull != own.cull); /* the draw saw the override, the record must not */
+    find_records();
+    const found_t* record = first_in_frame(0, FRAME_RECORD_SETTINGS);
+    TEST_ASSERT_EQUAL_UINT32(sizeof own, record->length);
+    TEST_ASSERT_EQUAL_MEMORY(&context->settings, record->body, sizeof own);
+    render_settings_t recorded;
+    memcpy(&recorded, record->body, sizeof recorded);
+    TEST_ASSERT_EQUAL_FLOAT(3.25F, recorded.lod.tolerance_px);
+    TEST_ASSERT_EQUAL_INT(3, recorded.lod.pick_every);
+    TEST_ASSERT_EQUAL(own.cull, recorded.cull);
+}
+
+/* A keyframe's LODSTATE opens with the pick round of the raster and the steering of the context, as they stood
+ * before the draw. */
+static void
+test_a_keyframes_lodstate_carries_the_contexts_steer_and_the_rasters_pick_round(void) {
+    open_recording(-1);
+    context->steer.tolerance_px = 7.5F;
+    context->steer.picked_tolerance_px = 6.25F;
+    context->steer.picked_coverage_permille = 123;
+    context->steer.bin = 3;
+    context->steer.drawn = 99999;
+    context->steer.frames = 11;
+    context->steer.settled = true;
+    context->raster.pick_round = 41;
+    const r3d_lod_steer_t before = context->steer;
+    draw_frame();
+    find_records();
+    const found_t* record = first_in_frame(0, FRAME_RECORD_LODSTATE);
+    frame_record_lodstate_t state;
+    TEST_ASSERT_TRUE(record->length >= sizeof state);
+    memcpy(&state, record->body, sizeof state);
+    TEST_ASSERT_EQUAL_UINT32(41, state.pick_round);
+    TEST_ASSERT_EQUAL_FLOAT(before.tolerance_px, state.steer.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(before.picked_tolerance_px, state.steer.picked_tolerance_px);
+    TEST_ASSERT_EQUAL_INT(before.picked_coverage_permille, state.steer.picked_coverage_permille);
+    TEST_ASSERT_EQUAL_INT(before.bin, state.steer.bin);
+    TEST_ASSERT_EQUAL_INT64(before.drawn, state.steer.drawn);
+    TEST_ASSERT_EQUAL_INT(before.frames, state.steer.frames);
+    TEST_ASSERT_TRUE(state.steer.settled);
 }
 
 static void
@@ -703,7 +812,11 @@ run_frame_record_suite(void) {
     RUN_TEST(test_a_keyframes_picture_is_hashed_into_the_next_frame_and_the_last_one_at_stop);
     RUN_TEST(test_a_keyframe_without_a_snapshot_drops_instead_of_reusing_lod_state);
     RUN_TEST(test_a_second_start_is_refused_while_recording);
+    RUN_TEST(test_a_choice_carries_the_contexts_own_step_scale_size_and_generated_flag);
+    RUN_TEST(test_a_settings_record_is_the_callers_own_not_the_tuned_copy);
+    RUN_TEST(test_a_keyframes_lodstate_carries_the_contexts_steer_and_the_rasters_pick_round);
     RUN_TEST(test_a_mesh_in_no_pack_is_named_by_no_pack_and_no_pack_is_named);
+    RUN_TEST(test_a_mesh_lit_per_face_is_recorded_as_lit_per_face);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_pack_mounted_in_a_freed_slot_between_keyframes_is_named_again);
 #endif

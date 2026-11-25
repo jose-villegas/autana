@@ -3,7 +3,9 @@
  * partial redraw on and one with it off draw the same rig frame after frame:
  * the card moves, holds, or the camera moves, and the two pictures and
  * composed destinations stay identical while the partial one recomposes
- * fewer rows. Every mesh is built inside the test.
+ * fewer rows. Under dynamic resolution a still camera redraws only the
+ * changed rows at the top size, unpriced, until such a frame costs more than
+ * the budget. Every mesh is built inside the test.
  */
 
 #include <stdbool.h>
@@ -22,6 +24,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
+#include "render/resolution/resolution.h"
 
 #define W         96
 #define H         64
@@ -218,6 +221,235 @@ test_a_new_small_fill_redraws_every_row(void) {
     TEST_ASSERT_NOT_EQUAL(0, memcmp(pair->last, raster_color(&pair->context[1].raster), sizeof pair->last));
 }
 
+/* Dynamic resolution's ladder in these tests: the top, then half of it. */
+static const resolution_step_t dynres_steps[] = {{W, H}, {W / 2, H / 2}};
+#define DYNRES_STEPS       ((int)(sizeof dynres_steps / sizeof dynres_steps[0]))
+#define DYNRES_FLOOR       (DYNRES_STEPS - 1)
+/* A budget no host frame reaches, and one every host frame passes. */
+#define DYNRES_ROOMY       1000000000
+#define DYNRES_TIGHT       1
+/* Held frames past a full controller window, so a priced one would show. */
+#define DYNRES_HELD_FRAMES (RESOLUTION_WINDOW_MAX + 2)
+/* Frames after a held one over budget, each still the policy's. */
+#define DYNRES_HANDED_BACK 3
+
+/* Context [0] with partial redraw on under the stepped controller at
+ * `budget_us`, starting at the floor. */
+static raster_rig_t*
+open_dynres(int32_t budget_us) {
+    raster_rig_t* r = open_pair(true);
+    const resolution_config_t config = resolution_config(dynres_steps, DYNRES_STEPS, DYNRES_STEPS, budget_us);
+    render_context_set_dynamic_resolution(&pair->context[0], &config, NULL, DYNRES_FLOOR);
+    return r;
+}
+
+/* One frame through context [0] alone, told `count` changed boxes. */
+static render_context_frame_t
+dynres_frame(raster_rig_t* r, const render_view_t* view, const box3f_t* changed, int count) {
+    render_context_t* c = &pair->context[0];
+    render_context_set_changed(c, changed, count);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, view, 0));
+    (void)render_context_compose(c, pair->destination[0], NULL, NULL);
+    return render_context_frame(c);
+}
+
+/* Context [1], partial redraw off at the fixed scale, draws the frame whole:
+ * the picture and destination context [0] drew at the top step must be it. */
+static void
+assert_full_redraw(raster_rig_t* r, const render_view_t* view) {
+    TEST_ASSERT_TRUE(render_context_draw(&pair->context[1], r->instance, RASTER_RIG_QUADS, view, 0));
+    (void)render_context_compose(&pair->context[1], pair->destination[1], NULL, NULL);
+    TEST_ASSERT_EQUAL_MEMORY(raster_color(&pair->context[1].raster), raster_color(&pair->context[0].raster),
+                             sizeof(uint16_t) * W * H);
+    TEST_ASSERT_EQUAL_MEMORY(pair->destination[1], pair->destination[0], sizeof pair->destination[0]);
+}
+
+/* The card slid one step along x, its old and new place the changed box. */
+static box3f_t
+slide_card(raster_rig_t* r, float x) {
+    const box3f_t was = card_box(r);
+    place_card(r, (vec3f_t){x, 0.0F, 0.0F});
+    return box3f_union(was, card_box(r));
+}
+
+/* A still camera under dynamic resolution draws as partial redraw does: one
+ * frame at the top size, then only the rows the moving card covers, each the
+ * picture a whole redraw gives, and the controller is not moved by them. */
+static void
+test_dynres_still_view_redraws_only_changed_rows_at_the_top(void) {
+    raster_rig_t* r = open_dynres(DYNRES_ROOMY);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width);
+    const resolution_control_t before = pair->context[0].control;
+    for (int i = 1; i <= DYNRES_HELD_FRAMES; i++) {
+        const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F); /* back and forth */
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        TEST_ASSERT_EQUAL_INT(W, f.width);
+        TEST_ASSERT_FALSE(pair->context[0].priced); /* nor does it teach the budget */
+        if (i == 1) {
+            TEST_ASSERT_EQUAL_INT(H, rows(f)); /* to the top: every row */
+        } else {
+            TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+        }
+        assert_full_redraw(r, &view);
+    }
+    TEST_ASSERT_EQUAL_MEMORY(&before, &pair->context[0].control, sizeof before);
+}
+
+/* The rig's camera with the card placed and its first frame drawn, the
+ * policy's: the view the dynres tests then hold. */
+static render_view_t
+held_dynres_view(raster_rig_t* r) {
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)dynres_frame(r, &view, NULL, -1);
+    return view;
+}
+
+/* Holds `view` to the top step, then draws one partial frame over a tight
+ * budget, which hands the held camera back; returns the last change. */
+static box3f_t
+hold_over_budget(raster_rig_t* r, const render_view_t* view) {
+    box3f_t changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, view, &changed, 1).width); /* to the top: not judged */
+    changed = slide_card(r, 12.0F);
+    TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, view, &changed, 1))); /* partial, over budget */
+    return changed;
+}
+
+/* A partial frame at the top that costs more than the budget hands the still
+ * camera back to dynamic resolution: the next frame is the controller's. */
+static void
+test_dynres_still_view_over_budget_returns_to_the_controller(void) {
+    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
+    const render_view_t view = held_dynres_view(r);
+    box3f_t changed = hold_over_budget(r, &view);
+    changed = slide_card(r, 18.0F);
+    const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+    TEST_ASSERT_EQUAL_INT(W / 2, f.width);
+    TEST_ASSERT_EQUAL_INT(H, rows(f));
+    for (int i = 0; i < DYNRES_HANDED_BACK; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, &changed, 1).width); /* held, still the policy's */
+    }
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += 1.0F;
+    const render_view_t next = render_view_fixture_at(&moved, (viewport_t){W, H, 0});
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &next, NULL, -1).width); /* a new view: the policy's */
+    changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &next, &changed, 1).width); /* held again: the top */
+}
+
+/* A hold is not time the predictor's choice settled in: the first frame the
+ * policy draws after a held camera stays at the step it held before. */
+static void
+test_dynres_hold_does_not_count_toward_a_finer_step(void) {
+    static const resolution_model_t free_model = {0}; /* every step fits */
+    raster_rig_t* r = open_pair(true);
+    resolution_config_t config = resolution_config(dynres_steps, DYNRES_STEPS, DYNRES_STEPS, DYNRES_ROOMY);
+    config.up_hold_us = 1; /* any settled time steps finer */
+    render_context_set_dynamic_resolution(&pair->context[0], &config, &free_model, DYNRES_FLOOR);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width); /* nothing settled yet */
+    const box3f_t changed = slide_card(r, 6.0F);
+    TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, &view, &changed, 1).width);  /* held: the top */
+    TEST_ASSERT_EQUAL_INT(W / 2, dynres_frame(r, &view, NULL, -1).width); /* the policy's, where it was */
+}
+
+/* Frames a held camera draws with frame generation on, past a generation's
+ * retry so a warp due again would show. */
+#define GENERATING_HELD_FRAMES (FRAMEGEN_RETRY_DRAWN + 2)
+
+/* The card slides `frames` times under the held `view`; each frame is drawn,
+ * not warped, and after the first it redraws only the card's rows, the picture
+ * and destination a whole redraw gives (`frame()` checks against context [1]). */
+static void
+assert_held_frames_partial(raster_rig_t* r, const render_view_t* view, int frames) {
+    for (int i = 1; i <= frames; i++) {
+        const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F); /* back and forth */
+        const render_context_frame_t f = frame(r, view, &changed, 1);
+        TEST_ASSERT_FALSE(f.generated);
+        TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+    }
+}
+
+/* Frame generation does not warp a held camera, even turned on mid-hold:
+ * the object moving in it is drawn as partial redraw draws it, at the fixed
+ * scale. A camera that moves is generated; the frame after that one is drawn
+ * whole and timed, as generation prices it, and the next held frame is
+ * partial again. */
+static void
+test_generation_draws_a_held_view_partially(void) {
+    raster_rig_t* r = open_pair(true);
+    render_context_t* c = &pair->context[0];
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, NULL, -1)));
+    assert_held_frames_partial(r, &view, 1);
+    render_context_set_frame_generation(c, true);
+    assert_held_frames_partial(r, &view, GENERATING_HELD_FRAMES);
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += 1.0F;
+    const render_view_t next = render_view_fixture_at(&moved, (viewport_t){W, H, 0});
+    render_context_set_changed(c, NULL, -1);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &next, 0));
+    TEST_ASSERT_TRUE(render_context_frame(c).generated);
+    (void)render_context_compose(c, pair->destination[0], NULL, NULL);
+    const render_context_frame_t drawn = frame(r, &next, NULL, -1);
+    TEST_ASSERT_FALSE(drawn.generated);
+    TEST_ASSERT_FALSE(c->fixed_drawn); /* timed: its cost prices generation */
+    TEST_ASSERT_EQUAL_INT(H, rows(drawn));
+    assert_held_frames_partial(r, &next, 1);
+}
+
+/* Under dynamic resolution too, a held camera with generation on draws as
+ * partial redraw does at the top step, unwarped. */
+static void
+test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
+    raster_rig_t* r = open_dynres(DYNRES_ROOMY);
+    render_context_set_frame_generation(&pair->context[0], true);
+    const render_view_t view = held_dynres_view(r);
+    box3f_t changed = slide_card(r, 12.0F);
+    const render_context_frame_t top = dynres_frame(r, &view, &changed, 1);
+    TEST_ASSERT_FALSE(top.generated);
+    TEST_ASSERT_EQUAL_INT(W, top.width); /* to the top: every row */
+    TEST_ASSERT_EQUAL_INT(H, rows(top));
+    assert_full_redraw(r, &view);
+    for (int i = 1; i <= GENERATING_HELD_FRAMES; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        TEST_ASSERT_FALSE(f.generated);
+        TEST_ASSERT_EQUAL_INT(W, f.width);
+        TEST_ASSERT_LESS_THAN_INT(H, rows(f));
+        assert_full_redraw(r, &view);
+    }
+}
+
+/* A held view over budget is handed back to the policy with generation on
+ * as without it: its frames are generated again, and the drawn ones are the
+ * policy's, every row at its step, until the view changes; a generated
+ * frame, which forgets the kept picture, does not end the hand-back. */
+static void
+test_generation_resumes_on_a_held_view_handed_back(void) {
+    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
+    render_context_set_frame_generation(&pair->context[0], true);
+    const render_view_t view = held_dynres_view(r);
+    box3f_t changed = hold_over_budget(r, &view);
+    int generated = 0;
+    for (int i = 0; i < GENERATING_HELD_FRAMES; i++) {
+        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
+        generated += f.generated;
+        if (!f.generated) { /* a generated frame reports the drawn one's size */
+            TEST_ASSERT_EQUAL_INT(W / 2, f.width);
+            TEST_ASSERT_EQUAL_INT(H, rows(f));
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, generated);
+}
+
 void
 run_render_partial_suite(void) {
     RUN_TEST(test_a_moving_card_redraws_only_its_rows_and_matches_a_full_redraw);
@@ -225,6 +457,12 @@ run_render_partial_suite(void) {
     RUN_TEST(test_off_redraws_every_row);
     RUN_TEST(test_a_draw_composed_nowhere_or_elsewhere_recomposes_every_row);
     RUN_TEST(test_a_new_small_fill_redraws_every_row);
+    RUN_TEST(test_dynres_still_view_redraws_only_changed_rows_at_the_top);
+    RUN_TEST(test_dynres_still_view_over_budget_returns_to_the_controller);
+    RUN_TEST(test_dynres_hold_does_not_count_toward_a_finer_step);
+    RUN_TEST(test_generation_draws_a_held_view_partially);
+    RUN_TEST(test_generation_under_dynres_draws_a_held_view_partially_at_the_top);
+    RUN_TEST(test_generation_resumes_on_a_held_view_handed_back);
 }
 
 SUITE_REGISTER(run_render_partial_suite);

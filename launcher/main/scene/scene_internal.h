@@ -235,6 +235,7 @@ struct scene {
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */
     uint32_t* lod_bits;          /* every renderer's coarse bits, kept from frame to frame */
+    size_t lod_bit_words;        /* how many words lod_bits holds, as allocated */
     /* The per-frame loops walk these, not every entity or renderer: a scene
      * with many disabled copies has few of either. */
     scene_row_t* staged; /* entities with an animator, a skin or a light, in entity order */

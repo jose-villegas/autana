@@ -102,7 +102,7 @@ cost and error of each mode on the board.
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
-| `[process]` | ; `seed` | Seeds thin's random choice. | `0`; only with thin. | None / none. | [process](#process) |
+| `[process]` | ; `seed` | Seeds thin's random choice. | `0`. | None / none. | [process](#process) |
 
 #### process
 
@@ -117,7 +117,7 @@ card selection, with `geometry.cards` tuning its decisions.
 |---|---|---|---|---|---|
 | `geometry.cards` | `never`, `always`, `epsilon`, `area_cost` | Selects cut-out materials for billboard clouds. | Automatic with `alpha_mask`. | Probe selection and mask tracing / cut-out quads. | [cards](#cards) |
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
-| `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
+| `geometry.thin` | `material`, `keep` | Keeps a share of one material's pieces, enlarged to cover the rest. | Cut-out foliage only, with simplify. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
 
@@ -134,6 +134,32 @@ that the path and the faces kept before it do not<sup>[[120]](../../Citations.md
 |---|---|---|
 | `spacing` | World units between probes. | `PROBE_SPACING_NEAR_PLANES` near planes of the scene camera, widened to at most `PROBE_COUNT_MAX` probes. |
 | `face` | A kept face's square size in pixels. | `PROBE_FACE`. |
+
+Every probe ends in one of four fates:
+
+| Fate | Why |
+|---|---|
+| kept | At least one of its faces shows triangles the path and nothing kept before it show. |
+| dropped by the greedy pick | Its best face adds less than `PLATEAU` of the first pick's gain. |
+| dropped: inside geometry | More than `BACKFACE` of its rays still hit back faces after the move. |
+| dropped: a surface too near | A front face is still nearer than `MIN_FRONT_NEARS` near planes. |
+
+The figure places probes by each import's settings: Sponza's atrium fit in the
+first row, Bistro's street fit in the second. The orbit circles the probe region
+uncut; each corner view is cut through the centre and shows only the probes
+behind the cut.
+
+The source is drawn see-through, as the [cull view](../frame/View-Modes.md)
+draws a culled cluster. The probes sit on top, each in its fate's colour; a kept
+probe's arrows are its kept faces. Bistro's row also draws its camera path;
+Sponza's scene camera has none.
+
+| Orbit | +x +z | -x +z | -x -z | +x -z |
+|---|---|---|---|---|
+| ![Sponza probes, circling](../../images/render/sponza-atrium_fitted_full-probes-orbit.gif) | ![Sponza probes from above the +x +z corner](../../images/render/sponza-atrium_fitted_full-probes-1.png) | ![Sponza probes from above the -x +z corner](../../images/render/sponza-atrium_fitted_full-probes-2.png) | ![Sponza probes from above the -x -z corner](../../images/render/sponza-atrium_fitted_full-probes-3.png) | ![Sponza probes from above the +x -z corner](../../images/render/sponza-atrium_fitted_full-probes-4.png) |
+| ![Bistro probes, circling](../../images/render/bistro-street_fitted_full-probes-orbit.gif) | ![Bistro probes from above the +x +z corner](../../images/render/bistro-street_fitted_full-probes-1.png) | ![Bistro probes from above the -x +z corner](../../images/render/bistro-street_fitted_full-probes-2.png) | ![Bistro probes from above the -x -z corner](../../images/render/bistro-street_fitted_full-probes-3.png) | ![Bistro probes from above the +x -z corner](../../images/render/bistro-street_fitted_full-probes-4.png) |
+
+![Probe fates and their counts per scene](../../images/render/probe-fates.png)
 
 A camera without a path fits on probes alone.
 
@@ -159,14 +185,18 @@ The image compares triangle removal with it disabled.
 
 #### cards
 
+Cards are what the literature calls a billboard cloud: textured quads with an
+alpha cutout that stand in for geometry, chosen greedily after Décoret et
+al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>
+
 `geometry.alpha_mask` enables automatic billboard clouds. Each accepted
 material becomes a double-sided shape with vertex colours,
 [LUVS](../../assets/formats/LUVS.md) and [MASK1 LTEX](../../assets/formats/LTEX.md) pages.
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. Carved and thinned materials are excluded. |
-| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's area-weighted samples, within their slabs, rectangles and kept texels. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved and thinned materials are excluded. |
+| Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
 
@@ -174,7 +204,9 @@ The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#de
 projected sample area earns coverage; an area cost and a per-card floor stop
 selection when another plane would not pay for itself.
 
-Training probe faces weight samples by visible projected size. The grid
+Training probe faces weight samples by visible projected size, with depth
+floored at `PROBE_WEIGHT_FLOOR` probe spacings so samples beside a probe
+cannot outweigh the rest. The grid
 covers the scene camera's region, else the source bounds. Its default
 spacing is `PROBE_SPACING_NEAR_PLANES` near planes (`views/probes.py`).
 
@@ -222,9 +254,14 @@ record. Generate the CSV with `cards_report.py SCENE --object NAME --docs`;
 
 #### thin
 
-`geometry.thin` retains a selected share of one material's triangles. It is
-for material whose geometry occupies more of the budget than it shows. The
-share is random, so `process.seed` makes it repeatable.
+`geometry.thin` keeps a random share `keep` of one material's pieces, each a set of triangles joined at their corners.
+Each kept piece grows by √(1/`keep`) about its centre, so the kept pieces cover the area all of them did<sup>[[140]](../../Citations.md#cook-2007)</sup>.
+It is for material whose geometry occupies more of the budget than it shows; `process.seed` makes the share repeatable.
+
+With `simplify` on, thin also runs without a rule on foliage: any object holding at least
+`AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
+Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
+of the mesh pays the budget. Materials drawn as cards are not thinned; carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 
@@ -373,18 +410,21 @@ Allocation mesh and pass rows include the choice:
 
 #### seal_seams
 
-`seal_seams = true` joins touching pieces before simplification, reducing gaps
-at their borders.
+`seal_seams = true` joins touching pieces before simplification, and simplifies
+again while a view shows sky through a wall.
 
 ```mermaid
 flowchart LR
     load[Load and light] --> join[Join touching pieces]
     join --> pass[Simplify pass]
-    pass --> merge[Merge near colours]
+    pass --> probe{Sky through<br/>a wall?}
+    probe -- "yes: lock one<br/>vertex per hole" --> pass
+    probe -- no --> merge[Merge near colours]
     merge --> bake[Quantise, meshlets, cluster tree]
     subgraph seal_seams
         join
         pass
+        probe
         merge
     end
 ```
@@ -393,10 +433,38 @@ flowchart LR
 |---|---|
 | Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
 | Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
+| Probe | Looks for holes (defined below) in views of the source and locks one source vertex per hole; the pass then runs again, up to [`ROUNDS`](../../../launcher/tools/r3d/leaks.py) times. |
 | Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
 
-It cuts the empty spots but does not remove them, and costs frame time for the
-triangles it keeps.
+Joining cannot unite pieces that only overlap: a vault's end rim behind an arch
+ring shares no edge with it. The simplifier keeps a seam vertex's copies together
+but chords curved borders and flattens curved pieces, so the piece behind stops
+covering the gap.
+
+The probe step runs for every renderer of a scene with a camera, lit or not. Its views are
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
+path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
+
+| Term | Meaning |
+|---|---|
+| Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
+| Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[141]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
+
+A lock keeps triangles the rest of the mesh then goes without, so the rest is a
+little coarser. A round whose locks would leave the pass over its budget is tried again
+with half of them, the widest holes first, and the pass ends when none fits. Each round adds a ray trace and a
+simplify run to the bake.
+
+A gap no view sees stays open: the probes bound what a free camera meets, and
+the path's frames close what the path shows. A pass is checked against the
+results of the passes before it and the source of those after it. A pass row of the allocation
+report says how it ended:
+
+| Field | Meaning |
+|---|---|
+| `leak_rounds` | Times the pass ran again with more locks. |
+| `leak_locks` | Source vertices those rounds locked. |
+| `leak_holes` | Holes the views still show in the result. |
 
 The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
@@ -768,13 +836,6 @@ With only `[source]` and `[output]`:
 | Vertex colour | Material albedo: the `Kd` colour times the texture. |
 | Encoding | 8 bits with a 1/2.2 gamma, not the piecewise sRGB curve; no tone map. |
 | Source vertex colours | Not read. |
-
-Two variants of one import differ in what `simplify` keeps. Below, one
-pose of the same fit at the full budget (top) and at about half of it
-(bottom).
-
-![Fitted full against fitted](../../images/render/compare-fitted-full-fitted.png)
-![Fitted full against fitted, the places they differ most](../../images/render/compare-fitted-full-fitted.crops.png)
 
 Scene-owned bake, visibility, shading and fit settings are described in
 [Scene-Files.md](../scene/Scene-Files.md#option-reference).

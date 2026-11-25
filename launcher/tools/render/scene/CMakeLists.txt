@@ -10,8 +10,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(SCENE_PROVIDER)
     add_compile_definitions("RENDER_HOST_PROVIDER=${SCENE_PROVIDER}")
 endif()
+# Only the file store reads the folder; on every source it would make each build folder's objects differ.
 if(SCENE_ASSET_DIR)
-    add_compile_definitions("ASSET_DIR_DEFAULT_PATH=\"${SCENE_ASSET_DIR}\"")
+    get_filename_component(asset_store_file "${CMAKE_CURRENT_SOURCE_DIR}/../../../main/asset/asset_store_file.c" ABSOLUTE)
+    set_source_files_properties("${asset_store_file}" PROPERTIES
+                                COMPILE_DEFINITIONS "ASSET_DIR_DEFAULT_PATH=\"${SCENE_ASSET_DIR}\"")
 endif()
 add_subdirectory(.. render_host)
 add_executable(render_scene ${SCENE_SOURCES})

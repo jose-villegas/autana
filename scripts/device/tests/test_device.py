@@ -1,5 +1,5 @@
 """device.py: interpreter choice, serial open and port guards, waits, records and captures."""
-import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import isolation  # (first: keeps the suite out of real records)
 import port_guard
 import ast
 import base64
@@ -29,6 +29,7 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
+from console_protocol import TUNE_REPLY_ENDS, TUNE_VALUE_MAX
 from fake_serial import FakeConnection, FakeUsbBoard
 import fake_flash  # noqa: E402
 import device_lock
@@ -551,6 +552,14 @@ class InterruptedConnection(FakeConnection):
         return super().read(size)
 
 
+class BufferedOutput(io.StringIO):
+    """A text stdout with the byte buffer --echo writes raw bytes to."""
+
+    def __init__(self):
+        super().__init__()
+        self.buffer = io.BytesIO()
+
+
 class DeviceTests(unittest.TestCase):
     def test_suite_verdict_requires_its_completion_line(self):
         for command, marker in (("suite", b"RUNSUITE_COMPLETE name=sand found=1\n"),
@@ -799,7 +808,7 @@ class DeviceTests(unittest.TestCase):
                 b"I (813) screenshot: TUNE launcher.glow_radius=13 min=1 max=31\r\n"
                 b"TUNE_END count=2\n"
                 b"TUNE_OK later=1\n")
-        found, complete = device.replies_to(data, "TUNE", ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+        found, complete = device.replies_to(data, "TUNE", list(TUNE_REPLY_ENDS))
         self.assertTrue(complete)
         self.assertEqual(found, ["TUNE launcher.ridge_trail=226 min=0 max=255",
                                  "TUNE launcher.glow_radius=13 min=1 max=31",
@@ -807,7 +816,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_replies_are_incomplete_until_the_terminator_arrives(self):
         found, complete = device.replies_to(b"TUNE a=1 min=0 max=2\nTUNE_EN", "TUNE",
-                                            ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
+                                            list(TUNE_REPLY_ENDS))
         self.assertFalse(complete)
         self.assertEqual(found, ["TUNE a=1 min=0 max=2"])
 
@@ -821,7 +830,7 @@ class DeviceTests(unittest.TestCase):
 
     def send_args(self, line, reply="TUNE", until=None, seconds=1, optional=False):
         return Namespace(owner="agent", purpose="send", wait=0, line=line, reply=reply,
-                         until=["TUNE_OK", "TUNE_ERR", "TUNE_END"] if until is None else until,
+                         until=list(TUNE_REPLY_ENDS) if until is None else until,
                          seconds=seconds, optional=optional)
 
     def test_send_writes_the_line_and_prints_the_reply(self):
@@ -980,6 +989,14 @@ class DeviceTests(unittest.TestCase):
         self.assertTrue(line.startswith("human reservation: maintainer: panel (since "))
         self.assertIn("65s ago", line)
 
+    def test_only_its_own_person_renews_a_reservation(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            token, _ = store.reserve_human(BOARD, "sam@bench:41", "panel")
+            self.assertEqual(store.reserve_human(BOARD, "sam@bench:42", "panel again"), (token, True))
+            self.assertEqual(store.reserve_human(BOARD, "kim@bench:43", "record"), (None, True))
+            self.assertEqual(store.status(BOARD)["human"]["owner"], "sam@bench:42")
+
     def test_take_back_clears_human_reservation_and_prints_status(self):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root)
@@ -995,10 +1012,36 @@ class DeviceTests(unittest.TestCase):
         store = mock.Mock()
         store.status.return_value = {"human": None, "lock": None, "queue": []}
         store.reserve_human.return_value = ("id", False)
-        with mock.patch.object(device.device_lock, "LockStore", return_value=store):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(device.main(["--board", BOARD, "--owner", "agent",
                                           "hand-to-human", "--note", "check cable"]), 0)
         store.reserve_human.assert_called_once_with(BOARD, "agent", "check cable", wait=600, on_wait=mock.ANY)
+        self.assertEqual(output.getvalue(), "id\n", "stdout is the token alone, as `take` prints it")
+
+    def test_the_reservations_token_runs_a_command_inside_it(self):
+        """A reservation stops every new command, the person's own too; its
+        token, printed by hand-to-human, lets them borrow it instead."""
+        with tempfile.TemporaryDirectory() as root:
+            store = device_lock.LockStore(root)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    contextlib.redirect_stdout(io.StringIO()) as output, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(device.main(["--board", BOARD, "--owner", "sam",
+                                              "hand-to-human", "--note", "checking the panel"]), 0)
+            token = output.getvalue().strip()
+            self.assertIsNone(store.acquire(BOARD, "agent", "record", wait=0), "a new command waits")
+            with mock.patch.dict(os.environ, {device.TOKEN_ENV: token}):
+                held = device.HeldLock(store, BOARD, "sam", "record", 0)
+            self.assertTrue(held.borrowed)
+            self.assertEqual(held.held["kind"], "human", "the command runs inside the reservation")
+            # Releasing a hold's token is not how a reservation ends: take-back
+            # ends it, so its human-cleared event fires.
+            with mock.patch.object(device.device_lock, "LockStore", return_value=store), \
+                    contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(device.main(["--board", BOARD, "release", "--token", token]), 1)
+            self.assertIn("take-back", errors.getvalue())
+            self.assertIsNotNone(store.status(BOARD)["human"], "the reservation stands")
 
     def test_an_unnamed_owner_is_user_at_host_colon_pid_not_unknown(self):
         store = mock.Mock()
@@ -1132,12 +1175,17 @@ class HumanWaitTests(unittest.TestCase):
                                 "--note", "download mode", *flags])
         return code, output
 
+    def assert_last_said(self, output, line):
+        """The wait's last line was `line`, on stderr."""
+        self.assertEqual(output.call_args_list[-1].args[0], line)
+        self.assertIs(output.call_args_list[-1].kwargs.get("file"), sys.stderr)
+
     def test_release_before_deadline_succeeds(self):
         self.on_sleep = lambda: self.store.end_human(BOARD)
         with mock.patch.object(device_hook, "emit") as emit:
             code, output = self.hand("--until-back", "3")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation released")
+        self.assert_last_said(output, "human reservation released")
         self.assertEqual(emit.call_args_list, [
             mock.call("human-reserved", BOARD, "agent", note="download mode"),
             mock.call("human-cleared", BOARD, "agent", note="download mode"),
@@ -1146,7 +1194,7 @@ class HumanWaitTests(unittest.TestCase):
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--until-back", "2")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_interrupt_keeps_reservation(self):
@@ -1156,7 +1204,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = interrupt
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device.EXIT_INTERRUPTED)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait interrupted")
+        self.assert_last_said(output, "human reservation wait interrupted")
         self.assertIsNotNone(self.store.status(BOARD)["human"])
 
     def test_replaced_reservation_is_reported(self):
@@ -1167,14 +1215,14 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = replace
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation replaced")
+        self.assert_last_said(output, "human reservation replaced")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_a_wait_past_the_reservation_lifetime_ends_as_expired(self):
         self.store.now = lambda: 1000 + self.clock[0]
         code, output = self.hand("--until-back", "7200")
         self.assertEqual(code, 0)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation expired")
+        self.assert_last_said(output, "human reservation expired")
         self.assertGreaterEqual(self.clock[0], device_lock.HUMAN_RESERVATION_SECONDS)
 
     def test_a_renewal_does_not_end_the_wait(self):
@@ -1184,7 +1232,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = renew
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
+        self.assert_last_said(output, "human reservation wait timed out; the reservation stands")
 
 
 class SlugTests(unittest.TestCase):
@@ -1699,6 +1747,33 @@ class TuneSetTests(unittest.TestCase):
     def test_hex_is_compared_as_the_board_prints_it(self):
         self.apply("a.rgb=0x10", b"log line\nI (5) console: TUNE_OK a.rgb=16\n")
 
+    def test_cli_accepts_the_decimal_echo_of_an_octal_setting(self):
+        connection = FakeConnection([b"TUNE_OK x=8\n", b"RUNSUITE_COMPLETE name=sand found=1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
+                 mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
+                 mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=root / "records"), \
+                 mock.patch("builtins.print"):
+                result = device.main(["--owner", "agent", "run-suite", "sand",
+                                      "--out", str(root / "capture.log"), "--set", "x=010"])
+        self.assertEqual(result, 0)
+        self.assertEqual(b"".join(connection.writes), b"\nSET x 010\n\nRUNSUITE sand\n")
+
+    def test_cli_rejects_invalid_settings_before_locking(self):
+        commands = (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"])
+        for command in commands:
+            for setting, message in (("bad name=1", "expected a console name"),
+                                     (f"x={TUNE_VALUE_MAX + 1}", "value must fit int32")):
+                with self.subTest(command=command[0], setting=setting):
+                    with mock.patch.object(device.device_lock, "LockStore",
+                                           side_effect=AssertionError("lock opened")), \
+                         contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit) as stop:
+                        device.main([*command, "--set", setting])
+                    self.assertEqual(stop.exception.code, 2)
+                    self.assertIn(f"argument --set: {setting!r}: {message}", errors.getvalue())
+
     def test_a_dropped_line_is_asked_again(self):
         class AnswersSecondAsk(FakeConnection):
             def read(self, unused_size):
@@ -1728,6 +1803,20 @@ class TuneSetTests(unittest.TestCase):
 
 
 class ConsoleSetupTests(unittest.TestCase):
+    def test_send_parsing_refuses_tunable_commands_and_line_breaks(self):
+        for command in (["run-suite", "sand"], ["batch", "--worktree", ".", "--suite", "sand"]):
+            for line in ("SET render.cull 0", "reset render.cull", "GET render.cull", "tune",
+                         "sound stop all\nversion", "sound stop all\r", "  "):
+                with self.subTest(command=command, line=line), \
+                     mock.patch.object(device, "plugged_boards", return_value=[]) as discover, \
+                     contextlib.redirect_stderr(io.StringIO()) as stderr:
+                    with self.assertRaises(SystemExit) as error:
+                        device.main([*command, "--send", line])
+                    self.assertEqual(error.exception.code, 2)
+                    self.assertIn("argument --send", stderr.getvalue())
+                    self.assertIn(repr(line), stderr.getvalue())
+                    discover.assert_not_called()
+
     def run_setup(self, replies, lines):
         connection = FakeConnection(replies)
         args = suite_args()
@@ -1877,8 +1966,8 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertEqual(device.test_patterns(None), [])
 
     def test_case_patterns_are_accepted(self):
-        self.assertEqual(device.test_patterns(["capybara/front,sponza-fitted", "profile/scene-b/368x448"]),
-                         ["capybara/front", "sponza-fitted", "profile/scene-b/368x448"])
+        self.assertEqual(device.test_patterns(["capybara/front,bistro", "profile/scene-b/368x448"]),
+                         ["capybara/front", "bistro", "profile/scene-b/368x448"])
 
     def test_a_pattern_that_would_break_the_request_line_is_refused(self):
         for bad in ("has space", "", "a;b", "a:b", "a//b", "/a", "a/"):
@@ -3022,12 +3111,7 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
     def test_echo_writes_raw_bytes_without_reprinting_errors(self):
-        class Output(io.StringIO):
-            def __init__(self):
-                super().__init__()
-                self.buffer = io.BytesIO()
-
-        output = Output()
+        output = BufferedOutput()
         raw = b"ordinary\nerror: broken\n"
         code, text, _, _, _ = self.run_listen(
             InterruptedConnection([raw]), ["--follow", "--echo"], output)
@@ -3043,12 +3127,7 @@ class ListenLifecycleTests(unittest.TestCase):
         self.assertEqual(payload, b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\nafter tests\n")
 
     def test_partial_echo_gets_newline_before_path(self):
-        class Output(io.StringIO):
-            def __init__(self):
-                super().__init__()
-                self.buffer = io.BytesIO()
-
-        output = Output()
+        output = BufferedOutput()
         code, text, entry, _, _ = self.run_listen(
             InterruptedConnection([b"partial"]), ["--follow", "--echo"], output)
         self.assertEqual(code, 0)
@@ -3111,9 +3190,7 @@ class CoredumpTests(unittest.TestCase):
     build it came from, which is not the running one after a later flash."""
 
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = isolation.scratch_root(self)
 
     def run_coredump(self, raw=b"", erase=False, elf=None, found_elf=Path("archive/834b7bb03fd6-diag.elf"),
                      read_fails=False):

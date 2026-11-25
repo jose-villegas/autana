@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
 from device_lock import board_label, normalise_board
-from device_report import find_manifest_entry
+from device_report import find_manifest_entry, read_capture_text, report_path_for
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build.c_header import read_define
@@ -24,6 +24,13 @@ def build_id(text) -> str:
     if len(lines) != 1 or not re.fullmatch(r"BUILD_ID=[\w.-]+", lines[0]):
         raise ValueError("invalid or repeated build id")
     return lines[0].removeprefix("BUILD_ID=")
+
+
+def require_complete_capture(path):
+    """A complete capture measures performance even when its tests exceed a ceiling."""
+    report = report_path_for(path).read_text(encoding="utf-8", errors="replace")
+    if "- Ended: complete" not in report.splitlines():
+        raise RuntimeError(f"incomplete capture: {path}")
 
 
 def capture_board(path) -> str | None:
@@ -53,7 +60,7 @@ def require_same_board(boards: Mapping[str, str | None]) -> str | None:
 
 def require_same_build(paths) -> str:
     """The one build id every capture's `BUILD_ID=` line names; pooled captures from two builds are refused."""
-    ids = {str(path): build_id(Path(path).read_text(encoding="utf-8", errors="replace")) for path in paths}
+    ids = {str(path): build_id(read_capture_text(path)) for path in paths}
     if len(set(ids.values())) != 1:
         raise ValueError("captures from different builds: " + "; ".join(f"{path}: {build}" for path, build in ids.items()))
     return next(iter(ids.values()))
