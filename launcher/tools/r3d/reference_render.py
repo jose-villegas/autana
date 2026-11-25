@@ -31,10 +31,10 @@ from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import AlphaTest, coincident_faces, device_occlusion, light, surface_table, to_srgb8
+from r3d.light import AlphaTest, coincident_faces, device_light, device_occlusion, surface_table, to_srgb8
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
-from r3d.ray_query import RayQuery, chunks, rows, vectors
+from r3d.ray_query import RayQuery, chunks, joined, rows, vectors
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -145,6 +145,29 @@ def primary_hit_rows(source, job, pose, width, height, lens, samples):
     return origin, direction, drawn_hit_rows(source, double_materials, origin, direction)
 
 
+def device_primary_hits(source, job, pose, width, height, lens, samples):
+    """The camera rays of a pose (NumPy), their drawn hits and each hit's albedo, on the device: found and shaded in
+    launches of at most LAUNCH rays and joined, each hit's ray counted over the whole pose. None and None where no
+    ray hits."""
+    import drjit as dr
+
+    origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    mi = source.intersector.mi
+    table = surface_table(source, mi)
+    hits, albedo = [], []
+    for start, size in chunks(len(origin), ray_query.LAUNCH):
+        found = device_drawn_hits(source, double_materials, origin[start:start + size], direction[start:start + size])
+        if dr.width(found.rays):
+            hits.append(found._replace(rays=found.rays + start))
+            albedo.append(table.albedo(found.faces, found.bary, mi.Bool(True)))
+    if not hits:
+        return origin, direction, None, None
+    found = DrawnHits(*(None if field[0] is None else tuple(map(joined, zip(*field))) if isinstance(field[0], tuple)
+                        else joined(field) for field in zip(*hits)))
+    return origin, direction, found, joined(albedo)
+
+
 def primary_hits(source, job, pose, width, height, lens, samples):
     """The camera rays of a pose and what they hit, as drawn_hits finds it: (ray origins, directions, hit locations,
     the ray each hit belongs to, the source triangle hit, its bary-interpolated normal, its barycentrics, whether its
@@ -156,22 +179,22 @@ def primary_hits(source, job, pose, width, height, lens, samples):
 def trace(source, job, scene, pose, width, height, lens, samples=4):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
-    the pixel's rays and zero where they all miss). The hits are found, shaded and lit on the device in launches of
-    at most LAUNCH rays; the light is gathered over every hit of the pose at once, so a hit's bounce samples depend
-    on its place among them and not on how the camera rays were split."""
-    origin, direction, found = primary_hit_rows(source, job, pose, width, height, lens, samples)
+    the pixel's rays and zero where they all miss). The pose stays on the device from its camera rays to each hit's
+    colour (device_primary_hits, device_light); the light is gathered over every hit of the pose at once, so a hit's
+    bounce samples depend on its place among them and not on how the camera rays were split."""
+    origin, direction, found, albedo = device_primary_hits(source, job, pose, width, height, lens, samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
     shading = np.zeros((len(origin), 3), dtype=float)
-    if len(found.rays):
-        albedo = hit_albedo(source, found.faces, found.bary)
-        radiance = light(found.where, found.normal, found.double, source.intersector, scene.lights,
-                         job.bake.ray_offset, source.bounce, ao=job.bake.ao,
-                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
-        covered[found.rays] = 1.0
-        linear[found.rays] = albedo * radiance
-        shading[found.rays] = found.normal * np.where((found.normal * direction[found.rays]).sum(axis=1) > 0,
-                                                      -1.0, 1.0)[:, None]
+    if found is not None:
+        radiance = device_light(found.where, found.normal, found.double, source.intersector, scene.lights,
+                                job.bake.ray_offset, source.bounce, ao=job.bake.ao,
+                                bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
+        rays = np.array(found.rays, np.int64).reshape(-1)
+        normal = rows(found.normal, len(rays))
+        covered[rays] = 1.0
+        linear[rays] = rows(albedo * radiance, len(rays))
+        shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
     shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
     return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
             covered.reshape(height, width, samples * samples).mean(axis=2),

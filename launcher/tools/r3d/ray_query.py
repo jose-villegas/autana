@@ -65,6 +65,16 @@ def rows(value, count, channels=3):
     return np.broadcast_to(np.array(value, np.float64).reshape(channels, -1).T, (count, channels)).copy()
 
 
+def joined(parts):
+    """Dr.Jit arrays of one type, end to end: a vector type joins component by component."""
+    import drjit as dr
+
+    first = parts[0]
+    if dr.depth_v(first) > 1:
+        return type(first)(*(joined([part[axis] for part in parts]) for axis in range(len(first))))
+    return dr.concat(list(parts))
+
+
 def chunks(count, per):
     """(start, size) of consecutive slices of `count` items at most `per` long."""
     return [(start, min(per, count - start)) for start in range(0, count, per)]
