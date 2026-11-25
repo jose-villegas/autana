@@ -34,9 +34,11 @@ try:
     from r3d.ray_query import RayQuery
     from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, pose_rays
     from check_avi import read_video
+    from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
     from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
+    needs_llvm = unittest.skip("the r3d environment is not installed")
 
 DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 25
@@ -173,6 +175,7 @@ def quad(x0, x1, y0, y1):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+@needs_llvm
 class PixelSky(unittest.TestCase):
     def test_sky_in_part_of_a_pixel_is_source_sky_where_the_centre_ray_hits(self):
         # One pixel 20 units wide on the wall, whose sides stop 5 short of the pixel's: the centre ray hits it,
