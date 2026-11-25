@@ -195,10 +195,10 @@ material becomes a double-sided shape with vertex colours,
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved and thinned materials are excluded. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved materials are excluded; the `thin` rule's material is a candidate, and accepted, it leaves before thinning. |
 | Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
-| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
+| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved material, unknown names, or overlapping overrides is an error. |
 
 The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>:
 projected sample area earns coverage; an area cost and a per-card floor stop
@@ -261,7 +261,8 @@ It is for material whose geometry occupies more of the budget than it shows; `pr
 With `simplify` on, thin also runs without a rule on foliage: any object holding at least
 `AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
 Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
-of the mesh pays the budget. Materials drawn as cards are not thinned; carved meshes keep their own per-shape thinning.
+of the mesh pays the budget. Materials drawn as cards are not thinned, so a `thin` rule is the fallback for a material
+the card baker rejects; carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 

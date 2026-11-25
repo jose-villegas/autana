@@ -211,9 +211,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
         for name, report in card_report.items():
             share = "always" if report['forced'] else f"{report['see_through']:.3f}"
+            unused = report['accepted'] and settings.thin is not None and settings.thin.material == name
             log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f} "
                 f"(all area {report['covered_area']:.3f}), "
-                f"accepted={report['accepted']}")
+                f"accepted={report['accepted']}{' (thin rule unused)' if unused else ''}")
         selected_cards = np.isin(tri_m, [material for material, _, _ in accepted_cards])
         if selected_cards.any():
             light_only = tri_v[selected_cards], tri_t[selected_cards], tri_m[selected_cards]

@@ -13,6 +13,7 @@ seed = 1
 
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
+# The leaves are drawn as cards when the card baker accepts them; thin is their fallback.
 thin = { material = "leaf", keep = 0.35 }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 # The fits train on probes over the whole atrium (the scene camera has no path).
@@ -37,11 +38,6 @@ seam = "free"
 [[objects.meshes]]
 match = { material = "vase_hanging" }
 triangles = 19
-seam = "free"
-
-[[objects.meshes]]
-match = { material = "leaf" }
-triangles = 45
 seam = "free"
 
 [[objects.meshes]]

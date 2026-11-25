@@ -194,7 +194,7 @@ class CardTests(unittest.TestCase):
                 candidates(src, settings)
             setattr(settings.cards, key, [])
 
-    def test_always_carved_is_an_error(self):
+    def test_always_carved_is_an_error_but_always_thinned_is_not(self):
         from r3d.cards.decide import candidates
         from r3d.import_settings import SettingsError
         settings, src = self.import_fixture()
@@ -203,9 +203,30 @@ class CardTests(unittest.TestCase):
         with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
             candidates(src, settings)
         settings.meshes = []
-        settings.thin = SimpleNamespace(material='leaf')
-        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
-            candidates(src, settings)
+        settings.thin = SimpleNamespace(material='leaf', keep=.5)
+        self.assertEqual(candidates(src, settings), [(src.names.index('leaf'), None)])
+
+    def test_cards_override_the_thin_rule(self):
+        """A thinned material is a card candidate: accepted, its faces leave before thinning, so the thin rule
+        finds none of them; rejected, it stays geometry and is thinned at the rule's keep."""
+        from r3d.cards import CARD_COVERED_MIN, decide
+        from r3d.import_settings import albedo_jobs
+        settings, src = self.import_fixture()
+        leaf = src.names.index('leaf')
+        settings.thin = SimpleNamespace(material='leaf', keep=.5)
+        for floor, accepted in ((CARD_COVERED_MIN, True), (1 + CARD_COVERED_MIN, False)):
+            with self.subTest(accepted=accepted), patch.object(decide, 'CARD_COVERED_MIN', floor), \
+                    patch.object(mesh_import, 'thin_choice', wraps=mesh_import.thin_choice) as choice:
+                geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+                self.assertEqual(geometry.mesh_report['cards']['leaf']['accepted'], accepted)
+                self.assertEqual([shape['name'] for shape in geometry.shapes], ['leaf'] if accepted else [])
+                tri_m = choice.call_args.args[2]
+                keep, _ = mesh_import.thin_choice(*choice.call_args.args)
+                thinned = keep[tri_m == leaf]
+                if accepted:
+                    self.assertEqual(len(thinned), 0, "the thin rule finds no face of a carded material")
+                else:
+                    self.assertTrue(len(thinned) and (thinned == .5).all(), "a rejected material is thinned")
 
     def test_camera_hidden_is_exactly_accepted_materials(self):
         from r3d.cards import CARD_COVERED_MIN, decide

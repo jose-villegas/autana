@@ -229,8 +229,8 @@ class CardContractTests(unittest.TestCase):
             settings.meshes = [dict(match=dict(material='leaf'))]
             self.assertEqual(decide.candidates(source, settings), [])
             settings.meshes = []
-            settings.thin = NS(material='leaf')
-            self.assertEqual(decide.candidates(source, settings), [])
+            settings.thin = NS(material='leaf', keep=.5)
+            self.assertEqual(decide.candidates(source, settings), [(0, CARD_SEE_THROUGH_MIN)])
         settings.thin = None
         settings.cards.always = ['leaf']
         accepted, report = decide.carded(source, settings, lambda m: (None, {'covered': 1.}))
