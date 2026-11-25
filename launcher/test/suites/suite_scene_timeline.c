@@ -2781,17 +2781,16 @@ test_constraint_uses_weighted_world_pose(void) {
         asset_pack_t pack;
         open_pack(&writer, &pack);
         scene_t* scene = columns(load(&pack));
-        const transformf_t own_local = transformf_identity();
         transformf_t frame = transformf_identity();
         transformf_set_position(&frame, (vec3f_t){5, 7, 11});
         transformf_set_rotation(&frame, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 2.0F));
         transformf_set_scale(&frame, (vec3f_t){2, 2, 2});
         scene_row_set_local(scene->root, SUBJECT, frame);
-        const transformf_t own = transformf_compose(&frame, &own_local);
         const vec3f_t target = scene->locals[CAMERA].position;
-        const vec3f_t eye = position ? vec3f_lerp(own.position, target, weight) : own.position;
+        const vec3f_t eye = position ? vec3f_lerp(frame.position, target, weight) : frame.position;
         const quatf_t rotation =
-            aim ? quatf_nlerp(own.rotation, quatf_looking(vec3f_sub(target, eye), vec3f_up()), weight) : own.rotation;
+            aim ? quatf_nlerp(frame.rotation, quatf_looking(vec3f_sub(target, eye), vec3f_up()), weight)
+                : frame.rotation;
         scene_animation_step(scene, 0);
         const transformf_t got = scene_row_world(scene->root, ANCHOR);
         const transformf_t* local = &scene->locals[ANCHOR];
