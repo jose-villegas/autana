@@ -283,6 +283,7 @@ def probed(scene_path, object_name):
     source = load_source(job.settings, np.float32)
     keep_alpha = job.settings.alpha_keep
     query = RayQuery(source.p, source.tri_v, hit_filter=None if keep_alpha is None else AlphaTest(source, keep_alpha))
+    source.intersector = query  # hit_albedo reads the source's ray query
     path = None if coverage is None else (*coverage[:3], coverage[4])
     views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
                           path, query=query)
