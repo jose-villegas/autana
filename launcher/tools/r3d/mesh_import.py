@@ -89,7 +89,7 @@ def far_skins(p, tris, shell, towards):
 
 def back_albedo_at(src, points, normals, front, spacing):
     """What vertices of a double-sided material show from behind: the far skin's albedo where the sheet stands for
-    two skins (midsurface.back_albedo()), else the front's."""
+    two skins (midsurface.back_albedo(); `normals` None reads its nearest point), else the front's."""
     far = getattr(src, "far_skin", None)
     if far is None:
         return front
@@ -489,7 +489,9 @@ def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bou
 def flat_colours(job, scene, geometry, face_samples, **knobs):
     """One colour per triangle of `geometry` for a flat variant's
     (samples, min, max, area) options. `knobs` are face_colours' own: placement; `sky_rays` replaces every sky
-    light's own ray count."""
+    light's own ray count. In a scene with a double-sided material (shade_lit()) each colour has six channels:
+    the front, lit on the face normal alone, then the back, the face turned over and lit with what it shows
+    from behind (back_albedo_at()), zero for a single-sided face."""
     src, settings = geometry.src, job.settings
     samples, sample_min, sample_max, sample_area = face_samples
     double_materials = {index for index, name in enumerate(src.names) if name in settings.double_sided}
@@ -497,13 +499,23 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
     if "sky_rays" in knobs:
         rays = knobs.pop("sky_rays")
         lights = [{**item, "rays": rays} if item["type"] == "sky" else item for item in lights]
-    back = (lambda points, normals, front, spacing, _material: back_albedo_at(src, points, normals, front, spacing)
-            ) if getattr(src, "two_sided", False) else None
-    return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
-                        lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
-                        lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
-                        sample_area=sample_area, min_samples=sample_min, bounce=geometry.bounce,
-                        ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, back_albedo_of=back, **knobs)
+    front_albedo = lambda centres, spacing, material: albedo_at(src, centres, spacing, material)  # noqa: E731
+
+    def coloured(tris, materials, double, albedo_of):
+        return face_colours(geometry.positions, tris, geometry.tri_mat, materials, double, albedo_of,
+                            geometry.intersector, lights, job.bake.ray_offset, scene.tonemap_white, samples,
+                            max_samples=sample_max, sample_area=sample_area, min_samples=sample_min,
+                            bounce=geometry.bounce, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
+
+    every = range(len(src.names))
+    if not getattr(src, "two_sided", False):
+        return coloured(geometry.tris, every, double_materials, front_albedo)
+    # A point of a face has no normal here: its back reads the far skin's nearest point (back_albedo_at()).
+    back_albedo = lambda centres, spacing, material: back_albedo_at(  # noqa: E731
+        src, centres, None, front_albedo(centres, spacing, material), spacing)
+    front = coloured(geometry.tris, every, set(), front_albedo)
+    back = coloured(geometry.tris[:, ::-1], sorted(double_materials), set(), back_albedo)
+    return np.concatenate([front, back], axis=1)
 
 
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):

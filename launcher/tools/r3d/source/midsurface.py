@@ -102,14 +102,18 @@ def collapse(p, tri_v, far, piece, far_query):
 def back_albedo(points, normals, front, far_query, far_corners, reach, albedo_at_hit):
     """What sheet vertices show from behind: the albedo where a ray along -normal meets the far skin within
     `reach` (albedo_at_hit(points on the far skin, its triangle rows, which of `points` found one)); where the
-    ray misses, as at the sheet's border, whose ray grazes the far skin's edge, the nearest point of the far skin
-    (`far_corners`, (F, 3, 3)) within reach; else `front`, as on a sheet with one skin."""
+    ray misses, as at the sheet's border, whose ray grazes the far skin's edge, or for points with no `normals`
+    (None), the nearest point of the far skin (`far_corners`, (F, 3, 3)) within reach; else `front`, as on a sheet
+    with one skin."""
     back = np.array(front, dtype=np.float64, copy=True)
     if far_query is None or not len(points):
         return back
-    hit, distance, tri = far_query.first_hits(points, -normals)
-    hit &= distance <= reach
-    at = points - normals * np.where(hit, distance, 0.0)[:, None]
+    hit, distance, tri = np.zeros(len(points), dtype=bool), np.zeros(len(points)), np.zeros(len(points), np.int64)
+    if normals is not None:
+        hit, distance, tri = far_query.first_hits(points, -normals)
+        hit &= distance <= reach
+    at = np.array(points, dtype=np.float64, copy=True)
+    at[hit] -= normals[hit] * distance[hit, None]
     missed = np.flatnonzero(~hit)
     if len(missed):
         rows, bary, gap = nearest_triangles(points[missed], triangle_search(far_corners))

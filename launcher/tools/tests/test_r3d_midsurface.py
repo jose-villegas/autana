@@ -114,6 +114,9 @@ class MidsurfaceTests(unittest.TestCase):
         np.testing.assert_allclose(midsurface.back_albedo(at, normals, front, far_query, corners, SLAB_THICKNESS / 4,
                                                           at_hit), front, err_msg="a far skin beyond the reach was read")
         np.testing.assert_allclose(midsurface.back_albedo(at, normals, front, None, corners, 1.0, at_hit), front)
+        # Without normals, the nearest point alone.
+        np.testing.assert_allclose(midsurface.back_albedo(at, None, front, far_query, corners, SLAB_THICKNESS, at_hit),
+                                   [[0.75] * 3, [0.75] * 3, [0.25] * 3])
 
 
 if __name__ == "__main__":

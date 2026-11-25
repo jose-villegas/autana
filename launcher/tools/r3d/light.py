@@ -701,19 +701,14 @@ def adaptive_sample_counts(areas, reference, cap, floor=1):
 
 def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_of, intersector, lights, ray_offset,
                  tonemap_white, samples=4, max_samples=16, sample_area=None, min_samples=1,
-                 placement="stratified", bounce=None, ao=None, bounce_intensity=1.0, back_albedo_of=None):
+                 placement="stratified", bounce=None, ao=None, bounce_intensity=1.0):
     """One sRGB colour per triangle: albedo times light averaged over fixed
     points of the triangle, lit on its face normal. `samples` is a count per
     face, or "auto" for one point per `sample_area` of face area (the mesh's
     median face by default), from `min_samples` to `max_samples`. Every face
     shares one set of sky directions, so equal surroundings give equal
-    colours. albedo_of(points, spacing, material) gives the albedo. Given
-    back_albedo_of(points, normals, front albedo, spacing, material), each
-    colour has six channels: the front lit on the face normal alone, and what
-    a double-sided face shows from behind, lit on the reversed normal (zero
-    for a single-sided one)."""
-    sided = back_albedo_of is not None
-    out = np.zeros((len(tris), 6 if sided else 3), dtype=np.int64)
+    colours. albedo_of(points, spacing, material) gives the albedo."""
+    out = np.zeros((len(tris), 3), dtype=np.int64)
     areas = triangle_areas(positions, tris)
     if samples == "auto":
         counts = adaptive_sample_counts(areas, np.median(areas) if sample_area is None else sample_area, max_samples,
@@ -732,16 +727,10 @@ def face_colours(positions, tris, tri_mat, materials, double_materials, albedo_o
             albedo = albedo_of(points, spacing, m)
             double = np.full(len(points), m in double_materials)
             tiled = np.tile(normals, (k, 1))
-            radiance = light(points, tiled, double & ~sided, intersector, lights, ray_offset, bounce, ao=ao,
+            radiance = light(points, tiled, double, intersector, lights, ray_offset, bounce, ao=ao,
                              bounce_intensity=bounce_intensity)
             colour = (albedo * radiance).reshape(k, len(faces), 3).mean(axis=0)
-            out[selected, :3] = to_srgb8(colour, tonemap_white)
-            if sided and m in double_materials:
-                back = back_albedo_of(points, tiled, albedo, spacing, m)
-                radiance = light(points, -tiled, np.zeros(len(points), bool), intersector, lights, ray_offset, bounce,
-                                 ao=ao, bounce_intensity=bounce_intensity)
-                colour = (back * radiance).reshape(k, len(faces), 3).mean(axis=0)
-                out[selected, 3:] = to_srgb8(colour, tonemap_white)
+            out[selected] = to_srgb8(colour, tonemap_white)
     return out
 
 

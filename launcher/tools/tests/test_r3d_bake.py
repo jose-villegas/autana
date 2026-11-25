@@ -881,31 +881,42 @@ def walled_floors(offsets):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FlatLightTests(unittest.TestCase):
-    def colours(self, offsets, double=frozenset(), **kw):
+    def colours(self, offsets, **kw):
         p, tris, intersector = walled_floors(offsets)
         grey = lambda points, spacing, m: np.full((len(points), 3), 0.3)
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
-        return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(double), grey, intersector, lights, 0.5,
-                            0.35, **kw)
+        return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35, **kw)
 
     @needs_llvm
-    def test_a_double_sided_face_gets_its_front_lit_alone_and_its_back_on_the_reversed_normal(self):
-        """With back albedo, each colour holds the front, lit on the face normal alone, then the back, lit on the
-        reversed normal with the back albedo; a single-sided face's back is zero."""
-        light_back = lambda points, normals, front, spacing, m: np.full((len(points), 3), 0.6)
-        single = self.colours([0], samples=1)
-        sided = self.colours([0], double={0}, back_albedo_of=light_back, samples=1)
-        self.assertEqual(sided.shape, (len(single), 6))
-        np.testing.assert_array_equal(sided[:, :3], single)
-        # The back is the face turned over, lit single-sided with the back albedo.
+    def test_a_flat_double_sided_face_gets_its_front_lit_alone_and_its_back_turned_over(self):
+        """In a scene with a double-sided material, a flat variant's colours hold the front, lit on the face normal
+        alone, then the back: the face turned over and lit single-sided with what it shows from behind; a
+        single-sided face's back is zero."""
+        from unittest import mock
+
+        from r3d import mesh_import
+
         p, tris, intersector = walled_floors([0])
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
-        turned = face_colours(p, tris[:, ::-1], np.zeros(len(tris), dtype=int), [0], set(),
-                              lambda points, spacing, m: np.full((len(points), 3), 0.6), intersector, lights, 0.5,
-                              0.35, samples=1)
-        np.testing.assert_array_equal(sided[:, 3:], turned)
-        self.assertFalse(np.array_equal(sided[:, 3:], sided[:, :3]))
-        np.testing.assert_array_equal(self.colours([0], back_albedo_of=light_back, samples=1)[:, 3:], 0)
+        geometry = SimpleNamespace(positions=p, tris=tris, tri_mat=np.array([0, 1]), intersector=intersector, bounce=None,
+                                   src=SimpleNamespace(names=["drape", "floor"], two_sided=True))
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=["drape"]),
+                              bake=SimpleNamespace(ray_offset=0.5, ao=None))
+        scene = SimpleNamespace(lights=lights, tonemap_white=0.35, indirect=SimpleNamespace(intensity=1.0))
+        grey = lambda points, spacing, m: np.full((len(points), 3), 0.3)
+        light = lambda points, spacing, m: np.full((len(points), 3), 0.6)
+        with mock.patch.object(mesh_import, "albedo_at", lambda src, points, spacing, m: grey(points, spacing, m)), \
+                mock.patch.object(mesh_import, "back_albedo_at",
+                                  lambda src, points, normals, front, spacing: light(points, spacing, 0)):
+            sided = mesh_import.flat_colours(job, scene, geometry, (1, 1, 1, None))
+        alone = face_colours(p, tris, geometry.tri_mat, [0, 1], set(), grey, intersector, lights, 0.5, 0.35, samples=1)
+        turned = face_colours(p, tris[:, ::-1], geometry.tri_mat, [0], set(), light, intersector, lights, 0.5, 0.35,
+                              samples=1)
+        self.assertEqual(sided.shape, (2, 6))
+        np.testing.assert_array_equal(sided[:, :3], alone)
+        np.testing.assert_array_equal(sided[0, 3:], turned[0])
+        np.testing.assert_array_equal(sided[1, 3:], 0)
+        self.assertFalse(np.array_equal(sided[0, 3:], sided[0, :3]))
 
     @needs_llvm
     def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
