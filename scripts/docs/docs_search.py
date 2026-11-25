@@ -48,6 +48,8 @@ import docs_llama
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 from ci_step import summarize  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from markdown_fences import fenced_lines  # noqa: E402
 
 Section = namedtuple("Section", "path start end title headings level body cites")
 Hit = namedtuple("Hit", "section score coverage similarity")
@@ -91,7 +93,6 @@ we our get use used using one any all not no yes way need needs want
 WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]*|\d+")
 CAMEL = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
-FENCE = re.compile(r"^\s*(```+|~~~+)")
 CITATION = re.compile(r"`([^`\n]+)`")
 CITED_PATH = re.compile(r"^[\w./-]+/[\w.-]+\.\w+$|^[\w-]+\.(?:c|h|py|sh|md|json|cmake)$")
 CITED_CODE = re.compile(r"^[A-Za-z_]\w*\(\)$|^[A-Z][A-Z0-9_]{3,}$")
@@ -204,7 +205,7 @@ def cites(text):
 def markdown_sections(label, text):
     lines = text.splitlines()
     title = Path(label).stem.replace("-", " ")
-    sections, stack, fence = [], [], None
+    sections, stack, fenced = [], [], fenced_lines(text)
     start, level, body = 1, 0, []
 
     def close(end):
@@ -215,10 +216,7 @@ def markdown_sections(label, text):
                                     content, cites(content)))
 
     for number, line in enumerate(lines, 1):
-        marker = FENCE.match(line)
-        if marker:
-            fence = None if fence and marker.group(1)[0] == fence else (fence or marker.group(1)[0])
-        heading = None if fence or marker else HEADING.match(line)
+        heading = None if number in fenced else HEADING.match(line)
         if not heading:
             body.append(line)
             continue
@@ -449,28 +447,22 @@ class Index:
 
 def blocks(body):
     """Paragraphs, lists, tables and fenced code, each kept whole."""
-    out, current, fence = [], [], None
-    for line in body.splitlines():
-        marker = FENCE.match(line)
-        if fence:
-            current.append(line)
-            if marker and marker.group(1)[0] == fence:
-                out.append("\n".join(current))
-                current, fence = [], None
-            continue
-        if marker:
-            if current:
-                out.append("\n".join(current))
-            current, fence = [line], marker.group(1)[0]
-        elif line.strip() in ("", "---"):
+    out, current, fenced = [], [], fenced_lines(body)
+    for number, line in enumerate(body.splitlines(), 1):
+        fence = fenced.get(number)
+        if fence and number == fence.line or not fence and line.strip() in ("", "---"):
             if current:
                 out.append("\n".join(current))
             current = []
-        else:
+        if fence or line.strip() not in ("", "---"):
             current.append(line)
+        if fence and fenced.get(number + 1) is not fence:
+            if fence.language != "mermaid":
+                out.append("\n".join(current))
+            current = []
     if current:
         out.append("\n".join(current))
-    return [b for b in out if not b.lstrip().startswith("```mermaid")]
+    return out
 
 
 def excerpt(section, terms, budget, index):

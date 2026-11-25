@@ -31,9 +31,9 @@ from c_comments import HEADER_EXTENSIONS, SOURCE_EXTENSIONS, SOURCE_GLOBS, exclu
 from c_constants import DEFINE  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
-from check_doc_index import blank_fences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
+from markdown_fences import blank_fences, fenced_lines  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
@@ -1079,16 +1079,9 @@ def _generated_span(raw_lines):
 @doc_rule("BLANK-LINES", fixer=lambda root, path, text: _fix_blank_lines(text))
 def rule_blank_lines(root, path, raw_lines):
     span = _generated_span(raw_lines)
-    run, fenced = 0, False
+    run, fenced = 0, fenced_lines("\n".join(raw_lines))
     for i, line in enumerate(raw_lines):
-        if span and span[0] <= i <= span[1]:
-            run = 0
-            continue
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            run = 0
-            continue
-        if fenced:
+        if span and span[0] <= i <= span[1] or i + 1 in fenced:
             run = 0
             continue
         if line.strip() == "":
@@ -1102,20 +1095,11 @@ def rule_blank_lines(root, path, raw_lines):
 def _fix_blank_lines(text):
     lines = text.splitlines(keepends=True)
     span = _generated_span([line.rstrip("\n") for line in lines])
-    out, run, fenced = [], 0, False
+    out, run, fenced = [], 0, fenced_lines(text)
     for i, line in enumerate(lines):
-        if span and span[0] <= i <= span[1]:
+        if span and span[0] <= i <= span[1] or i + 1 in fenced:
             out.append(line)
             run = 0
-            continue
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            run = 0
-            out.append(line)
-            continue
-        if fenced:
-            run = 0
-            out.append(line)
             continue
         if line.strip() == "":
             run += 1

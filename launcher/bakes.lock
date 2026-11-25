@@ -3,74 +3,75 @@
 [[bake]]
 output = "bistro.ground.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "95c1294e7d7f07cbb80694f0afe0f08f0b943007e56b7d56fd16b307af317788"
+key = "114a4342aa98e3e29c67aa305cbeec60eea2f3be4c2ce86f70539843ac9c2cc8"
 sha256 = "00f89c5052124847ed849f9b9657a56e3c280b88cc7810e99c3432741c525b2a"
 size = 288
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_fitted_full.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "4e912c54c3072769848d35a1ea6c8ad24ffd71c9c99be87e9305f59b70d930aa"
-sha256 = "4cd51e5c5223c782866a56a20e49770b42e921a9af15a8aa843ecc9b08945c40"
-size = 1148083
-run = 45078433913
+key = "e1d570bc5da3aed0b57eceb3f9802ad65cdea8661887b69deab5108c61963311"
+sha256 = "7873fa63b994eeb77cac862694a634adafef84eb17f39cb7f41b2ae0f7a1bda6"
+size = 1150067
+run = 45556535623
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_fitted_full.fit.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "ac368738acea7a4c68416d18d89e10abad789e3a262c16e6838dbfb1628a0f28"
-sha256 = "c4af1dfeadf1fe6ef1ebbadc88faebd119af93e8c55917754122b30e8f028ed5"
-size = 892227
-run = 45072390551
+key = "a568bcc0d24682358015435fe82defc07d4462ae3186b6d7d1e2ce6d14b044bc"
+sha256 = "e34c6871f928c6ba379242dbe86493b59a6d43c6ef032149470cfcbc29280efd"
+size = 892611
+run = 45554825453
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "bistro.street_fitted_full.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "475835573aa3e848bb0c5abea20895cd6e8dfc2e5916aae9b6676e7eadf7422f"
-sha256 = "1e88fd8c7cb5b84031540eb093ec6cd770709a9ba90f67ba10f6231821c6d0de"
-size = 72095832
-run = 44989954521
+key = "925033105fd09fca4577fb0f7e6ff1f5139f566d2128348cd9866c34b58e0a9f"
+sha256 = "599f4feca75cc3b0bb5305b5659f0ac3848f59b0531136224d9a18c9ac9a1ad6"
+size = 71600312
+run = 45533256338
 host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "bistro.street_fitted_full.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "155bb8a4331060bf93d6ee8b72449f697a3534190316102c7bde8396170b4b17"
+key = "c7513cb3461232236d835c4d1edb6136989ac92465523e363aa3675def7c69ba"
 sha256 = "379623a53471dce9ccf140caae3461adaa1de8e7a7f3a805b1b051afd990f81b"
 size = 943491
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "bistro.street_fitted_full.texture.pack"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "1e2ee3f2eb2f7d13df303b986b08a5db21db3d7c35cc8e99caf8d9ffd2c721ff"
-sha256 = "1a643fc9f717373aa4bc9d7b5efdcb8e2c2114701e1ef6eb21c422d657d23bb4"
-size = 318916
-run = 45111354318
+key = "f41a29b99157dd5cb7c89d837a6b85b6678ac64eeb6557ade3fff71af98802a4"
+sha256 = "5a990d795a5f3d877186974ef33980b28a631580dad53f1d657a61ac0ab48c6d"
+size = 319226
+run = 45556535623
 host = "Linux x86_64"
 
 [[bake]]
 output = "butterfly_body.bundle"
 source = "launcher/demo/butterfly/butterfly.scene.toml"
-key = "fa53d93b9ae83d4176e225f8e178bab111d1ebf66b0e5a2f0e960b3876732581"
+key = "f91007756ff6f74f8239af0c774089da1787620bc28ee857abe8d6f0bea6b900"
 sha256 = "6c89f09ccd5329b3b5d96e9da76327108369eb81d15aa47634ad42de4cf082e5"
 size = 336
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "butterfly_wing.bundle"
 source = "launcher/demo/butterfly/butterfly.scene.toml"
-key = "99f2ba1c946d8207d9855a29e7d4ff380fd3928876d29bb931effa93e4a11b56"
+key = "e50da125b7b182e77c266a7349da81a2df2cc6b783e174e736b0e17dfa0ba326"
 sha256 = "cb8df75442d61e3c7873f9dce84c529afaeb9f6ed8539c5a512e0943e6dfc2ba"
 size = 368
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
@@ -85,19 +86,19 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.meadow.bundle"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "6ca7b6c94d6070097de8046b4900f4507db681471d1abdcd1bd07e4470a9ccad"
+key = "6948ca5ba13b66287b8dd52c4cb08885d0d74e214cb55ca14be3644aa5f648a3"
 sha256 = "a0cb8a36c3b2101337cd1dcdc85badc6049ba2f343f63aa7c79f0d0081418a56"
 size = 288
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "capybara_body.bundle"
 source = "launcher/demo/capybara/herd.scene.toml"
-key = "1815f9ec3663ac996014d80477c44231d1dd9970fd54dfb6fbb1e9947b3d4202"
+key = "5d5750ebdea96c3095efbf12ebe15f3ad4ef308c0f76a9e567dffb1da2b55ec6"
 sha256 = "c4c7cf5d741b0820e8bf5bae9e46dee7cda09560212b2a9c842d9b60df4ea47b"
 size = 14128
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
@@ -112,92 +113,93 @@ host = "Linux x86_64"
 [[bake]]
 output = "herd.meadow.bundle"
 source = "launcher/demo/capybara/herd.scene.toml"
-key = "a8a7b445e92b5bde51a1316505a868564c24dde4df63e51a5b6628ef8ad4946f"
+key = "84c69cdf02a15b622eeddd0de6402afa00a2bb778034b58114368e030b40d1cf"
 sha256 = "834ff2fe8858e3f924948ebfc235ab64ede1445d0de80096bc68c85045418efd"
 size = 276
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "7839f74c49539160667c12e1051194d397d9b933bf59b1945abc12ed46bfd3df"
-sha256 = "31f8efdf6594f9ca13b5298352a3fe1cd221b7f71bca9247acb1f77bf63d55bd"
-size = 780376
-run = 45078433913
+key = "498048958ba0fe9d21896346188dcf83115f68c02b625c9c4fd790fcd591eead"
+sha256 = "597dd5086f168318c7e5f1b0354f777d8b084a7965018f02291e2011a487d781"
+size = 779432
+run = 45556535623
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "a30d5c4592bc7e5cd2299b9fe67530b4155d12146e0af15ca24279ba172bd8d9"
-sha256 = "d57c69ed2e890991fc70a4e775f52da698c9bbaff85a3834e08fd594110e9a52"
-size = 575368
-run = 45072390551
+key = "29e69ae3449be1a97a7ec1700513032b6504df3faef6b356fa0899b1cface53e"
+sha256 = "6d096c73550f7b3e5ee33e27120c808621c934251390d670ebe4fb607716ad49"
+size = 575496
+run = 45554825453
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.reference.tar.xz"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "b5b7e81f1242836a594720c7eaf3f5f177d8a50ef222b92bc344c2d713548099"
-sha256 = "9f9c53a950532e72273832097c9cecfe39f8ca5d8fdf064898d6587d16becaa6"
-size = 182384484
-run = 44989954521
+key = "a4e9b6b0a37fa8c667892479df71e23a76eb8162205a501d964bd5c678952a98"
+sha256 = "b60c142429c76c8294f29773f6c6b4d3ec4313489d80acedd8ad0812e6f16ab8"
+size = 177473960
+run = 45533256338
 host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "f9834d558aab093587355c67cab55ee483e9a0640f1fa5d3b28f3f20a5901371"
-sha256 = "3838cdd01750f35cd50ddf3dbccfb61679eb1c10fc8f7b86f80aa54d0660ef83"
-size = 575416
-run = 44884907144
+key = "80de8c62fbea65f7ed6addf1e786933487d2b9faab8c3c87b306685ce31a779f"
+sha256 = "cd6c5bc8ccfc6018e895e3344c24c4ab7293996fd7deb57214c68937f60d7529"
+size = 575000
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.shpr"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "83a907fa4ccffb39babad869a17ee9b3e1ddf52d71d1b885f88a16f0cb2fc545"
+key = "8b918b98ebf6f378219064986871f1b49d244672b79c00c567a13bac174bd0d3"
 sha256 = "c110c8a47a7be2b80c4449944f8dc16e422cce95ec1835aff1d9fefafb56936c"
 size = 16590
-run = 44655444990
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "stress_copy.bundle"
 source = "launcher/demo/stress/stress.scene.toml"
-key = "7a0f8640d34586fee720c0e5d34195f434d23b1ce4348d76adf0bbb9055ae6f1"
+key = "0aef31b002749f47189029b548c27d5ef219a06054e572872d6e2a8dd76196a5"
 sha256 = "72f67555bcf0c2d16770a19e229da1270e7c4f9d7996413d65f94bb111308552"
 size = 268
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "stress_prop.bundle"
 source = "launcher/demo/stress/stress.scene.toml"
-key = "5fe113d146826daa9d51c8968bd2021887e2a51290aeb856886e50d9065fbe04"
+key = "34160a247897932798fed54949fa4d74388630c83c9589329b379dba3dfad3f3"
 sha256 = "6ea9b99aa6128f787a3bfb12e8042183eb7431fdf9ebab4c72951f3a54bb08d6"
 size = 180008
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "stress_torus.bundle"
 source = "launcher/demo/stress_ring/stress_ring.scene.toml"
-key = "29233fbd6d4f98827ac93cd95fc5bb82d2bb4c4f67ff4d1335234f21a4e865f7"
+key = "89c15f302b8ed56f1478c74790b0a987a4f3b7482edb1c598782f72102676a26"
 sha256 = "22baff4fbbd0c3c4e8f5c075bf323ca6f8909bc76e55d47e78018266350bd7bf"
 size = 461796
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
 output = "tank.bundle"
 source = "launcher/demo/water/water.scene.toml"
-key = "00579c2a458676c464dcce79faa9753e6489e8c105548f1c472ab668e1fa4cff"
+key = "0077241d600e735dad2413fa0ef930c9923e09399b96b634bf251c74bf84c94a"
 sha256 = "7018c5b77e17e43eabc15ca8e55b0def8420deeb8b4dbad0e627235da722215f"
 size = 6148
-run = 44884907144
+run = 45533256338
 host = "Linux x86_64"
 
 [[bake]]
@@ -213,21 +215,28 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "84f81326c83a7961a2931d0b8cee25a7eb3594c6cb0c123fbb4444a7f108daaf"
+key = "23c81f12642845b2390e327121b01c61f9182139a933a19f55d2bd8e1844b38a"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "85a62840b84ee801a1f035849ff36a6b3bb709c83bfad2e89fd39a94e455d040"
+key = "333444d54af4c6bed83e2f9e4d8128209746b7cf2c71f38d084dc7440bbff5f8"
+poses = "30e8fbe2e7b6a1b0047a0e8619736448cb0983617dfc12312a848e6174ecbf14"
+count = 1101
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "756ab784ae6b279666bf833cd335dc9cf7d99e95a4953d0691bfe9e1060adc91"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "860f73da5b7689911a29c345ca6bdac0d63aa9d4c33e699ee84188c23be81c6a"
+key = "c3cda067aed4af9c4774f74ee4100e6223e0149375a348a7238c6b4ee0113e41"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"

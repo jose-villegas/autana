@@ -211,8 +211,7 @@ jobs:
         with: {step: record}
 
   # The same suites on Windows, built by the dev machines' MinGW, so a Windows-only break (a PE link,
-  # a CMake generator) goes red here rather than on a developer's desk. Not yet blocking: main still
-  # fails here; the change that makes it pass removes continue-on-error.
+  # a CMake generator) goes red here rather than on a developer's desk.
   tool-tests-windows-shard:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}

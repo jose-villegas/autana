@@ -12,7 +12,7 @@ Open circles mark the starts.
 ## Follow position
 
 `rig_follow_position` adds a target-relative offset along the bind's axes.
-The Cinemachine column maps names.<sup>[[141]](../Citations.md#unity-cinemachine-binding)</sup>
+The Cinemachine column maps names.<sup>[[144]](../Citations.md#unity-cinemachine-binding)</sup>
 
 | Bind | Cinemachine | Offset axes |
 |---|---|---|
@@ -37,7 +37,7 @@ Target scale has no effect.
 
 Unity describes this Cinemachine bind as keeping only yaw. Its code projects
 target forward onto the horizontal plane. Uppify keeps heading through vertical
-pitch and can give a different heading under combined pitch and roll.<sup>[[141]](../Citations.md#unity-cinemachine-binding)</sup>
+pitch and can give a different heading under combined pitch and roll.<sup>[[144]](../Citations.md#unity-cinemachine-binding)</sup>
 
 ## Look rotation
 
