@@ -62,7 +62,7 @@ class PinholeRays(unittest.TestCase):
         self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5)), (1, 2))
 
     def first_hit(self, mesh):
-        query, normals, double = self.tool.mesh_query(mesh, self.tool.LLVM_VARIANT)
+        query, normals, double = self.tool.mesh_query(mesh)
         origin, direction = self.tool.pose_rays(1, 1, 1, 0.1, self.pose)
         tri, depth = self.tool.front_hits(query, normals, double, origin, direction)
         self.assertGreaterEqual(tri[0], 0)
