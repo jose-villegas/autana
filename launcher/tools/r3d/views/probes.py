@@ -116,6 +116,14 @@ def classify(query, normals, points, cell, near):
     return moved, state
 
 
+def region_poses(query, normals, lo, hi, spacing, near, seed):
+    """(cube-face poses of the probes kept in the box lo..hi, each probe's state): one jittered probe per
+    `spacing` cell, moved out of geometry, those still inside or too near a face dropped."""
+    points, cell = probe_points(lo, hi, spacing, seed)
+    moved, state = classify(query, normals, points, cell, near)
+    return cube_poses(moved[state == "kept"]), state
+
+
 def cube_poses(points):
     """Six (eye, forward) poses per point, in FACES order."""
     return [np.concatenate([point, np.asarray(face, dtype=float)]) for point in points for face in FACES]
@@ -187,13 +195,11 @@ def select(positions, tris, region, near, spacing, seed, path=None, *, query=Non
     kept = {}
     for role, role_seed, start, limit in (("train", seed, seen, None),
                                           ("held_out", seed + 1, unseen, held_out_faces)):
-        points, cell = probe_points(lo, hi, spacing, role_seed)
-        moved, state = classify(query, normals, points, cell, near)
-        poses = cube_poses(moved[state == "kept"])
+        poses, state = region_poses(query, normals, lo, hi, spacing, near, role_seed)
         picked, gains = greedy_faces(shown(query, len(tris), poses, select_size, select_size, face_lens), start,
                                      limit=limit)
         kept[role] = [poses[i] for i in picked]
-        record[role] = {"probes": len(points), "inside": int(np.count_nonzero(state == "inside")),
+        record[role] = {"probes": len(state), "inside": int(np.count_nonzero(state == "inside")),
                         "near": int(np.count_nonzero(state == "near")), "faces": len(poses), "kept": len(picked),
                         "shown_after": int(np.count_nonzero(start & ~unseen)) + int(sum(gains))}
     return ProbeViews(kept["train"], kept["held_out"], record, face_lens)

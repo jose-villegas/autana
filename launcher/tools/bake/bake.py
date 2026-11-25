@@ -99,7 +99,7 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, flight_camera, source_digest  # noqa: E402
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -642,7 +642,7 @@ def import_recipe(settings, tools):
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
-def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
+def mesh_recipe(job, scene, tools, poses, unavailable=None):
     """What a lit or albedo mesh is made from, without its fit and without paths."""
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
@@ -656,6 +656,13 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+    simplify = job.settings.simplify
+    if simplify and simplify.seal_seams and scene.camera is not None:
+        # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.
+        camera = recipe.setdefault("camera", camera_inputs(scene))
+        views = job.renderer.seal_views
+        if views is not None:
+            camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
     return recipe
 
 
