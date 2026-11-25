@@ -6,6 +6,7 @@ The discovery and naming rule is documented in docs/tools/Generated-Files.md.
 """
 import argparse
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
