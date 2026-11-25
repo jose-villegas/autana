@@ -15,8 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 sys.path.insert(0, str(ROOT / "scripts/gates"))
-from check_doc_index import resolved_link  # noqa: E402
-from markdown_fences import blank_fences  # noqa: E402
+from check_doc_index import blank_fences, resolved_link  # noqa: E402
 from generated_blocks import replace_block  # noqa: E402
 from tracked import revision_contents, tracked_files  # noqa: E402
 
