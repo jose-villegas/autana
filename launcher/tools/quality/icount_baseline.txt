@@ -78,17 +78,17 @@
 2229	ui_face_row_centre
 2168	ui_face_scale
 2067	ui_face_screen
-2075	ui_face_scroll_window
+2086	ui_face_scroll_window
 4142	ui_face_slider
 2395	ui_face_swatches
 2687	ui_face_text
 2688	ui_face_text_centre
-2145	ui_face_text_height
+2156	ui_face_text_height
 2687	ui_face_text_right
 2239	ui_face_theme
 3867	ui_face_tile
 3821	ui_face_toggle
-2042	ui_face_window
+2053	ui_face_window
 3595	ui_mu_button
 2640	ui_mu_caption
 5479	ui_mu_dropdown
@@ -96,7 +96,7 @@
 2241	ui_mu_fill
 2842	ui_mu_header
 2320	ui_mu_icon
-2243	ui_mu_next
+2255	ui_mu_next
 2526	ui_mu_outline
 2693	ui_mu_panel
 2222	ui_mu_row
@@ -106,6 +106,6 @@
 2640	ui_mu_text
 2641	ui_mu_text_centre
 2639	ui_mu_text_right
-3602	ui_mu_tile
+3621	ui_mu_tile
 3354	ui_mu_toggle
 1283	ui_mu_window
