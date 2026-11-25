@@ -30,6 +30,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "microui.h"
+#include "hash/name_hash.h"
 
 #define unused(x) ((void) (x))
 
@@ -229,21 +230,12 @@ void mu_set_focus(mu_Context *ctx, mu_Id id) {
 }
 
 
-/* 32bit fnv-1a hash */
-#define HASH_INITIAL 2166136261
-
-static void hash(mu_Id *hash, const void *data, int size) {
-  const unsigned char *p = data;
-  while (size--) {
-    *hash = (*hash ^ *p++) * 16777619;
-  }
-}
-
+_Static_assert(sizeof(mu_Id) == sizeof(name_hash_t), "ids are FNV-1a 32 name hashes");
 
 mu_Id mu_get_id(mu_Context *ctx, const void *data, int size) {
   int idx = ctx->id_stack.idx;
-  mu_Id res = (idx > 0) ? ctx->id_stack.items[idx - 1] : HASH_INITIAL;
-  hash(&res, data, size);
+  mu_Id res = (idx > 0) ? ctx->id_stack.items[idx - 1] : NAME_HASH_OFFSET_BASIS;
+  res = name_hash_seeded_n(res, data, (size_t)size);
   ctx->last_id = res;
   return res;
 }

@@ -46,6 +46,9 @@ def bounce_at_the_wall_foot(**kwargs):
 
 @needs_llvm
 class BounceTests(unittest.TestCase):
+    def test_the_same_scene_gives_the_same_bytes(self):
+        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
+
     def test_a_floor_beside_a_sunlit_wall_gets_half_the_walls_radiance(self):
         # The wall covers half of the floor point's cosine-weighted hemisphere, and sends back its albedo times the
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
@@ -101,9 +104,6 @@ class BounceTests(unittest.TestCase):
     def test_more_bounces_add_light(self):
         one, two = bounce_at_the_wall_foot(bounces=1), bounce_at_the_wall_foot(bounces=2)
         self.assertGreater(two[0], one[0])
-
-    def test_the_same_scene_gives_the_same_bytes(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
     def test_ambient_is_left_to_the_bake(self):
         ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
@@ -243,6 +243,14 @@ class VariantTests(unittest.TestCase):
         path = PathLight(source, [SUN], set(), SimpleNamespace(bounces=1, rays=256), 1.0, "llvm_ad_rgb")
         self.assertEqual(path.mi.variant(), "llvm_ad_rgb")
         np.testing.assert_allclose(bounce_at(path, [0.5])[0], bounce_at_the_wall_foot(), rtol=1e-4)
+
+    def test_colour_and_point_order_survive_the_device_output(self):
+        kd = (0.9, 0.5, 0.15)
+        path = path_light(source=corridor(wall_kd=kd), rays=32)
+        xs = [0.5, 8.0, 90.0]
+        alone = np.array([bounce_at(path, [x])[0] for x in xs])
+        wall_albedo = np.array(kd) ** 2.2
+        np.testing.assert_allclose(alone[0] / alone[0].sum(), wall_albedo / wall_albedo.sum(), rtol=0.08)
 
 
 if __name__ == "__main__":

@@ -997,6 +997,13 @@ void f(void) {
             check_style_audit.run_fix(root, findings)
             self.assertEqual(target.read_text(encoding="utf-8"), "one\n\ntwo\n")
 
+    def test_blank_lines_inside_a_tilde_or_nested_fence_are_not_flagged(self):
+        findings = self.audit("BLANK-LINES", {
+            "docs/Tilde.md": "~~~\na\n\n\nb\n~~~\n",
+            "docs/Nested.md": "````\n```\n\n\n```\n````\n",
+        })
+        self.assertEqual(findings, [])
+
     def test_a_generated_tables_own_blank_lines_are_not_flagged(self):
         findings = self.audit("BLANK-LINES", {
             "docs/Table.md": "<!-- BEGIN GENERATED -->\na\n\n\nb\n<!-- END GENERATED -->\n",

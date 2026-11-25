@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(TOOLS), str(TOOLS / "render")]
@@ -97,7 +98,8 @@ class MeshletSettingsTests(unittest.TestCase):
         job = scene.renderers[0]
         changed = copy.deepcopy(job)
         changed.settings.meshlet_triangles = job.settings.meshlet_triangles // 2
-        self.assertNotEqual(mesh_recipe(job, scene, {}), mesh_recipe(changed, scene, {}))
+        poses = SimpleNamespace(digest=lambda *args, **kwargs: "poses")
+        self.assertNotEqual(mesh_recipe(job, scene, {}, poses), mesh_recipe(changed, scene, {}, poses))
 
 class MeshletReportTests(unittest.TestCase):
     def test_pose_interval_contracts_and_swapped_rows(self):

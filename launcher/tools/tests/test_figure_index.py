@@ -37,6 +37,10 @@ class EmbeddedTests(unittest.TestCase):
         self.assertEqual(figure_index.embedded("docs/render/frame/Page.md", '<img src="../images/render/a.gif">'),
                          [("docs/render/images/render/a.gif", "")])
 
+    def test_a_picture_inside_a_tilde_fence_is_not_shown(self):
+        text = "~~~markdown\n![A](../images/math/a.png)\n~~~\n![B](../images/math/b.png)\n"
+        self.assertEqual(figure_index.embedded("docs/math/Page.md", text), [("docs/images/math/b.png", "B")])
+
 
 class OpenedTests(unittest.TestCase):
     def test_an_image_not_on_disk_is_read_from_git_s_index(self):

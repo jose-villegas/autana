@@ -410,18 +410,21 @@ Allocation mesh and pass rows include the choice:
 
 #### seal_seams
 
-`seal_seams = true` joins touching pieces before simplification, reducing gaps
-at their borders.
+`seal_seams = true` joins touching pieces before simplification, and simplifies
+again while a view shows sky through a wall.
 
 ```mermaid
 flowchart LR
     load[Load and light] --> join[Join touching pieces]
     join --> pass[Simplify pass]
-    pass --> merge[Merge near colours]
+    pass --> probe{Sky through<br/>a wall?}
+    probe -- "yes: lock one<br/>vertex per hole" --> pass
+    probe -- no --> merge[Merge near colours]
     merge --> bake[Quantise, meshlets, cluster tree]
     subgraph seal_seams
         join
         pass
+        probe
         merge
     end
 ```
@@ -430,10 +433,38 @@ flowchart LR
 |---|---|
 | Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
 | Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
+| Probe | Looks for holes (defined below) in views of the source and locks one source vertex per hole; the pass then runs again, up to [`ROUNDS`](../../../launcher/tools/r3d/leaks.py) times. |
 | Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
 
-It cuts the empty spots but does not remove them, and costs frame time for the
-triangles it keeps.
+Joining cannot unite pieces that only overlap: a vault's end rim behind an arch
+ring shares no edge with it. The simplifier keeps a seam vertex's copies together
+but chords curved borders and flattens curved pieces, so the piece behind stops
+covering the gap.
+
+The probe step runs for every renderer of a scene with a camera, lit or not. Its views are
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
+path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
+
+| Term | Meaning |
+|---|---|
+| Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
+| Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[141]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
+
+A lock keeps triangles the rest of the mesh then goes without, so the rest is a
+little coarser. A round whose locks would leave the pass over its budget is tried again
+with half of them, the widest holes first, and the pass ends when none fits. Each round adds a ray trace and a
+simplify run to the bake.
+
+A gap no view sees stays open: the probes bound what a free camera meets, and
+the path's frames close what the path shows. A pass is checked against the
+results of the passes before it and the source of those after it. A pass row of the allocation
+report says how it ended:
+
+| Field | Meaning |
+|---|---|
+| `leak_rounds` | Times the pass ran again with more locks. |
+| `leak_locks` | Source vertices those rounds locked. |
+| `leak_holes` | Holes the views still show in the result. |
 
 The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
