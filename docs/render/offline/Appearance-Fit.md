@@ -169,9 +169,9 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
-clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` local
-start scales of its start (a seam-held point follows its target): the fit
-refines the start in place. Where nothing is drawn the renderer shows the scene's
+clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
+shortest start edge from its start (a seam-held point follows its target): the
+fit refines the start in place, and a corner cannot slide across its own face. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
@@ -264,7 +264,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of that scale from the start |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |

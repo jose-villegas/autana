@@ -502,18 +502,21 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(query.call_args.args[0].shape, (len(tris) * appearance.SURFACE_SAMPLES_PER_TRIANGLE, 3))
 
     @unittest.skipIf(torch is None, "needs PyTorch")
-    def test_no_vertex_leaves_its_start_by_more_than_the_move_reach(self):
+    def test_no_vertex_leaves_its_start_by_more_than_the_move_reach_of_its_shortest_edge(self):
         from r3d import appearance_simplify as appearance
 
         points, rgb, tris = grid(1)
+        # Short edges along x, long along y: a pull along y slides each corner along its long edge, and its
+        # shortest edge, not its mean one, sets how far.
+        points = points * [0.1, 1.0, 1.0]
         mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
         views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
         options = dict(steps=200, batch=1, lr_position=0.05, lr_colour=0, laplacian=0, report=0, device="cpu",
                        seam_margin=0)
-        # A steady pull along x: nothing in the loss stops the points.
-        render = mock.Mock(side_effect=lambda points, colours, *args: (colours.mean(0) + points[:, 0].mean()).reshape(1, 1, 3))
+        # A steady pull along y: nothing in the loss stops the points.
+        render = mock.Mock(side_effect=lambda points, colours, *args: (colours.mean(0) + points[:, 1].mean()).reshape(1, 1, 3))
         start = torch.as_tensor(points, dtype=torch.float32)
-        scale = appearance.vertex_scale(start, torch.as_tensor(point_edges(tris, mesh.vertex_point))).numpy()[:, 0]
+        scale = appearance.shortest_edge(start, torch.as_tensor(point_edges(tris, mesh.vertex_point))).numpy()[:, 0]
         reach = 0.1
         with mock.patch.object(appearance, "Renderer", return_value=render):
             with mock.patch.object(appearance, "MOVE_REACH", np.inf):
