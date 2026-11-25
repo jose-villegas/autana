@@ -1662,12 +1662,16 @@ class LockTests(unittest.TestCase):
 
     ARCHIVE = "https://api.github.com/repos/o/r/actions/artifacts/1/zip"
 
-    def read_archive(self, replies):
-        """run_files over one listed artifact whose archive answers `replies` in turn (a status code
-        or the zip's bytes); returns the archive's URL opens and the sleeps between them."""
+    @staticmethod
+    def zipped():
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w") as zipped:
             zipped.writestr("files/a.bundle", b"mesh")
+        return archive.getvalue()
+
+    def read_archive(self, replies):
+        """run_files over one listed artifact whose archive answers `replies` in turn (a status code
+        or zipped()'s bytes); returns the archive's URL opens and the sleeps between them."""
         listing = json.dumps({"artifacts": [{"name": "bakes-cpu", "expired": False, "archive_download_url": self.ARCHIVE}]})
         pending = iter(replies)
         opens = []
@@ -1679,14 +1683,16 @@ class LockTests(unittest.TestCase):
             reply = next(pending)
             if isinstance(reply, int):
                 raise urllib.error.HTTPError(self.ARCHIVE, reply, "Not Found", {}, None)
-            return io.BytesIO(archive.getvalue())
+            return io.BytesIO(reply)
 
-        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}),                 mock.patch("urllib.request.OpenerDirector.open", autospec=True, side_effect=urlopen),                 mock.patch("time.sleep") as sleep:
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", autospec=True, side_effect=urlopen), \
+                mock.patch("time.sleep") as sleep:
             bake.run_files(7, self.root / "run")
         return opens, sleep.call_count
 
     def test_an_archive_that_404s_right_after_upload_is_fetched_once_it_is_ready(self):
-        opens, sleeps = self.read_archive([HTTPStatus.NOT_FOUND, b"zip"])
+        opens, sleeps = self.read_archive([HTTPStatus.NOT_FOUND, self.zipped()])
         self.assertEqual(len(opens), 2)
         self.assertEqual(sleeps, 1)
         self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
@@ -1699,7 +1705,9 @@ class LockTests(unittest.TestCase):
 
     def test_a_404_elsewhere_is_not_retried(self):
         gone = urllib.error.HTTPError("url", HTTPStatus.NOT_FOUND, "Not Found", {}, None)
-        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}),                 mock.patch("urllib.request.OpenerDirector.open", side_effect=gone) as opened,                 mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
+        with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
+                mock.patch("urllib.request.OpenerDirector.open", side_effect=gone) as opened, \
+                mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
             bake.run_status(7)
         self.assertEqual(opened.call_count, 1)
 
