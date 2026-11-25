@@ -1,7 +1,7 @@
 """Bounce light for the bake, traced by Mitsuba's path integrator.
 
-`PathLight` exports the full-detail source and the sun and sky once. For a point and a normal it sends the fixed
-cosine-weighted rays of `light.sky_directions` into the scene and averages what Mitsuba's path integrator gathers
+`PathLight` exports the full-detail source and the sun and sky once. For a point and a normal it sends the
+cosine-weighted rays of `light.sky_directions`, in the point's frame, into the scene and averages what Mitsuba's path integrator gathers
 along them: light that has bounced at least once, with next-event estimation at every hit, so a hit's own albedo,
 shadow and further bounces are all in it. Light that reaches the point without a bounce is not here; `light.light`
 adds it from shadow rays. The mean of the cosine-weighted radiance is the irradiance over pi, the unit `light.light`
@@ -14,7 +14,7 @@ import numpy as np
 
 from r3d import ray_query
 from r3d.geometry import corner_normals
-from r3d.light import baked_lights, sky_directions, tangent_frame
+from r3d.light import baked_lights, fixed_frame, sky_directions
 from r3d.mitsuba_reference import integrator, prepare
 
 SEED = 0
@@ -38,15 +38,16 @@ class PathLight:
         self.rays = indirect.rays
         self.scalar = variant.startswith("scalar")
 
-    def bounce(self, points, normals, ray_offset):
-        """The bounced light at each point, on its `normals` side. Points go through in chunks so the rays in flight stay within BATCH however many points there are."""
+    def bounce(self, points, normals, ray_offset, frame=fixed_frame):
+        """The bounced light at each point, on its `normals` side, along each point's `frame` (light.fixed_frame or
+        light.turned_frame). Points go through in chunks so the rays in flight stay within BATCH however many points there are."""
         local = sky_directions(self.rays)
         out = np.zeros((len(points), 3))
         step = max(1, BATCH // self.rays)
         for index, start in enumerate(range(0, len(points), step)):
             chunk = slice(start, start + step)
             n = normals[chunk]
-            tu, tv = tangent_frame(n)
+            tu, tv = frame(points[chunk], n)
             origin = np.repeat(points[chunk] + n * ray_offset, self.rays, axis=0)
             direction = (tu[:, None] * local[None, :, 0:1] + tv[:, None] * local[None, :, 1:2]
                          + n[:, None] * local[None, :, 2:3]).reshape(-1, 3)

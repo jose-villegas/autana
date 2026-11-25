@@ -6,17 +6,16 @@ The discovery and naming rule is documented in docs/tools/Generated-Files.md.
 """
 import argparse
 import pathlib
-import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from generated_blocks import block_owners, blocks, check_commands, replace_block
+from markdown_fences import fences
 from tracked import tracked_files
 from idf_vocabulary import prototypes
 
 CHECK = "python launcher/tools/gen/examples_doc.py --check"
-FENCE = re.compile(r"^\s*(?:>\s*)*(?:(?:[-+*]|[0-9]+[.)])\s+)?(`{3,}|~{3,})(.*)$")
 C_LANGUAGES = {"c", "h", "cpp", "c++", "cc"}
 EXAMPLE_LANGUAGES = {".c": "c", ".toml": "toml"}
 
@@ -90,22 +89,10 @@ def write_examples(root, check=False):
 def unmarked_fences(text):
     """Line numbers of handwritten C fences without the fragment word."""
     generated = [(start, end) for start, end, *_ in blocks(text).values()]
-    opened = None
-    offset = 0
-    for number, line in enumerate(text.splitlines(keepends=True), 1):
-        match = FENCE.match(line)
-        if match:
-            fence, info = match.groups()
-            if opened:
-                if fence[0] == opened[0] and len(fence) >= len(opened) and not info.strip():
-                    opened = None
-            else:
-                opened = fence
-                words = info.split()
-                if (words and words[0].lower() in C_LANGUAGES and "fragment" not in words[1:]
-                        and not any(start <= offset < end for start, end in generated)):
-                    yield number
-        offset += len(line)
+    for fence in fences(text):
+        if (fence.language in C_LANGUAGES and "fragment" not in fence.info.split()[1:]
+                and not any(start <= fence.start < end for start, end in generated)):
+            yield fence.line
 
 
 def check_fences(root):

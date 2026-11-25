@@ -1635,13 +1635,15 @@ class SoundOnsetCommandTests(unittest.TestCase):
         self.assertNotIn("seconds", sent.call_args.kwargs)
 
 
-class VersionCommandTests(unittest.TestCase):
+class MainTest(unittest.TestCase):
     def run_main(self, argv):
         with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
             with self.assertRaises(SystemExit) as stop:
                 autana.main()
         return stop.exception.code
 
+
+class VersionCommandTests(MainTest):
     def test_dash_dash_version_prints_the_version_and_exits_zero(self):
         with mock.patch("builtins.print") as printed:
             code = self.run_main(["--version"])
@@ -1802,17 +1804,11 @@ class GlobalOwnerTests(unittest.TestCase):
             self.assertEqual(text.count("--wait SECONDS"), 1)
 
 
-class OneShotForwardingTests(unittest.TestCase):
+class OneShotForwardingTests(MainTest):
     """The maintainer's rule (every board operation goes through autana)
     applies to a one-shot invocation the same as a session line, main()
     forwards a first argument no COMMANDS entry recognises rather than
     refusing it."""
-
-    def run_main(self, argv):
-        with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
-            with self.assertRaises(SystemExit) as stop:
-                autana.main()
-        return stop.exception.code
 
     def test_an_unrecognised_first_argument_is_forwarded_to_the_device(self):
         with mock.patch.object(autana, "send", return_value=(0, ["EXAMPLE status=ok", "EXAMPLE_END"])) as sent, \
