@@ -1,6 +1,5 @@
 """Regression tests for scripts/gates/idf_vocabulary.py."""
 import pathlib
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,11 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import idf_vocabulary  # noqa: E402
 from fake_idf import TOOLCHAIN_INCLUDE, fake_idf, fake_toolchain, write  # noqa: E402
-
-
-def git(root, *args):
-    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=root,
-                   check=True, capture_output=True)
+from gate_tree import git  # noqa: E402
 
 
 class OutsideVocabularyTest(unittest.TestCase):
