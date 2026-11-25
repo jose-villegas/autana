@@ -118,7 +118,7 @@ cull_off(void) {
 
 #define SHIPPED_FAR_LEVEL 4 /* the first mip level the default draws untextured */
 
-/* The shipped default draws mip level 3 on in one colour a triangle, not 0 (off): a
+/* The shipped default draws mip level SHIPPED_FAR_LEVEL on in one colour a triangle, not 0 (off): a
  * texture's far levels read no texels unless a pack or knob says otherwise. */
 static void
 test_the_default_far_level_is_four(void) {
