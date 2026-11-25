@@ -97,6 +97,29 @@ test_yaw_bind_at_the_poles_uses_world_axes(void) {
 }
 
 static void
+test_yaw_bind_at_projection_threshold(void) {
+    transformf_t target = fixture();
+    const float threshold = 1.0E-4F;
+    const float margin = threshold / 100.0F;
+    const float lengths[] = {threshold + margin, threshold, threshold - margin};
+    const vec3f_t headings[] = {vec3f_unit_x(), vec3f_unit_x(), vec3f_forward()};
+    const float x = sqrtf(0.5F);
+    const float y = threshold + threshold / 4.0F;
+    for (size_t i = 0; i < sizeof lengths / sizeof lengths[0]; i++) {
+        /* The inclusive cutoff needs an exact horizontal length in float. */
+        const float z = (lengths[i] / 2.0F - y * x) / x;
+        const quatf_t rotation = {x, y, z, x};
+        transformf_set_rotation(&target, rotation);
+        const vec3f_t forward = quatf_rotate(target.rotation, vec3f_forward());
+        TEST_ASSERT_EQUAL_MEMORY(&lengths[i], &forward.x, sizeof forward.x);
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, forward.z);
+        const vec3f_t expected = vec3f_add(target.position, headings[i]);
+        const vec3f_t actual = rig_follow_position(&target, vec3f_forward(), RIG_BIND_TARGET_YAW);
+        TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.0F, vec3f_length(vec3f_sub(expected, actual)));
+    }
+}
+
+static void
 test_look_aims_positive_z_with_level_right(void) {
     const vec3f_t from = {1.0F, -2.0F, 3.0F};
     const vec3f_t at = {-4.0F, 5.0F, 6.0F};
@@ -173,6 +196,7 @@ suite_rig(void) {
     RUN_TEST(test_yaw_bind_projects_forward_under_pitch_and_roll);
     RUN_TEST(test_yaw_bind_follows_yaw_and_ignores_single_axis_tilt);
     RUN_TEST(test_yaw_bind_at_the_poles_uses_world_axes);
+    RUN_TEST(test_yaw_bind_at_projection_threshold);
     RUN_TEST(test_look_aims_positive_z_with_level_right);
     RUN_TEST(test_look_respects_tilted_up_at_any_scale);
     RUN_TEST(test_look_coincident_points_use_identity);
