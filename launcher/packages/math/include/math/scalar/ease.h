@@ -4,7 +4,6 @@
  * for float maths. Inline: some run once per drawn point. */
 #pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "math/scalar/mathf.h"
@@ -68,22 +67,4 @@ static inline float
 ease_smoothstep(float edge0, float edge1, float x) {
     const float u = mathf_clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
     return u * u * (3.0F - (2.0F * u));
-}
-
-/* Fraction bits of u in ease_smooth(); u^2 (3 - 2u) then takes three times
- * as many and, with u at most 1/2, stays exact in 64 bits. */
-#define EASE_SMOOTH_FRACTION_BITS 16
-
-/* Mirroring the lower half and rounding once keep consecutive milliseconds
- * monotonic; the curve is exact in integers, so the FPU stays single precision. */
-static inline float
-ease_smooth(uint32_t elapsed_ms, uint32_t over_ms) {
-    if (over_ms == 0 || elapsed_ms >= over_ms) {
-        return 1.0F;
-    }
-    const bool mirror = elapsed_ms > over_ms / 2;
-    const uint64_t one = UINT64_C(1) << EASE_SMOOTH_FRACTION_BITS;
-    const uint64_t u = ((uint64_t)(mirror ? over_ms - elapsed_ms : elapsed_ms) << EASE_SMOOTH_FRACTION_BITS) / over_ms;
-    const float lower = ldexpf((float)(u * u * (3 * one - 2 * u)), -3 * EASE_SMOOTH_FRACTION_BITS);
-    return mirror ? 1.0F - lower : lower;
 }
