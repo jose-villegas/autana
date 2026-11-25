@@ -121,5 +121,5 @@ def repair(pos, rgb, tris, labels, tolerance):
                 out_tris.append(piece)
                 out_labels.append(labels[i])
     added = np.array(pid[len(ids):], dtype=np.int64)
-    return (np.concatenate([pos, stand[added]]), np.concatenate([rgb, np.array(new_rgb).reshape(-1, 3)]),
+    return (np.concatenate([pos, stand[added]]), np.concatenate([rgb, np.array(new_rgb).reshape(-1, rgb.shape[1])]),
             np.array(out_tris, dtype=tris.dtype), np.array(out_labels, dtype=np.asarray(labels).dtype))

@@ -244,6 +244,10 @@ class RepairStepTests(unittest.TestCase):
         rgb[2] = (80.0, 0.0, 0.0)  # the coarse piece's seam runs from vertex 1 to vertex 2, y = 0 to 4
         _, out, _, _ = repair(p, rgb, tris, np.zeros(len(tris), dtype=int), 0.01)
         self.assertEqual(sorted(out[len(p):, 0].tolist()), [20.0, 40.0, 60.0])
+        # Back colours beside the front ones (six channels) split along with them.
+        _, sided, _, _ = repair(p, np.concatenate([rgb, rgb / 2], axis=1), tris, np.zeros(len(tris), dtype=int), 0.01)
+        self.assertEqual(sided.shape[1], 6)
+        self.assertEqual(sorted(sided[len(p):, 3].tolist()), [10.0, 20.0, 30.0])
 
     def test_repairing_repaired_output_adds_and_moves_nothing(self):
         p, tris = two_pieces(gap=0.0625)
