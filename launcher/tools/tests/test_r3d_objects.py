@@ -625,6 +625,7 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertEqual([call.args[2] for call in drawn.call_args_list], [label] * count + [overflow])
                 self.assertTrue(all(call.args[1][0] >= picture.width + PADDING for call in drawn.call_args_list))
 
+    @needs_llvm
     def test_generate_with_blank_host_image(self):
         from PIL import Image
         from r3d.objects.instances_figure import DOC_SIZE, generate

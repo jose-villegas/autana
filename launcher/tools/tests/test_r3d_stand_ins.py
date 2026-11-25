@@ -15,6 +15,7 @@ from r3d.meshopt import PERMISSIVE, simplify_with_update
 from r3d.objects import stand_ins
 from r3d.simplify import _shared_passes
 from tests.soup import box, concatenate
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 BUDGET = 24
 WEIGHT = 0.01
@@ -90,6 +91,7 @@ class StandInTests(unittest.TestCase):
         assert candidate is not None
 
 
+    @needs_llvm
     def test_self_and_hole_error(self):
         p, c, t, m = table()
         source = stand_ins.StandIn('source', p, c, t, m, None)

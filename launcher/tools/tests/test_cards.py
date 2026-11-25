@@ -125,6 +125,7 @@ class CardTests(unittest.TestCase):
         self.assertEqual(geometry.mesh_report['scene_total'],
                          len(geometry.tris) + sum(report['triangles'] for report in geometry.mesh_report['cards'].values()))
 
+    @needs_llvm
     def test_fringe_box_is_not_a_candidate(self):
         from r3d.cards.decide import candidates
         settings, src = self.import_fixture()
@@ -213,6 +214,7 @@ class CardTests(unittest.TestCase):
         with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
             candidates(src, settings)
 
+    @needs_llvm
     def test_camera_hidden_is_exactly_accepted_materials(self):
         from r3d.cards import CARD_COVERED_MIN, decide
         from r3d.reference_render import camera_hidden

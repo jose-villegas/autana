@@ -34,6 +34,7 @@ class ProbeTests(unittest.TestCase):
         np.testing.assert_allclose(got[0], colour * math.sqrt(4 * math.pi))
         np.testing.assert_allclose(got[1:], 0, atol=4 * math.pi * sh.Y1 / len(directions))
 
+    @needs_llvm
     def test_direct_sky_reaches_the_record(self):
         from types import SimpleNamespace
         from tests.soup import corridor
@@ -58,6 +59,7 @@ class ProbeTests(unittest.TestCase):
         got = asset.decode(data)[4][0]
         np.testing.assert_allclose(got, expected, atol=0.02)
 
+    @needs_llvm
     def test_grid_wire_order(self):
         from types import SimpleNamespace
         from tests.soup import corridor
@@ -93,6 +95,7 @@ class ProbeTests(unittest.TestCase):
             expected[sh.L1_AXES.index(Z_AXIS) + 1] *= AXIS_SIGNS[Z_AXIS]
             np.testing.assert_allclose(coefficients[index], expected, atol=scale / 2 + 1e-6)
 
+    @needs_llvm
     def test_lit_corridor_pack_aligns_probes_and_mesh(self):
         from types import SimpleNamespace
         from asset.asset_pack import build_pack, parse_pack
@@ -258,6 +261,7 @@ class ProbeTests(unittest.TestCase):
                 np.testing.assert_array_equal(spacing, before[1])
                 self.assertEqual(engine_frame.to_engine(asset.TYPE, mirrored), data)
 
+    @needs_llvm
     def test_closed_box_inside_and_coefficient_bytes(self):
         from types import SimpleNamespace
         from tests.soup import box

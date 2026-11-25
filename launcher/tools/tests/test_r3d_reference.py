@@ -249,6 +249,7 @@ class ReferenceRenderTest(unittest.TestCase):
 
 @unittest.skipIf(np is None, "needs NumPy")
 class RenderPosesTests(unittest.TestCase):
+    @needs_llvm
     def test_render_poses_writes_what_trace_and_occlusion_map_give(self):
         import tempfile
         from r3d.reference_render import render_poses
@@ -395,6 +396,7 @@ class PerPointDirectionsTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "needs NumPy")
 class ReferenceSetTests(unittest.TestCase):
+    @needs_llvm
     def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
         import contextlib
         import io
