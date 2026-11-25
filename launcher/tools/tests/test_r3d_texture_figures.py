@@ -38,6 +38,13 @@ class SquareBoxTests(unittest.TestCase):
         self.assertEqual(texture_figures.square_box(self.cluster(230, 300, 240, 320), self.PICTURE),
                          (220, 300, 240, 320))
 
+    def test_a_wide_cluster_crops_a_square_centred_on_it(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(100, 100, 140, 110), self.PICTURE),
+                         (100, 85, 140, 125))
+
+    def test_a_cluster_larger_than_the_picture_crops_the_picture_s_shorter_side(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(0, 0, 240, 320), self.PICTURE), (0, 40, 240, 280))
+
 
 @unittest.skipIf(texture_figures is None, "needs NumPy and Pillow")
 class ReferenceMemberTests(unittest.TestCase):
