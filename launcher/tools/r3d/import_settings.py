@@ -263,6 +263,13 @@ def load_visibility(table, where="visibility"):
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
+def load_seal_views(table, where):
+    """The camera path's frames as views for a sealed import's probes (r3d/leaks.py): sampled every `every_ms`
+    at `size` pixels, through a square view that covers the panel held either way up."""
+    check_keys(table, ("every_ms", "size"), where)
+    return SimpleNamespace(every_ms=count(table["every_ms"], f"{where}.every_ms"), size=pixel_size(table["size"], f"{where}.size"))
+
+
 LEGACY_PROCESS_HOMES = {
     "alpha_mask": "[geometry] alpha_mask",
     "visibility": "objects.mesh_renderer.visibility",
@@ -630,7 +637,7 @@ def load_camera_path(path, base, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "seal_views", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -660,18 +667,21 @@ def load_renderer(component, base, where):
             raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
     visibility = load_visibility(component["visibility"], f"{where}.visibility") if "visibility" in component else None
     fit = load_fit(component["fit"], variant, f"{where}.fit") if "fit" in component else None
+    seal_views = load_seal_views(component["seal_views"], f"{where}.seal_views") if "seal_views" in component else None
+    if seal_views and not (settings.simplify and settings.simplify.seal_seams):
+        raise SettingsError(f"{where}.seal_views is read by no step: {component['mesh']!r} does not seal its seams")
     indirect = True
     if "indirect" in component:
         if boolean(component["indirect"], f"{where}.indirect"):
             raise SettingsError(f"{where}.indirect can only be false")
         indirect = False
-    if not bake and (face_samples or visibility or fit or not indirect):
-        raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    if not bake and (face_samples or visibility or seal_views or fit or not indirect):
+        raise SettingsError(f"{where} bake = true is required for shading, visibility, seal_views, fit or indirect")
     colour_set = component.get("colour_set")
     if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
         raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           fit=fit, indirect=indirect, colour_set=colour_set)
+                           seal_views=seal_views, fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
@@ -687,7 +697,7 @@ def albedo_jobs(settings):
     jobs = []
     for variant in settings.variants:
         renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
-                                   fit=None, indirect=True)
+                                   seal_views=None, fit=None, indirect=True)
         jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}{BUNDLE_SUFFIX}", None))
     return jobs
 
@@ -792,6 +802,12 @@ def load_demo_assets(path) -> list[str]:
         raise SettingsError(f"{path}: {error}") from error
 
 
+def flight_camera(scene):
+    """The lens of the scene's first camera with a path: the flythrough a path tool samples. The scene camera
+    (the first) may have none, its fits trained on probes over its region."""
+    return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""
@@ -883,6 +899,8 @@ def load_scene(path):
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
+    if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
+        raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "

@@ -54,6 +54,7 @@ INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
 PATH = 'visibility = { source = "camera_path", every_ms = 100, size = [8, 6], margin = 2 }\n'
+SEAL_VIEWS = 'seal_views = { every_ms = 33, size = [8, 6] }\n'
 CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\nusemtl m\n"
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
 
@@ -395,6 +396,25 @@ class SceneTests(unittest.TestCase):
     def test_path_visibility_needs_the_camera_path_not_its_region(self):
         self.lit_rejects("camera path is required", PATH, objects=camera(region=False))
         self.lit_rejects("camera region is read by no placed mesh", PATH, objects=camera(path=True))
+
+    def test_seal_views_read_and_need_a_sealed_import_a_bake_and_the_camera_path(self):
+        sealed = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        extra = 'variant = "mesh"\n' + REGION + SEAL_VIEWS
+        scene = load_scene(self.lit(extra, objects=camera(path=True), **sealed))
+        views = scene.renderers[0].renderer.seal_views
+        self.assertEqual((views.every_ms, views.size), (33, (8, 6)))
+        unviewed = load_scene(self.lit('variant = "mesh"\n' + REGION, objects=camera(), **sealed))
+        self.assertIsNone(unviewed.renderers[0].renderer.seal_views)
+        self.lit_rejects("camera path is required: a placed mesh seals", extra, objects=camera(), **sealed)
+        self.lit_rejects("seal_views is read by no step", extra, objects=camera(path=True), output=VARIANT_OUTPUT,
+                         body=SIMPLIFY.replace("seal_seams = true", "seal_seams = false") + VARIANT)
+        self.lit_rejects("seal_views is read by no step", REGION + SEAL_VIEWS, objects=camera(path=True))
+        self.lit_rejects(r"seal_views", extra.replace("every_ms = 33, ", ""), objects=camera(path=True), **sealed)
+        self.lit_rejects(r"seal_views.size", extra.replace("[8, 6]", "[8]"), objects=camera(path=True), **sealed)
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, **sealed)
+            with self.assertRaisesRegex(SettingsError, "bake = true is required"):
+                load_scene(write_scene(directory, renderer(extra='variant = "mesh"\n' + SEAL_VIEWS) + camera(path=True)))
 
     def test_each_renderer_of_one_import_has_its_own_visibility(self):
         with tempfile.TemporaryDirectory() as directory:
