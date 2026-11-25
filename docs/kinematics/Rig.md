@@ -18,7 +18,7 @@ The Cinemachine column maps names.<sup>[[144]](../Citations.md#unity-cinemachine
 |---|---|---|
 | `RIG_BIND_WORLD` | World Space | World axes |
 | `RIG_BIND_TARGET` | Lock To Target | Target rotation, including pitch and roll |
-| `RIG_BIND_TARGET_YAW` | Lock To Target With World Up | Target frame leveled to world +Y |
+| `RIG_BIND_TARGET_YAW` | Lock To Target With World Up | Horizontal target heading, with world +Y up |
 
 For target position $p$, offset $o$ and the bind's rotation $R$:
 
@@ -26,18 +26,10 @@ For target position $p$, offset $o$ and the bind's rotation $R$:
 p_{\mathrm{follow}} = p + Ro
 ```
 
-The world bind uses the identity for $R$. The yaw bind applies the shortest turn
-from target up to world up after the target rotation (uppify).
+The world bind uses the identity for $R$. Target scale has no effect.
 
-At an inverted target the leveled heading is undefined and can flip 180°
-across that orientation. [`quatf_from_to`](../math/Linear.md#quat-from-to) picks
-a deterministic half-turn near inversion.
-
-Target scale has no effect.
-
-Unity describes this Cinemachine bind as keeping only yaw. Its code projects
-target forward onto the horizontal plane. Uppify keeps heading through vertical
-pitch and can give a different heading under combined pitch and roll.<sup>[[144]](../Citations.md#unity-cinemachine-binding)</sup>
+The yaw bind follows the target's forward vector projected onto the horizontal plane.<sup>[[144]](../Citations.md#unity-cinemachine-binding)</sup>
+When that projection is near zero, the offset uses world axes.
 
 ## Look rotation
 
