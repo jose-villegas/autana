@@ -1,12 +1,13 @@
-"""Fenced code blocks of a Markdown text, opened and closed as CommonMark does:
-three or more backticks or tildes after any quote markers and one list marker
-(a backtick fence's info string holds no backtick), closed by a line of the
-same character, at least as long, with no info string, or by the end of the
-text. Nothing opens inside a fence, so a shorter one nested in it is text."""
+"""Fenced code blocks of a Markdown text: three or more backticks or tildes
+after any quote markers and one list marker (a backtick fence's info string
+holds no backtick). A fence closes on a line of the same character, at least
+as long, with no info string, at its opener's quote depth and with no list
+marker, or at the end of the text; nothing opens inside it. Unlike CommonMark,
+indentation is not checked and a quoted fence outlives the end of its quote."""
 import collections
 import re
 
-FENCE = re.compile(r"^\s*(?:>\s*)*(?:(?:[-+*]|[0-9]+[.)])\s+)?(`{3,}|~{3,})(.*)$")
+FENCE = re.compile(r"^\s*((?:>\s*)*)((?:[-+*]|[0-9]+[.)])\s+)?(`{3,}|~{3,})(.*)$")
 
 
 class Fence(collections.namedtuple("Fence", "line info start end close")):
@@ -21,16 +22,18 @@ def fences(text):
     for number, line in enumerate(text.splitlines(keepends=True), 1):
         match = FENCE.match(line)
         if match:
-            fence, info = match.groups()
+            quotes, item, fence, info = match.groups()
+            depth = quotes.count(">")
             if not opened:
                 if fence[0] == "~" or "`" not in info:
-                    opened = fence, number, info.strip(), offset
-            elif fence[0] == opened[0][0] and len(fence) >= len(opened[0]) and not info.strip():
-                yield Fence(*opened[1:], offset + len(line), number)
+                    opened = depth, fence, number, info.strip(), offset
+            elif ((depth, fence[0]) == (opened[0], opened[1][0]) and len(fence) >= len(opened[1])
+                    and not item and not info.strip()):
+                yield Fence(*opened[2:], offset + len(line), number)
                 opened = None
         offset += len(line)
     if opened:
-        yield Fence(*opened[1:], offset, None)
+        yield Fence(*opened[2:], offset, None)
 
 
 def fenced_lines(text):

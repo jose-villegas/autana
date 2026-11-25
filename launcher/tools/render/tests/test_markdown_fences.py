@@ -32,6 +32,18 @@ class FenceTests(unittest.TestCase):
         text = "> quoted\n> ```c\n> int a;\n> ```\n"
         self.assertEqual([(f.line, f.language, f.close) for f in fences(text)], [(2, "c", 4)])
 
+    def test_a_closer_must_sit_at_the_openers_quote_depth(self):
+        text = "> ```\n```\n> code\n> ```\nprose\n"
+        self.assertEqual([(f.line, f.close) for f in fences(text)], [(1, 4)])
+
+    def test_a_list_item_never_closes_a_fence(self):
+        text = "```\n- ```\nstill code\n```\n"
+        self.assertEqual([(f.line, f.close) for f in fences(text)], [(1, 4)])
+
+    def test_a_quoted_fence_outlives_its_quote(self):
+        """A documented departure from CommonMark: no container ends a fence."""
+        self.assertEqual([(f.line, f.close) for f in fences("> ```c\n> a\n\nprose\n")], [(1, None)])
+
     def test_a_shorter_fence_nests_as_text(self):
         text = "````markdown\n```mermaid\nA-->B\n```\n````\n```c\nint a;\n```\n"
         self.assertEqual([(f.line, f.language, f.close) for f in fences(text)],
