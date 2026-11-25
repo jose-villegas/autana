@@ -77,32 +77,10 @@ def albedo_at(src, points, spacing, material):
 
 def far_skins(p, tris, shell, towards):
     """Which of the triangles `shell` marks, of closed shells such as cloth built as two skins, face away from
-    `towards`: the far skin. Drawn from its own side only, it hides wherever simplification pushes it through
-    the near skin, and still shows its own colour from behind. A triangle with no area faces nowhere."""
+    `towards`: the far skin. Dropping it leaves one skin, drawn from both sides, so no simplification can
+    push the far skin through the near one. A triangle with no area faces nowhere and stays."""
     normals, area = face_normals(p, tris)
     return shell & (area > 0) & (np.einsum("ij,ij->i", normals, towards - p[tris].mean(axis=1)) < 0)
-
-
-def single_sided_twins(src, tri_m, marked):
-    """`tri_m` with the triangles `marked` moved to single-sided twins of their materials: the same name,
-    albedo and texture at a new index, which double_materials leaves out, so rules that name the material
-    still match it."""
-    tri_m = tri_m.copy()
-    src.names, src.textures = list(src.names), list(src.textures)
-    src.single_sided = set(getattr(src, "single_sided", ()))
-    for material in np.unique(tri_m[marked]):
-        tri_m[marked & (tri_m == material)] = len(src.names)
-        src.single_sided.add(len(src.names))
-        src.names.append(src.names[material])
-        src.textures.append(src.textures[material])
-    return tri_m
-
-
-def double_materials(src, double_sided):
-    """The indices of the materials drawn from both sides: those `double_sided` names, but no single-sided
-    twin (single_sided_twins)."""
-    single = getattr(src, "single_sided", set())
-    return frozenset(index for index, name in enumerate(src.names) if name in double_sided and index not in single)
 
 
 def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
@@ -258,8 +236,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    # A closed double-sided shell draws the skin the camera region faces from both sides, the other from its own.
-    listed = np.isin(tri_m, list(double_materials(src, settings.double_sided)))
+    # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but, like a
+    # carded material, keeps casting light.
+    listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
     region = far_skin_region(settings, scene) if listed.any() else None
     shell = np.zeros(len(tri_v), dtype=bool)
     if region is not None:
@@ -268,10 +247,13 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     if shell.any():
         with recorder.step("far skins", len(tri_v)) as step:
             far = far_skins(src.p, tri_v, shell, np.mean(region, axis=0))
-            log(f"far skins drawn single-sided: {int(far.sum())} of {int(shell.sum())} triangles of the closed "
-                f"shells of {', '.join(sorted({src.names[m] for m in tri_m[shell]}))}")
-            tri_m = single_sided_twins(src, tri_m, far)
-            src.tri_m = tri_m
+            log(f"far skins dropped: {int(far.sum())} of {int(shell.sum())} triangles of the closed shells of "
+                f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}")
+            dropped = tri_v[far], tri_t[far], tri_m[far]
+            light_only = dropped if light_only is None else tuple(np.concatenate(pair) for pair in zip(light_only, dropped))
+            tri_v, tri_t, tri_m = tri_v[~far], tri_t[~far], tri_m[~far]
+            src.tri_o = src.tri_o[~far]
+            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
             step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
     if not carve or scene is None:
@@ -290,10 +272,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         light_src = src if light_only is None else with_triangles(src, *(np.concatenate([a, b]) for a, b in
                                                                          zip((tri_v, tri_t, tri_m), light_only)))
         occluder = intersector if light_only is None or not job.bake else RayQuery(src.p, light_src.tri_v)
-        double_indices = double_materials(src, settings.double_sided)
+        double_names = settings.double_sided
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
-            double = np.isin(tri_m, list(double_indices))
+            double = np.array([src.names[material] in double_names for material in tri_m])
             seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
@@ -327,7 +309,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         all_pos, all_rgb, all_tris, all_double, all_mat, all_obj, all_held = [], [], [], [], [], [], []
         base = 0
         for material, owners, hold, mp, mt in parts:
-            double = material in double_indices
+            double = src.names[material] in double_names
             if job.bake and not np.all(np.isin(owners, list(selected))):
                 vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, occluder, bounce,
                                                          labels=owners)
@@ -363,7 +345,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          detail=derived, split=split if carve else None,
-                                                                         double_sided=tuple(sorted(double_indices)),
+                                                                         double_sided=tuple(i for i, name in enumerate(src.names) if name in double_names),
                                                                          ceiling=available,
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              occluder, bounce, **kw)) if job.bake else None,
@@ -377,7 +359,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
-            tri_double = np.isin(tri_mat, list(double_indices)).astype(np.int64)
+            tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
     from r3d.objects.instances import Instance
 
@@ -423,7 +405,7 @@ def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bou
         selected = groups == group
         material = labels[selected][0]
         p, t = compact(positions, tris[selected])
-        double = material in double_materials(src, job.settings.double_sided)
+        double = src.names[material] in job.settings.double_sided
         p, c, t, m = shade_lit(src, job, scene, material, p, t, double, intersector, bounce,
                                labels=labels[selected], preserve_corners=preserve_corners)
         out_p.append(p)
@@ -440,12 +422,12 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
     light's own ray count."""
     src, settings = geometry.src, job.settings
     samples, sample_min, sample_max, sample_area = face_samples
+    double_materials = {index for index, name in enumerate(src.names) if name in settings.double_sided}
     lights = scene.lights
     if "sky_rays" in knobs:
         rays = knobs.pop("sky_rays")
         lights = [{**item, "rays": rays} if item["type"] == "sky" else item for item in lights]
-    return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)),
-                        double_materials(src, settings.double_sided),
+    return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
                         lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
                         sample_area=sample_area, min_samples=sample_min, bounce=geometry.bounce,
@@ -489,7 +471,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
 
     masked = "vertex_uvs" in shape
     flat = job.renderer.face_samples and not masked
-    double_sided = sorted(double_materials(geometry.src, job.settings.double_sided))
+    double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
     groups = prototype_groups(shape, double_sided)
     entries, rows = [], []
     for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):

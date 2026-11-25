@@ -1,7 +1,7 @@
 """Checks the wave sheet (r3d/procedural/wave_sheet.py): its triangles follow the formula and face their side,
 two skins close into one shell, a colour edge opens no crack, and its source reads back through the OBJ loader.
-It also checks the import of a closed double-sided shell: the skin the camera region does not face is drawn
-from its own side only, and on CUDA the fitted cloth then shows no far skin, where drawn from both it does. Needs the pinned r3d
+It also checks the import of a closed double-sided shell: the skin the camera region does not face leaves it,
+and on CUDA the fitted cloth then shows no far skin, where kept whole it does. Needs the pinned r3d
 environment (tools/r3d/requirements.txt); the fit needs CUDA, PyTorch and nvdiffrast."""
 
 import collections
@@ -75,7 +75,7 @@ def imported(sheet, double_sided, scene=True):
     `scene` False as a bare import, which has no camera."""
     from r3d import mesh_import
     from r3d.import_settings import albedo_jobs, load_import_settings, load_scene
-    from tests.test_r3d_import import renderer, write_scene
+    from test_r3d_import import renderer, write_scene
 
     with tempfile.TemporaryDirectory() as directory:
         path = write_import(directory, sheet, "cloth", double_sided)
@@ -212,23 +212,18 @@ class WaveSheetTests(unittest.TestCase):
         far = far_skins(cloth.positions, flat, np.ones(len(flat), dtype=bool), np.array((0.0, 0.0, 200.0)))
         self.assertFalse(far[-1])
 
-    def test_the_import_draws_a_closed_shells_near_skin_from_both_sides_and_its_far_skin_from_its_own(self):
+    def test_the_import_keeps_the_skin_a_camera_faces_of_a_closed_shell_and_draws_it_double_sided(self):
         cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
-        listed = every_material(cloth)
-        placed = imported(cloth, listed)
-        near, far = facing(placed) > SIDE_COS, facing(placed) < -SIDE_COS
-        one_sided = np.isin(placed.tri_mat, list(getattr(placed.src, "single_sided", ())))
-        self.assertTrue(near.any() and (far & one_sided).any(), "a skin was lost")
-        self.assertTrue(placed.tri_double[near].all(), "the near skin is not drawn from both sides")
-        # Simplification may fold a few near-skin triangles over; those keep the near skin's material.
-        self.assertFalse(placed.tri_double[one_sided].any(), "the far skin is drawn from behind, through the near one")
-        self.assertFalse((one_sided & near).any(), "a near-skin triangle was drawn from its own side only")
-        self.assertTrue(set(np.array(placed.src.names)[placed.tri_mat[one_sided]]) <= set(listed),
-                        "the far skin's material lost its name, which rules match")
-        bare = imported(cloth, listed, scene=False)
-        self.assertTrue(bare.tri_double.all(), "with no camera to face, both skins stay double-sided")
+        front = every_material(cloth)[:-1]  # the far skin's own colour is not listed: the shell is still closed
+        placed = imported(cloth, front)
+        self.assertTrue(len(placed.tris))
+        self.assertFalse((facing(placed) < -SIDE_COS).any(), "a triangle of the far skin is left")
+        listed = np.isin(placed.tri_mat, [placed.src.names.index(name) for name in front])
+        self.assertTrue(placed.tri_double[listed].all(), "the near skin is not double-sided")
+        bare = imported(cloth, front, scene=False)
+        self.assertTrue((facing(bare) < -SIDE_COS).any(), "with no camera to face, both skins are kept")
 
-    def test_the_far_skin_stays_in_the_light_and_its_ray_queries(self):
+    def test_the_dropped_far_skin_still_casts_light_but_is_not_drawn(self):
         from unittest import mock
 
         from r3d import mesh_import
@@ -253,8 +248,11 @@ class WaveSheetTests(unittest.TestCase):
                                     region=np.array([[-50.0, -50.0, 150.0], [50.0, 50.0, 250.0]]))
             with mock.patch.object(mesh_import, "RayQuery", side_effect=ray_query),                     mock.patch.object(mesh_import, "shade_lit", side_effect=shade_lit),                     mock.patch.object(mesh_import, "light", side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, "path_light_for", side_effect=lambda *rest: None):
                 geometry = mesh_import.bake_geometry(job, scene)
-        self.assertEqual(built, [len(cloth.tris)], "the far skin left the geometry the light and visibility meet")
+        drawn, lit = built[:2]
+        self.assertLess(drawn, len(cloth.tris), "no far skin was dropped")
+        self.assertEqual(lit, len(cloth.tris), "the light no longer meets the dropped far skin")
         self.assertTrue(shaded and all(query is geometry.intersector for query in shaded))
+        self.assertEqual(geometry.intersector._mock_name, f"query of {lit}")
 
     def test_the_import_keeps_an_open_double_sided_sheet_whole(self):
         sheet = wave_sheet.sheet(CLOTH_COUNT, **CLOTH)
@@ -266,13 +264,12 @@ class WaveSheetTests(unittest.TestCase):
 @unittest.skipIf(np is None or not GPU, "needs the r3d environment, CUDA, PyTorch and nvdiffrast")
 class FittedClothTests(unittest.TestCase):
     """A two-skin cloth through the import and the fit: its far skin must never show through the near one, as it
-    did on Sponza's drapes while both skins of their closed fabric were drawn from both sides. Every view faces
-    the near skin, so a pixel showing a triangle the import drew from its own side only shows the far skin
-    through it, and with both skins drawn from both sides, one showing a triangle from behind does."""
+    did on Sponza's drapes while both skins of their closed fabric were kept. The cloth's near skin faces every
+    view, so a pixel showing a triangle from behind shows the far skin."""
 
     def fitted_measures(self, scene):
         """The held-out measures of the cloth imported, with a camera to face (`scene`) or bare so that both
-        skins are drawn from both sides, written as the import draws it and fitted to the cloth as it is: a closed shell."""
+        skins are kept, written as the import draws it and fitted to the cloth as it is: a closed shell."""
         from r3d.appearance_simplify import optimise, start_mesh
         from r3d.fit import wave_sweep
         from r3d.lit_mesh import write_lit_mesh
@@ -289,17 +286,14 @@ class FittedClothTests(unittest.TestCase):
                                          clear=wave_sweep.CLEAR,
                                          source=SimpleNamespace(p=cloth.positions, tri_v=cloth.tris),
                                          **dict(wave_sweep.FIT_DEFAULTS, steps=FIT_STEPS))
-        one_sided = ~np.asarray(mesh.double).astype(bool)
-        measures = wave_sweep.picture_measures(mesh._replace(points=points, rgb=rgb), held_out, "cuda", one_sided)
-        return dict(measures, one_sided=int(one_sided.sum()))
+        return wave_sweep.picture_measures(mesh._replace(points=points, rgb=rgb), held_out, "cuda")
 
-    def test_an_imported_and_fitted_cloth_shows_no_far_skin_where_drawn_from_both_sides_it_would(self):
+    def test_an_imported_and_fitted_cloth_shows_no_far_skin_where_kept_whole_it_would(self):
         placed = self.fitted_measures(True)
-        self.assertGreater(placed["one_sided"], 0, "the import drew no far skin from its own side only")
-        self.assertEqual(placed["far_px"], 0, "the fitted cloth shows its far skin through its near one")
+        self.assertEqual(placed["back_px"], 0, "the fitted cloth shows its far skin through its near one")
         whole = self.fitted_measures(False)
-        self.assertGreater(whole["back_px"], 0, "the cloth is too gentle for its far skin to show from behind")
-        self.assertLessEqual(placed["holes"], whole["holes"], "drawing the far skin from its own side opened holes")
+        self.assertGreater(whole["back_px"], 0, "the cloth is too gentle for its far skin to show when kept")
+        self.assertLessEqual(placed["holes"], whole["holes"], "dropping the far skin opened holes")
 
 
 if __name__ == "__main__":

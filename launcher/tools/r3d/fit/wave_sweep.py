@@ -148,9 +148,8 @@ def shape_measures(surface, start_points, points, tris):
     return out
 
 
-def picture_measures(mesh, held_out, device, far=None):
-    """back_px, dark_px and holes of FitMesh `mesh` over the held-out references; with `far` (per triangle,
-    those of the skin facing away from the views) also far_px, the pixels that show one of them."""
+def picture_measures(mesh, held_out, device):
+    """back_px, dark_px and holes of FitMesh `mesh` over the held-out references."""
     import torch
 
     from r3d.appearance_simplify import Renderer, delta_e76, hole_pixels
@@ -162,8 +161,7 @@ def picture_measures(mesh, held_out, device, far=None):
     normals = torch.as_tensor(np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]), device=device)
     centres = torch.as_tensor(corners.mean(axis=1), device=device)
     black = torch.zeros(3, device=device)
-    back = dark = far_px = 0
-    far = None if far is None else torch.as_tensor(far, device=device)
+    back = dark = 0
     with torch.no_grad():
         for matrix, target, _normal, eye in held_out:
             m = torch.as_tensor(matrix, dtype=torch.float32, device=device)
@@ -172,14 +170,12 @@ def picture_measures(mesh, held_out, device, far=None):
             towards = torch.as_tensor(eye, device=device) - centres
             away = (normals * towards).sum(-1) < 0
             back += int((shown & away[ids.clamp_min(0)]).sum())
-            if far is not None:
-                far_px += int((shown & far[ids.clamp_min(0)]).sum())
             image = render(points, colours, m)
             truth = torch.as_tensor(target, device=device)
             dark += int(((delta_e76(image, black.expand_as(image)) < DARK_DE76)
                          & (delta_e76(truth, black.expand_as(truth)) >= DARK_DE76)).sum())
     holes = hole_pixels(mesh, [(matrix, target) for matrix, target, *_ in held_out], VIEW_SIZE, CLEAR, device)
-    return {"back_px": back, "dark_px": dark, "holes": holes, **({} if far is None else {"far_px": far_px})}
+    return {"back_px": back, "dark_px": dark, "holes": holes}
 
 
 def run_one(mode, shape, amplitude, frequency, fit, device="cuda"):
