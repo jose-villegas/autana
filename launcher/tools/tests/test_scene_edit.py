@@ -343,7 +343,7 @@ class KeysEditTests(unittest.TestCase):
         self.assertIn(b"eye = [3, 1, 3]\r\n", text)
         self.assertIn(b"eye = [6, 1, 0]   # beside the box\r\n", text)
 
-    def test_keys_camera_keys_refuses_are_not_written(self):
+    def test_keys_file_refusals_are_not_written(self):
         self.assert_refused("0:1:0,1,5:0,1,0", WALK[1], why="times must start at zero")
         self.assert_refused(WALK[0], "1:0:5,1,0:0,1,0", why="increase strictly")
         self.assert_refused(WALK[0], why="at least two keys")
