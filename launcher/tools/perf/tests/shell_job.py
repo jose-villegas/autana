@@ -13,7 +13,7 @@ PERF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF.parents[2] / "scripts/lib"))
 sys.path.insert(0, str(PERF.parents[2] / "scripts/device"))
 from process_tree import launch_process_tree, stop_process_tree  # noqa: E402
-from device_lock import process_alive  # noqa: E402
+from device_lock import process_alive, process_start  # noqa: E402
 
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
 FAKE_ACTIVITY_CHECK_SECONDS = 0.6
@@ -24,13 +24,19 @@ STOP_SECONDS = 10
 POLL_SECONDS = 0.02
 
 
+def fake_running(call):
+    """Whether the fake that recorded `call` still runs: its pid is alive and began when the fake did, so a
+    later process Windows gave the same pid does not count."""
+    return process_alive(call["pid"]) and process_start(call["pid"]) in (None, call["started"])
+
+
 def assert_fakes_ended(case, calls):
     """A finished job leaves no fake running, even one in its own session."""
     deadline = time.monotonic() + STOP_SECONDS
-    alive = [call for call in calls if process_alive(call["pid"])]
+    alive = [call for call in calls if fake_running(call)]
     while alive and time.monotonic() < deadline:
         time.sleep(POLL_SECONDS)
-        alive = [call for call in alive if process_alive(call["pid"])]
+        alive = [call for call in alive if fake_running(call)]
     case.assertEqual(alive, [], "fakes outlived their job")
 
 
