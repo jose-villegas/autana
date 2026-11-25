@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from scene import scene_edit  # noqa: E402
 from test_r3d_import import (  # noqa: E402
-    FIT, HEAD, NO_LEVELS, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object, tree_scenes,
+    FIT, FIT_HEAD, HEAD, NO_LEVELS, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object, tree_scenes,
     write_import, write_scene)
 
 SUN_LINE = "rotation = [40.0, 30.0, 0.0]   # toward the front: above and to the right\n"
@@ -384,7 +384,7 @@ class KeysEditTests(unittest.TestCase):
             with self.subTest(probes="probes" in body):
                 write_import(self.folder, output=VARIANT_OUTPUT, body=body)
                 fitted = renderer(extra='bake = true\nvariant = "mesh"\n' + fit)
-                self.scene.write_text(HEAD + fitted + sun_object() + camera_object("walker", "walk.anim.toml"))
+                self.scene.write_text(FIT_HEAD + fitted + sun_object() + camera_object("walker", "walk.anim.toml"))
                 self.assertTrue(self.read_objects()["walker"]["path"]["feeds_bakes"])
 
     def test_only_the_scene_camera_path_feeds_bakes(self):
