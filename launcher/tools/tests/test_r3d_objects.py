@@ -30,6 +30,7 @@ from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_D
 from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 SHAPE = Soup([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]],
              [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
@@ -494,6 +495,7 @@ class InstancesFigureTests(unittest.TestCase):
             np.testing.assert_allclose(projected[0], [pixel % size[0] + 0.5, pixel // size[0] + 0.5])
             self.assertGreater(depth[0], 1.)
 
+    @needs_llvm
     def test_edge_occlusion_wall(self):
         from r3d.objects.instances_figure import edge_visibility
         from r3d.ray_query import RayQuery
@@ -504,6 +506,7 @@ class InstancesFigureTests(unittest.TestCase):
             _, visible = edge_visibility(query, np.zeros(3), np.array([-1., 0., z]), np.array([1., 0., z]), 0.001)
             self.assertTrue((visible == expected).all())
 
+    @needs_llvm
     def test_visible_segments_near_plane(self):
         from r3d.objects.instances_figure import edge_visibility, project_points, visible_segments
         from r3d.ray_query import RayQuery
@@ -521,6 +524,7 @@ class InstancesFigureTests(unittest.TestCase):
         np.testing.assert_allclose(segments[-1, 1], expected[1])
         self.assertTrue((owners == 7).all())
 
+    @needs_llvm
     def test_visible_segments_picture_border(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
@@ -537,6 +541,7 @@ class InstancesFigureTests(unittest.TestCase):
         self.assertTrue((segments <= size).all())
         self.assertTrue((owners == 3).all())
 
+    @needs_llvm
     def test_visible_segments_offscreen_and_behind_eye(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
@@ -550,6 +555,7 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertEqual(segments.shape, (0, 2, 2))
                 self.assertEqual(owners.shape, (0,))
 
+    @needs_llvm
     def test_visible_segments_owners_after_culling(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
@@ -619,6 +625,7 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertEqual([call.args[2] for call in drawn.call_args_list], [label] * count + [overflow])
                 self.assertTrue(all(call.args[1][0] >= picture.width + PADDING for call in drawn.call_args_list))
 
+    @needs_llvm
     def test_generate_with_blank_host_image(self):
         from PIL import Image
         from r3d.objects.instances_figure import DOC_SIZE, generate

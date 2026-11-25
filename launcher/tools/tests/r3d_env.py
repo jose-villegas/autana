@@ -32,8 +32,14 @@ except ImportError:
     HAVE_MITSUBA = False
 
 
+# On Windows, Dr.Jit's LLVM backend runs on whatever LLVM-C.dll the host holds, unpinned, and that JIT fails to link
+# the float constant pools (__real@...) of the reference and light kernels. Windows waits on a pinned build
+# (autana-dz1nq); until then its tests trace nothing on LLVM.
+LLVM_TRACES = sys.platform != "win32"
+
+
 def have_llvm():
-    if not HAVE_MITSUBA:
+    if not HAVE_MITSUBA or not LLVM_TRACES:
         return False
     import drjit as dr
 
@@ -42,4 +48,5 @@ def have_llvm():
 
 # Ray queries and the bake's light run as Dr.Jit kernels: on the LLVM variant in tests, which needs libLLVM.
 needs_llvm = unittest.skipIf(not have_llvm(), "ray queries run on the LLVM variant: pip install -r "
-                                               "launcher/tools/r3d/requirements.txt and libLLVM")
+                                               "launcher/tools/r3d/requirements.txt and libLLVM (not on Windows, "
+                                               "whose host LLVM is unpinned and fails to link them: autana-dz1nq)")

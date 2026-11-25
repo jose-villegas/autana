@@ -850,6 +850,7 @@ def radiance(lights, normal, double_sided):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LightListTests(unittest.TestCase):
+    @needs_llvm
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
             sun([0, 1, 0], [1, 0, 0], 2),
@@ -860,10 +861,12 @@ class LightListTests(unittest.TestCase):
         np.testing.assert_allclose(first, [[2.0, 3.0, 0.0]])
         np.testing.assert_allclose(light(*args, lights[::-1], 0.5), first)
 
+    @needs_llvm
     def test_a_double_sided_face_turns_to_the_light(self):
         got = radiance([sun([0, 1, 0], [1, 1, 1], 1)], [0.0, -1.0, 0.0], True)
         np.testing.assert_allclose(got, [[1.0, 1.0, 1.0]])
 
+    @needs_llvm
     def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
         lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
                   {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0, 0, 1], "intensity": 1, "rays": 1},

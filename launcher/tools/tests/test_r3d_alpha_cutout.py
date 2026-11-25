@@ -72,6 +72,7 @@ class AlphaTestTests(unittest.TestCase):
         # Below the card's diagonal is its first triangle, above it its second.
         return np.array([0 if u > v else 1 for u, v in RAY_UV]), locations
 
+    @needs_llvm
     def test_a_hit_is_solid_where_the_texel_at_its_uv_is_kept(self):
         triangles, locations = self.card_hits()
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles, locations), SOLID)
@@ -92,6 +93,7 @@ class AlphaTestTests(unittest.TestCase):
         np.testing.assert_array_equal(light.AlphaTest(self.source, KEEP_ALPHA)(triangles + 2, locations), True)
         np.testing.assert_array_equal(alpha(np.zeros(0, dtype=int), np.zeros((0, 3))), [])
 
+    @needs_llvm
     def test_opaque_colour_is_sampled_and_untextured_hits_are_white(self):
         hits, points = self.card_hits()
         colour = np.array([[[0.2, 0.4, 0.6, 1.0]]])
@@ -112,6 +114,7 @@ class AlphaTestTests(unittest.TestCase):
         tested = alpha_tested([None, texture(1.0), texture(ALPHA_OPAQUE), texture(ALPHA_OPAQUE + 0.005)])
         np.testing.assert_array_equal(tested, [False, False, True, False])
 
+    @needs_llvm
     def test_one_texel_decides_at_level_zero_and_keep_alpha_itself_is_solid(self):
         texture = copy(self.source.textures[0])
         level = np.ones((TEXELS, TEXELS, 4))

@@ -25,6 +25,7 @@ from r3d.objects import object_error as error
 from r3d import fitted_variant, mesh_bundle, bake_fidelity
 from r3d import appearance_simplify
 from r3d.fit import copies
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 try:
     import torch
@@ -64,6 +65,7 @@ class AlphaConsumerTests(unittest.TestCase):
             reference_buffers(self.source, carved, [matrix], [(4, 4)], 'cpu')
             renderer.assert_called_once()
 
+    @needs_llvm
     def test_instances_figure_queries_through_alpha_holes(self):
         job = NS(settings=NS(alpha_keep=KEEP_ALPHA), object=NS(matrix=np.eye(3), position=np.zeros(3), name='mesh'))
         camera = NS(name='view', component=NS(path=NS(animation=None, node=None),
@@ -99,6 +101,7 @@ class AlphaConsumerTests(unittest.TestCase):
         self.assertEqual(len(self.source.tri_v), 4)
         self.assertIsInstance(self.source.alpha_test, AlphaTest)
 
+    @needs_llvm
     def test_held_out_error_assigns_parts_through_alpha_holes(self):
         source = self.source
         job = NS(settings=NS(alpha_keep=KEEP_ALPHA, double_sided=[]), asset_name='mesh', bake=None, object=NS(name='mesh'))

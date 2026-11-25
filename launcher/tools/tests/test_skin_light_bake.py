@@ -22,6 +22,7 @@ from tests.soup import Open, sun
 from anim import track_host
 from build import packages
 from build.c_header import read_define
+from tests.r3d_env import needs_llvm  # noqa: E402
 SKIN_OWNER = TOOLS.parent / "main/render/r3d_skin_format.h"
 NORMAL_SCALE = read_define(SKIN_OWNER, "R3D_SKIN_NORMAL_SCALE")
 
@@ -33,6 +34,7 @@ class PatchEquality(unittest.TestCase):
         albedo = albedo_from_uv(None, kd, uv, None)
         np.testing.assert_allclose(albedo, np.tile(kd ** LIGHT_GAMMA, (len(uv), 1)))
 
+    @needs_llvm
     def test_surface_light_mode_preserves_baked_bytes_and_omits_realtime(self):
         from r3d.light import light
         from r3d.import_settings import LIGHT_MODES, LIGHT_MODE_BAKED, load_light
@@ -48,6 +50,7 @@ class PatchEquality(unittest.TestCase):
             expected = baseline if mode == LIGHT_MODE_BAKED else np.zeros_like(baseline)
             self.assertEqual(got.tobytes(), expected.tobytes())
 
+    @needs_llvm
     def test_baked_patch_matches_runtime_per_vertex_bytes(self):
         compiler = track_host.compiler()
         if sys.platform == "win32":

@@ -17,6 +17,7 @@ from r3d import import_settings
 from r3d.simplify import Allocation, simplify
 from r3d.objects.object_error import nearest_source
 from soup import Open, edge_counts, sphere, split_sphere, subdivided
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 @contextmanager
@@ -251,6 +252,7 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[3], 2)
         np.testing.assert_array_equal(run.call_args.kwargs['vertex_lock'], [True, True, True, True, False, False])
 
+    @needs_llvm
     def test_shared_bake_uses_albedo_then_placed_light(self):
         from r3d import mesh_import
         p, t = sphere(9)

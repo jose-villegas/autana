@@ -11,6 +11,7 @@ from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
 from r3d.mesh_source import with_triangles
 from r3d.texture import texture_asset, uv_transfer
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class PageTests(unittest.TestCase):
@@ -95,6 +96,7 @@ class PageTests(unittest.TestCase):
 
 
 class CardSamplingTests(unittest.TestCase):
+    @needs_llvm
     def test_a_wall_hides_samples_but_a_cut_texel_passes_them(self):
         import tempfile
         from r3d.cards.choose import probe_weights, VISIBILITY_MARGIN
@@ -115,6 +117,7 @@ class CardSamplingTests(unittest.TestCase):
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
 
+    @needs_llvm
     def test_slab_rejects_hits_outside_epsilon(self):
         from r3d.cards import CARD_EPSILON
         from r3d.cards.bake import bake_pixels

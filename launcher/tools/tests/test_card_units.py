@@ -28,6 +28,7 @@ from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
 from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 # A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
@@ -39,6 +40,7 @@ class SharedOwnerTests(unittest.TestCase):
         self.source = NS(p=np.eye(3), tri_v=np.array([[0, 1, 2]]), tri_t=np.array([[0, 1, 2]]),
                          tri_m=np.array([0]), names=['leaf'], textures=[None], uv=np.zeros((3, 2)))
 
+    @needs_llvm
     def test_rgba_samples_opaque_colour_too(self):
         texture = NS(levels=[np.tile([0.2, 0.3, 0.4, 1.0], (1, 1, 1))])
         source = self.source
@@ -59,6 +61,7 @@ class SharedOwnerTests(unittest.TestCase):
             emit.carded(source, settings, None)
         self.assertEqual(query.call_count, 1)
 
+    @needs_llvm
     def test_camera_filter_combines_hidden_and_alpha(self):
         # Triangle 0 is hidden, triangle 1 is on a fully cut texel, triangle 2 is opaque.
         cut, opaque = (NS(levels=[np.full((1, 1, 4), alpha)]) for alpha in (0.0, 1.0))
@@ -88,6 +91,7 @@ class SharedOwnerTests(unittest.TestCase):
         self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
 
+    @needs_llvm
     def test_reference_sets_accept_materials_once(self):
         source = self.source
         job = NS(settings=NS(cards=NS(), alpha_keep=.5))
@@ -141,6 +145,7 @@ class CardContractTests(unittest.TestCase):
         for count in range(5):
             self.assertEqual(bool(mip[divmod(count, 4)]), count >= MASK1_MIP_KEPT)
 
+    @needs_llvm
     def test_probe_weights_visibility_distance_lens_and_accumulation(self):
         points = np.array([[0., 0., 0.], [0., 0., -5.], [12., 0., 0.]])
         weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
@@ -184,6 +189,7 @@ class CardContractTests(unittest.TestCase):
         self.assertEqual(len(rects), len(pieces))
         self.assertTrue(pages)
 
+    @needs_llvm
     def test_settings_epsilon_reaches_baked_slab(self):
         p = np.array([[-3., -3., -2.], [3., -3., -2.], [-3., 3., -2.], [3., 3., -2.]])
         t = np.array([[0, 1, 2], [2, 1, 3]])
@@ -199,6 +205,7 @@ class CardContractTests(unittest.TestCase):
                 self.assertEqual(shape is not None, kept)
                 self.assertEqual(report['cards'] > 0, kept)
 
+    @needs_llvm
     def test_candidates_count_the_surface_alpha_cuts_not_mean_alpha_per_triangle(self):
         # A quad whose texture is cut in thin stripes: each triangle's mean alpha is at least keep_alpha,
         # so only the samples the alpha test cuts tell a tight-cut leaf from a hedge.
