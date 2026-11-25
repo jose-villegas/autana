@@ -113,7 +113,8 @@ def back_albedo(points, normals, front, far_query, far_corners, reach, albedo_at
         hit, distance, tri = far_query.first_hits(points, -normals)
         hit &= distance <= reach
     at = np.array(points, dtype=np.float64, copy=True)
-    at[hit] -= normals[hit] * distance[hit, None]
+    if hit.any():
+        at[hit] -= normals[hit] * distance[hit, None]
     missed = np.flatnonzero(~hit)
     if len(missed):
         rows, bary, gap = nearest_triangles(points[missed], triangle_search(far_corners))
