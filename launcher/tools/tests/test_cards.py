@@ -200,33 +200,52 @@ class CardTests(unittest.TestCase):
         settings, src = self.import_fixture()
         settings.cards.always = ['leaf']
         settings.meshes = [dict(match=dict(material='leaf'))]
-        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
+        with self.assertRaisesRegex(SettingsError, 'carved by an objects.meshes rule'):
             candidates(src, settings)
         settings.meshes = []
         settings.thin = SimpleNamespace(material='leaf', keep=.5)
         self.assertEqual(candidates(src, settings), [(src.names.index('leaf'), None)])
 
     def test_cards_override_the_thin_rule(self):
-        """A thinned material is a card candidate: accepted, its faces leave before thinning, so the thin rule
-        finds none of them; rejected, it stays geometry and is thinned at the rule's keep."""
+        """A thinned material is a card candidate: accepted, none of its faces reach the baked geometry; rejected,
+        it bakes exactly as the thin rule alone bakes it, which differs from no rule at all."""
         from r3d.cards import CARD_COVERED_MIN, decide
         from r3d.import_settings import albedo_jobs
         settings, src = self.import_fixture()
         leaf = src.names.index('leaf')
-        settings.thin = SimpleNamespace(material='leaf', keep=.5)
-        for floor, accepted in ((CARD_COVERED_MIN, True), (1 + CARD_COVERED_MIN, False)):
-            with self.subTest(accepted=accepted), patch.object(decide, 'CARD_COVERED_MIN', floor), \
-                    patch.object(mesh_import, 'thin_choice', wraps=mesh_import.thin_choice) as choice:
+
+        def leaf_corners(floor=CARD_COVERED_MIN, thin=True, never=()):
+            settings.thin = SimpleNamespace(material='leaf', keep=.25) if thin else None
+            settings.cards.never = list(never)
+            with patch.object(decide, 'CARD_COVERED_MIN', floor):
                 geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
-                self.assertEqual(geometry.mesh_report['cards']['leaf']['accepted'], accepted)
-                self.assertEqual([shape['name'] for shape in geometry.shapes], ['leaf'] if accepted else [])
-                tri_m = choice.call_args.args[2]
-                keep, _ = mesh_import.thin_choice(*choice.call_args.args)
-                thinned = keep[tri_m == leaf]
-                if accepted:
-                    self.assertEqual(len(thinned), 0, "the thin rule finds no face of a carded material")
-                else:
-                    self.assertTrue(len(thinned) and (thinned == .5).all(), "a rejected material is thinned")
+            corners = geometry.positions[geometry.tris[geometry.tri_mat == leaf]].reshape(-1, 3)
+            return geometry, np.round(corners[np.lexsort(corners.T)], 6)
+
+        geometry, corners = leaf_corners()
+        self.assertTrue(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertEqual([shape['name'] for shape in geometry.shapes], ['leaf'])
+        self.assertEqual(len(corners), 0, "an accepted material leaves no face for the thin rule")
+        geometry, rejected = leaf_corners(floor=1 + CARD_COVERED_MIN)
+        self.assertFalse(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertFalse(geometry.shapes)
+        np.testing.assert_array_equal(rejected, leaf_corners(never=['leaf'])[1])
+        unthinned = leaf_corners(floor=1 + CARD_COVERED_MIN, thin=False)[1]
+        self.assertFalse(rejected.shape == unthinned.shape and np.array_equal(rejected, unthinned),
+                         "a rejected material is thinned")
+
+    def test_a_carved_and_thinned_material_is_not_a_candidate(self):
+        from r3d.cards.decide import candidates
+        settings, src = self.import_fixture()
+        settings.thin = SimpleNamespace(material='leaf', keep=.5)
+        settings.meshes = [dict(match=dict(material='leaf'))]
+        self.assertEqual(candidates(src, settings), [])
+
+    def test_sponza_leaves_are_thinned_but_carved_by_no_rule(self):
+        from r3d.import_settings import load_import_settings
+        settings = load_import_settings(pathlib.Path(__file__).resolve().parents[2] / 'demo/sponza/sponza.import.toml')
+        self.assertEqual((settings.thin.material, settings.thin.keep), ('leaf', .35))
+        self.assertFalse([rule for rule in settings.meshes if rule['match'].get('material') == 'leaf'])
 
     def test_camera_hidden_is_exactly_accepted_materials(self):
         from r3d.cards import CARD_COVERED_MIN, decide

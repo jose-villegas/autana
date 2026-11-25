@@ -18,7 +18,7 @@ def see_through_share(src, ids, keep_alpha, seed):
 def candidates(src, settings):
     """(material, see-through share) for each material the cards may replace: one with a cut-out texture, not
     carved by an objects.meshes rule, see-through enough (`see_through_share`); or named by `always`, its share
-    None. The thin rule's material is a candidate too: accepted, its faces leave before thinning."""
+    None."""
     cards = settings.cards
     unknown = sorted((set(cards.never) | set(cards.always)) - set(src.names))
     if unknown:
@@ -33,7 +33,7 @@ def candidates(src, settings):
         drawn_apart = any(obj in rules for obj in src.tri_o[ids])
         if name in cards.always:
             if drawn_apart:
-                raise SettingsError(f"material {name} is drawn by cards")
+                raise SettingsError(f"material {name} is carved by an objects.meshes rule")
             out.append((material, None))
         elif not drawn_apart and tested[material]:
             share = see_through_share(src, ids, settings.alpha_keep, settings.seed)

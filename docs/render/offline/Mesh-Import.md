@@ -195,7 +195,7 @@ material becomes a double-sided shape with vertex colours,
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved materials are excluded; the `thin` rule's material is a candidate, and accepted, it leaves before thinning. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Materials carved by an `objects.meshes` rule are not candidates; a `thin` rule does not exclude its material, and one the card baker rejects or `never` names is left to [thin](#thin). |
 | Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
 | Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved material, unknown names, or overlapping overrides is an error. |
@@ -261,8 +261,8 @@ It is for material whose geometry occupies more of the budget than it shows; `pr
 With `simplify` on, thin also runs without a rule on foliage: any object holding at least
 `AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
 Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
-of the mesh pays the budget. Materials drawn as cards are not thinned, so a `thin` rule is the fallback for a material
-the card baker rejects; carved meshes keep their own per-shape thinning.
+of the mesh pays the budget. A material the card baker accepts never reaches thin, so a `thin` rule on it takes effect
+only when the baker rejects it or `cards.never` names it; carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 
