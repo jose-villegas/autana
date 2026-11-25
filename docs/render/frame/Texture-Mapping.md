@@ -71,9 +71,11 @@ level of the colormap, within one just noticeable
 difference<sup>[[144]](../../Citations.md#w3c-css-color-4)</sup> of the
 pattern's mean, as OKLab measures it (`R3D_TEXTURE_FLAT_JND`). The flat fill
 draws that mean. Each light level counts because the colormap scales the
-tint up to the vertex light, so a dark tint's contrast still shows. There is no
-setting: a texture whose coarse levels still show their pattern keeps
-them textured, and MASK1 has no flat level.
+tint up to the vertex light, so a dark tint's contrast still shows.
+
+There is no setting. A texture whose coarse levels still show their pattern
+draws flat from `R3D_TEXTURE_FLAT_LEVEL_MAX` at the latest, and MASK1 has no
+flat level.
 
 From its flat level on the pattern is gone and the colour is the same:
 

@@ -136,6 +136,7 @@ flat_level_of(const r3d_texture_t* t, const uint8_t* palette, const uint8_t tint
     if (t->format != R3D_TEXTURE_INDEX4 || flat_levels == 0) {
         return (uint8_t)level;
     }
+    level = mathi_min(level, R3D_TEXTURE_FLAT_LEVEL_MAX);
     flat_judge_t judge_of;
     flat_judge_init(&judge_of, palette, tint);
     while (level > 0 && all_like_the_mean(&judge_of, colours_used(t, level - 1))) {

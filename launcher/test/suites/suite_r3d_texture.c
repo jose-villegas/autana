@@ -589,6 +589,37 @@ test_the_flat_tunable_at_0_opens_no_flat_level(void) {
     TEST_ASSERT_EQUAL_UINT8(LEVEL_2, texture->flat_level);
 }
 
+/* A texture of more levels than R3D_TEXTURE_FLAT_LEVEL_MAX, each a
+ * checkerboard of black and white: no level is like its mean. */
+#define CAPPED_LOG2   (R3D_TEXTURE_FLAT_LEVEL_MAX + 2)
+#define CAPPED_LEVELS CAPPED_LOG2 /* from 1 << CAPPED_LOG2 down to 2 texels a side */
+
+/* A texture unlike its mean at every level opens flat from
+ * R3D_TEXTURE_FLAT_LEVEL_MAX, and texture.flat_levels 0 still opens it with
+ * none. */
+static void
+test_a_texture_unlike_its_mean_at_every_level_opens_flat_from_the_cap(void) {
+    fixture();
+    suite_set_test_cleanup(reset_flat_tunable);
+    size_t bytes = TEXELS_OFF;
+    for (int l = 0; l < CAPPED_LEVELS; l++) {
+        bytes += (size_t)(1 << (2 * (CAPPED_LOG2 - l))) / R3D_TEXTURE_INDEX4_PER_BYTE;
+    }
+    uint8_t* capped = calloc(bytes, 1);
+    TEST_ASSERT_NOT_NULL(capped);
+    memcpy(capped, ltex, TEXELS_OFF);
+    capped[R3D_TEXTURE_AT_SIZE_LOG2] = CAPPED_LOG2;
+    capped[R3D_TEXTURE_AT_LEVELS] = CAPPED_LEVELS;
+    memset(capped + TEXELS_OFF, TEXEL_PAIR(WHITE_INDEX, 0), bytes - TEXELS_OFF);
+    const asset_view_t view = {capped, bytes};
+    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, texture));
+    TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_FLAT_LEVEL_MAX, texture->flat_level);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(texture, flat_levels), 0));
+    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, texture));
+    TEST_ASSERT_EQUAL_UINT8(CAPPED_LEVELS, texture->flat_level);
+    free(capped);
+}
+
 #define MASK_LOG2          4
 #define MASK_SIDE          (1 << MASK_LOG2)
 #define MASK_X_STEP        5 /* texel (x, y) is kept when (5x + 3y) % 7 < 4: unlike its transpose */
@@ -2871,6 +2902,7 @@ run_r3d_texture_suite(void) {
     RUN_TEST(test_a_colour_is_judged_as_the_colormap_draws_it);
     RUN_TEST(test_the_flat_distance_is_the_jnd);
     RUN_TEST(test_the_flat_tunable_at_0_opens_no_flat_level);
+    RUN_TEST(test_a_texture_unlike_its_mean_at_every_level_opens_flat_from_the_cap);
     RUN_TEST(test_a_flat_level_draws_in_its_corners_mean);
     RUN_TEST(test_a_flat_level_under_skip_hidden_is_capped);
     RUN_TEST(test_a_level_before_the_flat_level_reads_its_texels);
