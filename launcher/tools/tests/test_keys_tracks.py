@@ -175,7 +175,7 @@ def test_track_field_discovery():
             assert entries, table
             expected.update({(tags[tag], field): (names.index(kind), bool(step))
                              for step, field, kind in entries})
-    assert expected
+    assert any(step for _, step in expected.values())
     assert scene_fields.fields() == expected
 
 
@@ -462,3 +462,119 @@ def test_cubic_position_offset_defaults_and_tangents():
     assert translated["values"] == [(1, 0, 0), (5, 7, 9), (0, 1, 0)]
     with pytest.raises(ValueError, match=r"prop.near_z key 0.*offset"):
         decoded_curve("near_z", "step", [dict(t=0, v=1)], offset={})
+
+
+BLOCK_TRACK = dict(object="rig", field="clip", blocks=[
+    dict(t=0, clip="idle"), dict(t=0.4, clip="walk", speed=1.25, blend=250),
+    dict(t=0.6, clip="gallop", blend=300),
+])
+
+
+@pytest.mark.parametrize("hash_value", [0, 1, 0xffff, 0x10000, 0xffffffff])
+def test_name_key_round_trip(hash_value):
+    assert scene_fields.decode_name(scene_fields.encode_name(hash_value)) == hash_value
+
+
+@pytest.mark.parametrize("extra", [[], [dict(object="rig", field="speed", interp="step", keys=[dict(t=0.5, v=2)])]])
+def test_clip_blocks_expand_and_merge(extra):
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1, tracks=[BLOCK_TRACK, *extra])))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    decoded, _ = tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))
+    clip, speed, blend = decoded
+    assert [t["field"] for t in decoded] == ["clip", "speed", "blend_ms"]
+    assert all(t["interpolation"] == "STEP" for t in decoded)
+    assert [scene_fields.decode_name(v) for v in clip["values"]] == [
+        keys_file.name_hash(name) for name in ("idle", "walk", "gallop")]
+    assert speed["times"] == pytest.approx([0, 0.4, 0.5, 0.6] if extra else [0, 0.4, 0.6])
+    assert speed["values"] == ([(1,), (1.25,), (2,), (1,)] if extra else [(1,), (1.25,), (1,)])
+    assert blend["values"] == [(0,), (250,), (300,)]
+
+
+@pytest.mark.parametrize("tracks, message", [
+    ([BLOCK_TRACK, dict(object="rig", field="speed", interp="step", keys=[dict(t=0.4, v=2)])], "duplicate"),
+    ([dict(object="rig", field="speed", interp="linear", keys=[dict(t=0, v=2)])], "step"),
+    ([dict(object="rig", field="clip", interp="step", keys=[dict(t=0, v=1)])], "name"),
+    ([dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle", speed=-1)])], "speed"),
+    ([dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle", blend=-1)])], "blend"),
+])
+def test_bad_clip_blocks(tracks, message):
+    with pytest.raises(ValueError, match=message):
+        keys_file.build(dict(animation="path", tracks=tracks))
+
+
+@pytest.mark.parametrize("blocks", [
+    [dict(t=0, clip="idle", speed=0)],
+    [dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)],
+    [dict(t=0, clip="idle"), dict(t=1, clip="idle")],
+])
+def test_block_only_duration_keeps_the_last_block(blocks, tmp_path):
+    values = dict(animation="path", duration=1.5, tracks=[dict(BLOCK_TRACK, blocks=blocks)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(values))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    decoded, stored_duration = tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))
+    assert stored_duration == 1500
+    assert decoded[0]["times"] == [block["t"] for block in blocks]
+
+    if len(blocks) == 2 and blocks[-1]["clip"] == "walk" and has_compiler():
+        clip = clip_of(tmp_path, """
+animation = "path"
+duration = 1.5
+[[tracks]]
+object = "rig"
+field = "clip"
+blocks = [{t = 0, clip = "idle"}, {t = 1, clip = "walk", blend = 250}]
+""")
+        args = ["--from", 1000, "--every", 499, "--until", 2000]
+        for mode, last in (([], "idle"), (["--clamp"], "walk")):
+            output = track_host.sample(clip, args + mode)
+            names = [scene_fields.decode_name(tuple(map(float, hi_lo)))
+                     for _, field, *hi_lo in map(str.split, output.splitlines()) if field == "rig:ANMR.clip"]
+            assert names == [keys_file.name_hash(name) for name in ("walk", "walk", last)]
+
+
+@pytest.mark.parametrize("duration, blocks, message", [
+    (None, [dict(t=0, clip="idle")], "duration"),
+    (1, [dict(t=0, clip="idle"), dict(t=1, clip="walk")], "duration"),
+    (1.1, [dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)], "blend"),
+    (2, [dict(t=0, clip="idle", blend=250)], "first block"),
+    (2, [dict(t=0, clip="idle"), dict(t=0, clip="walk")], "strictly"),
+    (2, [dict(t=0, clip="idle"), dict(t=1, clip="walk"), dict(t=0.5, clip="idle")], "strictly"),
+    (2, [dict(t=0, clip="")], "nonempty name"),
+])
+def test_block_only_duration_validation(duration, blocks, message):
+    values = dict(animation="path", tracks=[dict(BLOCK_TRACK, blocks=blocks)])
+    if duration is not None:
+        values["duration"] = duration
+    with pytest.raises(ValueError, match=message):
+        keys_file.build(values)
+
+
+@pytest.mark.parametrize("track", [
+    dict(BLOCK_TRACK, blocks=[dict(t=0.9996, clip="idle"), dict(t=1.0004, clip="walk")]),
+    dict(object="rig", field="speed", interp="step", keys=[dict(t=0.9996, v=1), dict(t=1.0004, v=2)]),
+    dict(object="rig", field="speed", interp="step", keys=[dict(t=0.4004, v=2)]),
+])
+def test_keys_refuse_times_in_the_same_millisecond(track):
+    tracks = [BLOCK_TRACK, track] if track["field"] == "speed" and len(track["keys"]) == 1 else [track]
+    with pytest.raises(ValueError, match=rf"rig.*\.{track['field']}.*millisecond"):
+        keys_file.build(dict(animation="path", duration=2, tracks=tracks))
+
+
+def test_half_millisecond_duration_matches_the_final_key():
+    track = dict(object="rig", field="near_z", interp="step", keys=[dict(t=0, v=1), dict(t=1.0025, v=2)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1.0025, tracks=[track])))
+    tracks, duration, root, ground = tracks_asset.clip_tracks(doc, binary, doc["animations"][0])
+    assert tracks_asset.decode(tracks_asset.encode(tracks, duration, root, ground))[1] == 1003
+
+
+@pytest.mark.parametrize("end, message", [(None, "block must start"), (1100, "blend ends")])
+def test_glb_import_checks_block_timing(end, message):
+    track = dict(BLOCK_TRACK, blocks=[dict(t=0, clip="idle"), dict(t=1, clip="walk", blend=250)])
+    doc, binary = gltf_read.parse_glb(keys_file.build(dict(animation="path", duration=1.5, tracks=[track])))
+    animation = doc["animations"][0]
+    if end is None:
+        animation.pop("extras")
+    else:
+        animation["extras"][tracks_asset.DURATION_EXTRA] = end
+    with pytest.raises(ValueError, match=rf"rig:ANMR\..*{message}"):
+        tracks_asset.clip_tracks(doc, binary, animation)

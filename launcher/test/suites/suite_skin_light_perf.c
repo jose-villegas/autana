@@ -139,7 +139,7 @@ fixture(int lights) {
     f->pack = asset_store_loaded(f->load);
     TEST_ASSERT_NOT_NULL_MESSAGE(f->pack, "skin_light_perf: capybara pack missing; flash demo assets");
     open_model(f->pack, &f->skeleton, &f->skin, &f->bind);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_from_pack(f->pack, CLIP_ID, &f->clip),
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, anim_tracks_from_pack(f->pack, CLIP_ID, &f->clip, NULL),
                                   "skin_light_perf: gallop clip missing");
     TEST_ASSERT_EQUAL_INT(f->skeleton.joint_count, f->skin.joint_count);
     TEST_ASSERT_EQUAL_INT(f->bind.vertex_count, f->skin.vertex_count);

@@ -70,7 +70,8 @@ Other clips use `SCENE` and paths name scene nodes.
 
 A **clip** is the tracks of one animation, on one timeline as in glTF: a
 track's key times are clip seconds, so tracks that start or end at different
-times stay in step, and the clip's duration is the last key of any of them.
+times stay in step. A clip ends at the last key unless its keys file sets
+an explicit duration.
 
 ## The pack entry
 
@@ -111,7 +112,7 @@ static bool
 track_example_start(track_example_t* s, const asset_pack_t* pack) {
     const name_hash_t camera = name_hash("camera");
     const name_hash_t position = name_hash("position");
-    if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
+    if (anim_tracks_from_pack(pack, "probe", &s->clip, NULL) != ASSET_OK
         || anim_tracks_find(&s->clip, camera, ANIM_COMPONENT_TRANSFORM, position, &s->move) != ASSET_OK) {
         return false;
     }
@@ -141,7 +142,8 @@ Curves and strings point into the pack, so the pack must outlive them.
 Nothing is allocated, and the sampler normalizes quaternion keys.
 
 `anim_bind()` returns a distinct `anim_bind_status_t` for a missing path,
-component or field, a type mismatch, too little storage and a skeleton root.
+component or field, a type or interpolation mismatch, too little storage
+and a skeleton root.
 Apply only a set that resolved.
 
 Its failed index is -1 on success and for root or storage errors, otherwise
@@ -214,13 +216,58 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 | `offset` on `rotation` | Left-multiply values and tangents by the offset rotation. |
 
 [`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
-component tags and `ANIM_FIELD` tables from C. An omitted offset member
-defaults to zero position or identity rotation.
+component tags and field tables from C. A field declared with
+`ANIM_FIELD_STEP` requires `interp = "step"`. Name values are authored
+as strings and use step interpolation.
+
+An omitted offset member defaults to zero position or identity rotation.
 
 Camera shorthand uses `node`, `animation` and `[[keys]]` with `t`,
 `eye` and `look_at`. Translation uses Catmull-Rom<sup>[[20]](../../Citations.md#catmull-1974)</sup>.
 Rotation uses short-way quaternion interpolation with +Y up. Repeat the
 first key at the end to close the loop.
+
+#### Clip blocks
+
+A timeline's `clip` track can use `blocks` for a skinned object's animator.
+Each block starts at `t` seconds and names an entry in the animator's
+`clips` list.
+
+```toml
+animation = "performance"
+duration = 10
+
+[[tracks]]
+object = "subject"
+field = "clip"
+blocks = [
+    { t = 0, clip = "idle" },
+    { t = 6.5, clip = "glance", speed = 1, blend = 250 },
+    { t = 8, clip = "walk", speed = 1.15, blend = 300 },
+]
+
+[[tracks]]
+object = "subject"
+field = "speed"
+interp = "step"
+keys = [{ t = 9, v = 1.25 }]
+```
+
+Each block adds a step key to `ANMR.clip`, `ANMR.speed` and
+`ANMR.blend_ms`. The defaults are speed 1 and a blend of 0 ms. An extra
+step speed track can key between block starts. Duplicate speed times fail.
+Block times resolve to the nearest millisecond. The first block starts
+without a blend.
+
+`duration` is the clip end in seconds and applies to every track. A block-only
+clip requires it. Each block must start before that end and finish blending
+by it. Other keys files can omit it to end at the last track key.
+
+Block blending re-samples the preceding block. Runtime `anim_layer_play()`
+freezes the shown pose when interrupted.
+
+See the [scene animator](../scene/Scene-Files.md#animator) for how block time
+and blends are sampled.
 
 ### Exported animations
 
@@ -270,10 +317,10 @@ pieces make that work:
    field, and the value types must match. `anim_bind_field()` does those last
    two steps for a caller that finds the object some other way. Resolution is
    the only place names are compared; the result is a pointer to the field.
-3. **Failure.** An unknown path, component or field, or a type mismatch,
-   returns its own `anim_bind_status_t` with the binding's index, and the
-   caller fails the load, naming the binding with `anim_binding_describe()`.
-   Nothing is skipped.
+3. **Failure.** Unknown paths, components and fields and mismatched types
+   and interpolation modes each have an `anim_bind_status_t`. The caller
+   uses the returned index to name the failed binding with
+   `anim_binding_describe()`.
 
 Each frame, `anim_apply()` then samples every resolved curve straight into
 its field.

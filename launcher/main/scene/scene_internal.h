@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <limits.h>
+
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
 #include "asset/asset_store.h"
@@ -124,11 +126,65 @@ typedef struct {
     anim_bound_t* fields;
 } scene_animator_clip_t;
 
+enum {
+    ANIMATOR_FIELD_CLIP,
+    ANIMATOR_FIELD_SPEED,
+    ANIMATOR_FIELD_BLEND_MS,
+    ANIMATOR_FIELD_COUNT,
+};
+
+extern const anim_component_fields_t ANIMATOR_FIELDS;
+
+#define SCENE_COMPONENT_LIST(X)                                                                                        \
+    X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
+    X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
+    X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)
+
+#define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
+
+enum { SCENE_COMPONENT_LIST(SCENE_COMPONENT_ID) SCENE_COMPONENT_COUNT };
+
+#define SCENE_COMPONENT_RANGE(name, table, count, prior)                                                               \
+    SCENE_FIELD_BASE_##name = SCENE_FIELD_END_##prior, SCENE_FIELD_END_##name = SCENE_FIELD_BASE_##name + count,
+
+enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
+
+typedef uint16_t scene_field_mask_t;
+
+_Static_assert(SCENE_FIELD_BASE_ANIMATOR + ANIMATOR_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+               "scene animation fields fit in the claim mask");
+
+static inline scene_field_mask_t
+scene_field_bit(int component, int field) {
+#define SCENE_COMPONENT_BIT(name, table, count, prior)                                                                 \
+    case SCENE_COMPONENT_##name: return (scene_field_mask_t)(1U << (SCENE_FIELD_BASE_##name + field));
+    switch (component) {
+        SCENE_COMPONENT_LIST(SCENE_COMPONENT_BIT)
+        default: return 0;
+    }
+}
+
+typedef struct {
+    anim_blocks_t blocks;
+    scene_row_t entity;
+} scene_timeline_driver_t;
+
+typedef struct {
+    int drivers;
+    size_t clip_keys, time_keys;
+    uint32_t* times_ms;
+    uint8_t* slots;
+} scene_timeline_blocks_t;
+
 /* Separate from property animators so the scene root has one shared clock. */
 typedef struct {
     anim_tracks_t tracks;
     anim_playhead_t clock;
     uint32_t applied_ms;
+    int field_count, driver_count;
+    scene_timeline_driver_t* drivers;
+    const uint32_t* times_ms;
+    const uint8_t* slots;
     bool dirty;
     anim_bound_t fields[];
 } scene_timeline_t;
@@ -139,8 +195,6 @@ typedef struct {
     void* block; /* Owns targets and their component references. */
     int count;
 } scene_anim_targets_t;
-
-typedef uint16_t scene_field_mask_t;
 
 typedef struct {
     const scene_asset_t* asset;
@@ -158,12 +212,13 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
-    float drawn_radius_px; /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
-    uint32_t owed_ms;      /* skipped time is charged at the next pose, before playback controls change */
-    uint32_t phase;        /* stable slot spreads copies' poses across frames */
-    int interval;          /* zero selects the first tier without a hysteresis history */
-    int tier;              /* retained inside the boundary band to avoid rate flicker */
-    bool dirty, posed;
+    float drawn_radius_px;    /* last draw's size when due; cleared each step so undrawn scenes use the far tier */
+    uint32_t owed_ms;         /* skipped time is charged at the next pose, before playback controls change */
+    uint32_t phase;           /* stable slot spreads copies' poses across frames */
+    int interval;             /* zero selects the first tier without a hysteresis history */
+    int tier;                 /* retained inside the boundary band to avoid rate flicker */
+    uint16_t timeline_driver; /* One-based index in the scene timeline. */
+    bool dirty, posed, timeline_pose_pending;
 } scene_animator_t;
 
 typedef struct {
@@ -367,6 +422,9 @@ void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, in
 asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out);
 bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
                               int count, bool replace, scene_failure_t* why);
+scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_anim_targets_t* targets,
+                                       const scene_field_mask_t* writes, const anim_tracks_t* timeline,
+                                       scene_timeline_blocks_t* blocks);
 scene_failure_t scene_timeline_bind(scene_t* scene);
 void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
@@ -380,8 +438,8 @@ void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
 /* Whether `a` picks its pose tier, and so needs its drawn size, at the next
  * step: on the frames its current tier poses it, or before it has a tier. */
 static inline bool
-scene_animator_due(const scene_t* scene, const scene_animator_t* a) {
-    return a->interval == 0 || (scene->animation_frame + a->phase) % (uint32_t)a->interval == 0;
+scene_animator_due(uint32_t frame, const scene_animator_t* a) {
+    return a->interval == 0 || (frame + a->phase) % (uint32_t)a->interval == 0;
 }
 
 /* Animates staged[first, first + count). */
@@ -414,6 +472,7 @@ bool scene_lights_allocate(scene_t* scene);
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
+scene_failure_t scene_binding_failure(asset_status_t status, const anim_binding_t* binding);
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
 /* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
  * is not drawn, and scene_failure() names it, until scene_unstarve() as it

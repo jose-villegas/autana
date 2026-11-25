@@ -213,8 +213,42 @@ test_a_track_of_any_width_fills_that_many_values(void) {
     }
 }
 
+static void
+test_key_at_includes_exact_keys(void) {
+    const float times[] = {0.25F, 0.5F, 1.0F};
+    const anim_track_t track = {.times = times, .count = sizeof times / sizeof *times};
+    const anim_track_t empty = {0};
+    const anim_track_t single = {.times = times, .count = 1};
+    TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&empty, 0.0F));
+    TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&single, 0.0F));
+    TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&single, times[0]));
+    TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&single, times[2]));
+    TEST_ASSERT_EQUAL_INT(-1, anim_track_key_at(&track, 0.0F));
+    TEST_ASSERT_EQUAL_INT(0, anim_track_key_at(&track, times[0]));
+    TEST_ASSERT_EQUAL_INT(1, anim_track_key_at(&track, 0.75F));
+    TEST_ASSERT_EQUAL_INT(2, anim_track_key_at(&track, times[2]));
+    TEST_ASSERT_EQUAL_INT(2, anim_track_key_at(&track, 2.0F));
+}
+
+static void
+test_name_key_round_trip(void) {
+    const name_hash_t hashes[] = {0, 1, UINT16_MAX, (name_hash_t)UINT16_MAX + 1, UINT32_MAX};
+    for (size_t i = 0; i < sizeof hashes / sizeof *hashes; i++) {
+        float parts[ANIM_NAME_WIDTH];
+        anim_name_encode(hashes[i], parts);
+        name_hash_t decoded;
+        TEST_ASSERT_TRUE(anim_name_decode(parts, &decoded));
+        TEST_ASSERT_EQUAL_UINT32(hashes[i], decoded);
+    }
+    const float invalid[ANIM_NAME_WIDTH] = {1.5F, 0};
+    name_hash_t decoded;
+    TEST_ASSERT_FALSE(anim_name_decode(invalid, &decoded));
+}
+
 void
 suite_anim_track(void) {
+    RUN_TEST(test_key_at_includes_exact_keys);
+    RUN_TEST(test_name_key_round_trip);
     RUN_TEST(test_a_linear_track_lerps_between_its_keys);
     RUN_TEST(test_a_step_track_holds_a_value_until_the_next_key);
     RUN_TEST(test_a_clamped_track_holds_its_ends);

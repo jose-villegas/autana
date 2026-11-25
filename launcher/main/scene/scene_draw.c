@@ -217,7 +217,7 @@ fill_scene(scene_t* scene, size_measure_t* measure, int* count, int* batches) {
             continue;
         }
         scene_animator_t* a = &scene->animators[r->entity];
-        if (scene->skinned_renderers[r->entity].bound && scene_animator_due(scene, a)) {
+        if (scene->skinned_renderers[r->entity].bound && scene_animator_due(scene->animation_frame, a)) {
             a->drawn_radius_px = drawn_radius(r->world_bounds, measure);
         }
         const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};

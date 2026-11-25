@@ -13,7 +13,7 @@ static bool
 track_example_start(track_example_t* s, const asset_pack_t* pack) {
     const name_hash_t camera = name_hash("camera");
     const name_hash_t position = name_hash("position");
-    if (anim_tracks_from_pack(pack, "probe", &s->clip) != ASSET_OK
+    if (anim_tracks_from_pack(pack, "probe", &s->clip, NULL) != ASSET_OK
         || anim_tracks_find(&s->clip, camera, ANIM_COMPONENT_TRANSFORM, position, &s->move) != ASSET_OK) {
         return false;
     }

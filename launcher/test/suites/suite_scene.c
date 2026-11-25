@@ -250,9 +250,10 @@ typedef struct {
     vec3f_t ambient;
     float intensity;
     float tonemap_white;
+    bool timeline_clips;
 } skin_fixture_options_t;
 
-static const skin_fixture_options_t SKIN_OPTIONS = {R3D_SKIN_LIGHT_DIRECT, 0, {0.25F, 0.5F, 0.75F}, 0.3F, 0.4F};
+static const skin_fixture_options_t SKIN_OPTIONS = {R3D_SKIN_LIGHT_DIRECT, 0, {0.25F, 0.5F, 0.75F}, 0.3F, 0.4F, false};
 
 static const scene_spec_t SCENES[] = {
     /* a camera, a red quad at the origin and a green one 4 units right */
@@ -546,7 +547,8 @@ put_scene_header(uint8_t* entry, const uint16_t* counts, const size_t* sizes, ui
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
     const uint16_t skins = s->skinned;
-    const uint16_t clips = camera_clip_count(s) + 2 * skins;
+    const int skin_clips = options->timeline_clips ? 3 : 2;
+    const uint16_t clips = camera_clip_count(s) + skin_clips * skins;
     const uint16_t lights = s->lit;
     const uint16_t counts[SCENE_ASSET_PART_COUNT] = {s->entity_count,
                                                      s->entity_count,
@@ -581,14 +583,17 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
     for (uint16_t i = 0; i < skins; i++) {
         const scene_asset_skinned_renderer_t skin = {.entity = i, .mesh = "red", .skin = "rig.quad", .skeleton = "rig"};
         const scene_asset_animator_t animator = {.entity = i,
-                                                 .clip_count = 2,
-                                                 .first_clip = 2 * i,
+                                                 .clip_count = skin_clips,
+                                                 .first_clip = skin_clips * i,
                                                  .default_clip = options->default_clip,
                                                  .wrap = ANIM_CLAMP};
         memcpy(entry + offsets[SCENE_ASSET_SKINS] + sizeof skin * i, &skin, sizeof skin);
         memcpy(entry + offsets[SCENE_ASSET_ANIMATORS] + sizeof animator * i, &animator, sizeof animator);
-        memcpy(entry + offsets[SCENE_ASSET_CLIPS] + ASSET_NAME_MAX * 2 * i, "rig.move", sizeof "rig.move");
-        memcpy(entry + offsets[SCENE_ASSET_CLIPS] + ASSET_NAME_MAX * (2 * i + 1), "rig.back", sizeof "rig.back");
+        static const char TIMELINE_CLIPS[][ASSET_NAME_MAX] = {"idle", "walk", "gallop"};
+        static const char RIG_CLIPS[][ASSET_NAME_MAX] = {"rig.move", "rig.back"};
+        const char (*names)[ASSET_NAME_MAX] = options->timeline_clips ? TIMELINE_CLIPS : RIG_CLIPS;
+        memcpy(entry + offsets[SCENE_ASSET_CLIPS] + ASSET_NAME_MAX * skin_clips * i, names,
+               ASSET_NAME_MAX * skin_clips);
     }
     int clip = 0;
     for (int i = 0; i < s->camera_count; i++) {
@@ -719,24 +724,30 @@ scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, co
                                .camera_count = 1,
                                .entities = {{"red", IDENTITY}, {"camera", CAMERA_AT(0)}},
                                .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
-    const skin_fixture_options_t options = {.default_clip = 0};
-    uint32_t end = scene_entry_size(&spec);
+    const skin_fixture_options_t options = {.default_clip = 0, .timeline_clips = !property};
+    const uint32_t base_size = scene_entry_size(&spec) + (property ? 0 : ASSET_NAME_MAX);
+    uint32_t end = base_size;
     for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
         end += (uint32_t)(counts[part] * sizes[part]);
     }
-    *pack = test_pack_begin(bytes, capacity, RIG_ENTRIES + 5);
+    *pack = test_pack_begin(bytes, capacity, RIG_ENTRIES + 5 + (property ? 0 : 3));
     make_rig_entries(pack, &options);
+    if (!property) {
+        make_rig_clip(pack, "idle", "root", ANIM_ROOT_SKELETON, 0);
+        make_rig_clip(pack, "walk", "root", ANIM_ROOT_SKELETON, RIG_TRAVEL);
+        make_rig_clip(pack, "gallop", "root", ANIM_ROOT_SKELETON, 2 * RIG_TRAVEL);
+    }
     make_quad_entry(test_pack_add(pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0, 1);
     make_clip_entry(test_pack_add(pack, "flight", ANIM_TRACKS_ASSET, FLIGHT_BYTES), ANIM_VALUE_VEC3, 2);
     uint8_t* entry = test_pack_add(pack, spec.id, SCENE_ASSET, end);
     make_scene_entry_with_skin(entry, &spec, &options);
-    uint32_t offset = scene_entry_size(&spec);
+    uint32_t offset = base_size;
     for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
         test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + part * sizeof(uint16_t), counts[part]);
         test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + part * sizeof(uint32_t), offset);
         offset += (uint32_t)(counts[part] * sizes[part]);
     }
-    const uint32_t static_bytes = scene_entry_size(&spec);
+    const uint32_t static_bytes = base_size;
     uint8_t* still = test_pack_add(pack, SCENE_TEST_STATIC_ID, SCENE_ASSET, static_bytes);
     make_scene_entry_with_skin(still, &spec, &options);
     return entry;
@@ -1522,7 +1533,7 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     fixture();
     expect_failure(BAD_SCENE, ASSET_ERR_FORMAT, BAD_SCENE);
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
-    expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
+    expect_failure("test_skewed", ASSET_ERR_FORMAT, ANIM_TARGET_SELF ":TRNS.position");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
     TEST_ASSERT_EQUAL_INT(0, loaded_count());
 }
@@ -4858,7 +4869,7 @@ test_clip_bind_failure_names_the_first_rejected_clip(void) {
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         anim_tracks_t tracks;
         anim_binding_t binding;
-        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(&fx.pack, cases[i].clips[0], &tracks, NULL));
         TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_binding_at(&tracks, 0, &binding));
         memcpy((char*)(uintptr_t)binding.path, cases[i].missing, strlen(cases[i].missing));
         TEST_ASSERT_TRUE(animator_set_clips(entity, cases[i].skeleton, &cases[i].clips[1], 1, NULL));
@@ -5415,7 +5426,7 @@ turned(entity_t entity, int i) {
 /* Steps `scene` until `a` is due: a copy picks its tier only on its due frames. */
 static void
 until_due(scene_t* scene, const scene_animator_t* a) {
-    while (!scene_animator_due(scene, a)) {
+    while (!scene_animator_due(scene->animation_frame, a)) {
         scene_animation_step(scene, ANIM_RATE_DT_MS);
     }
 }
@@ -5636,7 +5647,7 @@ test_a_copy_holds_its_tier_between_its_due_frames(void) {
     step_due_at(scene, a, 0.0F);
     TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
     for (int i = 1; i < s.far_every; i++) {
-        TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+        TEST_ASSERT_FALSE(scene_animator_due(scene->animation_frame, a));
         a->drawn_radius_px = s.mid_px + s.hysteresis_px * 2;
         scene_animation_step(scene, ANIM_RATE_DT_MS);
         TEST_ASSERT_EQUAL_INT(SCENE_ANIM_TIER_FAR, a->tier);
@@ -5705,7 +5716,7 @@ static void
 frame_due(scene_t* scene, const scene_animator_t* a) {
     do {
         frame(0);
-    } while (!scene_animator_due(scene, a));
+    } while (!scene_animator_due(scene->animation_frame, a));
 }
 
 static void
@@ -5754,7 +5765,7 @@ interval_follows_settings(float px, int tier, int base, int wanted) {
     step_due_at(scene, a, px);
     TEST_ASSERT_EQUAL_INT(tier, a->tier);
     TEST_ASSERT_EQUAL_INT(base, a->interval);
-    TEST_ASSERT_FALSE(scene_animator_due(scene, a));
+    TEST_ASSERT_FALSE(scene_animator_due(scene->animation_frame, a));
     if (tier == SCENE_ANIM_TIER_MID) {
         settings.anim.mid_every = wanted;
     } else {
@@ -5795,7 +5806,7 @@ static void
 assert_measured_only_when_due(scene_t* scene, const scene_animator_t* a) {
     for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         frame(0);
-        if (scene_animator_due(scene, a)) {
+        if (scene_animator_due(scene->animation_frame, a)) {
             TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, a->drawn_radius_px);
         } else {
             TEST_ASSERT_EQUAL_FLOAT(0.0F, a->drawn_radius_px);
@@ -5850,7 +5861,8 @@ test_the_draw_measures_two_copies_each_on_its_own_due_frames(void) {
     int red_only = 0, green_only = 0;
     for (int i = 0; i < 2 * RENDER_SETTINGS_DEFAULT.anim.far_every; i++) {
         frame(0);
-        const bool red_due = scene_animator_due(scene, red), green_due = scene_animator_due(scene, green);
+        const bool red_due = scene_animator_due(scene->animation_frame, red),
+                   green_due = scene_animator_due(scene->animation_frame, green);
         TEST_ASSERT_EQUAL(red_due, red->drawn_radius_px > 0.0F);
         TEST_ASSERT_EQUAL(green_due, green->drawn_radius_px > 0.0F);
         red_only += red_due && !green_due;

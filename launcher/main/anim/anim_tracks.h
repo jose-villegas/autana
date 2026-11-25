@@ -29,7 +29,10 @@ typedef struct {
 } anim_binding_t;
 
 asset_status_t anim_tracks_open(asset_view_t entry, anim_tracks_t* out);
-asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out);
+
+/* On error, rejected receives the row's binding metadata if its names can be read. */
+asset_status_t anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out,
+                                     anim_binding_t* rejected);
 asset_status_t anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* out);
 asset_status_t anim_tracks_find(const anim_tracks_t* tracks, name_hash_t path, uint32_t component, name_hash_t field,
                                 anim_track_t* out);

@@ -20,6 +20,19 @@ row_at(const anim_tracks_t* tracks, int index) {
     return tracks->base + ANIM_TRACKS_HEADER_SIZE + ((size_t)index * ANIM_TRACKS_ROW_SIZE);
 }
 
+static anim_binding_t
+row_binding(const anim_tracks_t* tracks, const uint8_t* row) {
+    const char* strings = (const char*)tracks->base + asset_read_u32(tracks->base + ANIM_TRACKS_AT_STRINGS);
+    return (anim_binding_t){
+        .path = strings + asset_read_u16(row + ANIM_TRACKS_ROW_PATH),
+        .field = strings + asset_read_u16(row + ANIM_TRACKS_ROW_FIELD),
+        .component = asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT),
+        .path_hash = asset_read_u32(row + ANIM_TRACKS_ROW_PATH_HASH),
+        .field_hash = asset_read_u32(row + ANIM_TRACKS_ROW_FIELD_HASH),
+        .type = (anim_value_t)row[ANIM_TRACKS_ROW_TYPE],
+    };
+}
+
 static bool
 floats_fit(const anim_tracks_t* tracks, uint32_t offset, uint32_t count) {
     const uint64_t strings_end = (uint64_t)asset_read_u32(tracks->base + ANIM_TRACKS_AT_STRINGS)
@@ -41,7 +54,7 @@ row_fields_valid(const anim_tracks_t* tracks, const uint8_t* row) {
         || !string_fits(tracks, asset_read_u16(row + ANIM_TRACKS_ROW_FIELD))) {
         return false;
     }
-    if (asset_read_u16(row + ANIM_TRACKS_ROW_KEYS) == 0 || row[ANIM_TRACKS_ROW_TYPE] > ANIM_VALUE_COLOUR
+    if (asset_read_u16(row + ANIM_TRACKS_ROW_KEYS) == 0 || row[ANIM_TRACKS_ROW_TYPE] > ANIM_VALUE_NAME
         || row[ANIM_TRACKS_ROW_INTERP] > ANIM_CUBIC || asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT) == 0) {
         return false;
     }
@@ -89,11 +102,25 @@ check_row(const anim_tracks_t* tracks, const uint8_t* row) {
     }
     const float* times = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_TIMES));
     const float* values = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_VALUES));
-    return times_valid(times, keys) && values_finite(values, values_count) ? ASSET_OK : ASSET_ERR_FORMAT;
+    if (!times_valid(times, keys) || !values_finite(values, values_count)) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (type == ANIM_VALUE_NAME) {
+        if (interp != ANIM_STEP) {
+            return ASSET_ERR_FORMAT;
+        }
+        for (uint32_t i = 0; i < keys; i++) {
+            name_hash_t name;
+            if (!anim_name_decode(values + i * ANIM_NAME_WIDTH, &name)) {
+                return ASSET_ERR_FORMAT;
+            }
+        }
+    }
+    return ASSET_OK;
 }
 
-asset_status_t
-anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
+static asset_status_t
+tracks_open(asset_view_t entry, anim_tracks_t* out, anim_binding_t* rejected) {
     *out = (anim_tracks_t){0};
     if (entry.size < sizeof(uint16_t) || entry.data == NULL) {
         return ASSET_ERR_BOUNDS;
@@ -128,8 +155,13 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
         }
     }
     for (int i = 0; i < tracks.count; i++) {
-        const asset_status_t status = check_row(&tracks, row_at(&tracks, i));
+        const uint8_t* row = row_at(&tracks, i);
+        const asset_status_t status = check_row(&tracks, row);
         if (status != ASSET_OK) {
+            if (rejected != NULL && string_fits(&tracks, asset_read_u16(row + ANIM_TRACKS_ROW_PATH))
+                && string_fits(&tracks, asset_read_u16(row + ANIM_TRACKS_ROW_FIELD))) {
+                *rejected = row_binding(&tracks, row);
+            }
             return status;
         }
     }
@@ -138,14 +170,22 @@ anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
 }
 
 asset_status_t
-anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out) {
+anim_tracks_open(asset_view_t entry, anim_tracks_t* out) {
+    return tracks_open(entry, out, NULL);
+}
+
+asset_status_t
+anim_tracks_from_pack(const asset_pack_t* pack, const char* id, anim_tracks_t* out, anim_binding_t* out_error) {
+    if (out_error != NULL) {
+        *out_error = (anim_binding_t){0};
+    }
     asset_view_t entry;
     const asset_status_t status = asset_pack_find(pack, id, ANIM_TRACKS_ASSET, &entry);
     if (status != ASSET_OK) {
         *out = (anim_tracks_t){0};
         return status;
     }
-    return anim_tracks_open(entry, out);
+    return tracks_open(entry, out, out_error);
 }
 
 asset_status_t
@@ -155,24 +195,14 @@ anim_tracks_binding_at(const anim_tracks_t* tracks, int index, anim_binding_t* o
         return ASSET_ERR_NOT_FOUND;
     }
     const uint8_t* row = row_at(tracks, index);
-    const char* strings = (const char*)tracks->base + asset_read_u32(tracks->base + ANIM_TRACKS_AT_STRINGS);
-    const anim_value_t type = (anim_value_t)row[ANIM_TRACKS_ROW_TYPE];
-    *out = (anim_binding_t){
-        .path = strings + asset_read_u16(row + ANIM_TRACKS_ROW_PATH),
-        .field = strings + asset_read_u16(row + ANIM_TRACKS_ROW_FIELD),
-        .component = asset_read_u32(row + ANIM_TRACKS_ROW_COMPONENT),
-        .path_hash = asset_read_u32(row + ANIM_TRACKS_ROW_PATH_HASH),
-        .field_hash = asset_read_u32(row + ANIM_TRACKS_ROW_FIELD_HASH),
-        .type = type,
-        .curve =
-            {
-                .times = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_TIMES)),
-                .values = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_VALUES)),
-                .count = asset_read_u16(row + ANIM_TRACKS_ROW_KEYS),
-                .width = WIDTHS[type],
-                .interp = row[ANIM_TRACKS_ROW_INTERP],
-                .quaternion = type == ANIM_VALUE_QUAT,
-            },
+    *out = row_binding(tracks, row);
+    out->curve = (anim_track_t){
+        .times = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_TIMES)),
+        .values = (const float*)(const void*)(tracks->base + asset_read_u32(row + ANIM_TRACKS_ROW_VALUES)),
+        .count = asset_read_u16(row + ANIM_TRACKS_ROW_KEYS),
+        .width = WIDTHS[out->type],
+        .interp = row[ANIM_TRACKS_ROW_INTERP],
+        .quaternion = out->type == ANIM_VALUE_QUAT,
     };
     return ASSET_OK;
 }

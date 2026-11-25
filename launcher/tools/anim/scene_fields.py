@@ -10,6 +10,7 @@ MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
 TRACK_HEADER = MAIN / "anim/anim_track.h"
 TRACK_FORMAT_HEADER = MAIN / "anim/anim_tracks_format.h"
 LENS_HEADER = MAIN / "scene/camera/lens.h"
+ANIMATOR_HEADER = MAIN / "scene/animator/animator.h"
 SCENE_FIELDS_EXTENSION = "AUTANA_scene_fields"
 VALUE_TYPES = read_enum(TRACK_HEADER, "anim_value_t")
 VALUE_FLOAT = VALUE_TYPES["ANIM_VALUE_FLOAT"]
@@ -17,6 +18,10 @@ VALUE_VEC2 = VALUE_TYPES["ANIM_VALUE_VEC2"]
 VALUE_VEC3 = VALUE_TYPES["ANIM_VALUE_VEC3"]
 VALUE_QUAT = VALUE_TYPES["ANIM_VALUE_QUAT"]
 VALUE_COLOUR = VALUE_TYPES["ANIM_VALUE_COLOUR"]
+VALUE_NAME = VALUE_TYPES["ANIM_VALUE_NAME"]
+NAME_HALF_BITS = read_define(TRACK_HEADER, "ANIM_NAME_HALF_BITS")
+NAME_HALF_MASK = (1 << NAME_HALF_BITS) - 1
+ANIMATOR = read_define(ANIMATOR_HEADER, "ANIM_COMPONENT_ANIMATOR")
 WIDTHS = read_define(TRACK_HEADER, "ANIM_VALUE_WIDTHS")
 CAMERA = read_define(LENS_HEADER, "ANIM_COMPONENT_CAMERA")
 TRANSFORM = read_define(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
@@ -87,3 +92,16 @@ def fields():
 def bake_inputs():
     """The component tags and field declarations used by baked track bindings."""
     return CAMERA, TRANSFORM, sorted(fields().items())
+
+
+def encode_name(value):
+    """Store a 32-bit hash as two exact float components."""
+    return float(value >> NAME_HALF_BITS), float(value & NAME_HALF_MASK)
+
+
+def decode_name(parts):
+    """Read the high and low halves of a name hash."""
+    hi, lo = parts
+    if any(not 0 <= part <= NAME_HALF_MASK or int(part) != part for part in parts):
+        raise ValueError("name values need two unsigned 16-bit halves")
+    return (int(hi) << NAME_HALF_BITS) | int(lo)

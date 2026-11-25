@@ -8,7 +8,10 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import scene_fields
-from build.c_enum import ASSET_TAG_WIDTH, tag_text, tag_value
+from anim.tracks_asset import (BLEND_FIELD, CLIP_FIELD, DURATION_EXTRA, DURATION_MAX, SPEED_FIELD,
+                               check_block_timing, seconds_to_ms)
+from build.c_enum import ASSET_TAG_WIDTH, read_define, tag_text, tag_value
+from build.name_hash import NONE, name_hash
 from geometry.vectors import qmul, qrot, unit
 from gltf.gltf_write import build_glb
 
@@ -19,6 +22,11 @@ ZERO_TRANSLATION = (0, 0, 0)
 F32 = struct.Struct("<f")
 CUBIC_ROWS = 3
 CUBIC_VALUE = 1
+ANIMATOR_LIMITS = {
+    SPEED_FIELD: read_define(scene_fields.MAIN / "anim/playback/anim_playhead.h", "ANIM_PLAYHEAD_SPEED_MAX"),
+    BLEND_FIELD: read_define(scene_fields.ANIMATOR_HEADER, "ANIMATOR_BLEND_MS_MAX"),
+}
+
 
 
 def rotation(eye, target):
@@ -34,7 +42,7 @@ def rotation(eye, target):
 
 
 def camera_glb(values):
-    if set(values) != {"node", "animation", "keys"}:
+    if set(values) - {"duration"} != {"node", "animation", "keys"}:
         raise ValueError("expected node, animation and keys")
     if any(not isinstance(values[name], str) or not values[name] for name in ("node", "animation")):
         raise ValueError("node and animation must be nonempty names")
@@ -63,8 +71,23 @@ def camera_glb(values):
     channels = [dict(node=0, path="translation", interpolation="CUBICSPLINE", times=times, values=translations),
                 dict(node=0, path="rotation", interpolation="LINEAR", times=times, values=rotations)]
     return build_glb([dict(name=values["node"], camera=0)],
-                     [dict(name=values["animation"], channels=channels)],
+                     [animation_glb(values, channels)],
                      [dict(type="perspective", perspective=dict(yfov=1.0, znear=0.1))])
+
+
+def animation_glb(values, channels):
+    """Carry the authored clip end through GLB without adding synthetic keys."""
+    animation = dict(name=values["animation"], channels=channels)
+    if "duration" in values:
+        seconds = values["duration"]
+        float32(seconds, "duration", "seconds")
+        end = seconds_to_ms(seconds)
+        if not 0 < end <= DURATION_MAX:
+            raise ValueError("duration must be positive and fit the track duration in milliseconds")
+        if any(channel["times"][-1] > seconds for channel in channels):
+            raise ValueError("a track key is past the duration")
+        animation["extras"] = {DURATION_EXTRA: end}
+    return animation
 
 
 def opposite_sign(a, b):
@@ -100,7 +123,7 @@ def float32(value, where, name):
     return rounded
 
 
-def key_times(keys, where):
+def key_times(keys, where, start_at_zero=True):
     """Validate the timeline at stored precision and return the authored times."""
     times = []
     previous = None
@@ -108,8 +131,12 @@ def key_times(keys, where):
         time = key["t"]
         label = f"{where} key {i}"
         rounded = float32(time, label, "t")
-        if (time != 0 if previous is None else rounded <= previous):
-            raise ValueError(f"{label}: times must start at zero and increase strictly in float32")
+        if previous is None:
+            if time < 0 or (start_at_zero and time != 0):
+                rule = "start at zero" if start_at_zero else "be nonnegative"
+                raise ValueError(f"{label}: times must {rule}")
+        elif rounded <= previous:
+            raise ValueError(f"{label}: times must increase strictly in float32")
         times.append(time)
         previous = rounded
     return times
@@ -142,14 +169,21 @@ def offset_rows(field, offset, rows, cubic, where):
     return rotated
 
 
-def track_curve(track, label, value_type, interp, transform_field):
+def curve_keys(track, label):
+    """Validate key tables before reading or merging them."""
+
     keys = track["keys"]
     if not isinstance(keys, list) or not keys:
         raise ValueError(f"{label} key 0: keys must be a nonempty list")
     for i, key in enumerate(keys):
         if not isinstance(key, dict) or not {"t", "v"} <= key.keys() or key.keys() - {"t", "v", "in", "out"}:
             raise ValueError(f"{label} key {i}: each key needs t and v, with optional in and out")
-    times = key_times(keys, label)
+    return keys
+
+
+def track_curve(track, label, value_type, interp, transform_field, start_at_zero=True):
+    keys = curve_keys(track, label)
+    times = key_times(keys, label, start_at_zero=start_at_zero)
     values, rows = [], []
     width = scene_fields.WIDTHS[value_type]
     cubic = interp == INTERPOLATIONS["cubic"]
@@ -157,7 +191,15 @@ def track_curve(track, label, value_type, interp, transform_field):
     explicit = None
     for i, key in enumerate(keys):
         where = f"{label} key {i}"
-        value = vector(key["v"], width, where, "v", quaternion=quaternion)
+        authored = key["v"]
+        if value_type == scene_fields.VALUE_NAME:
+            if not isinstance(authored, str) or not authored or "\0" in authored:
+                raise ValueError(f"{where}: v must be a nonempty name without NUL")
+            hashed = name_hash(authored)
+            if hashed == NONE:
+                raise ValueError(f"{where}: name hashes to NONE")
+            authored = scene_fields.encode_name(hashed)
+        value = vector(authored, width, where, "v", quaternion=quaternion)
         has_tangents = "in" in key
         if has_tangents != ("out" in key):
             raise ValueError(f"{where}: supply both in and out tangents")
@@ -208,8 +250,37 @@ def resolve_field(name, fields, where):
     return matches[0]
 
 
+def block_tracks(track, label):
+    """Expand a clip block table into aligned step curves."""
+    blocks = track["blocks"]
+    if not isinstance(blocks, list) or not blocks:
+        raise ValueError(f"{label} key 0: blocks must be a nonempty list")
+    columns = {CLIP_FIELD: [], SPEED_FIELD: [], BLEND_FIELD: []}
+    for i, block in enumerate(blocks):
+        if not isinstance(block, dict) or not {"t", "clip"} <= block.keys() or block.keys() - {
+            "t", "clip", "speed", "blend"
+        }:
+            raise ValueError(f"{label} key {i}: block needs t and clip, with optional speed and blend")
+        for field, value in zip(columns, (block["clip"], block.get("speed", 1), block.get("blend", 0))):
+            columns[field].append(dict(t=block["t"], v=value))
+    key_times(blocks, label, start_at_zero=False)
+    return {field: dict(interp="step", keys=keys) for field, keys in columns.items()}
+
+
+def merge_speed(blocks, extra, label):
+    """Combine two strictly ordered lists, rejecting coincident stored times."""
+    keys = curve_keys(extra, label)
+    key_times(keys, label, start_at_zero=False)
+    merged = sorted([*blocks["keys"], *keys], key=lambda key: key["t"])
+    times = [float32(key["t"], label, "t") for key in merged]
+    for i, (a, b) in enumerate(zip(times, times[1:]), start=1):
+        if a == b:
+            raise ValueError(f"{label} key {i}: duplicate speed key time")
+    return dict(extra, keys=merged)
+
+
 def tracks_glb(values):
-    if set(values) != {"animation", "tracks"}:
+    if set(values) - {"duration"} != {"animation", "tracks"}:
         raise ValueError("expected animation and tracks")
     animation, tracks = values["animation"], values["tracks"]
     if not isinstance(animation, str) or not animation:
@@ -217,7 +288,8 @@ def tracks_glb(values):
     if not isinstance(tracks, list) or not tracks:
         raise ValueError("tracks must be a nonempty list")
 
-    nodes, indices, channels, seen = [], {}, [], set()
+    nodes, indices, channels = [], {}, []
+    authored, expanded, animator_curves = {}, {}, {}
     required = {"object", "field", "interp", "keys"}
     extension = scene_fields.SCENE_FIELDS_EXTENSION
     fields = scene_fields.fields()
@@ -227,23 +299,51 @@ def tracks_glb(values):
         obj, field = track.get("object", "<object>"), track.get("field", "<field>")
         label = f"{obj}.{field}"
         where = f"{label} key 0"
-        if not required <= track.keys() or track.keys() - (required | {"offset"}):
+        blocks = "blocks" in track
+        if (blocks and track.keys() != {"object", "field", "blocks"}
+                or not blocks and (not required <= track.keys() or track.keys() - (required | {"offset"}))):
             raise ValueError(f"{where}: missing or unexpected track entries")
         if not isinstance(obj, str) or not obj or "\0" in obj:
             raise ValueError(f"{where}: object must be a nonempty name without NUL")
         component, field = resolve_field(field, fields, where)
+        binding = (obj, component, field)
+        if blocks:
+            if (component, field) != (scene_fields.ANIMATOR, CLIP_FIELD):
+                raise ValueError(f"{where}: blocks require the animator clip field")
+            if binding in expanded:
+                raise ValueError(f"{where}: duplicate track")
+            for member, curve in block_tracks(track, label).items():
+                expanded[obj, component, member] = curve
+        else:
+            if binding in authored:
+                raise ValueError(f"{where}: duplicate track")
+            authored[binding] = track
+
+    for binding in dict.fromkeys([*expanded, *authored]):
+        obj, component, field = binding
+        track = authored.get(binding, expanded.get(binding))
+        label = f"{obj}.{track.get('field', field)}"
+        where = f"{label} key 0"
         interp = track["interp"]
         if not isinstance(interp, str) or interp not in INTERPOLATIONS:
             raise ValueError(f"{where}: interp must be step, linear or cubic")
-        binding = (obj, component, field)
-        if binding in seen:
-            raise ValueError(f"{where}: duplicate track")
-        seen.add(binding)
-        # The keys tool enforces step-only fields once C declares them with ANIM_FIELD_STEP.
-        value_type, _ = fields[component, field]
+        value_type, step_only = fields[component, field]
+        if step_only and interp != "step":
+            raise ValueError(f"{where}: field requires step interpolation")
+        if binding in expanded and binding in authored:
+            if field != SPEED_FIELD:
+                raise ValueError(f"{where}: duplicate track")
+            track = merge_speed(expanded[binding], track, label)
         transform = scene_fields.TRANSFORM_FIELDS.get(field) if component == scene_fields.TRANSFORM else None
         interp = INTERPOLATIONS[interp]
-        times, rows = track_curve(track, label, value_type, interp, field if transform else None)
+        times, rows = track_curve(track, label, value_type, interp, field if transform else None,
+                                  start_at_zero=component != scene_fields.ANIMATOR)
+        if component == scene_fields.ANIMATOR and field in ANIMATOR_LIMITS:
+            for i, (value,) in enumerate(rows):
+                if not 0 <= value <= ANIMATOR_LIMITS[field] or float32(value, where, field) > ANIMATOR_LIMITS[field]:
+                    raise ValueError(f"{label} key {i}: {field} is out of range")
+        if component == scene_fields.ANIMATOR:
+            animator_curves[obj, field] = label, times, rows
         if obj not in indices:
             indices[obj] = len(nodes)
             nodes.append(dict(name=obj))
@@ -258,7 +358,16 @@ def tracks_glb(values):
             properties = nodes[node].setdefault("extensions", {}).setdefault(extension, {}).setdefault(tag, {})
             properties[field] = first[0] if len(first) == 1 else first
         channels.append(channel)
-    return build_glb(nodes, [dict(name=animation, channels=channels)])
+    glb_animation = animation_glb(values, channels)
+    clip_curves = [obj for obj, field in animator_curves if field == CLIP_FIELD]
+    if clip_curves and len(animator_curves) == len(channels) and "duration" not in values:
+        raise ValueError("a block-only clip requires a duration")
+    end = glb_animation.get("extras", {}).get(DURATION_EXTRA)
+    if end is None:
+        last = max(channel["times"][-1] for channel in channels)
+        end = seconds_to_ms(last)
+    check_block_timing(animator_curves, end)
+    return build_glb(nodes, [glb_animation])
 
 
 def build(values):

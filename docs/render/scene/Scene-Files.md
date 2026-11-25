@@ -373,6 +373,21 @@ animator's clips. `default_clip` names one of those clips; absent, nothing plays
 `wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
 rest pose. Each component occurs once per entity.
 
+A timeline [clip block track](../animation/Animation-Tracks.md#clip-blocks)
+selects clips by name and owns the animator's clip table and playback controls.
+A missing clip fails scene load with the object name and clip hash.
+
+| Sample | Rule |
+|---|---|
+| Local clip time | From block start `s` to time `t`, take $`\left\lfloor \frac{\sum(\mathrm{segment\_ms} \times \mathrm{speed\_q16})}{\texttt{ANIM\_PLAYHEAD\_SPEED\_ONE}} \right\rfloor`$ and apply the animator's wrap mode. Each segment has one step speed. |
+| Blend-in weight | Divide elapsed time since the block start by the blend length, up to 1. |
+| Preceding block during blend | Sample from its own start with the same speed integration. |
+| Interrupted blend | Use the immediately preceding block as the blend source. |
+
+Before the first block, the skin uses its rest pose. At each millisecond, seek
+matches the timeline's written values and playback layer state. Seek poses
+immediately. The skin palette matches play on frames when its pose tier poses.
+
 A clip may animate the scale of an entity with children only if its three axes
 stay equal (within the scale tolerance) at every key and every cubic tangent.
 
@@ -383,7 +398,7 @@ refuse clips that break this rule.
 
 The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
 path relative to the scene file. The clip travels in the scene's pack and
-addresses transforms and camera lenses by object name.
+addresses transforms, camera lenses and skinned animators by object name.
 
 ```toml
 [timeline]

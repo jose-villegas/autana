@@ -10,6 +10,26 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
+/* Field offsets describe the bindings; the timeline samples them without a target instance. */
+typedef struct {
+    float clip[ANIM_NAME_WIDTH], speed, blend_ms;
+} animator_fields_t;
+
+static const anim_field_t ANIMATOR_ANIM_FIELDS[] = {
+    [ANIMATOR_FIELD_CLIP] = ANIM_FIELD_STEP(animator_fields_t, clip, ANIM_VALUE_NAME),
+    [ANIMATOR_FIELD_SPEED] = ANIM_FIELD_STEP(animator_fields_t, speed, ANIM_VALUE_FLOAT),
+    [ANIMATOR_FIELD_BLEND_MS] = ANIM_FIELD_STEP(animator_fields_t, blend_ms, ANIM_VALUE_FLOAT),
+};
+
+const anim_component_fields_t ANIMATOR_FIELDS = {
+    ANIM_COMPONENT_ANIMATOR,
+    ANIMATOR_ANIM_FIELDS,
+    sizeof ANIMATOR_ANIM_FIELDS / sizeof ANIMATOR_ANIM_FIELDS[0],
+};
+
+_Static_assert(sizeof ANIMATOR_ANIM_FIELDS / sizeof ANIMATOR_ANIM_FIELDS[0] == ANIMATOR_FIELD_COUNT,
+               "animator declaration count");
+
 typedef struct {
     size_t clips, times, counts, tables, names, joints, fields, shown, frozen, total;
 } animator_layout_t;
@@ -72,7 +92,7 @@ claim_replacement(scene_claims_t* claims, const scene_anim_targets_t* targets, c
     if (a->root == ANIM_ROOT_SCENE) {
         for (int c = 0; c < count; c++) {
             anim_tracks_t tracks;
-            (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks);
+            (void)anim_tracks_from_pack(scene->pack, ids[c], &tracks, NULL);
             const scene_failure_t result = scene_animation_claim_clip(claims, targets, &tracks, ids[c], owner, owned);
             if (result.status != SCENE_OK) {
                 return result;
@@ -91,7 +111,7 @@ bind_animator_storage(scene_t* scene, scene_animator_t* a, const char* const* id
     asset_status_t result = ASSET_OK;
     for (int c = 0; c < a->layer.clip_count; c++) {
         scene_animator_clip_t* clip = &a->clips[c];
-        (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks);
+        (void)anim_tracks_from_pack(scene->pack, ids[c], &clip->tracks, NULL);
         char* name = (char*)block + l.names + (c * ASSET_NAME_MAX);
         /* The clip was opened from the pack, whose names fit ASSET_NAME_MAX. */
         const size_t length = strlen(ids[c]);
@@ -166,7 +186,7 @@ bind_clips(scene_t* scene, scene_animator_t* a, const char* const* ids, int coun
 
 asset_status_t
 scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out) {
-    const asset_status_t status = anim_tracks_from_pack(pack, id, out);
+    const asset_status_t status = anim_tracks_from_pack(pack, id, out, NULL);
     return status == ASSET_OK && out->root != root ? ASSET_ERR_FORMAT : status;
 }
 
@@ -222,6 +242,9 @@ settled_playhead(entity_t entity, animator_slot_t slot) {
     scene_row_t row;
     scene_t* scene = scene_entity_row(entity, &row);
     scene_animator_t* a = scene == NULL ? NULL : animator_of(scene, row);
+    if (a != NULL && a->timeline_driver != 0) {
+        return NULL;
+    }
     if (a != NULL) {
         scene_animator_settle(a);
     }
@@ -260,6 +283,9 @@ scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_i
                          bool replace, scene_failure_t* why) {
     if (row >= scene->asset.entity_count || !clip_count_fits(count, skeleton_id)) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->root->id);
+    }
+    if (replace && scene->animators[row].timeline_driver != 0) {
+        return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[row].name);
     }
     scene_animator_t a = {.root = skeleton_id == NULL ? ANIM_ROOT_SCENE : ANIM_ROOT_SKELETON, .wrap = ANIM_LOOP};
     asset_status_t status = skeleton_id == NULL ? ASSET_OK : anim_skeleton_open(scene->pack, skeleton_id, &a.skeleton);
@@ -317,7 +343,8 @@ animator_play(entity_t entity, int clip, uint32_t blend_ms) {
         return false;
     }
     scene_animator_t* a = animator_of(scene, row);
-    if (a == NULL || clip < 0 || clip >= a->layer.clip_count || (a->root == ANIM_ROOT_SCENE && blend_ms != 0)) {
+    if (a == NULL || a->timeline_driver != 0 || clip < 0 || clip >= a->layer.clip_count
+        || (a->root == ANIM_ROOT_SCENE && blend_ms != 0)) {
         return false;
     }
     scene_animator_settle(a);
@@ -415,7 +442,7 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
     }
     scene_animator_t* a = animator_of(scene, row);
     anim_slot_t* selected = a == NULL ? NULL : slot_of(a, slot);
-    if (selected == NULL || selected->clip == ANIM_LAYER_CLIP_NONE) {
+    if (selected == NULL || a->timeline_driver != 0 || selected->clip == ANIM_LAYER_CLIP_NONE) {
         return false;
     }
     scene_animator_settle(a);

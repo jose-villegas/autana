@@ -20,7 +20,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
-from anim import tracks_asset  # noqa: E402
+from anim import keys_file, tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import DEFAULT_ALIGN, build_pack  # noqa: E402
 from r3d import scene_asset, scene_name  # noqa: E402
@@ -86,6 +86,22 @@ def authored_entries(root):
     document, binary = rig()
     with mock.patch('r3d.skin_pack.load_rig', return_value=(source, document, binary, 5)):
         scene = scene_asset.bake(path)
+    keys = root / "blocks.keys.toml"
+    keys.write_text("""animation = "blocks"
+duration = 1.5
+[[tracks]]
+object = "first"
+field = "clip"
+blocks = [{t = 0, clip = "idle"}, {t = 1.0025, clip = "walk", blend = 250}]
+""")
+    (root / "blocks.glb").write_bytes(keys_file.load_glb_bytes(keys))
+    timeline = root / "blocks.anim.toml"
+    timeline.write_text('source = "blocks.glb"\nanimation = "blocks"\n')
+    with_blocks = root / "keys_blocks.scene.toml"
+    with_blocks.write_text(path.read_text().replace('clips = ["idle"]', 'clips = ["idle", "walk"]')
+                           + '\n[timeline]\nclip = "blocks.anim.toml"\nwrap = "clamp"\n')
+    with mock.patch('r3d.skin_pack.load_rig', return_value=(source, document, binary, 5)):
+        scene_with_blocks = scene_asset.bake(with_blocks)
     positions = [skin_asset.quantize_position(p, POSITION_SCALE) for p in POSITIONS]
     mesh = bytearray(mesh_entry(points=positions))
     header = list(mesh_asset.BLOB_HEADER.unpack_from(mesh))
@@ -101,6 +117,8 @@ def authored_entries(root):
     entries = [('authored', scene_asset.TYPE, scene), ('backdrop', mesh_asset.TYPE, bytes(mesh)),
                (name, skeleton_asset.TYPE, skeleton),
                ('idle', tracks_asset.TYPE, clip), ('walk', tracks_asset.TYPE, clip)]
+    entries.extend([("keys_blocks", scene_asset.TYPE, scene_with_blocks),
+                    ("blocks", tracks_asset.TYPE, tracks_asset.bake(timeline))])
     # Both skinned objects place the one import, so they share its mesh and skin.
     entries.extend([('mesh', mesh_asset.TYPE, bytes(mesh)), ('mesh.skin', skin_asset.TYPE, skin)])
     return [(name, kind, to_engine(kind, data)) for name, kind, data in entries]

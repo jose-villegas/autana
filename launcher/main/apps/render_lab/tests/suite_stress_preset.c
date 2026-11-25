@@ -508,7 +508,7 @@ camera_fixture(const stress_params_t* p) {
     TEST_ASSERT_NOT_NULL(pack);
     const char* clip = strcmp(p->camera, STRESS_CAMERA) == 0 ? STRESS_ORBIT_CLIP : p->camera;
     anim_tracks_t tracks;
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, clip, &tracks));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_from_pack(pack, clip, &tracks, NULL));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, anim_tracks_find_node(&tracks, name_hash(ANIM_TARGET_SELF), &f.path));
     f.duration_ms = tracks.clip.duration_ms;
 }

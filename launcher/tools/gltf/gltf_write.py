@@ -108,6 +108,8 @@ def build_glb(nodes, animations, cameras=(), meshes=(), skins=(), materials=()):
             channels.append({"sampler": len(samplers) - 1, "target": target})
         out_animations.append({"name": animation.get("name", ""),
                                "samplers": samplers, "channels": channels})
+        if "extras" in animation:
+            out_animations[-1]["extras"] = animation["extras"]
 
     children = {child for node in nodes for child in node.get("children", ())}
     document = {

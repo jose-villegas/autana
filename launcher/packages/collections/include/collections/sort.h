@@ -26,6 +26,22 @@
         }                                                                                                              \
     }
 
+/* Returns -1 when every key exceeds the search value or the array is empty. */
+#define SORT_DEFINE_LAST_AT_MOST(NAME, T)                                                                              \
+    static inline int NAME(const T* keys, int count, T value) {                                                        \
+        int lo = 0;                                                                                                    \
+        int hi = count;                                                                                                \
+        while (lo < hi) {                                                                                              \
+            const int mid = lo + (hi - lo) / 2;                                                                        \
+            if (keys[mid] <= value) {                                                                                  \
+                lo = mid + 1;                                                                                          \
+            } else {                                                                                                   \
+                hi = mid;                                                                                              \
+            }                                                                                                          \
+        }                                                                                                              \
+        return lo - 1;                                                                                                 \
+    }
+
 /* Negative when a goes before b, positive when after, zero when either order will do: qsort's contract. */
 typedef int (*sort_compare_t)(const void* a, const void* b);
 

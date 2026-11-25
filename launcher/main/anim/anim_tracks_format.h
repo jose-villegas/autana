@@ -4,6 +4,7 @@
 #include "asset/asset_pack.h"
 
 #define ANIM_TRACKS_ASSET           ASSET_TYPE('T', 'R', 'C', 'K')
+#define ANIM_TRACKS_DURATION_MAX    0xffffffffU
 #define ANIM_TRACKS_VERSION         4U
 #define ANIM_COMPONENT_TRANSFORM    ASSET_TYPE('T', 'R', 'N', 'S')
 #define ANIM_BINDING_STRING_MAX     255U

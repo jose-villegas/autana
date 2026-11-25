@@ -110,7 +110,7 @@ sample(const char* pack_path, const char* clip, char** pose_args, sampling_t* at
         return 2;
     }
     anim_tracks_t tracks;
-    status = anim_tracks_from_pack(&pack, clip, &tracks);
+    status = anim_tracks_from_pack(&pack, clip, &tracks, NULL);
     int result = 2;
     if (status != ASSET_OK) {
         fprintf(stderr, "track_host: clip %s in %s: %s\n", clip, pack_path, asset_status_text(status));

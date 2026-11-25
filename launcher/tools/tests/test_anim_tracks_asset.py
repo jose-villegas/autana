@@ -272,7 +272,8 @@ class BindingMappingTests(unittest.TestCase):
     def test_every_value_type_and_interpolation_round_trips(self):
         tracks, _, _, _ = probe_tracks()
         for value_type, width in enumerate(tracks_asset.WIDTHS):
-            for interp in tracks_asset.INTERPOLATIONS:
+            interps = ("STEP",) if value_type == tracks_asset.VALUE_NAME else tracks_asset.INTERPOLATIONS
+            for interp in interps:
                 runs = tracks_asset.CUBIC_RUNS if interp == "CUBICSPLINE" else 1
                 track = dict(tracks[0], type=value_type, quaternion=value_type == tracks_asset.VALUE_QUAT,
                              interpolation=interp, times=[0.0, 1.0], values=[tuple(range(width))] * (2 * runs))

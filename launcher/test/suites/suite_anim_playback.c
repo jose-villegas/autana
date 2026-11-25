@@ -110,15 +110,69 @@ static void
 test_speed_accepts_uint16_max_and_refuses_larger_or_infinite(void) {
     anim_layer_t l = fixture();
     anim_playhead_t* p = &l.current.playhead;
-    TEST_ASSERT_TRUE(anim_playhead_set_speed(p, (float)UINT16_MAX));
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX * ANIM_PLAYHEAD_SPEED_ONE, p->speed_q16);
-    TEST_ASSERT_FALSE(anim_playhead_set_speed(p, nextafterf((float)UINT16_MAX, INFINITY)));
+    TEST_ASSERT_TRUE(anim_playhead_set_speed(p, (float)ANIM_PLAYHEAD_SPEED_MAX));
+    TEST_ASSERT_EQUAL_UINT32(ANIM_PLAYHEAD_SPEED_MAX * ANIM_PLAYHEAD_SPEED_ONE, p->speed_q16);
+    TEST_ASSERT_FALSE(anim_playhead_set_speed(p, nextafterf((float)ANIM_PLAYHEAD_SPEED_MAX, INFINITY)));
     TEST_ASSERT_FALSE(anim_playhead_set_speed(p, INFINITY));
     release(&l);
 }
 
+static void
+test_clip_blocks_integrate_with_no_transition_history(void) {
+    const uint32_t starts[] = {0, 400, 600};
+    const uint32_t speed_times[] = {0, 200, 500, 550};
+    const float speeds[] = {1.0F, 2.0F, 0.5F, 1.25F};
+    const float blends[] = {0, 300, 200};
+    const uint8_t slots[] = {0, 1, 2};
+    const anim_clip_t clips[] = {{.duration_ms = 550}, {.duration_ms = 300}, {.duration_ms = 100}};
+    const anim_blocks_t blocks = {
+        .starts_ms = starts,
+        .slots = slots,
+        .count = sizeof starts / sizeof *starts,
+        .speed = {speed_times, speeds, sizeof speed_times / sizeof *speed_times},
+        .blend = {starts, blends, sizeof starts / sizeof *starts},
+    };
+    anim_block_sample_t sample = anim_blocks_sample(&blocks, clips, ANIM_CLAMP, 550);
+    TEST_ASSERT_EQUAL_UINT8(slots[1], sample.current.clip);
+    TEST_ASSERT_EQUAL_UINT8(slots[0], sample.previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(200 + 25, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(550, sample.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32(150, sample.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(300, sample.blend_ms);
+
+    sample = anim_blocks_sample(&blocks, clips, ANIM_LOOP, 650);
+    TEST_ASSERT_EQUAL_UINT32(slots[2], sample.current.clip);
+    TEST_ASSERT_EQUAL_UINT32(slots[1], sample.previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(62, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT32((200 + 25 + 125) % clips[1].duration_ms, sample.previous.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT16(ANIM_PLAYHEAD_SPEED_ONE / 2, sample.current.playhead.fraction);
+    TEST_ASSERT_EQUAL_UINT32(50, sample.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(200, sample.blend_ms);
+
+    const anim_blocks_t defaults = {.starts_ms = starts, .slots = slots, .count = blocks.count};
+    sample = anim_blocks_sample(&defaults, clips, ANIM_LOOP, 750);
+    TEST_ASSERT_EQUAL_UINT32(50, sample.current.playhead.t_ms);
+    TEST_ASSERT_EQUAL_UINT8(ANIM_LAYER_CLIP_NONE, sample.previous.clip);
+    TEST_ASSERT_EQUAL_UINT32(0, sample.blend_ms);
+
+    const float fractional[] = {0.3F, 1.0F / 3.0F};
+    const uint32_t fractional_times[] = {starts[1], speed_times[2]};
+    anim_blocks_t rates = blocks;
+    rates.speed = (anim_block_curve_t){fractional_times, fractional, sizeof fractional / sizeof *fractional};
+    anim_playhead_t played;
+    anim_playhead_init(&played, ANIM_LOOP);
+    for (uint32_t t = starts[1]; t < starts[2]; t++) {
+        const anim_slot_t selected = anim_blocks_sample(&rates, clips, ANIM_LOOP, t).current;
+        TEST_ASSERT_EQUAL_UINT32(played.t_ms, selected.playhead.t_ms);
+        TEST_ASSERT_EQUAL_UINT16(played.fraction, selected.playhead.fraction);
+        TEST_ASSERT_TRUE(anim_playhead_set_speed(&played, fractional[t >= fractional_times[1]]));
+        anim_playhead_advance(&played, &clips[slots[1]], 1);
+    }
+}
+
 void
 suite_anim_playback(void) {
+    RUN_TEST(test_clip_blocks_integrate_with_no_transition_history);
     RUN_TEST(test_speed_accepts_uint16_max_and_refuses_larger_or_infinite);
     RUN_TEST(test_playhead_long_loop_clamp_pause_and_fractional_speed);
     RUN_TEST(test_transition_blend_weights_and_both_slot_times);
