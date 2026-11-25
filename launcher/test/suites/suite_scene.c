@@ -718,16 +718,38 @@ uint8_t*
 scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, const uint16_t* counts,
                           const size_t* sizes, bool property) {
     const bool constrained = counts[SCENE_ASSET_CONSTRAINT_SOURCES] != 0;
-    const scene_spec_t spec = {
+    const bool visibility = counts[SCENE_ASSET_LIGHTS] != 0;
+    static const scene_spec_t VISIBILITY_SCENE = {.id = SCENE_TEST_TIMELINE_ID,
+                                                  .skinned = VIS_COPIES,
+                                                  .lit = true,
+                                                  .entity_count = VIS_ROWS,
+                                                  .renderer_count = VIS_COPIES,
+                                                  .camera_count = 1,
+                                                  .entities = {{"red", IDENTITY},
+                                                               {"green", IDENTITY},
+                                                               {"blue", IDENTITY},
+                                                               {"camera", CAMERA_AT(0)},
+                                                               {"lamp", IDENTITY},
+                                                               {"parent", IDENTITY},
+                                                               {"child", IDENTITY}},
+                                                  .cameras = {{VIS_CAMERA, CLEAR_RGB, ""}}};
+    scene_spec_t spec = {
         .id = SCENE_TEST_TIMELINE_ID,
         .skinned = !property,
-        .entity_count = constrained ? 4 : 2,
+        .entity_count = constrained || counts[SCENE_ASSET_HINGES] > 1 ? 4 : 2,
         .renderer_count = !property,
         .camera_count = 1,
         .entities = {{"red", IDENTITY}, {"camera", CAMERA_AT(0)}, {"anchor", IDENTITY}, {"marker", IDENTITY}},
         .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
+    if (visibility) {
+        spec = VISIBILITY_SCENE;
+        if (property) {
+            spec.skinned = 0;
+            spec.renderer_count = 0;
+        }
+    }
     const skin_fixture_options_t options = {.default_clip = 0, .timeline_clips = !property};
-    const uint32_t base_size = scene_entry_size(&spec) + (property ? 0 : ASSET_NAME_MAX);
+    const uint32_t base_size = scene_entry_size(&spec) + (options.timeline_clips ? spec.skinned * ASSET_NAME_MAX : 0);
     uint32_t end = base_size;
     for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
         end += (uint32_t)(counts[part] * sizes[part]);
@@ -2053,8 +2075,6 @@ test_staged_entities_stay_in_entity_order_once_each(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, columns(scene)->staged, sizeof want / sizeof want[0]);
 }
 
-/* A light's direction and a skin's lit normals are in its own frame, so
- * neither attaches under a parent. */
 static void
 test_a_light_or_skin_does_not_attach_under_a_parent(void) {
     fixture();
@@ -6513,11 +6533,8 @@ test_a_skin_disabled_and_enabled_again_draws_the_same_frame(void) {
     TEST_ASSERT_EQUAL_MEMORY(fx.held, fx.pixels, picture);
 }
 
-/* A skin whose buffers do not fit when its entity becomes active is not drawn
- * and is reported as a failed load is, without a retry each frame; it drops
- * the report once it stops being active, and takes them when they fit. */
 static void
-test_a_skin_whose_buffers_do_not_fit_is_not_drawn_and_is_reported(void) {
+test_a_transient_skin_allocation_failure_recovers_during_repack(void) {
     fixture();
     entity_t herd = load("test_herd");
     const entity_t second = entity_at(herd, 1);
@@ -6525,25 +6542,12 @@ test_a_skin_whose_buffers_do_not_fit_is_not_drawn_and_is_reported(void) {
         entity_set_enabled(entity_at(herd, i), false);
     }
     scene_animation_step(columns(herd), 0);
-    const size_t one_shown = memory_free_bytes(MEMORY_INTERNAL);
-    scene_failure_t why = {0};
-    TEST_ASSERT_FALSE(scene_failure(herd, &why));
     entity_set_enabled(second, true);
     scene_fail_allocation_after = 0;
     scene_animation_step(columns(herd), 0);
-    scene_fail_allocation_after = -1;
-    TEST_ASSERT_EQUAL_UINT(one_shown, memory_free_bytes(MEMORY_INTERNAL));
-    TEST_ASSERT_TRUE(scene_failure(herd, &why));
-    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_EQUAL_STRING("copy1", why.what);
-    scene_resolve(columns(herd));
-    TEST_ASSERT_EQUAL_INT(1, columns(herd)->active_renderer_count);
-    scene_animation_step(columns(herd), 0);
-    TEST_ASSERT_NULL(skin_of(second)->storage);
-    entity_set_enabled(second, false);
+    TEST_ASSERT_EQUAL_INT(-1, scene_fail_allocation_after);
+    scene_failure_t why = {0};
     TEST_ASSERT_FALSE(scene_failure(herd, &why));
-    entity_set_enabled(second, true);
-    scene_animation_step(columns(herd), 0);
     TEST_ASSERT_NOT_NULL(skin_of(second)->storage);
     scene_resolve(columns(herd));
     TEST_ASSERT_EQUAL_INT(2, columns(herd)->active_renderer_count);
@@ -8392,7 +8396,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_skin_setters_replacement_and_reenable);
     RUN_TEST(test_a_skin_holds_its_buffers_only_while_its_entity_is_active);
     RUN_TEST(test_a_skin_disabled_and_enabled_again_draws_the_same_frame);
-    RUN_TEST(test_a_skin_whose_buffers_do_not_fit_is_not_drawn_and_is_reported);
+    RUN_TEST(test_a_transient_skin_allocation_failure_recovers_during_repack);
     RUN_TEST(test_runtime_scale_and_reflection_match_float_reference);
     RUN_TEST(test_property_transform_relights_paused_skin);
     RUN_TEST(test_disabled_light_skin_and_two_object_rotations);

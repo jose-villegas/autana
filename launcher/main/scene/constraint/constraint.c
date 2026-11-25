@@ -32,7 +32,7 @@ source_row(const scene_asset_t* asset, int index) {
 static scene_row_t
 protect_path(scene_claims_t* claims, scene_row_t row) {
     for (; row != SCENE_ROW_NONE; row = scene_asset_parent(claims->asset, row)) {
-        if (claims->protected_rows[row] & SCENE_CLAIM_DRIVEN) {
+        if (claims->protected_rows[row] & (SCENE_CLAIM_DRIVEN | SCENE_HINGE_TRANSFORM)) {
             return row;
         }
         claims->protected_rows[row] |= SCENE_PROTECTED_TRANSFORM;
@@ -58,7 +58,17 @@ claim_transform(scene_claims_t* claims, scene_row_t row, int field) {
 }
 
 static scene_failure_t
+hinge_conflict(const scene_asset_t* asset, scene_row_t owner) {
+    const anim_binding_t hinge = {
+        .path = asset->names[owner].name, .component = ANIM_COMPONENT_HINGE, .field = HINGE_FIELDS.fields[0].name};
+    return scene_binding_failure(ASSET_ERR_FORMAT, &hinge);
+}
+
+static scene_failure_t
 driven_failure(const scene_claims_t* claims, scene_row_t row) {
+    if (claims->protected_rows[row] & SCENE_HINGE_TRANSFORM) {
+        return hinge_conflict(claims->asset, row);
+    }
     const scene_field_mask_t position = scene_field_bit(SCENE_COMPONENT_TRANSFORM, ANIM_POSE_POSITION_FIELD);
     const int field = claims->writes[row] & position ? ANIM_POSE_POSITION_FIELD : ANIM_POSE_ROTATION_FIELD;
     const anim_binding_t binding = {.path = claims->asset->names[row].name,
@@ -70,11 +80,23 @@ driven_failure(const scene_claims_t* claims, scene_row_t row) {
 scene_failure_t
 scene_constraint_claim(scene_claims_t* claims) {
     const scene_asset_t* asset = claims->asset;
-    for (int i = 0; i < asset->position_constraint_count; i++) {
-        claim_transform(claims, asset->position_constraints[i].entity, ANIM_POSE_POSITION_FIELD);
+    for (int i = 0; i < asset->hinge_count; i++) {
+        const scene_row_t owner = asset->hinges[i].entity;
+        claims->protected_rows[owner] |= SCENE_HINGE_TRANSFORM | SCENE_PROTECTED_TRANSFORM;
+        (void)scene_field_claim(claims, owner,
+                                scene_field_bit(SCENE_COMPONENT_TRANSFORM, ANIM_POSE_POSITION_FIELD)
+                                    | scene_field_bit(SCENE_COMPONENT_TRANSFORM, ANIM_POSE_ROTATION_FIELD));
     }
-    for (int i = 0; i < asset->aim_constraint_count; i++) {
-        claim_transform(claims, asset->aim_constraints[i].entity, ANIM_POSE_ROTATION_FIELD);
+    const int positions = asset->position_constraint_count;
+    const int constraints = positions + asset->aim_constraint_count;
+    for (int i = 0; i < constraints; i++) {
+        const bool position = i < positions;
+        const scene_row_t owner =
+            position ? asset->position_constraints[i].entity : asset->aim_constraints[i - positions].entity;
+        if (claims->protected_rows[owner] & SCENE_HINGE_TRANSFORM) {
+            return hinge_conflict(asset, owner);
+        }
+        claim_transform(claims, owner, position ? ANIM_POSE_POSITION_FIELD : ANIM_POSE_ROTATION_FIELD);
     }
     for (int i = 0; i < asset->position_constraint_count; i++) {
         const scene_asset_position_constraint_t* row = &asset->position_constraints[i];

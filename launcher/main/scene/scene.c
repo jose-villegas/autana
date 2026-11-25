@@ -28,7 +28,7 @@ static uint64_t requests; /* scene_root_t.order of the latest request */
 static memory_take_fn kept_take;
 
 /* What one of the scene's arrays is counted in. */
-enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_POSITION, PER_AIM, PER_COUNT };
+enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_POSITION, PER_AIM, PER_HINGE, PER_COUNT };
 
 #define PART(member, per)                                                                                              \
     {offsetof(scene_t, member), sizeof *((scene_t*)0)->member, _Alignof(__typeof__(*((scene_t*)0)->member)), per}
@@ -50,7 +50,8 @@ static const struct {
              PART(active_renderers, PER_RENDERER),
              PART(batches, PER_BATCH),
              PART(positions, PER_POSITION),
-             PART(aims, PER_AIM)};
+             PART(aims, PER_AIM),
+             PART(hinges, PER_HINGE)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
@@ -62,7 +63,8 @@ place(const scene_asset_t* asset, scene_t* scene) {
                                       [PER_ENTITY] = asset->entity_count,
                                       [PER_BATCH] = asset->batch_count,
                                       [PER_POSITION] = asset->position_constraint_count,
-                                      [PER_AIM] = asset->aim_constraint_count};
+                                      [PER_AIM] = asset->aim_constraint_count,
+                                      [PER_HINGE] = asset->hinge_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
         const size_t at = mem_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
@@ -125,12 +127,14 @@ scene_set_take(memory_take_fn take) {
 static scene_t*
 instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline, const scene_timeline_blocks_t* blocks) {
     size_t total = place(asset, NULL);
-    size_t timeline_at = 0, drivers_at = 0, times_at = 0, slots_at = 0;
+    size_t timeline_at = 0, drivers_at = 0, times_at = 0, slots_at = 0, enabled_at = 0;
     if (asset->timeline_count != 0) {
         timeline_at = mem_carve(&total, sizeof(scene_timeline_t) + timeline->count * sizeof(anim_bound_t),
                                 alignof(scene_timeline_t));
         drivers_at =
             mem_carve(&total, blocks->drivers * sizeof(scene_timeline_driver_t), alignof(scene_timeline_driver_t));
+        enabled_at = mem_carve(&total, blocks->enabled_tracks * sizeof(scene_timeline_enabled_t),
+                               alignof(scene_timeline_enabled_t));
         times_at = mem_carve(&total, blocks->time_keys * sizeof(uint32_t), alignof(uint32_t));
         slots_at = mem_carve(&total, blocks->clip_keys, alignof(uint8_t));
     }
@@ -148,6 +152,7 @@ instantiate(const scene_asset_t* asset, const anim_tracks_t* timeline, const sce
         scene->timeline = (scene_timeline_t*)(void*)(block + timeline_at);
         scene->timeline->tracks = *timeline;
         scene->timeline->drivers = (scene_timeline_driver_t*)(void*)(block + drivers_at);
+        scene->timeline->enabled = (scene_timeline_enabled_t*)(void*)(block + enabled_at);
         scene->timeline->times_ms = (const uint32_t*)(const void*)(block + times_at);
         scene->timeline->slots = block + slots_at;
         if (blocks->time_keys != 0) {
@@ -466,9 +471,6 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     if (status == ASSET_OK) {
         status = scene_asset_open(entry, asset);
     }
-    if (status == ASSET_OK && asset->hinge_count != 0) {
-        return scene_failure_make(SCENE_ERR_UNSUPPORTED, ASSET_OK, "hinge");
-    }
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }
 
@@ -505,8 +507,9 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     *writes = NULL;
     *protected_rows = NULL;
     const int first = next_property_animator(asset, 0);
-    const bool constrained = asset->position_constraint_count != 0 || asset->aim_constraint_count != 0;
-    if (first == asset->animator_count && timeline->count == 0 && !constrained) {
+    const bool driven =
+        asset->position_constraint_count != 0 || asset->aim_constraint_count != 0 || asset->hinge_count != 0;
+    if (first == asset->animator_count && timeline->count == 0 && !driven) {
         return result;
     }
     if (asset->entity_count == 0) {
@@ -515,14 +518,14 @@ check_writers(const scene_asset_t* asset, const asset_pack_t* pack, const anim_t
     const size_t bytes = asset->entity_count * sizeof **writes;
     scene_field_mask_t* scratch = memory_alloc(2 * bytes, MEMORY_APP);
     const size_t protected_bytes = asset->entity_count * sizeof **protected_rows;
-    uint16_t* protected = constrained ? memory_alloc(protected_bytes, MEMORY_APP) : NULL;
+    uint16_t* protected = driven ? memory_alloc(protected_bytes, MEMORY_APP) : NULL;
     const scene_anim_targets_t targets = scene_anim_targets(asset, NULL);
     scene_claims_t claims = {.asset = asset, .writes = scratch, .protected_rows = protected};
-    if (scratch == NULL || targets.block == NULL || (constrained && protected == NULL)) {
+    if (scratch == NULL || targets.block == NULL || (driven && protected == NULL)) {
         result = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     } else {
         memset(scratch, 0, bytes);
-        if (constrained) {
+        if (driven) {
             memset(protected, 0, protected_bytes);
             result = scene_constraint_claim(&claims);
         }
@@ -642,12 +645,13 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     if (done.status == SCENE_OK) {
         scene_constraint_open(scene);
+        scene_hinge_open(scene);
         if (scene->timeline != NULL) {
             done = scene_timeline_bind(scene);
         }
     }
     if (done.status == SCENE_OK) {
-        scene_constraint_step(scene, true);
+        scene_drivers_step(scene, true);
     }
     if (done.status != SCENE_OK) {
         record->scene = NULL;

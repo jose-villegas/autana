@@ -222,6 +222,16 @@ entity_name(entity_t entity) {
     return row == SCENE_ROW_ROOT ? record->id : record->scene->asset.names[row].name;
 }
 
+typedef struct {
+    float enabled;
+} entity_fields_t;
+
+static const anim_field_t FIELDS[] = {
+    ANIM_FIELD_STEP(entity_fields_t, enabled, ANIM_VALUE_FLOAT),
+};
+
+const anim_component_fields_t ENTITY_FIELDS = {ANIM_COMPONENT_ENTITY, FIELDS, ENTITY_FIELD_COUNT};
+
 bool
 entity_enabled(entity_t entity) {
     scene_row_t row;

@@ -150,8 +150,7 @@ scene_resolve(scene_t* scene) {
     }
 }
 
-/* Entity `e` stops being ACTIVE: its skin gives its buffers back, and a
- * skin or renderer starved for memory may try again at its next activation. */
+/* A static renderer retries a failed take at its next activation. */
 static void
 deactivate(scene_t* scene, scene_row_t e) {
     scene_skin_deactivate(scene, e);
@@ -173,8 +172,7 @@ scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
             scene->flags[e] ^= SCENE_FLAG_ACTIVE;
             scene->flags[e] |= SCENE_FLAG_CHANGED;
             scene->active_renderers_stale = true;
-            /* A skin holds its buffers only while ACTIVE. */
-            scene->skins_pending |= active && scene->skinned_renderers[e].bound;
+            scene->skins_pending |= scene->skinned_renderers[e].bound;
             if (!active) {
                 deactivate(scene, (scene_row_t)e);
             }

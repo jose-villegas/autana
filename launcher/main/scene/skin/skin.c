@@ -165,22 +165,45 @@ scene_skin_show(scene_t* scene, scene_row_t entity) {
     scene->active_renderers_stale = true;
 }
 
+static bool
+settle_skin(scene_t* scene, scene_row_t row) {
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
+    if (!skin->bound || skin->storage != NULL || !(scene->flags[row] & SCENE_FLAG_ACTIVE)) {
+        return true;
+    }
+    if (!scene_skin_take(scene, row, skin)) {
+        return false;
+    }
+    scene_unstarve(scene, &skin->starved);
+    scene_skin_show(scene, row);
+    return true;
+}
+
 void
 scene_skins_settle(scene_t* scene) {
     if (!scene->skins_pending) {
         return;
     }
     scene->skins_pending = false;
+    int first = 0;
+    while (first < scene->staged_count && settle_skin(scene, scene->staged[first])) {
+        first++;
+    }
+    if (first == scene->staged_count) {
+        return;
+    }
+
     for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
-        if (!skin->bound || skin->storage != NULL || skin->starved || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
-            continue;
+        const scene_row_t row = scene->staged[i];
+        if (scene->skinned_renderers[row].storage != NULL) {
+            scene_skin_deactivate(scene, row);
         }
-        if (scene_skin_take(scene, e, skin)) {
-            scene_skin_show(scene, e);
-        } else {
-            scene_starve(scene, e, &skin->starved, "skin");
+    }
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t row = scene->staged[i];
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
+        if (!settle_skin(scene, row) && !skin->starved) {
+            scene_starve(scene, row, &skin->starved, "skin");
         }
     }
 }

@@ -19,9 +19,8 @@ static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COU
     SCENE_COMPONENT_LIST(SCENE_COMPONENT_TABLE)};
 
 static void
-attach_component(anim_target_t* targets, anim_component_ref_t* refs, int row, int component, void* base) {
+attach_component(anim_component_ref_t* refs, int row, int component, void* base) {
     refs[row * SCENE_COMPONENT_COUNT + component] = (anim_component_ref_t){SCENE_COMPONENTS[component], base};
-    targets[row].component_count = component + 1;
 }
 
 scene_anim_targets_t
@@ -40,27 +39,29 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
     anim_component_ref_t* refs = (anim_component_ref_t*)(void*)(block + components);
     memset(refs, 0, sizeof *refs * (size_t)entities * SCENE_COMPONENT_COUNT);
     for (int e = 0; e < entities; e++) {
-        anim_component_ref_t* fields = refs + (e * SCENE_COMPONENT_COUNT);
-        fields[SCENE_COMPONENT_TRANSFORM] =
-            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_TRANSFORM], scene ? &scene->locals[e] : NULL};
-        out.targets[e] = (anim_target_t){asset->names[e].hash, fields, SCENE_COMPONENT_TRANSFORM + 1,
-                                         scene ? &scene->flags[e] : NULL, SCENE_FLAG_CHANGED};
+        attach_component(refs, e, SCENE_COMPONENT_TRANSFORM, scene == NULL ? NULL : &scene->locals[e]);
+        attach_component(refs, e, SCENE_COMPONENT_ENTY, NULL);
+        out.targets[e] = (anim_target_t){asset->names[e].hash, refs + (e * SCENE_COMPONENT_COUNT),
+                                         SCENE_COMPONENT_COUNT, scene ? &scene->flags[e] : NULL, SCENE_FLAG_CHANGED};
     }
-    for (int c = 0; c < asset->camera_count; c++) {
-        const int e = asset->cameras[c].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_LENS, scene ? &scene->cameras[c].lens : NULL);
+
+    for (int i = 0; i < asset->camera_count; i++) {
+        lens_t* lens = scene == NULL ? NULL : &scene->cameras[i].lens;
+        attach_component(refs, asset->cameras[i].entity, SCENE_COMPONENT_LENS, lens);
     }
-    for (int s = 0; s < asset->skinned_renderer_count; s++) {
-        const int e = asset->skinned_renderers[s].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_ANIMATOR, NULL);
+    for (int i = 0; i < asset->skinned_renderer_count; i++) {
+        attach_component(refs, asset->skinned_renderers[i].entity, SCENE_COMPONENT_ANIMATOR, NULL);
     }
     for (int i = 0; i < asset->position_constraint_count; i++) {
-        attach_component(out.targets, refs, asset->position_constraints[i].entity, SCENE_COMPONENT_CPOS,
-                         scene ? &scene->positions[i].inputs.weights : NULL);
+        attach_component(refs, asset->position_constraints[i].entity, SCENE_COMPONENT_CPOS,
+                         scene == NULL ? NULL : &scene->positions[i].inputs.weights);
     }
     for (int i = 0; i < asset->aim_constraint_count; i++) {
-        attach_component(out.targets, refs, asset->aim_constraints[i].entity, SCENE_COMPONENT_CAIM,
-                         scene ? &scene->aims[i].inputs.weights : NULL);
+        attach_component(refs, asset->aim_constraints[i].entity, SCENE_COMPONENT_CAIM,
+                         scene == NULL ? NULL : &scene->aims[i].inputs.weights);
+    }
+    for (int i = 0; i < asset->hinge_count; i++) {
+        attach_component(refs, asset->hinges[i].entity, SCENE_COMPONENT_HNGE, scene == NULL ? NULL : &scene->hinges[i]);
     }
     return out;
 }
@@ -224,9 +225,11 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         const scene_row_t entity = location.target;
         const bool constraint =
             location.component == SCENE_COMPONENT_CPOS || location.component == SCENE_COMPONENT_CAIM;
-        if ((owned != NULL && (location.component == SCENE_COMPONENT_ANIMATOR || constraint))
+        if ((owned != NULL
+             && (location.component == SCENE_COMPONENT_ANIMATOR || constraint
+                 || location.component == SCENE_COMPONENT_HNGE || location.component == SCENE_COMPONENT_ENTY))
             || (owned != NULL && location.component == SCENE_COMPONENT_TRANSFORM
-                && scene_constraint_covers(claims, entity))
+                && scene_constraint_covers(claims, entity) && scene_hinge_index(claims->asset, entity) < 0)
             || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
             || (constraint
                 && (location.field >= CONSTRAINT_FIRST_SOURCE_FIELD
@@ -355,10 +358,9 @@ skin_lights_changed(const scene_t* scene) {
 }
 
 static int
-skin_stage_prepare(scene_t* scene) {
+skin_stage_prepare(scene_t* scene, bool lights_dirty) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    const bool lights_dirty = skin_lights_changed(scene);
     scene->light_table_dirty |= lights_dirty;
     for (int i = 0; i < scene->staged_count; i++) {
         const scene_row_t e = scene->staged[i];
@@ -389,23 +391,26 @@ skin_stage_prepare(scene_t* scene) {
 
 void
 scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
-    if (scene->animator_count == 0) {
+    if (scene->animator_count == 0 && scene->light_count == 0 && scene->asset.hinge_count == 0) {
         return;
     }
-    FRAME_COST_BEGIN(posed_from);
-    for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        scene_animator_t* animator = &scene->animators[e];
-        if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
-            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
-            apply_property(scene, animator, dt_ms);
+    if (scene->animator_count != 0) {
+        FRAME_COST_BEGIN(posed_from);
+        for (int i = 0; i < scene->staged_count; i++) {
+            const scene_row_t e = scene->staged[i];
+            scene_animator_t* animator = &scene->animators[e];
+            if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
+                && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+                apply_property(scene, animator, dt_ms);
+            }
         }
+        animate_entities(scene, dt_ms);
+        FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     }
-    animate_entities(scene, dt_ms);
-    FRAME_COST_END(posed_from, SCENE_ANIM_STAGE_POSE_NAME);
     FRAME_COST_BEGIN(lit_from);
-    const int clusters = skin_stage_prepare(scene);
-    if (clusters > 0 && scene->light_transfer != NULL) {
+    const bool lights_dirty = skin_lights_changed(scene);
+    const int clusters = skin_stage_prepare(scene, lights_dirty);
+    if (lights_dirty || (clusters > 0 && scene->light_transfer != NULL)) {
         scene_lights_prepare(scene);
     }
     FRAME_COST_END(lit_from, SCENE_ANIM_STAGE_LIGHT_NAME);
@@ -426,18 +431,25 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     FRAME_COST_END(refit_from, SCENE_ANIM_STAGE_REFIT_NAME);
 }
 
-static void
-scene_drivers_step(scene_t* scene, uint32_t dt_ms) {
-    scene_constraint_step(scene, scene_timeline_step(scene, dt_ms));
+void
+scene_drivers_step(scene_t* scene, bool applied) {
+    scene_constraint_step(scene, applied);
+    scene_hinge_step(scene, applied);
     for (int row = 0; row < scene->asset.entity_count; row++) {
         scene->flags[row] &= (uint8_t)~SCENE_FLAG_PENDING_PLACEMENT;
     }
 }
 
 void
-scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+scene_animation_advance(scene_t* scene, uint32_t dt_ms) {
+    const bool applied = scene_timeline_step(scene, dt_ms);
     scene_skins_settle(scene);
-    scene_drivers_step(scene, dt_ms);
+    scene_drivers_step(scene, applied);
+}
+
+void
+scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    scene_animation_advance(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

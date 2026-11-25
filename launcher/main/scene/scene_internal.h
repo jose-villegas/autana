@@ -28,6 +28,7 @@
 #include "scene/camera/camera.h"
 #include "scene/constraint/constraint.h"
 #include "scene/entity/entity.h"
+#include "scene/hinge/hinge.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
 
@@ -131,12 +132,20 @@ enum {
 
 extern const anim_component_fields_t ANIMATOR_FIELDS;
 
+#define ANIM_COMPONENT_ENTITY ASSET_TYPE('E', 'N', 'T', 'Y')
+
+enum { ENTITY_FIELD_COUNT = 1 };
+
+extern const anim_component_fields_t ENTITY_FIELDS;
+
 #define SCENE_COMPONENT_LIST(X)                                                                                        \
     X(TRANSFORM, ANIM_POSE_TRANSFORM_FIELDS, ANIM_POSE_TRANSFORM_FIELD_COUNT, NONE)                                    \
     X(LENS, LENS_FIELDS, LENS_FIELD_COUNT, TRANSFORM)                                                                  \
     X(ANIMATOR, ANIMATOR_FIELDS, ANIMATOR_FIELD_COUNT, LENS)                                                           \
     X(CPOS, POSITION_CONSTRAINT_FIELDS, CONSTRAINT_WEIGHT_FIELD_COUNT, ANIMATOR)                                       \
-    X(CAIM, AIM_CONSTRAINT_FIELDS, CONSTRAINT_WEIGHT_FIELD_COUNT, CPOS)
+    X(CAIM, AIM_CONSTRAINT_FIELDS, CONSTRAINT_WEIGHT_FIELD_COUNT, CPOS)                                                \
+    X(HNGE, HINGE_FIELDS, HINGE_FIELD_COUNT, CAIM)                                                                     \
+    X(ENTY, ENTITY_FIELDS, ENTITY_FIELD_COUNT, HNGE)
 
 #define SCENE_COMPONENT_ID(name, table, count, prior) SCENE_COMPONENT_##name,
 
@@ -149,7 +158,7 @@ enum { SCENE_FIELD_END_NONE = 0, SCENE_COMPONENT_LIST(SCENE_COMPONENT_RANGE) };
 
 typedef uint32_t scene_field_mask_t;
 
-_Static_assert(SCENE_FIELD_END_CAIM <= sizeof(scene_field_mask_t) * CHAR_BIT,
+_Static_assert(SCENE_FIELD_END_ENTY <= sizeof(scene_field_mask_t) * CHAR_BIT,
                "scene animation fields fit in the claim mask");
 
 static inline scene_field_mask_t
@@ -168,19 +177,25 @@ typedef struct {
 } scene_timeline_driver_t;
 
 typedef struct {
-    int drivers;
+    int drivers, enabled_tracks;
     size_t clip_keys, time_keys;
     uint32_t* times_ms;
     uint8_t* slots;
 } scene_timeline_blocks_t;
+
+typedef struct {
+    anim_block_curve_t curve;
+    scene_row_t row;
+} scene_timeline_enabled_t;
 
 /* Separate from property animators so the scene root has one shared clock. */
 typedef struct {
     anim_tracks_t tracks;
     anim_playhead_t clock;
     uint32_t applied_ms;
-    int field_count, driver_count;
+    int field_count, driver_count, enabled_count;
     scene_timeline_driver_t* drivers;
+    scene_timeline_enabled_t* enabled;
     const uint32_t* times_ms;
     const uint8_t* slots;
     bool dirty;
@@ -198,13 +213,15 @@ typedef struct {
 enum {
     SCENE_PROTECTED_TRANSFORM = 128U,
     SCENE_CLAIM_DRIVEN = 256U,
+    SCENE_HINGE_TRANSFORM = 512U,
 };
 
-_Static_assert((SCENE_CLAIM_DRIVEN
+_Static_assert(((SCENE_CLAIM_DRIVEN | SCENE_HINGE_TRANSFORM)
                 & (SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED | SCENE_FLAG_ACTIVE | SCENE_FLAG_MOVED | SCENE_FLAG_PLACED
                    | SCENE_PROTECTED_TRANSFORM))
                    == 0,
                "claim-only bits are disjoint from scene flags");
+_Static_assert((SCENE_CLAIM_DRIVEN & SCENE_HINGE_TRANSFORM) == 0, "driver claims are disjoint");
 
 typedef struct {
     const scene_asset_t* asset;
@@ -329,6 +346,7 @@ struct scene {
     scene_timeline_t* timeline;
     scene_position_constraint_t* positions;
     scene_aim_constraint_t* aims;
+    scene_hinge_t* hinges;
     size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
@@ -472,12 +490,17 @@ scene_failure_t scene_timeline_resolve(const scene_asset_t* asset, const scene_a
                                        scene_timeline_blocks_t* blocks);
 scene_failure_t scene_timeline_bind(scene_t* scene);
 bool scene_timeline_step(scene_t* scene, uint32_t dt_ms);
+void scene_hinge_open(scene_t* scene);
+int scene_hinge_index(const scene_asset_t* asset, scene_row_t row);
+void scene_hinge_step(scene_t* scene, bool applied);
+void scene_drivers_step(scene_t* scene, bool applied);
+void scene_animation_advance(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);
-/* Settles the skins' buffers, then advances and skins. */
+/* Advances the timeline, settles skins, and poses the scene. */
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
-/* The same without settling: a seek re-poses what is shown and takes no buffers. */
+/* Updates poses and lighting after the timeline and skin activation settle. */
 void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
 
 /* Whether `a` picks its pose tier, and so needs its drawn size, at the next

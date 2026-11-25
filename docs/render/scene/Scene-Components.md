@@ -58,3 +58,35 @@ camera changes what is seen.
 Each skinned renderer reads its lighting mode from SKIN, direct by default;
 `skin_set_light_mode()` changes it. See
 [Lighting modes](../animation/Skinned-Lighting.md#lighting-modes).
+
+## Enabled state
+
+A timeline can key any named object's enabled flag with `ENTY.enabled`.
+Use step interpolation and float values. Zero disables the entity and any
+other value enables it. The entity is enabled before its first key.
+
+The timeline reapplies its value the next time it samples the track, including
+on seek. If any active skin cannot get its buffers, the scene releases all its
+skin buffers and retries active skins in row order.
+
+## Hinge
+
+A hinge turns around a rest-frame axis using the object's authored local pose
+as its rest pose. The SCNE angle applies unless the timeline keys
+`HNGE.angle`. Both use radians and clamp to the authored bounds.
+
+The hinge reserves position and rotation. Scale remains writable.
+Constraint owners, targets and their ancestors require unhinged transforms.
+
+See [Hinge](../../kinematics/Hinge.md) for the pose calculation and
+[Scene Files](Scene-Files.md#hinge) for authoring.
+
+## Timeline step and seek
+
+Sampling writes keyed fields and enabled flags; the drivers rewrite constrained and hinged locals.
+
+```mermaid
+flowchart LR
+    Sample["Sample timeline"] --> Settle["Settle skins"] --> Drive["Apply constraints, then hinges"]
+    Drive --> Pose["Step: pose due skins<br/>Seek: repose now"]
+```

@@ -30,6 +30,7 @@ SOURCES = [pathlib.Path(__file__).with_name("scene_draw_stand_ins.c"), *[MAIN / 
     *sorted(path for path in (MAIN / "scene").rglob("*.c") if path.name not in ("scene_draw.c", "scene_shell.c")),
     MAIN.parent / "packages/math/src/linear/quatf.c", MAIN.parent / "packages/math/src/sh/sh1.c",
     MAIN.parent / "packages/hash/src/name_hash.c", MAIN.parent / "packages/kinematics/src/rig/rig.c",
+    MAIN.parent / "packages/kinematics/src/hinge/hinge.c",
     TLSF / "tlsf.c"]
 # What those sources need past the firmware's include roots: the host stand-ins for the IDF headers (esp_log.h among
 # them), the allocator app_heap.c builds on, and the board's PSRAM, which app_arena.c sizes the app region from.

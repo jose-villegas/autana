@@ -391,13 +391,12 @@ title Content: hinges, 28 bytes each from hinges_off
 | Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` (0xRRGGBB) at most `0xFFFFFF`. A camera `path` becomes an animator on its entity with one clip, default index zero and loop wrap; its `node` selects the tracks at bake time, and they bind to that entity through `ANIM_TARGET_SELF` |
 | Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0. The light shines along `SCENE_LIGHT_AXIS` (+Y) turned by its entity's rotation; at run time it lights skinned renderers only, baked renderers carry their light. Sky and camera regions are bake inputs and are not stored |
 | Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
-| Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
+| Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. A step track on `ENTY.enabled` sets the entity enabled flag. |
 | Constraints | Floats are finite and weights are in 0..1. Each `source_count` is 1 through `SCENE_CONSTRAINT_SOURCES_MAX` and `source_first + source_count` is at most the source table count. |
 | Position constraint | `binding_mode` is `world_space` (0), `lock_to_target` (1) or `lock_to_target_with_world_up` (2). Padding is zero. |
 | Aim constraint | `world_up_type` is `scene_up` (0), `object_up` (1), `object_rotation_up` (2), `vector` (3) or `none` (4). `world_up_object` is an entity row for types 1 and 2 and `SCENE_ASSET_WORLD_UP_OBJECT_NONE` (0xFFFF) otherwise. Aim and up vectors are nonzero. The tool bakes Euler degrees to an x, y, z, w quaternion. |
 | Constraint source | `target` is the hash of a named scene entity. `weight` is finite and in 0..1. |
-| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
-| Unsupported rows | `scene_load()` reports hinge rows as unsupported and names `hinge`. |
+| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. A hinge claims position and rotation. See [Hinge](../../render/scene/Scene-Components.md#hinge). |
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |

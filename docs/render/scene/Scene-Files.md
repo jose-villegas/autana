@@ -385,8 +385,9 @@ A missing clip fails scene load with the object name and clip hash.
 | Interrupted blend | Use the immediately preceding block as the blend source. |
 
 Before the first block, the skin uses its rest pose. At each millisecond, seek
-matches the timeline's written values and playback layer state. Seek poses
-immediately. The skin palette matches play on frames when its pose tier poses.
+matches the timeline's written values and playback layer state.
+Seek poses immediately. Its skin palette matches play on frames where the
+skin's pose tier is due and on the frame the skin is enabled.
 
 A clip may animate the scale of an entity with children only if its three axes
 stay equal (within the scale tolerance) at every key and every cubic tangent.
@@ -398,7 +399,8 @@ refuse clips that break this rule.
 
 The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
 path relative to the scene file. The clip travels in the scene's pack and
-addresses transforms, camera lenses and skinned animators by object name.
+addresses transforms, camera lenses, skinned animators, position and aim
+constraints, hinge angles and enabled flags by object name.
 
 ```toml
 [timeline]
@@ -410,6 +412,17 @@ The default wrap is `"clamp"`, which holds the clip's final frame.
 `"loop"` wraps to the first frame at the duration. A property animator
 and the timeline must write separate fields. Load fails naming
 `object.field` when both claim that field.
+
+A step track on `ENTY.enabled` switches an object off (0) or on (nonzero).
+It is enabled before its first key. See [Enabled state](Scene-Components.md#enabled-state).
+
+```toml
+[[tracks]]
+object = "prop"
+field = "ENTY.enabled"
+interp = "step"
+keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.0 }]
+```
 
 ### Constraint
 
@@ -428,9 +441,31 @@ A track naming a source index absent from its scene row fails load and reports t
 
 ### Hinge
 
-The scene parser and packer accept `[objects.hinge]` with a unit axis and
-ordered bounds in radians. The starting angle defaults to zero.
-`scene_load()` refuses scenes with hinge rows.
+Scene loading binds the hinge to the authored local pose. The driver turns
+the object about its unit axis. Bounds are in radians and the starting angle
+defaults to zero.
+
+```toml
+[objects.hinge]
+axis = [0, 0, 1]
+min = -1.2
+max = 1.2
+angle = 0.0
+```
+
+A timeline can drive the angle with a float curve.
+
+```toml
+animation = "joint_motion"
+
+[[tracks]]
+object = "joint"
+field = "HNGE.angle"
+interp = "linear"
+keys = [{ t = 0.0, v = 0.0 }, { t = 0.5, v = 1.2 }, { t = 1.0, v = 0.0 }]
+```
+A hinge claims position and rotation. A constraint on the same object
+fails load naming `HNGE.angle`. Constraint input paths must be free of hinges.
 
 ### Light options
 
