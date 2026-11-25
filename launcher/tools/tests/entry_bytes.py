@@ -1,10 +1,5 @@
-"""Byte-level helpers for the asset entry tests: values as an entry stores them, and an entry with one field rewritten."""
+"""An asset entry with one field rewritten, for the tests of what a reader refuses."""
 import struct
-
-
-def single(value):
-    """`value` rounded to the float32 an entry stores."""
-    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 def edited(entry, offset, fmt, value):
