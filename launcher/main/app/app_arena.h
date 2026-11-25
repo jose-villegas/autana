@@ -31,13 +31,9 @@
  * 41 KB. With room for the heap's own fragments. */
 #define APP_ARENA_SYSTEM_OTHER_BYTES   (80u * 1024u)
 
-/* The PSRAM heap the region leaves the system: the framebuffer, one more
- * buffer its size, and the rest. The second is the double-framebuffer back
- * buffer the boot animation draws through, freed before the launcher, then
- * whichever the shell makes during a visit: a back buffer, the send audit's
- * shadow, a readback's snapshot, or the half picture a scene expands (a
- * quarter of the size). A development send audit opened over a half picture
- * does not fit and is refused with a log line. */
+/* Leaves the system its framebuffer, a second buffer, and heap headroom.
+ * The second buffer serves boot animation, back-buffer, audit, snapshot or
+ * scene expansion. An audit that does not fit is refused with a log line. */
 #define APP_ARENA_SYSTEM_RESERVE_BYTES ((2u * GFX_FRAMEBUFFER_BYTES) + APP_ARENA_SYSTEM_OTHER_BYTES)
 
 /* The smallest chunk the arena takes from the app heap: small takes share one

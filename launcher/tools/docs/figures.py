@@ -6,6 +6,7 @@ and the one way to write a PNG or a GIF.
 """
 import argparse
 import bisect
+import colorsys
 import fractions
 import functools
 import json
@@ -158,6 +159,18 @@ def nearest(points, table):
 def rgb(name):
     """A "#rrggbb" colour as (r, g, b)."""
     return tuple(int(name[at:at + 2], 16) for at in (1, 3, 5))
+
+
+GOLDEN_ANGLE = 0.381966
+INDEX_SATURATION = 0.75
+INDEX_VALUE = 0.95
+BYTE_CHANNEL_MAX = (1 << 8) - 1
+
+
+def index_hue(index, stride=GOLDEN_ANGLE, saturation=INDEX_SATURATION, value=INDEX_VALUE, *, byte=False):
+    """An index's RGB at a fixed stride around the hue wheel, in unit or byte channels."""
+    colour = colorsys.hsv_to_rgb((index * stride) % 1.0, saturation, value)
+    return tuple(int(BYTE_CHANNEL_MAX * channel) for channel in colour) if byte else colour
 
 
 @functools.cache

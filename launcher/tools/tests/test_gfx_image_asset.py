@@ -4,7 +4,6 @@ build_pack finding every .image.toml. The firmware's reader of the same bytes
 is suite_draw_image.c."""
 
 import pathlib
-import struct
 import sys
 import tempfile
 import unittest
@@ -14,6 +13,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "device"))
 
 from asset.asset_pack import parse_pack  # noqa: E402
+from entry_bytes import edited  # noqa: E402
 from gfx import image_asset  # noqa: E402
 from gfx.image_asset import HEADER, ImageError  # noqa: E402
 from r3d import build_pack  # noqa: E402
@@ -25,12 +25,6 @@ AT_FORMAT, AT_WIDTH, AT_STRIDE, AT_PIXELS = 2, 4, 8, 12
 def png(width, height, rgba_rows):
     """An 8-bit RGBA PNG of `rgba_rows`, each a list of (r, g, b, a)."""
     return encode_png(width, height, (bytes(v for px in row for v in px) for row in rgba_rows), PNG_RGBA)
-
-
-def edited(entry, offset, fmt, value):
-    out = bytearray(entry)
-    struct.pack_into(fmt, out, offset, value)
-    return bytes(out)
 
 
 class RoundTripTests(unittest.TestCase):

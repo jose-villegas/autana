@@ -3,7 +3,6 @@ drops only the scene's indirect table and occlusion."""
 
 import collections
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -18,9 +17,6 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
 APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
-# The variants a scene places for "painting", as doc_tables.variants lists them.
-VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True),
-            ("painting_fitted_full", True)]
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -28,7 +24,7 @@ class DocImageFailureTest(unittest.TestCase):
     def test_scene_poses_equal_track_host_for_the_video_frame_count(self):
         from anim import track_host
         from anim_probe import write_camera_clip
-        from r3d.import_settings import load_scene
+        from r3d.import_settings import SettingsError, load_scene
         from r3d.mesh_import import fidelity_poses
         from test_r3d_import import FIT, HEAD, SIMPLIFY, VARIANT, VARIANT_OUTPUT, renderer, sun_object, write_import
         with tempfile.TemporaryDirectory() as directory:
@@ -37,9 +33,8 @@ class DocImageFailureTest(unittest.TestCase):
             write_import(work, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
             scene_path = work / "gallery.scene.toml"
             scene_path.write_text(HEAD + sun_object() + renderer(name="painting", extra=
-                'variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [16, 12] }\n') +
-                renderer(name="painting_fitted", extra=
                 'variant = "mesh"\nbake = true\n' + FIT.replace('[184, 224]', '[8, 6]')) +
+                renderer(name="frame", extra='variant = "mesh"\nbake = true\n') +
                 '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'
                 'path = { animation = "orbit.anim.toml", node = "orbit_view" }\n')
             scene = load_scene(scene_path)
@@ -49,6 +44,8 @@ class DocImageFailureTest(unittest.TestCase):
                                                        "--poses", "orbit_view", 8, 6, "0.62", "6"])
                     self.assertEqual(fidelity_poses(scene, "painting", frames, 250).encode(), expected.encode())
                     self.assertTrue(expected.startswith("size 8 6\nlens 0.62 6\n"), expected)
+            with self.assertRaisesRegex(SettingsError, "gallery.scene.toml: frame is not a fitted renderer"):
+                fidelity_poses(scene, "frame", 2, 250)
 
     def test_import_examples_use_the_callers_scene_object_pack_and_timing(self):
         import importlib.util
@@ -68,12 +65,14 @@ class DocImageFailureTest(unittest.TestCase):
                     mock.patch("r3d.bake_fidelity.pack_bytes", return_value={}) as pack, \
                     mock.patch("r3d.bake_fidelity.write_packs"), \
                     mock.patch.object(examples.subprocess, "run") as run:
-                examples.main(scene_path, "painting", "painting_flat_fitted", pathlib.Path("viewer"), work, work, 3, 17)
+                examples.main(scene_path, "painting", pathlib.Path("viewer"), work, work, 3, 17)
             pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.bundle'}"])
             args = run.call_args_list[0].args[0]
             for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
                 self.assertEqual(args[args.index(flag) + 1], value)
             self.assertEqual(run.call_args_list[0].kwargs["env"]["AUTANA_ASSET_DIR"], str(work / "albedo/assets"))
+            self.assertEqual(run.call_args_list[1].args[0][-1], str(work / "committed-smooth.bmp"),
+                             "the albedo render sits beside the committed render of the object")
             source = APP_SCRIPT.read_text()
             call = next(line for line in source.splitlines() if '"launcher/tools/render/doc_import_examples.py"' in line)
             script = (ROOT / "scripts/lib/run.sh").read_text() + \
@@ -84,83 +83,27 @@ class DocImageFailureTest(unittest.TestCase):
             done = subprocess.run(["sh", "-c", script], cwd=work, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual((work / "argv").read_text().splitlines(),
-                             ["gallery.scene.toml", "painting_fitted_full", "painting_flat_fitted", "viewer", ".", "out", "3", "17"])
+                             ["gallery.scene.toml", "painting", "viewer", ".", "out", "3", "17"])
 
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
-        import check_avi
-        import render_compare
-        import numpy as np
         values = (1, 2, 3, 4, 5)
         def scores(path):
-            self.assertNotIn("atrium", path.name)
-            if path.name.endswith("_lite-compare.log"):
-                self.assertEqual(path.name, "variant-painting_lite-compare.log")
             return {name: values for name in ("frames mean", "two bounces", "direct light only",
                     "intensity 1", "intensity 2", "intensity 3", "albedo boost 2",
                     "intensity 1 (own reference)", "intensity 2 (own reference)",
                     "intensity 3 (own reference)", "albedo boost 2 (own reference)")}
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            (work / "sampling").mkdir()
-            (work / "sampling/table.md").write_text("sampling\n")
-            pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=3,
-                                   edge_delta_e=4, interior_delta_e=5)
-            with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
-                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
-                    mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
-                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
-            self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
+            with mock.patch.object(doc_tables, "scores", side_effect=scores) as read:
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
+            self.assertEqual({call.args[0].name for call in read.call_args_list},
+                             {"committed-smooth-compare.log", "indirect-compare.log", "indirect-look.log"})
             self.assertEqual({path.name for path in (work / "tables").iterdir()},
-                             {f"gallery-{suffix}.md" for suffix in
-                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look", "variants",
-                               "variant-pairs")})
-
-    def test_variants_rank_fitted_first_then_by_mean_error(self):
-        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-        import doc_tables
-        # The unfitted full mesh scores best here, and still follows both fitted ones.
-        means = {"painting": 1.0, "painting_lite": 4.0, "painting_fitted": 3.0, "painting_fitted_full": 2.0}
-        found = [(name, "fitted" in name) for name in means]
-        order = [name for name, _ in doc_tables.ranked(found, lambda name: (means[name],))]
-        self.assertEqual(order, ["painting_fitted_full", "painting_fitted", "painting", "painting_lite"])
-
-    def test_the_demo_scene_lists_every_variant_and_reads_fitted_from_its_recipes(self):
-        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-        import doc_tables
-        # Every mesh renderer of the scene file, fitted where its table has a fit.
-        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
-        expected = {item["name"]: "fit" in item["mesh_renderer"] for item in objects if "mesh_renderer" in item}
-        full = min(expected, key=len)
-        self.assertEqual(dict(doc_tables.variants(DEMO_SCENE, full)), expected)
-        self.assertTrue(any(expected.values()) and not all(expected.values()))
-
-    def test_every_demo_variant_has_notes_and_pairs_follow_the_given_order(self):
-        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-        import doc_tables
-        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
-        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
-        names = [name for name, _ in doc_tables.variants(DEMO_SCENE, full)]
-        pairs = doc_tables.variant_pairs(list(reversed(names)), full)
-        self.assertEqual([name for _, name, _ in pairs],
-                         [name for name in reversed(names) for _ in doc_tables.variant_note(name, full)[1]])
-        self.assertTrue(all(base in names for base, _, _ in pairs))
-        with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
-            doc_tables.variant_note(full + "_unknown", full)
-
-    def test_each_fidelity_sheet_names_its_variants_by_label_and_refuses_a_missing_one(self):
-        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-        import doc_tables
-        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
-        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
-        for image, labels in doc_tables.FIDELITY_SHEETS.items():
-            sheet = doc_tables.fidelity_sheet(DEMO_SCENE, full, image)
-            self.assertEqual([label for _, label in sheet], list(labels))
-            self.assertEqual([doc_tables.variant_label(name, full) for name, _ in sheet], list(labels))
-        with mock.patch.dict(doc_tables.FIDELITY_SHEETS, {"x": ("flat", "unknown")}), \
-                self.assertRaisesRegex(ValueError, "no unknown variant"):
-            doc_tables.fidelity_sheet(DEMO_SCENE, full, "x")
+                             {f"gallery-{suffix}.md" for suffix in ("fidelity", "indirect", "indirect-look")})
+            self.assertEqual([line.split(" | ")[0] for line in (work / "tables/gallery-indirect.md").read_text().splitlines()[2:]],
+                             ["| painting, direct light", "| painting, indirect light"])
 
     def test_score_columns_are_the_sampling_tables(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -172,25 +115,15 @@ class DocImageFailureTest(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import bake_charts
         import doc_tables
-        import check_avi
-        import render_compare
-        import numpy as np
-        from r3d import bake_fidelity
         values = (1.0, 2.0, 0.5, 3.0, 0.75)
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            (work / "sampling").mkdir()
-            (work / "sampling/table.md").write_text(bake_fidelity.table(
-                [("declared", values), ("fixed4", values), ("sky16", values), ("centroid", values)]) + "\n")
-            pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=0.5, edge_delta_e=3, interior_delta_e=4)
             # Every comparison log scores the same, whatever row write_tables asks it for.
-            with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
-                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
-                    mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
-                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
+            with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)):
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
             bake_charts.write_charts(work / "tables", work / "render", "gallery")
             self.assertEqual({path.name for path in (work / "render").iterdir()},
-                             {f"gallery-{name}.png" for name in ("fidelity", "indirect", "flat-sampling", "indirect-look")})
+                             {f"gallery-{name}.png" for name in ("fidelity", "indirect", "indirect-look")})
             fidelity = work / "tables/gallery-fidelity.md"
             fidelity.write_text(fidelity.read_text().replace("Luma SSIM", "SSIM"))
             with self.assertRaisesRegex(ValueError, "missing columns: Luma SSIM"):
@@ -215,13 +148,13 @@ class DocImageFailureTest(unittest.TestCase):
                         for index, (knobs, value) in enumerate(zip(points, (1000, 900)))]
                 (data / f"{name}-sweep.json").write_text(json.dumps({"rows": rows}))
             write_sweep("ceiling-gate", points)
-            flat = doc_tables.small_fill_board(data, "gallery", "painting")
+            flat = doc_tables.small_fill_board(data, "gallery", "painting_fitted_full")
             self.assertIn("-10.00%", flat)
             self.assertNotIn("GRAIN", flat)
             points = [{"render_lab.small_fill_ceiling": 12, "render_lab.small_fill_gate": 16,
                        "render_lab.small_fill_style": style} for style in (0, 1)]
             write_sweep("styles", points)
-            styles = doc_tables.small_fill_board(data, "gallery", "painting")
+            styles = doc_tables.small_fill_board(data, "gallery", "painting_fitted_full")
             self.assertIn("| 12 | 16 | GRAIN | 0.900 | -10.00% |", styles)
             self.assertEqual(styles.count("| Ceiling |"), 2)
             self.assertEqual(styles.count("<details>"), 2)
@@ -263,6 +196,7 @@ class DocImageFailureTest(unittest.TestCase):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
         assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
         calls = [line for line in source.splitlines() if line.startswith('run bash "$TOOLS_DIR/doc_images_demo.sh"')]
+        demo_object = next(line for line in assignments if line.startswith("DEMO_OBJECT=")).split("=", 1)[1]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             stub = root / "doc_images_demo.sh"
@@ -272,7 +206,7 @@ class DocImageFailureTest(unittest.TestCase):
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual((root / "argv").read_text().splitlines(),
-                             ["out", "work/demo", DEMO_SCENE.relative_to(ROOT).as_posix(), "atrium"])
+                             ["out", "work/demo", DEMO_SCENE.relative_to(ROOT).as_posix(), demo_object])
 
     def test_orphans_require_a_demo_prefix_and_a_matching_template(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -293,17 +227,17 @@ class DocImageFailureTest(unittest.TestCase):
             demo.touch()
             images = root / "docs/images/render"
             images.mkdir(parents=True)
-            for stem in ("gallery-full", "gallery-missing", "unknown-full",
+            for stem in ("gallery-depth", "gallery-missing", "unknown-depth",
                          "gallery-small-fill-smooth", "gallery-small-fill-fast-diff",
                          "gallery-small-fill-dither-diff", "gallery-small-fill-grain-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
                                   cwd=images, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
-            self.assertNotIn("orphan render/gallery-full.gif", done.stdout)
+            self.assertNotIn("orphan render/gallery-depth.gif", done.stdout)
             self.assertNotIn("orphan render/gallery-small-fill-", done.stdout)
             self.assertIn("orphan render/gallery-missing.gif", done.stdout)
-            self.assertIn("orphan render/unknown-full.gif", done.stdout)
+            self.assertIn("orphan render/unknown-depth.gif", done.stdout)
 
     def test_scratch_bake_packs_the_replacement_and_renders_its_object(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -320,12 +254,13 @@ class DocImageFailureTest(unittest.TestCase):
             function = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\n}", 1)[0] + "\n}\n"
             script = (ROOT / "scripts/lib/run.sh").read_text() + \
                 'PYTHON=sh\nR3D_PYTHON=sh\nHOST=./host.sh\nSCENE=gallery.scene.toml\nID=gallery\nDEMO=.\nFIDELITY_FRAMES=5\nFIDELITY_DT=5000\n' + \
-                function + 'bake_and_render scratch gallery.paint painting\n'
+                function + 'bake_and_render gallery.scene.toml scratch gallery.paint painting\n'
             done = subprocess.run(["sh", "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             # The scratch folder sits inside the repository, where the importer
             # writes only into a folder it is given.
             imported = (root / "import.argv").read_text().splitlines()
+            self.assertEqual(imported[0], "gallery.scene.toml")
             self.assertEqual(imported[imported.index("--out") + 1], "scratch")
             self.assertEqual((root / "pack.argv").read_text().splitlines(),
                              ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.bundle"])
@@ -334,30 +269,42 @@ class DocImageFailureTest(unittest.TestCase):
             self.assertEqual(args[args.index("--object") + 1], "painting")
             self.assertEqual((root / "assets.env").read_text().strip(), "scratch/assets")
 
-    def test_variant_scene_keeps_its_import_dependency(self):
+    def test_every_scratch_bake_gets_a_scene_with_its_import_and_animations_beside_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            meshes = root / DEMO_SCENE.parent.relative_to(ROOT)
-            shutil.copytree(DEMO_SCENE.parent, meshes,
-                            ignore=shutil.ignore_patterns("*.bundle", "*.c", "*.h"))
-            importer = root / "launcher/tools/r3d/mesh_import.py"
-            importer.parent.mkdir(parents=True)
-            importer.write_text(
-                f'test -f "$(dirname "$1")/{DEMO_IMPORT.name}" || exit 7\n'
-                'echo import_dependency_ready\nexit 8\n', encoding="utf-8")
+            # The stand-in for R3D_PYTHON: as mesh_import.py it checks the scene it is
+            # given ($2) has its import beside it and reaches every animation it names;
+            # anything else (physical_scene.py) runs.
+            stand_in = root / "r3d_python.sh"
+            stand_in.write_text(
+                '#!/bin/sh\n'
+                'case "$1" in *mesh_import.py) ;; *) exec "$REAL_PYTHON" "$@" ;; esac\n'
+                'folder=$(dirname "$2")\n'
+                f'test -f "$folder/{DEMO_IMPORT.name}" || {{ echo "no import beside $2"; exit 7; }}\n'
+                'for clip in $(sed -n \'s/.*animation = "\\([^"]*\\)".*/\\1/p\' "$2"); do\n'
+                '    case "$clip" in /*|?:/*) path=$clip ;; *) path=$folder/$clip ;; esac\n'
+                '    test -f "$path" || { echo "missing $clip"; exit 7; }\n'
+                'done\n'
+                'echo scene_ready\n', encoding="utf-8")
+            stand_in.chmod(0o755)
             source = APP_SCRIPT.read_text(encoding="utf-8")
-            helper = (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8")
-            functions = source.split("bake_and_render() {", 1)[1].split("\nvariant_bake smooth", 1)[0]
-            functions = "\n".join(line for line in functions.splitlines() if "physical_scene.py" not in line)
+            functions = "bake_and_render() {" + source.split("bake_and_render() {", 1)[1].split("\nlook_bake smooth", 1)[0]
+            start = 'run mkdir -p "$W/start"' + source.split('run mkdir -p "$W/start"', 1)[1].split("\n#", 1)[0]
+            work = root / "work"
             script = root / "stage.sh"
             script.write_text(
-                'set -e\nW=work\nID=sponza\nFULL=atrium\nMESH=sponza.atrium\nR3D_PYTHON=sh\nmkdir -p work\n'
-                f'DEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
-                + helper + 'bake_and_render() {' + functions + "\nvariant_bake direct direct\n", encoding="utf-8")
-            result = subprocess.run(["sh", script.as_posix()], cwd=root, capture_output=True, text=True)
-            log = (root / "work/indirect-direct/bake.log").read_text(encoding="utf-8")
-            self.assertEqual(result.returncode, 8, result.stderr + log)
-            self.assertIn("import_dependency_ready", log)
+                f'set -e\nW={work.as_posix()}\nID=sponza\nFULL=atrium_fitted_full\nMESH=sponza.atrium_fitted_full\n'
+                f'R3D_PYTHON={stand_in.as_posix()}\nPYTHON=true\nHOST=true\nREAL_PYTHON={pathlib.Path(sys.executable).as_posix()}\n'
+                f'export REAL_PYTHON\nDEMO={DEMO_SCENE.parent.relative_to(ROOT).as_posix()}\n'
+                f'SCENE={DEMO_SCENE.relative_to(ROOT).as_posix()}\n'
+                + (ROOT / "scripts/lib/run.sh").read_text(encoding="utf-8")
+                + functions + "\nlook_bake direct direct\n" + start + "\n", encoding="utf-8")
+            result = subprocess.run(["sh", script.as_posix()], cwd=ROOT, capture_output=True, text=True)
+            for bake in ("indirect-direct", "start"):
+                log = work / bake / "bake.log"
+                text = log.read_text(encoding="utf-8") if log.exists() else "no bake.log"
+                self.assertIn("scene_ready", text, f"{bake}: {text}\n{result.stderr}")
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class PhysicalSceneTests(unittest.TestCase):

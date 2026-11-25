@@ -56,7 +56,7 @@ def viewer(args, *flags, log):
 def path_ms(args):
     text = viewer(args, "--frames", "1", "--dt", "16", "-o", str(args.work / "probe.bmp"),
                   log=args.work / f"{args.stem}-probe.log")
-    return int(re.search(r"camera path (\d+) ms", text)[1])
+    return int(re.search(r"^RENDER path_ms=(\d+)$", text, re.M)[1])
 
 
 def cull(*settings):

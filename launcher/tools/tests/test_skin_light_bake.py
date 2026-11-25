@@ -18,17 +18,13 @@ from native_path import git_bash  # noqa: E402
 from native.shared_library import build_shared
 from r3d.light import albedo_from_uv, face_colours, LIGHT_GAMMA
 from r3d.import_settings import load_light, LIGHT_MODE_BAKED
-from tests.soup import sun
+from tests.soup import Open, sun
 from anim import track_host
 from build import packages
 from build.c_header import read_define
+from tests.r3d_env import needs_llvm  # noqa: E402
 SKIN_OWNER = TOOLS.parent / "main/render/r3d_skin_format.h"
 NORMAL_SCALE = read_define(SKIN_OWNER, "R3D_SKIN_NORMAL_SCALE")
-
-
-class OpenPatch:
-    def blocked(self, origins, directions):
-        return np.zeros(len(origins), dtype=bool)
 
 
 class PatchEquality(unittest.TestCase):
@@ -38,6 +34,7 @@ class PatchEquality(unittest.TestCase):
         albedo = albedo_from_uv(None, kd, uv, None)
         np.testing.assert_allclose(albedo, np.tile(kd ** LIGHT_GAMMA, (len(uv), 1)))
 
+    @needs_llvm
     def test_surface_light_mode_preserves_baked_bytes_and_omits_realtime(self):
         from r3d.light import light
         from r3d.import_settings import LIGHT_MODES, LIGHT_MODE_BAKED, load_light
@@ -45,14 +42,15 @@ class PatchEquality(unittest.TestCase):
         points = np.array([[0., 0., 0.], [1., 0., 0.]])
         normals = np.tile([0., 1., 0.], (len(points), 1))
         component = dict(type='directional', color=[0.2, 0.4, 0.8], intensity=2)
-        baseline = light(points, normals, np.zeros(len(points), dtype=bool), OpenPatch(),
+        baseline = light(points, normals, np.zeros(len(points), dtype=bool), Open(),
                          [load_light(dict(component, mode=LIGHT_MODE_BAKED), [0, 0, 0], "light")], 0.001)
         for mode in LIGHT_MODES:
             lamp = load_light(dict(component, mode=mode), [0, 0, 0], 'light')
-            got = light(points, normals, np.zeros(len(points), dtype=bool), OpenPatch(), [lamp], 0.001)
+            got = light(points, normals, np.zeros(len(points), dtype=bool), Open(), [lamp], 0.001)
             expected = baseline if mode == LIGHT_MODE_BAKED else np.zeros_like(baseline)
             self.assertEqual(got.tobytes(), expected.tobytes())
 
+    @needs_llvm
     def test_baked_patch_matches_runtime_per_vertex_bytes(self):
         compiler = track_host.compiler()
         if sys.platform == "win32":
@@ -89,7 +87,7 @@ class PatchEquality(unittest.TestCase):
                             linear_albedo = (albedo[0] / 255) ** LIGHT_GAMMA
                             baked = face_colours(points, faces, np.array([0]), [0], set(),
                                 lambda p, spacing, material: np.tile(linear_albedo, (len(p), 1)),
-                                OpenPatch(), [directional, ambient], 0.001, white)[0]
+                                Open(), [directional, ambient], 0.001, white)[0]
                             runtime = np.empty_like(albedo)
                             self.assertEqual(library.probe_patch(albedo.ctypes.data, values.ctypes.data,
                                 encoded_normal.ctypes.data, white, runtime.ctypes.data), 1)

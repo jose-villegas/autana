@@ -87,6 +87,12 @@ gfx_mode_has_framebuffer(const gfx_mode_t* mode) {
     return mode->layout == GFX_LAYOUT_FULL_FB || mode->layout == GFX_LAYOUT_DOUBLE_FB;
 }
 
+/* Indexed mode keeps a picture in its index image. Bands are transient. */
+static inline bool
+gfx_mode_keeps_picture(const gfx_mode_t* mode) {
+    return mode->layout != GFX_LAYOUT_BANDS;
+}
+
 /* Grants `request`, allocates whatever the granted layout needs, and
  * returns the grant; interlace in a grant only describes the request. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
  * nesting one app's mode inside another's is not supported. */

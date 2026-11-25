@@ -15,131 +15,230 @@ and shares the exposure, tone map and RGB565 conversion below. Only the bake bac
 """
 
 import argparse
+import functools
 import os
-import multiprocessing
-import concurrent.futures
 import pathlib
+import shutil
 import sys
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mesh_source, mitsuba_reference
+from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.cards import emit as card_emit
-from r3d.geometry import corner_normals, hit_barycentrics
+from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, light, open_side_occlusion, to_srgb8
+from r3d.light import (AlphaTest, coincident_faces, device_light, device_occlusion, surface_table, to_srgb8,
+                       turned_frame)
 from r3d.mesh_source import load_source, path_light_for, camera_filter
 from r3d.poses import camera_rays, read_poses
-from r3d.ray_query import RayQuery
+from r3d.ray_query import RayQuery, chunks, joined, rows, vectors
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 from colour_maths import expand_565  # noqa: E402
 
 
-def hit_normals(source, hits, bary):
-    """Smooth the import's crease-limited source normals at ray hits."""
-    corners = source.corner_normals[hits]
-    normal = (corners * bary[:, :, None]).sum(axis=1)
-    return normal / np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
-
-
 def hit_albedo(source, hits, bary):
-    """Sample each hit's source texture at the source triangle's UV point."""
-    material = source.tri_m[hits]
-    out = np.zeros((len(hits), 3), dtype=float)
-    for index in np.unique(material):
-        chosen = material == index
-        kd = source.materials.get(source.names[index], {}).get("Kd", (1.0, 1.0, 1.0))
-        uv = (source.uv[source.tri_t[hits[chosen]]] * bary[chosen, :, None]).sum(axis=1)
-        out[chosen] = albedo_from_uv(source.textures[index], kd, uv, np.zeros(len(uv)))
-    if source.colors is not None:
-        out *= (source.colors[source.tri_v[hits]] * bary[:, :, None]).sum(axis=1)
-    return out
+    """Each NumPy hit's source albedo at its barycentric weights (SurfaceTable.albedo), on the source's ray query's
+    variant, in launches of at most LAUNCH hits."""
+    mi = source.intersector.mi
+    table = surface_table(source, mi)
+    hits, bary = np.asarray(hits, np.uint32), np.asarray(bary, np.float32)
+    albedo = np.zeros((len(hits), 3))
+    for start, size in chunks(len(hits), ray_query.LAUNCH):
+        part = slice(start, start + size)
+        albedo[part] = rows(table.albedo(mi.UInt32(hits[part]), [mi.Float(bary[part, corner]) for corner in range(3)],
+                                         mi.Bool(True)), size)
+    return albedo
 
 
-def render_linear(source, job, scene, pose, width, height, lens, samples=4):
+def render_linear(source, job, scene, pose, width, height, lens, samples):
     """Return a linear RGB source render, supersampled then box filtered."""
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
 
-def drawn_hits(source, double_materials, origin, direction):
-    """(locations, ray index, triangle) of each ray's first hit the device draws, as visible_from_path finds it: a
-    single-sided triangle seen from behind is culled (facing_away in r3d_triangle_tests.h) and the ray passes it,
-    unless its twin wound the other way lies on it. Where a reduced source's two shells cross, the inner shell's back
-    would otherwise show through the outer one."""
-    active = np.ones(len(origin), bool)
+class DrawnHits(NamedTuple):
+    """The camera rays' drawn hits: the index of each ray that has one (ascending), its location, the source triangle
+    drawn there, its barycentric weights, its interpolated shading normal (None without corner normals) and whether
+    its material is double-sided. Dr.Jit arrays from device_drawn_hits, NumPy rows from drawn_hit_rows."""
+    rays: object
+    where: object
+    faces: object
+    bary: object
+    normal: object
+    double: object
+
+
+def device_drawn_hits(source, double_materials, origin, direction):
+    """Each camera ray's first hit the device draws, as visible_from_path finds it: a single-sided triangle seen from
+    behind is culled (facing_away in r3d_triangle_tests.h) and the ray passes it, unless its twin wound the other way
+    lies on it. Where a reduced source's two shells cross, the inner shell's back would otherwise show through the
+    outer one. Hidden card materials (camera_filter) pass too."""
+    import drjit as dr
+
+    query = source.intersector
+    mi = query.mi
+    table = surface_table(source, mi)
+    double = table.upload(("double", tuple(double_materials)),
+                          np.isin(np.arange(len(source.textures)), double_materials))
     keep = camera_filter(source, alpha=False)
-    # The first round yields even when every ray misses, so each list holds at least one array.
-    found_at, found_ray, found_tri = [], [], []
-    for tri, alive, where in source.intersector.hit_rounds(origin, direction, active):
-        a, b, c = (source.p[source.tri_v[tri, corner]] for corner in range(3))
-        front = (np.cross(b - a, c - a) * direction[alive]).sum(axis=1) < 0
-        shown = np.where(front | np.isin(source.tri_m[tri], double_materials), tri, source.twin[tri])
-        drawn = shown >= 0
-        if keep is not None:
-            drawn &= keep(tri, where)
-        found_at.append(where[drawn])
-        found_ray.append(alive[drawn])
-        found_tri.append(shown[drawn])
-        active[alive[drawn]] = False
-    order = np.argsort(np.concatenate(found_ray))
-    return tuple(np.concatenate(found)[order] for found in (found_at, found_ray, found_tri))
+    keep = None if keep is None else keep.device(query)
+
+    def shown(prim, d, active):
+        a, b, c = query.corners(prim, active)
+        front = dr.dot(dr.cross(b - a, c - a), d) < 0
+        drawn = front | dr.gather(mi.Bool, double, dr.gather(mi.UInt32, table.tri_m, prim, active), active)
+        twin = mi.Int32(-1) if table.twin is None else dr.gather(mi.Int32, table.twin, prim, active)
+        return dr.select(drawn, mi.Int32(prim), twin)
+
+    def passes(prim, where, d, active):
+        through = shown(prim, d, active) < 0
+        return through if keep is None else through | ~keep(prim, where, active)
+
+    ray = query.rays(origin, direction)
+    hit = query.device_hits(ray, passes=passes)
+    rays = dr.compress(hit.valid)
+    if not dr.width(rays):
+        empty = mi.Float()
+        return DrawnHits(rays, mi.Point3f(), mi.UInt32(), (empty, empty, empty),
+                         None if table.normals is None else mi.Vector3f(), mi.Bool())
+    where = dr.gather(type(hit.where), hit.where, rays)
+    faces = mi.UInt32(shown(dr.gather(mi.UInt32, hit.prim, rays), dr.gather(type(ray.d), ray.d, rays), True))
+    bary = query.barycentrics(faces, where)
+    active = dr.full(mi.Bool, True, dr.width(rays))
+    normal = table.normal(faces, bary, active) if table.normals is not None else None
+    hits_double = dr.gather(mi.Bool, double, dr.gather(mi.UInt32, table.tri_m, faces))
+    return DrawnHits(rays, where, faces, bary, normal, hits_double)
+
+
+def drawn_hit_rows(source, double_materials, origin, direction):
+    """device_drawn_hits for NumPy rays, in launches of at most LAUNCH rays, as NumPy DrawnHits."""
+    import drjit as dr
+
+    parts = []
+    for start, size in chunks(len(origin), ray_query.LAUNCH):
+        found = device_drawn_hits(source, double_materials, origin[start:start + size], direction[start:start + size])
+        count = dr.width(found.rays)
+        parts.append(DrawnHits(np.array(found.rays, np.int64).reshape(-1) + start, rows(found.where, count),
+                               np.array(found.faces, np.int64).reshape(-1), rows(found.bary, count),
+                               None if found.normal is None else rows(found.normal, count),
+                               np.array(found.double, bool).reshape(-1)))
+    if not parts:
+        return DrawnHits(np.zeros(0, np.int64), np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros((0, 3)),
+                         None, np.zeros(0, bool))
+    return DrawnHits(*(None if field[0] is None else np.concatenate(field) for field in zip(*parts)))
+
+
+def drawn_hits(source, double_materials, origin, direction):
+    """drawn_hit_rows as (locations, ray index, triangle)."""
+    found = drawn_hit_rows(source, double_materials, origin, direction)
+    return found.where, found.rays, found.faces
+
+
+def primary_hit_rows(source, job, pose, width, height, lens, samples):
+    """The camera rays of a pose and their NumPy DrawnHits."""
+    origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    return origin, direction, drawn_hit_rows(source, double_materials, origin, direction)
+
+
+def device_primary_hits(source, job, pose, width, height, lens, samples):
+    """The camera rays of a pose (NumPy), their drawn hits and each hit's albedo, on the device: found and shaded in
+    launches of at most LAUNCH rays and joined, each hit's ray counted over the whole pose. None and None where no
+    ray hits."""
+    import drjit as dr
+
+    origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    mi = source.intersector.mi
+    table = surface_table(source, mi)
+    hits, albedo = [], []
+    for start, size in chunks(len(origin), ray_query.LAUNCH):
+        found = device_drawn_hits(source, double_materials, origin[start:start + size], direction[start:start + size])
+        if dr.width(found.rays):
+            hits.append(found._replace(rays=found.rays + start))
+            albedo.append(table.albedo(found.faces, found.bary, mi.Bool(True)))
+    if not hits:
+        return origin, direction, None, None
+    found = DrawnHits(*(None if field[0] is None else tuple(map(joined, zip(*field))) if isinstance(field[0], tuple)
+                        else joined(field) for field in zip(*hits)))
+    return origin, direction, found, joined(albedo)
 
 
 def primary_hits(source, job, pose, width, height, lens, samples):
     """The camera rays of a pose and what they hit, as drawn_hits finds it: (ray origins, directions, hit locations,
     the ray each hit belongs to, the source triangle hit, its bary-interpolated normal, its barycentrics, whether its
     material is double-sided)."""
-    origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
-    double_materials = [source.names.index(name) for name in job.settings.double_sided]
-    locations, rays, faces = drawn_hits(source, double_materials, origin, direction)
-    bary = hit_barycentrics(source.p, source.tri_v, faces, locations) if len(rays) else np.zeros((0, 3))
-    normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
-    double = np.isin(source.tri_m[faces], double_materials)
-    return origin, direction, locations, rays, faces, normal, bary, double
+    origin, direction, found = primary_hit_rows(source, job, pose, width, height, lens, samples)
+    return origin, direction, found.where, found.rays, found.faces, found.normal, found.bary, found.double
 
 
-def trace(source, job, scene, pose, width, height, lens, samples=4):
+def trace(source, job, scene, pose, width, height, lens, samples, denoise=False):
     """(linear RGB, share of each pixel's subpixels that hit the mesh, the
     world-space shading normal per pixel turned toward the eye, averaged over
-    the pixel's rays and zero where they all miss)."""
-    settings = job.settings
-    origin, direction, locations, rays, faces, normal, bary, double = primary_hits(source, job, pose, width, height, lens,
-                                                                                    samples)
+    the pixel's rays and zero where they all miss). The pose stays on the device from its camera rays to each hit's
+    colour (device_primary_hits, device_light); the light is gathered over every hit of the pose at once, so a hit's
+    bounce samples depend on its place among them and not on how the camera rays were split. Every hemisphere term
+    turns its directions per point (light.turned_frame); with `denoise` the colour passes through `denoised`."""
+    origin, direction, found, albedo = device_primary_hits(source, job, pose, width, height, lens, samples)
     linear = np.zeros((len(origin), 3), dtype=float)
     covered = np.zeros(len(origin))
-    covered[rays] = 1.0
     shading = np.zeros((len(origin), 3), dtype=float)
-    if len(rays):
-        albedo = hit_albedo(source, faces, bary)
-        radiance = light(locations, normal, double, source.intersector, scene.lights, job.bake.ray_offset,
-                         source.bounce, ao=job.bake.ao,
-                         bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0)
-        linear[rays] = albedo * radiance
+    surface = np.zeros((len(origin), 3), dtype=float)
+    if found is not None:
+        radiance = device_light(found.where, found.normal, found.double, source.intersector, scene.lights,
+                                job.bake.ray_offset, source.bounce, ao=job.bake.ao,
+                                bounce_intensity=scene.indirect.intensity if source.bounce is not None else 1.0,
+                                frame=turned_frame)
+        rays = np.array(found.rays, np.int64).reshape(-1)
+        normal = rows(found.normal, len(rays))
+        covered[rays] = 1.0
+        linear[rays] = rows(albedo * radiance, len(rays))
+        surface[rays] = rows(albedo, len(rays))
         shading[rays] = normal * np.where((normal * direction[rays]).sum(axis=1) > 0, -1.0, 1.0)[:, None]
-    shading = shading.reshape(height, width, samples * samples, 3).sum(axis=2)
-    return (linear.reshape(height, width, samples * samples, 3).mean(axis=2),
-            covered.reshape(height, width, samples * samples).mean(axis=2),
-            shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12))
+    shape = (height, width, samples * samples, 3)
+    shading = shading.reshape(shape).sum(axis=2)
+    shading = shading / np.maximum(np.linalg.norm(shading, axis=2, keepdims=True), 1e-12)
+    linear = linear.reshape(shape).mean(axis=2)
+    if denoise:
+        linear = denoised(linear, surface.reshape(shape).mean(axis=2), shading)
+    return linear, covered.reshape(height, width, samples * samples).mean(axis=2), shading
 
 
-def occlusion_map(source, job, pose, width, height, lens, samples=4):
+def denoised(linear, albedo, normal):
+    """`linear` through Open Image Denoise's ray-tracing filter (OIDN, pinned in requirements.txt) on the CPU,
+    guided by the pixel's albedo and shading normal. The guides come from the primary rays alone, which carry no
+    sampling noise, so OIDN takes them as they are (clean_aux) and only the colour is filtered."""
+    import pyoidn
+
+    def image(values):
+        return np.ascontiguousarray(values, dtype=np.float32)
+
+    out = pyoidn.denoise(image(linear), image(np.clip(albedo, 0.0, 1.0)), image(normal), hdr=True, clean_aux=True,
+                         quality="high")
+    return np.maximum(out.astype(np.float64), 0.0)
+
+
+def occlusion_map(source, job, pose, width, height, lens, samples):
     """(the scene's local occlusion factor per pixel, 1 where open and where nothing is hit; the share of each pixel's
     subpixels that hit the mesh), box filtered like trace(). It is the factor `[bake].ao` scales the ambient and bounce
     light by, so the scene must set it."""
     if job.bake.ao is None:
         raise ValueError("the scene sets no [bake].ao")
-    origin, _direction, locations, rays, _faces, normal, _bary, double = primary_hits(source, job, pose, width, height, lens,
-                                                                                       samples)
+    origin, _direction, found = primary_hit_rows(source, job, pose, width, height, lens, samples)
     factor = np.ones(len(origin))
     covered = np.zeros(len(origin))
-    covered[rays] = 1.0
-    if len(rays):
-        factor[rays] = open_side_occlusion(locations, normal, double, source.intersector, job.bake.ao, job.bake.ray_offset)
+    if len(found.rays):
+        mi = source.intersector.mi
+        covered[found.rays] = 1.0
+        factor[found.rays] = np.array(device_occlusion(source.intersector, vectors(mi.Point3f, found.where),
+                                                       vectors(mi.Vector3f, found.normal), mi.Bool(found.double),
+                                                       job.bake.ao, job.bake.ray_offset, turned_frame),
+                                      np.float64).reshape(-1)
     shape = (height, width, samples * samples)
     return factor.reshape(shape).mean(axis=2), covered.reshape(shape).mean(axis=2)
 
@@ -166,9 +265,10 @@ def source_for(scene, name=None, lit=True, hide_cards=False, hidden_materials=No
     return lit_source(named[0], scene, lit, hide_cards=hide_cards, hidden_materials=hidden_materials), named[0]
 
 
-def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
-    """Full-detail alpha-tested source with bake lighting. `hide_cards` passes accepted materials on camera rays;
-    they still shadow and bounce light onto the surfaces behind them."""
+def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None, variant=None):
+    """Full-detail alpha-tested source with bake lighting, its rays and bounced light traced on `variant`
+    (`ray_query.VARIANT` when None). `hide_cards` passes accepted materials on camera rays; they still shadow and
+    bounce light onto the surfaces behind them."""
     settings = job.settings
     selecting_cards = hide_cards and hidden_materials is None and settings.cards is not None
     source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
@@ -179,8 +279,8 @@ def lit_source(job, scene, lit=True, hide_cards=False, hidden_materials=None):
     source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
-    source.bounce = path_light_for(source, job, scene)
+    source.intersector = RayQuery(source.p, source.tri_v, variant, hit_filter=source.alpha_test)
+    source.bounce = path_light_for(source, job, scene, variant)
     return source
 
 
@@ -192,35 +292,116 @@ def camera_hidden(source, settings, scene=None, hidden_materials=None):
     return np.isin(source.tri_m, [source.names.index(name) for name in hidden_materials])
 
 
-def render_sets(inputs, sets, samples=4):
-    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the bake's
-    CPU variant (ray_query.py), so the set repeats byte for byte. The bounced-light tracer, which holds the source's
-    textures a second time, is dropped before it returns, for the fit that follows in the process."""
-    job, scene = inputs.job(), inputs.scene()
-    source = lit_source(job, scene, hide_cards=True)
+@functools.cache
+def reference_variant():
+    """The variant a reference set traces on: the fastest this machine runs (mitsuba_reference.default_variant),
+    `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`; `ray_query.VARIANT` without Mitsuba or
+    without a JIT variant, where the ray query names what to install. Mitsuba is left on the variant it was on."""
+    mi = mitsuba_reference.import_mitsuba()
+    if mi is None:
+        return ray_query.VARIANT
+    current = mi.variant()
     try:
-        for poses_path, out in sets:
-            width, height, lens, _near, poses = read_poses(poses_path)
-            pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=True)
-            print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}",
-                  flush=True)
+        found = mitsuba_reference.default_variant(mi)
+        return found if ray_query.is_jit(found) else ray_query.VARIANT
+    finally:
+        if current is not None:
+            mi.set_variant(current)
+
+
+# A pose's files, as a set names them after the pose's index and a pose store after POSE_NAME.
+POSE_SUFFIXES = (".png", ".linear.npy", ".normal.npy")
+POSE_NAME = "pose"
+
+
+def link_or_copy(source, target):
+    target.unlink(missing_ok=True)
+    try:
+        os.link(source, target)
+    except OSError:
+        shutil.copyfile(source, target)
+
+
+def render_sets(inputs, sets, store=None, progress=None):
+    """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
+    reference_set.ReferenceInputs: its `samples` rays per pixel side, denoised when it says so) from
+    `reference_source`. Given a pose `store` (bake/produce.PoseStore), each pose
+    is traced once per store folder: a pose the store holds is taken from it, the others are traced and put in it as
+    each finishes, so a run cut short keeps the poses it traced, and each set folder is assembled from the store.
+    The poses are traced in this process (trace_here). progress() runs once per traced pose, store or not: a caller
+    under a stage guard passes its progress call."""
+    if store is not None:
+        from bake.produce import DONE, keyed_folder, read_references
+    plans = []
+    for poses_path, out in sets:
+        out = pathlib.Path(out)
+        width, height, lens, near, poses = read_poses(poses_path)
+        out.mkdir(parents=True, exist_ok=True)
+        folders = [None] * len(poses) if store is None else [store.folder(width, height, lens, near, pose)
+                                                             for pose in poses]
+        missing = [index for index, folder in enumerate(folders) if folder is None or not (folder / DONE).is_file()]
+        target = out if store is None else out / ".tracing"
+        if missing:
+            target.mkdir(exist_ok=True)
+        plans.append((out, target, folders, missing, [poses[index] for index in missing], (width, height, lens)))
+
+    def traced(plan, index):
+        """Puts the `index`th traced pose of `plan` in the store, then tells progress."""
+        _out, target, folders, missing, _poses, _size = plan
+        if store is not None:
+            keyed_folder(folders[missing[index]], lambda folder: [
+                os.replace(target / f"{index:04d}{suffix}", folder / f"{POSE_NAME}{suffix}") for suffix in POSE_SUFFIXES])
+        if progress is not None:
+            progress()
+
+    trace_here(inputs, plans, traced)
+    if store is None:
+        return
+    for out, target, folders, _missing, _poses, _size in plans:
+        shutil.rmtree(target, ignore_errors=True)
+        for index, folder in enumerate(folders):
+            read_references(folder)
+            for suffix in POSE_SUFFIXES:
+                link_or_copy(folder / f"{POSE_NAME}{suffix}", out / f"{index:04d}{suffix}")
+
+
+def reference_source(job, scene):
+    """The source every pose of a reference set is traced from: lit, its accepted card materials hidden from camera
+    rays (the fit makes them), on `reference_variant()`."""
+    return lit_source(job, scene, hide_cards=True, variant=reference_variant())
+
+
+def trace_here(inputs, plans, traced):
+    """The poses of `plans` traced in this process, the source loaded and its bounced light built once for all of
+    them only when one is missing; traced(plan, index) as each pose's files are written. The bounced-light tracer,
+    which holds the source's textures a second time, is dropped before it returns, for the fit that follows in the
+    process."""
+    job, scene = inputs.job(), inputs.scene()
+    source = None
+    try:
+        for plan in plans:
+            out, target, folders, _missing, poses, (width, height, lens) = plan
+            if not poses:
+                continue
+            if source is None:
+                source = reference_source(job, scene)
+            peak = render_poses(source, job, scene, poses, width, height, lens, inputs.samples, target,
+                                normals=REFERENCE_NORMALS, done=lambda index, plan=plan: traced(plan, index),
+                                denoise=inputs.denoise)
+            print(f"worker reference_poses pid={os.getpid()} out={out} traced={len(poses)} of {len(folders)} "
+                  f"pose_peak_pss_bytes={peak}", flush=True)
     finally:
         del source
         mesh_source.PATH_LIGHTS.clear()
 
 
-# Estimated bytes per ray: trace/hit buffers 256, ray-query/lighting scratch 256,
-# sky tangents, samples, directions and temporaries 256.
-POSE_BASE_BYTES_PER_RAY = 768
-POSE_STATE = None
+# A reference pose writes its normals beside its picture: the fit reads both.
+REFERENCE_NORMALS = True
 
 
-def _write_pose(item):
-    source, job, scene, width, height, lens, samples, out, normals, occlusion = POSE_STATE
-    index, pose = item
-    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples)
+def write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise, index, pose):
+    """Trace one pose and write its files under `out`."""
+    linear, covered, normal = trace(source, job, scene, pose, width, height, lens, samples, denoise)
     np.save(out / ("%04d.linear.npy" % index), linear)
     if normals:
         np.save(out / ("%04d.normal.npy" % index), normal.astype(np.float32))
@@ -234,66 +415,23 @@ def _write_pose(item):
         Image.fromarray(np.round(shown).astype(np.uint8)).save(out / ("%04d.occlusion.png" % index))
     picture = device_picture(linear, covered, scene.tonemap_white, scene.camera.component.background)
     Image.fromarray(picture).save(out / ("%04d.png" % index))
+
+
+def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, occlusion=False,
+                 done=None, denoise=False):
+    """Trace the poses one after another in this process, which keeps the device busy alone: on the GPU a launch
+    fills it, on the CPU Mitsuba's LLVM threads trace one pose on every core. done(index) is called as each pose's
+    files are written. Returns the process's peak PSS after a pose."""
     from r3d.process_budget import pss_bytes
-    return os.getpid(), pss_bytes(os.getpid())
 
-
-def budget_pose_capacity(budget, rss, estimate, cores):
-    return max(1, min(cores, (budget - rss) // estimate))
-
-
-def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
-    """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    Every pose's rays are fixed, so the output matches a serial run.
-    """
-    from r3d import process_budget
-    from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal
-    import os
-    global POSE_STATE
-    if getattr(source, "bounce", None) is not None:
-        # Mitsuba's LLVM threads trace one pose on every core, which a forked worker cannot (it traces on one thread
-        # and holds its own copy of the scene, which ran a 15 GB machine out of memory), so a pose with bounced
-        # light renders in this process.
-        if workers not in (None, 1):
-            raise ValueError("poses with bounced light render in the main process; leave --workers unset")
-        workers = 1
-    budget_capacity = None
-    if workers is None:
-        estimate = max(64 * 1024 ** 2, width * height * samples * samples * POSE_BASE_BYTES_PER_RAY)
-        reservation = process_budget.task_reservation()
-        if reservation is not None:
-            rss = process_budget.resident_bytes(os.getpid(), {})[0]
-            cores = cores_available()
-            budget_capacity = budget_pose_capacity(reservation[0], rss, estimate, cores)
-            memory_capacity = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores)
-            workers = max(1, min(budget_capacity, memory_capacity))
-        else:
-            workers = worker_capacity(available_bytes(), (estimate, 0, estimate), FLOORS, cores_available())
-            if not workers:
-                raise RuntimeError("not enough available memory for a reference pose worker")
-    workers = min(workers, len(poses))
-    if workers < 1:
-        raise ValueError("workers must be positive")
-    if workers > 1 and "fork" not in multiprocessing.get_all_start_methods():
-        workers = 1
-    if budget_capacity is not None:
-        print(f"pose pool workers={workers} budget_capacity={budget_capacity} memory_capacity={memory_capacity} rss={rss}", flush=True)
-    POSE_STATE = (source, job, scene, width, height, lens, samples, pathlib.Path(out), normals, occlusion)
-    pose_peaks = {}
-    try:
-        if workers == 1:
-            for item in enumerate(poses):
-                pid, peak = _write_pose(item)
-                pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
-        else:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=workers,
-                    mp_context=multiprocessing.get_context("fork"),
-                    initializer=parent_death_signal, initargs=(os.getpid(),)) as pool:
-                for pid, peak in pool.map(_write_pose, enumerate(poses)):
-                    pose_peaks[pid] = max(pose_peaks.get(pid, 0), peak)
-    finally:
-        POSE_STATE = None
-    return sum(pose_peaks.values()), workers
+    out = pathlib.Path(out)
+    peak = 0
+    for index, pose in enumerate(poses):
+        write_pose(source, job, scene, width, height, lens, samples, out, normals, occlusion, denoise, index, pose)
+        peak = max(peak, pss_bytes(os.getpid()))
+        if done is not None:
+            done(index)
+    return peak
 
 
 def main(argv=None):
@@ -302,8 +440,9 @@ def main(argv=None):
     parser.add_argument("--object", help="the scene's mesh renderer to render, lit as it is baked (default: the first)")
     parser.add_argument("--poses", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--workers", type=int, help="pose workers; default: available CPU and memory budget")
-    parser.add_argument("--samples", type=int, default=4)
+    parser.add_argument("--samples", type=int, default=4, help="rays per pixel side (default 4)")
+    parser.add_argument("--denoise", action="store_true",
+                        help="pass each pose's colour through Open Image Denoise, as a fit recipe with denoise does")
     parser.add_argument("--skip", type=int, default=0, help="ignore this many leading poses")
     parser.add_argument("--normals", action="store_true", help="also write each pose's shading normals as NNNN.normal.npy")
     parser.add_argument("--occlusion", action="store_true",
@@ -353,10 +492,11 @@ def main(argv=None):
         parser.error("the scene sets no [bake].ao")
     if path is None:
         try:
-            peak, workers = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals, args.workers, args.occlusion)
+            peak = render_poses(source, job, scene, poses, width, height, lens, args.samples, out, args.normals,
+                                args.occlusion, denoise=args.denoise)
         except ValueError as error:
             parser.error(str(error))
-        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak} pose_workers={workers}", flush=True)
+        print(f"worker reference_poses pid={os.getpid()} out={out} pose_peak_pss_bytes={peak}", flush=True)
         return 0
     for index, pose in enumerate(poses):
         linear, covered = path.trace(pose, width, height, lens, near, args.spp, args.seed, args.max_depth)

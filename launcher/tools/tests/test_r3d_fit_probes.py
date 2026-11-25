@@ -23,7 +23,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 
@@ -177,42 +177,26 @@ class FitArgumentTests(unittest.TestCase):
 class PrepareReferencesTests(unittest.TestCase):
     PROBES = SimpleNamespace(face=8, spacing=1.0)
 
-    def prepare(self, settings, path=None, plan=False):
+    def prepare(self, settings, path=None):
         camera = SimpleNamespace(path=path, region=None, near_z=0.1)
         inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                  poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
                                  probes=settings, job=lambda: SimpleNamespace(settings=SimpleNamespace(alpha_keep=None)),
-                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None))
+                                 sets=lambda: reference_set.fit_sets(path is not None, settings is not None),
+                                 samples=1, denoise=False)
         rendered = []
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
             # Three path poses split into two training and one held out; three probe faces into one and two.
             path_poses = (4, 4, 1.0, 0.1, [[0.0] * 6] * 3)
             with mock.patch("r3d.reference_render.render_sets", autospec=True,
-                            side_effect=lambda _inputs, sets: rendered.append(sets)), \
+                            side_effect=lambda _inputs, sets, store=None, progress=None: rendered.append(sets)), \
                  mock.patch("r3d.mesh_source.load_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
                  mock.patch("r3d.views.probes.select", lambda *a, **k: probes.ProbeViews([[1.0] * 6], [[2.0] * 6] * 2, {})), \
                  mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
-                if plan:
-                    from bake import produce
-
-                    with mock.patch("r3d.reference_set.reference_inputs", return_value=inputs):
-                        count = produce.reference_rays(SimpleNamespace(job=None, scene=None), work)
-                else:
-                    count = reference_set.prepare_references(inputs, work)
+                count = reference_set.prepare_references(inputs, work)
             written = sorted(p.name for p in work.iterdir())
         return count, written, [[(p.name, r.name) for p, r in sets] for sets in rendered]
-
-    def test_plan_keeps_the_real_preparation_files_and_does_not_render(self):
-        from bake import produce
-
-        for path in (None, object()):
-            with self.subTest(path=path):
-                _, written, _ = self.prepare(self.PROBES, path)
-                rays, planned, rendered = self.prepare(self.PROBES, path, plan=True)
-                self.assertEqual(planned, sorted([*written, produce.PLAN_MANIFEST]))
-                self.assertEqual(rendered, [])
-                self.assertGreater(rays, 0)
 
     def test_without_a_path_only_the_probe_files_are_written_and_rendered_and_counted(self):
         count, written, rendered = self.prepare(self.PROBES)
@@ -277,7 +261,7 @@ class PrepareReferencesTests(unittest.TestCase):
                 self.assertEqual(query.hit_filter.keep_alpha, keep_alpha)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeSourceTests(unittest.TestCase):
     def test_an_alpha_masked_obj_keeps_its_cut_card_for_the_probes_and_finds_its_cut_texture(self):
@@ -285,7 +269,7 @@ class ProbeSourceTests(unittest.TestCase):
         from r3d import ray_query
 
         self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
-        ray_query.VARIANT = "scalar_rgb"
+        ray_query.VARIANT = "llvm_ad_rgb"
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             pixels = np.full((4, 4, 4), 255, dtype=np.uint8)

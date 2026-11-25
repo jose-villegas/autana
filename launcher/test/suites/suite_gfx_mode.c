@@ -74,8 +74,17 @@ test_indexed_layout_and_index_geometry_pass_through_unchanged(void) {
     TEST_ASSERT_EQUAL_INT(4, g.cell_size);
 }
 
+static void
+test_indexed_keeps_picture_and_bands_do_not(void) {
+    const gfx_mode_t indexed = {.layout = GFX_LAYOUT_INDEXED};
+    const gfx_mode_t bands = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_TRUE(gfx_mode_keeps_picture(&indexed));
+    TEST_ASSERT_FALSE(gfx_mode_keeps_picture(&bands));
+}
+
 void
 run_gfx_mode_suite(void) {
+    RUN_TEST(test_indexed_keeps_picture_and_bands_do_not);
     RUN_TEST(test_full_fb_full_res_grants_the_panels_own_geometry);
     RUN_TEST(test_bands_at_full_res_grants_the_compile_time_band_height);
     RUN_TEST(test_interlace_choice_passes_through_unchanged);

@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
-from console_protocol import reply_prefix
+from console_protocol import parse_assignment, reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -1053,13 +1053,10 @@ def suite(args):
     settings = []
     while "--set" in rest:
         value, rest = pop_value(rest, "--set")
-        name, equals, number = value.partition("=")
         try:
-            int(number, 0)
-        except ValueError:
-            equals = ""
-        if not name or not equals:
-            sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
+            parse_assignment(value)
+        except ValueError as error:
+            sys.exit(f"usage: --set {error}")
         settings.append(value)
     console_lines = []
     while "--send" in rest:
@@ -1256,6 +1253,24 @@ def record(args):
     command = device_command("record")
     if parsed.out:
         command += ["--out", parsed.out]
+    if parsed.seconds is not None:
+        command += ["--seconds", str(parsed.seconds)]
+    return call_device(command)
+
+
+def video(args):
+    """Capture live panel presents under the device lock."""
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana video")
+    parser.add_argument("-o", "--out", required=True)
+    parser.add_argument("--fps", type=int)
+    parser.add_argument("--seconds", type=float)
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("video") + ["--out", parsed.out]
+    if parsed.fps is not None:
+        command += ["--fps", str(parsed.fps)]
     if parsed.seconds is not None:
         command += ["--seconds", str(parsed.seconds)]
     return call_device(command)
@@ -1863,6 +1878,8 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),
+        one("video", video, "video -o PATH [--fps N] [--seconds S]",
+            "live panel windows to an H.264 MP4 plus frames.csv; stdin lines go to the board; development builds"),
         one("record", record, "record [-o PATH] [--seconds S]",
             "each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it, and it stops when stdin ends; with --seconds it reads no stdin and stops after S seconds; development builds"),
         Command("battery", battery, (

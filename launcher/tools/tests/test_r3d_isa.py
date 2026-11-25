@@ -17,12 +17,12 @@ try:
 
     from r3d import isa, mitsuba_reference, ray_query
     from r3d.ray_query import RayQuery
-    from tests.test_r3d_path_bake import SUN, corridor, have_llvm, path_light
+    from tests.test_r3d_path_bake import SUN, corridor, path_light
 except ImportError:
     np = None
 
 from bake.bake import cpu_vendor  # noqa: E402
-from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
+from tests.r3d_env import HAVE_MITSUBA, have_llvm  # noqa: E402
 
 PINNED = HAVE_MITSUBA and sys.platform == "linux" and platform.machine() == "x86_64" and isa.pin()
 needs_pin = unittest.skipIf(not (PINNED and have_llvm()), "the pin needs Linux on x86-64 with AVX2, FMA and libLLVM")
@@ -32,9 +32,9 @@ needs_pin = unittest.skipIf(not (PINNED and have_llvm()), "the pin needs Linux o
 # Linux host of each vendor and record the digests its failure prints.
 PINNED_SHA256 = {
     "AuthenticAMD": ("9964d47fe885de30264b20514999d430405205570e324d60534c2b403e75245f",
-                     "81e5826f8e3441459cad0d3e1589a3e8081b8474dee550271f22359f1239ae14"),
+                     "5854477e09b11f55f4e3e43bd5fc28463479f271d2396c4c22e807f9a42654b9"),
     "GenuineIntel": ("6e829de472b2bbba8a9b90115f072a73b3f8fa6e44f9476060ef34f8facc7487",
-                     "c7032957b091c7ea5737a32bdd4064401bc9ebd59c6a013878daf9f91d786d2b"),
+                     "5c461dd692f0d5d7f54b85acff9c8ae5e36729832038580067625e0fd7059e16"),
 }
 
 
