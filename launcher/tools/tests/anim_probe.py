@@ -34,6 +34,7 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from entry_bytes import single  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
 NODES = ("camera", "arm", "hand")
@@ -142,10 +143,6 @@ def probe_entry():
     """The probe clip's TRCK bytes."""
     document, binary = gltf_read.parse_glb(probe_glb())
     return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
-
-
-def single(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 def sample_times(track, duration_ms):

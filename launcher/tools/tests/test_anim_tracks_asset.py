@@ -20,23 +20,14 @@ from anim.tracks_asset import HEADER, ROW, TracksError  # noqa: E402
 from anim_probe import channel, probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import parse_pack
 from asset.engine_frame import to_engine  # noqa: E402
+from entry_bytes import edited, single  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 from r3d import build_pack  # noqa: E402
-
-
-def single(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 def probe_tracks():
     document, binary = gltf_read.parse_glb(probe_glb())
     return tracks_asset.clip_tracks(document, binary, document["animations"][0])
-
-
-def edited(entry, offset, fmt, value):
-    out = bytearray(entry)
-    struct.pack_into(fmt, out, offset, value)
-    return bytes(out)
 
 
 def row_at(index):
