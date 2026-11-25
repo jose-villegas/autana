@@ -38,6 +38,7 @@ static const render_debug_view_t views[] = {
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
     {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
+    {.name = "triangles", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_triangles_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -88,6 +89,30 @@ static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
 render_context_t*
 render_context_main(void) {
     return &main_context;
+}
+
+/* The last frame's choices, as frame_record reads them. */
+static frame_record_context_t
+recorded(const render_context_t* c) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_view_t* view = &c->frame_view;
+#else
+    const render_view_t* view = NULL;
+#endif
+    return (frame_record_context_t){view, &c->settings, &c->steer, &c->frame, c->scale_percent};
+}
+
+/* Out of line, so the draw's own stack frame does not hold the record context. */
+static __attribute__((noinline)) void
+record_before_draw(const render_context_t* c, const r3d_instance_t* instances, int count) {
+    const frame_record_context_t context = recorded(c);
+    frame_record_before_draw(&context, &c->raster, instances, count);
+}
+
+void
+render_context_record_frame(const render_context_t* context, uint32_t dt_ms) {
+    const frame_record_context_t recorded_context = recorded(context);
+    frame_record_frame(&recorded_context, &context->raster, dt_ms);
 }
 
 void
@@ -685,7 +710,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    frame_record_before_draw(c, instances, count);
+    record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     const bool held = drawn_held(c, view);

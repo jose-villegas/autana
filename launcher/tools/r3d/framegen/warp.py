@@ -25,10 +25,6 @@ R3D_DEPTH_EMPTY = read_define(SPAN_HEADER, "R3D_DEPTH_EMPTY")
 # UINT16_MAX in the header: the largest a depth word holds.
 R3D_DEPTH_NEAREST = int(np.iinfo(np.uint16).max)
 
-# A native RGB565 word's six green bits, and five red or blue.
-RGB565_GREEN_MASK = 0x3F
-RGB565_RED_BLUE_MASK = 0x1F
-
 # The dump's header (render_lab_render_host.c --dump): width and height as int32.
 DUMP_HEADER = struct.Struct("<ii")
 
@@ -41,12 +37,6 @@ def read_dump(path):
     pixels = width * height
     words = np.frombuffer(data, dtype="<u2", offset=DUMP_HEADER.size, count=2 * pixels)
     return gfx_color.swap(words[:pixels]).reshape(height, width), words[pixels:].reshape(height, width)
-
-
-def rgb_of(colour):
-    """(h, w, 3) uint8 of native RGB565 colour, as the framebuffer expands it."""
-    return np.stack(gfx_color.expand(colour >> 11, (colour >> 5) & RGB565_GREEN_MASK, colour & RGB565_RED_BLUE_MASK),
-                    -1).astype(np.uint8)
 
 
 class Lens:

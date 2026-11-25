@@ -251,7 +251,7 @@ static bool
 build(void) {
     for (int i = 0; i < mesh_count(); i++) {
         const stress_params_t p = stress_copy_params(shown, i);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
             return false;
         }

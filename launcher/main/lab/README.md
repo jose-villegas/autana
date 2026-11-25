@@ -18,7 +18,7 @@ app_t my_app = {.name = "My Lab", LAB_APP_CALLBACKS(my_lab)};
 | File | Owns |
 |---|---|
 | `lab.h` | `lab_t`: entering, switching and leaving scenes, the app arena from a scene's entry on, the menu and HUD, the `scenes` / `scene <key>` / `pose <ms>` console words |
-| `lab_view.h` | the view tunables every lab has, `<name>.scale`, `.present`, `.layout` and `.orbit_ms`, declared once; `LAB_VIEW()` defines and registers one lab's |
+| `lab_view.h` | the view tunables every lab has, `<name>.scale`, `.present`, `.layout`, `.orbit_ms` and `.orbit_zoom`, declared once; `LAB_VIEW()` defines and registers one lab's |
 | `lab_scene.h` | `lab_scene_t`, one scene: its hooks (enter, frame, exit, steer, update, status, controls, console, path) and loading helpers |
 | `lab_orbit.h` | a camera circling one subject, turned by one finger, fitted to the subject's sphere |
 | `lab_clips.h` | a scene's animation clip picker and blend slider, in the menu and the console |

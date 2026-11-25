@@ -204,8 +204,6 @@ setup(int quarter) {
     }
     shown = scene;
     camera = camera_active(); /* the one chosen_camera() found above */
-    /* What a caller sampling the path along its length reads. */
-    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
     render_context_set_frame_generation(context, generating);

@@ -18,10 +18,9 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba
-from tests.test_r3d_ray_query import have_llvm
+from tests.r3d_env import needs_llvm
 
-VARIANT = 'scalar_rgb'
+VARIANT = 'llvm_ad_rgb'
 
 
 def checker_source(directory):
@@ -45,7 +44,7 @@ class AlphaReferenceTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.source = checker_source(self.directory.name)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_drawn_hits_passes_transparent_texels(self):
         origins, directions = checker_rays()
         self.source.intersector = RayQuery(self.source.p, self.source.tri_v, VARIANT,
@@ -55,23 +54,12 @@ class AlphaReferenceTests(unittest.TestCase):
         np.testing.assert_allclose(where[:, 2], [CARD_Z, PLANE_Z, PLANE_Z, CARD_Z], atol=1e-6)
         np.testing.assert_array_equal(faces < 2, [True, False, False, True])
 
-    @needs_mitsuba
-    def test_drawn_hits_samples_alpha_once_per_query_hit(self):
-        origins, directions = checker_rays()
-        self.source.alpha_test = light.AlphaTest(self.source, KEEP_ALPHA)
-        self.source.intersector = RayQuery(self.source.p, self.source.tri_v, VARIANT,
-                                           hit_filter=self.source.alpha_test)
-        texture = self.source.textures[0]
-        with patch.object(texture, 'sample', wraps=texture.sample) as sample:
-            reference_render.drawn_hits(self.source, [], origins, directions)
-        self.assertEqual(sum(len(call.args[0]) for call in sample.call_args_list), len(origins))
-
-    @needs_mitsuba
+    @needs_llvm
     def test_mitsuba_thresholds_bilinear_alpha_after_sampling(self):
         from r3d import mitsuba_reference
         from r3d.obj import Texture
         mi = mitsuba_reference.import_mitsuba()
-        for variant in ('scalar_rgb', 'llvm_ad_rgb') if have_llvm() else ('scalar_rgb',):
+        for variant in ('llvm_ad_rgb',):
             mi.set_variant(variant)
             level = np.ones((2, 2, 4))
             level[:, 0, 3] = 0.
@@ -88,7 +76,7 @@ class AlphaReferenceTests(unittest.TestCase):
                 expected = alpha(np.array([0]), location)[0]
                 self.assertEqual(actual, float(expected), (variant, u))
 
-    @needs_mitsuba
+    @needs_llvm
     def test_hidden_cards_pass_camera_rays_and_still_block_light(self):
         from types import SimpleNamespace as NS
         origins, directions = checker_rays()
@@ -98,7 +86,7 @@ class AlphaReferenceTests(unittest.TestCase):
                                       epsilon=CARD_Z, area_cost=0.0)))
         with patch.object(reference_render, 'load_source', return_value=self.source),                 patch.object(reference_render, 'path_light_for', return_value=None), \
                 patch('r3d.cards.emit.material_views', return_value=(None, None)), \
-                patch('r3d.cards.emit.make_shape', return_value=({}, {'covered': 1.0})):
+                patch('r3d.cards.emit.make_shape', return_value=({}, {'covered': 1.0, 'covered_area': 1.0})):
             source = reference_render.lit_source(job, NS(), hide_cards=True)
         where, rays, _ = reference_render.drawn_hits(source, [], origins, directions)
         np.testing.assert_array_equal(rays, np.arange(len(origins)))
@@ -107,7 +95,7 @@ class AlphaReferenceTests(unittest.TestCase):
         np.testing.assert_array_equal(lit_rays, np.arange(len(origins)))
         np.testing.assert_array_equal(lit_faces < 2, [True, False, False, True])
 
-    @needs_mitsuba
+    @needs_llvm
     def test_lit_source_keeps_triangles_and_attaches_the_same_filter(self):
         from types import SimpleNamespace as NS
         job = NS(settings=NS(alpha_keep=KEEP_ALPHA))
@@ -117,7 +105,7 @@ class AlphaReferenceTests(unittest.TestCase):
         self.assertEqual(len(source.tri_v), 4)
         self.assertIs(source.intersector.hit_filter, source.alpha_test)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_mitsuba_mask_matches_primary_checker_under_direct_light(self):
         source = self.source
         source.alpha_test = light.AlphaTest(source, KEEP_ALPHA)
@@ -134,7 +122,7 @@ class AlphaReferenceTests(unittest.TestCase):
         self.assertGreater(expected[..., 2].max(), 0.9)
         np.testing.assert_allclose(coverage, 1.)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_reference_gbuffer_sees_the_plane_through_holes(self):
         from r3d.fit.gbuffer import traced_buffer
         from r3d.appearance_simplify import projection

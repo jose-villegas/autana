@@ -76,6 +76,8 @@ class ReferenceInputs:
     tonemap_white: float
     camera: SimpleNamespace       # the scene camera: lens, background and path
     size: tuple                   # the fit recipe's pose size
+    samples: int                  # the fit recipe's rays per pixel side of a reference render
+    denoise: bool                 # the fit recipe's: denoise each reference render
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
 
@@ -91,19 +93,21 @@ class ReferenceInputs:
 
 
 def reference_inputs(job, scene):
-    """The reference inputs of a fitted renderer, with its recipe's pose size."""
+    """The reference inputs of a fitted renderer, with its recipe's pose size, samples and denoise."""
     renderer = job.renderer
     size = tuple(renderer.fit.size)
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
+                           samples=renderer.fit.samples, denoise=renderer.fit.denoise,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
                            probes=job.settings.fit.probes)
 
 
-def prepare_references(inputs, work):
+def prepare_references(inputs, work, store=None, progress=None):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
-    has only those) and the references of every training and held-out set with their normals.
+    has only those) and the references of every training and held-out set with their normals, each pose taken
+    from or traced into the pose `store` when given, progress() after each pose traced (reference_render.render_sets).
     Returns the training views."""
     from r3d.mesh_source import camera_path_poses
     from r3d.reference_render import render_sets
@@ -126,7 +130,8 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
+                store=store, progress=progress)
     return count
 
 

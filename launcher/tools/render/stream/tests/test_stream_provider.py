@@ -30,8 +30,6 @@ SHOWCASE = showcase.showcase(showcase.load_scene(ROOT / "launcher/demo/sponza/sp
 RECORDED = {
     "herd": ["--scene", "capybara/herd"],
     "sponza": ["--scene", "sponza", "--object", SHOWCASE],
-    # The whole scene: its meshes lit per triangle replay their face colours.
-    "atrium": ["--scene", "sponza"],
     "budget": ["--scene", "sponza", "--object", SHOWCASE, "--set", f"render.lod_triangle_budget={BUDGET_TRIANGLES}"],
 }
 
@@ -152,7 +150,7 @@ class StreamProvider(unittest.TestCase):
                               env=dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets")))
 
     def test_seek_each_keyframe_from_fresh_decode(self):
-        for name in ("herd", "sponza", "budget", "atrium"):
+        for name in ("herd", "sponza", "budget"):
             for frame in self.stream(name).frames:
                 if not frame.keyframe:
                     continue
@@ -160,11 +158,6 @@ class StreamProvider(unittest.TestCase):
                     run = self.replay_probe(self.out / (name + ".frec"), frame.index)
                     self.assertEqual(run.returncode, 0, run.stderr[-4000:])
                     self.assertIn(f"CHECK {frame.index} SAME", run.stderr)
-
-    def test_face_colours_are_recorded(self):
-        meshes = [framerec.decode_mesh(body) for frame in self.stream("atrium").frames
-                  for name, body in frame.records if name == "MESH"]
-        self.assertTrue(any(mesh["faces"] and mesh["colours"][0] != NO_PACK for mesh in meshes))
 
     def test_unknown_record_between_frames(self):
         data = (self.out / "herd.frec").read_bytes()

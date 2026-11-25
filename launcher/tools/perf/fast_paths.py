@@ -9,6 +9,7 @@ import re
 import sys
 
 import math_bench_table as bench
+from device_report import read_capture_text
 from generated_blocks import replace_block
 
 ROOT = bench.ROOT
@@ -233,7 +234,7 @@ def error_evidence(root, items, rows, capture):
     sources = dict.fromkeys(errors, "hardware")
     host = root / HOST_CAPTURE
     if host.exists():
-        text = host.read_text(encoding="utf-8")
+        text = read_capture_text(host)
         if not bench.parse_target(text, execution="host"):
             raise ValueError("host errors require a target record (MATHTARGET)")
         host_errors, host_bins = validate(items, rows, text)
@@ -618,7 +619,7 @@ def main(argv=None):
             body = elf_sizes(rows, fpu, located, sections, root)
             provenance = "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest() + "\n"
             (root / "docs/math/data/math_bench_sizes.txt").write_bytes((provenance + body).encode())
-        capture = (root / "docs/math/data/math_bench_capture.txt").read_text(encoding="utf-8")
+        capture = read_capture_text(root / "docs/math/data/math_bench_capture.txt")
         errors, bins, sources = error_evidence(root, items, rows, capture)
         displayed_errors = {
             key: re.sub(r"(\S+) ulp", lambda m: m[1] + (" step" if float(m[1]) == 1 else " steps"), value) + (" (host)" if sources[key] == "host" else "")

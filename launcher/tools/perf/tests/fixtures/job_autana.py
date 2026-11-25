@@ -8,8 +8,10 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
 from test_perf_compare import FakeAutana as Compare
 from test_perf_sweep import FakeAutana as Sweep
+from device_lock import process_alive, process_start
 
 root = Path(os.environ["PERF_JOB_TEST_ROOT"])
 words = sys.argv[1:]
@@ -34,14 +36,13 @@ def wait_for_signal():
     sys.exit(130)
 
 with (root / "calls.jsonl").open("a") as stream:
-    stream.write(json.dumps(dict(words=words, token=os.environ.get(token_key), pid=os.getpid())) + "\n")
+    stream.write(json.dumps(dict(words=words, token=os.environ.get(token_key), pid=os.getpid(),
+                                 started=process_start(os.getpid()))) + "\n")
 if "lock" in words:
     verb = words[words.index("lock") + 1]
     if verb == "take":
         if os.environ.get("PERF_JOB_MODE") == "queued":
             wait_for_signal()
-        sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
-        from device_lock import process_alive
         assert process_alive(int(words[words.index("--pid") + 1])), "hold owner is not alive"
         print("job-token")
     elif verb == "release":
