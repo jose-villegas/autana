@@ -10,21 +10,12 @@ run = 45590273257
 host = "Linux x86_64"
 
 [[bake]]
-output = "bistro.street_fitted_full.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "d722cb598899fa0423bb763f5b6fc09877a7481ee2af327d96310c187b5b4997"
-sha256 = "9a59b2c7d6288222fb5b0e57d76b1a78b771a85ec2adc2412249e60802793d3d"
-size = 1151363
-run = 45601896657
-host = "Linux x86_64"
-
-[[bake]]
 output = "bistro.street_fitted_full.fit.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "7186446456008cbb5dab9d97424ec762c8d9c8259b8fb70bceb50445a8679be7"
-sha256 = "1d9f4f50575b958c7ed26674813a3b7ddbf044e0b0b0c212be0c6c73b235eed2"
-size = 892531
-run = 45597660034
+key = "3f5f07f5e7f584d6a124b61fc569da725a16b6a9d0b5d4b9eb6e749e4d95d27b"
+sha256 = "61a63ea8765ee37be57ddf76862fe073eee188d3a11a91e0902bf024172799c7"
+size = 897155
+run = 45648590840
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
@@ -45,15 +36,6 @@ key = "4373b62b35f3e5e7c4271392513a81930f33d29c6eb6d8a47187ad4abbd42008"
 sha256 = "2c74c2dc6257149d4bf12d69bc89721656d04f71aec08304c0164966c3d0cef8"
 size = 942531
 run = 45590273257
-host = "Linux x86_64"
-
-[[bake]]
-output = "bistro.street_fitted_full.texture.pack"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "82918c1873c462f16dd699912108ba91089efc5610e437d3a082cd331b270808"
-sha256 = "5fe8a7ad98bc8f17514abfa7019138abef87eee736eda401009d01821f7b29d4"
-size = 320457
-run = 45601896657
 host = "Linux x86_64"
 
 [[bake]]
@@ -120,21 +102,12 @@ run = 45590273257
 host = "Linux x86_64"
 
 [[bake]]
-output = "sponza.atrium_fitted_full.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "b78e8775ad629b4c351edc9e6d23b1dcd24433e5b047d75e4a8fd194b50a7738"
-sha256 = "2d75627b5d31dbb418bc17da97e396ab434a30078c62eb20a8c70def6877528b"
-size = 780376
-run = 45601896657
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium_fitted_full.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "e2d12c9c0b3b02fa3c75b28d2a761837c7446e7dfa033636855f8ece1ee7163e"
-sha256 = "8ed73b927f08b1bbc319717fa9d2acd6ef0e592721f30509fb3bff0805f15a8f"
-size = 575064
-run = 45597660034
+key = "3fce12f41b2b369fff2781c6495e778be5297fd8b982b85d327491c4022890fd"
+sha256 = "533133eaf48b937e4fe12dfa983ff4df783c3e9464d0a365a9836010b60a664a"
+size = 575528
+run = 45648590840
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
