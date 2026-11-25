@@ -72,6 +72,27 @@ def weld_map(p, tolerance=1e-3):
     return first, inverse.reshape(-1)
 
 
+def closed_shells(p, tris, tolerance=1e-3):
+    """Each triangle's closed shell, -1 for none: a piece, once positions within `tolerance` are welded and
+    triangles sharing an edge joined, where every edge is used by two of its triangles. A closed shell shows
+    only its outside, whatever materials make it up."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    _first, welded = weld_map(p, tolerance)
+    corners = welded[tris]
+    edges = np.sort(np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]]), axis=1)
+    _, slot, uses = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+    slot = slot.reshape(-1)
+    owner = np.tile(np.arange(len(tris)), 3)
+    # A triangle joins the edge's node; the pieces are the graph's components.
+    graph = coo_matrix((np.ones(len(owner)), (owner, len(tris) + slot)), shape=(len(tris) + len(uses),) * 2)
+    _count, piece = connected_components(graph, directed=False)
+    piece = piece[:len(tris)]
+    open_pieces = np.unique(owner[uses[slot] != 2])
+    return np.where(np.isin(piece, piece[open_pieces]), -1, piece)
+
+
 def corner_normals(p, tris, crease_deg=40.0):
     """One normal per triangle corner, smoothed only across neighbours within
     the crease angle, so a column's edge stays sharp."""

@@ -7,7 +7,8 @@ mesh. Nothing here runs on the board.
 | Module | What it does |
 |---|---|
 | [obj.py](obj.py) | Loads a Wavefront OBJ and its MTL, and the textures the MTL names as mip chains. |
-| [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
+| [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle, the materials on an open border. |
+| [procedural/wave_sheet.py](procedural/wave_sheet.py) | Sheets whose height is a flat, sine, zigzag or sawtooth wave of chosen amplitude and frequency, coloured in stripes, checks or bands, one skin or two closed at the hem; with their formula normals, as an OBJ source or a start bundle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [leaks.py](leaks.py) | The probe step of `seal_seams`: views of the source from probes in the camera's region and from the camera path, the holes a simplified mesh shows in them (sky enclosed by wall), and one source vertex to lock per hole; see [seal_seams](../../../docs/render/offline/Mesh-Import.md#seal_seams). |
@@ -32,6 +33,7 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
+| [fit/wave_sweep.py](fit/wave_sweep.py) | Fits coarse wave sheets to fine ones over amplitude × frequency per wave shape and measures flipped triangles, normal error, back-face, dark and hole pixels: `wave_sweep.py --out DIR`, a CSV and heat maps drawn from it. |
 | [objects/](objects/objects_report.py) | Rigid instances, triangles saved and residuals: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
 | [lod/](lod/lod_replay.py) | Cluster levels of a fitted mesh, picked along its camera path at fixed tolerances and budgets: `lod_replay.py SCENE.scene.toml --object NAME --out DIR`; see [Levels of detail](../../../docs/render/frame/Levels-of-Detail.md). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |

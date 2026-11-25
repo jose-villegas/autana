@@ -27,6 +27,7 @@ try:
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
+    from r3d.procedural import wave_sheet
     from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
                               read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
@@ -81,13 +82,8 @@ def directed_edges(tris):
 def grid(n):
     """An n by n square of unit cells in the plane z = 0, two triangles each,
     counter-clockwise seen from +z."""
-    p = np.array([(x, y, 0.0) for y in range(n + 1) for x in range(n + 1)])
-    tris = []
-    for y in range(n):
-        for x in range(n):
-            v = y * (n + 1) + x
-            tris += [(v, v + 1, v + n + 2), (v, v + n + 2, v + n + 1)]
-    return p, np.array(tris, dtype=np.int64)
+    card = wave_sheet.sheet(n, size=n, centre=(n / 2, n / 2))
+    return card.positions, card.tris
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -1024,9 +1020,10 @@ def exact_output_digest(*values):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ExactSplitTests(unittest.TestCase):
-    # Output digests from main e9dc4d138f; metadata and midpoint order are part of the contract.
+    # Output digests from main e9dc4d138f; metadata and midpoint order are part of the contract. The densify
+    # digest is of that code on grid(3) in wave_sheet's triangle order.
     SPLIT_DIGEST = "a74966c8177e7b47bac53d43c28ca0b227228380559e3afce042183f7fc0a51a"
-    DENSIFY_DIGEST = "ac378455206752dbbc9f9ba3c9a377faefafc1ede98f0123e1c32c97e93e25ff"
+    DENSIFY_DIGEST = "7acfd388709e225dbd6a001eb2bcca2b02727368e819829ef98dd2212b6e3e26"
 
     def test_split_preserves_every_case_rotation_dtype_and_midpoint(self):
         outputs = []

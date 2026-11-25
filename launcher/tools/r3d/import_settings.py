@@ -904,7 +904,9 @@ def load_scene(path):
             raise SettingsError(f"scene.bake.{name} is read by no placed mesh: only a fit's references read it")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
-                                  ("camera region", region is not None, "camera_region" in sources)):
+                                  # A closed double_sided shell keeps the skin the region faces (mesh_import.far_skins).
+                                  ("camera region", region is not None, "camera_region" in sources
+                                   or (region is not None and any(item.settings.double_sided for item in jobs)))):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:

@@ -26,7 +26,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
-from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
+from r3d.geometry import closed_shells, compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
@@ -58,6 +58,8 @@ from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E
 from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
+# How far inside its own triangle a far-skin ray starts, as a share of the shell's extent.
+SKIN_RAY_INSET = 1e-6
 
 
 def vertex_spacing(vpos, vtris):
@@ -73,6 +75,32 @@ def albedo_at(src, points, spacing, material):
     kd = src.materials.get(src.names[material], {}).get("Kd", (1.0, 1.0, 1.0))
     return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd,
                          src.colors)
+
+
+def far_skins(p, tris, shell, towards):
+    """Which of the triangles `shell` marks, a closed double-sided shell such as cloth built as two skins, lie on
+    its far skin from `towards`: a ray in from each triangle's centre meets the shell's other side, and of the
+    two the one facing `towards` less is far. Dropping the far skin leaves one skin, drawn from both sides, so
+    no simplification can push the far skin through the near one."""
+    from r3d.ray_query import RayQuery
+
+    far = np.zeros(len(tris), dtype=bool)
+    index = np.flatnonzero(shell)
+    corners = p[tris[index]]
+    centres = corners.mean(axis=1)
+    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    length = np.linalg.norm(normals, axis=1)
+    whole = length > 0
+    index, centres, normals = index[whole], centres[whole], normals[whole] / length[whole, None]
+    if not len(index):
+        return far
+    view = towards - centres
+    facing = np.einsum("ij,ij->i", normals, view / np.linalg.norm(view, axis=1, keepdims=True))
+    # Start each ray a hair inside, so it cannot meet its own triangle.
+    inset = SKIN_RAY_INSET * np.ptp(p[tris[index]].reshape(-1, 3), axis=0).max()
+    hit, _distance, other = RayQuery(p, tris[index]).first_hits(centres - normals * inset, -normals)
+    far[index[hit]] = facing[hit] < facing[other[hit]]
+    return far
 
 
 def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
@@ -226,6 +254,25 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             if light_only is not None:
                 light_only = drop_masked(src.p, src.uv, *light_only, src.textures, settings.alpha_keep)[:3]
             src.tri_o = src.tri_o[keep]
+            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
+        step["triangles_out"] = len(tri_v)
+    with recorder.step("far skins", len(tri_v)) as step:
+        # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but,
+        # like a carded material, keeps casting light.
+        listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
+        region = None if scene is None else scene.region
+        shell = np.zeros(len(tri_v), dtype=bool)
+        if listed.any() and region is not None:
+            piece = closed_shells(src.p, tri_v)
+            shell = np.isin(piece, piece[listed & (piece >= 0)])
+        if shell.any():
+            far = far_skins(src.p, tri_v, shell, np.mean(region, axis=0))
+            log(f"far skins dropped: {int(far.sum())} of {int(shell.sum())} triangles of the closed shells of "
+                f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}")
+            dropped = tri_v[far], tri_t[far], tri_m[far]
+            light_only = dropped if light_only is None else tuple(np.concatenate(pair) for pair in zip(light_only, dropped))
+            tri_v, tri_t, tri_m = tri_v[~far], tri_t[~far], tri_m[~far]
+            src.tri_o = src.tri_o[~far]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)

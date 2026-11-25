@@ -658,6 +658,9 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+    if job.settings.double_sided and scene.region is not None:
+        # A closed double_sided shell keeps the skin the camera region faces.
+        recipe.setdefault("camera", camera_inputs(scene))
     simplify = job.settings.simplify
     if simplify and simplify.seal_seams and scene.camera is not None:
         # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.

@@ -22,6 +22,7 @@ try:
     from r3d.appearance_simplify import FitMesh, point_edges, projection, prune, refine, start_mesh, write_mesh
     from r3d.cost_model import fit, predict, triangle_terms
     from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh
+    from r3d.procedural import wave_sheet
 except ImportError:
     np = None
 
@@ -59,27 +60,10 @@ def draw(renderer, points, colours, matrix):
 
 
 def grid(count, z=0.0):
-    """A count x count quad grid in x and y over [-1, 1], facing +z, with a
-    colour seam down its middle column of vertices: the left half's vertices
-    are duplicated with a second colour."""
-    side = np.linspace(-1.0, 1.0, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.full(xs.size, z)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = []
-    for row in range(count):
-        for col in range(count):
-            a, b, c, d = index[row, col], index[row, col + 1], index[row + 1, col + 1], index[row + 1, col]
-            tris += [[a, b, c], [a, c, d]]
-    tris = np.array(tris)
-    rgb = np.where(positions[:, :1] < 0, [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
-    left = positions[tris].mean(axis=1)[:, 0] < 0
-    copies = np.unique(tris[left])
-    duplicate = {int(v): len(positions) + k for k, v in enumerate(copies)}
-    positions = np.concatenate([positions, positions[copies]])
-    rgb = np.concatenate([rgb, np.tile([[230.0, 200.0, 50.0]], (len(copies), 1))])
-    tris[left] = np.vectorize(duplicate.get)(tris[left])
-    return positions, rgb, tris
+    """A count x count quad card over [-1, 1] in x and y at `z`, facing +z: its left half one colour, its right
+    half another, the seam's vertices duplicated."""
+    card = wave_sheet.sheet(count, size=2.0, z=z, pattern="stripes", cells=2, colours=((230, 200, 50), (40, 90, 200)))
+    return card.positions, card.rgb, card.tris
 
 
 def write_start(directory, count=4):
@@ -828,13 +812,8 @@ class PruneAndCostTests(unittest.TestCase):
 
 def grid_mesh(count, half):
     """A count x count quad grid of half-width `half` facing +z."""
-    side = np.linspace(-half, half, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.zeros(xs.size)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = [[index[r, c], index[r, c + 1], index[r + 1, c + 1]] for r in range(count) for c in range(count)]
-    tris += [[index[r, c], index[r + 1, c + 1], index[r + 1, c]] for r in range(count) for c in range(count)]
-    return positions, np.array(tris)
+    card = wave_sheet.sheet(count, size=2.0 * half)
+    return card.positions, card.tris
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

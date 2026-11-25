@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d.lod import lod_replay, pick
 from r3d.lod.levels import build_levels
+from r3d.procedural import wave_sheet
 from r3d.poses import camera_basis
 
 GRID = 48
@@ -26,13 +27,11 @@ PLACEMENT = (2.0 * Rotation.from_euler("xyz", [20, -35, 50], degrees=True).as_ma
 
 
 def wavy_grid(n=GRID, height=0.4, waves=(4.0, 5.0)):
-    """An n x n quad grid in z = 0, bent `height` over `waves` so simplifying it costs error."""
-    x, y = np.meshgrid(np.arange(n + 1, dtype=float), np.arange(n + 1, dtype=float))
-    points = np.stack([x.ravel(), y.ravel(), height * np.sin(x.ravel() / waves[0]) * np.cos(y.ravel() / waves[1])], axis=1)
-    corner = (np.arange(n)[None, :] + np.arange(n)[:, None] * (n + 1)).ravel()
-    triangles = np.concatenate([np.stack([corner, corner + 1, corner + n + 2], 1),
-                                np.stack([corner, corner + n + 2, corner + n + 1], 1)])
-    return points, triangles
+    """An n x n quad grid of unit cells, bent `height` by sin(x / waves[0]) cos(y / waves[1]) so simplifying it
+    costs error."""
+    card = wave_sheet.sheet(n, size=n, centre=(n / 2, n / 2), shape="sine", amplitude=height,
+                            frequency=(n / (2 * np.pi * waves[0]), n / (2 * np.pi * waves[1])), phase=(0.0, 0.25))
+    return card.positions, card.tris
 
 
 def clip_looking(eye, target, lens=1.0):
