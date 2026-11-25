@@ -155,7 +155,7 @@ class LightLaunchTests(unittest.TestCase):
         self.assertNotEqual(got[0, 0], got[1, 0], "the points must differ for the test to mean anything")
         self.check_each_alone(lights, ao=ao(indirect=True))
 
-    def test_a_launch_below_the_rays_per_point_and_an_odd_one_leave_the_bytes_alone(self):
+    def test_a_launch_of_one_point_s_rays_and_an_odd_one_leave_the_bytes_alone(self):
         source = soup.corridor()
         path = soup.path_light(source, rays=BOUNCE_RAYS)
         scene = soup.rays(soup.Soup(source.p, source.tri_v))
@@ -171,10 +171,13 @@ class LightLaunchTests(unittest.TestCase):
         direct = light.light(points, normals, [False] * len(points), scene, lights, 0.01, ao=ao())
         self.assertTrue((whole > direct).all(), "the bounce must add light for the test to cover it")
         self.assertGreater(np.ptp(whole[:, 0]), 0.0)
-        # Of 11 rays a chunk holds 1 sky point, 2 AO and bounce points: no chunk edge falls twice where another does.
-        for launch in (3, 11):
+        # A launch of SKY_RAYS holds one point of each; of 11 rays a chunk holds 1 sky point, 2 AO and bounce points:
+        # no chunk edge falls twice where another does.
+        for launch in (SKY_RAYS, 11):
             with self.subTest(launch=launch), patch.object(ray_query, "LAUNCH", launch):
                 self.assertEqual(lit().tobytes(), whole.tobytes())
+        with patch.object(ray_query, "LAUNCH", SKY_RAYS - 1), self.assertRaisesRegex(ValueError, "exceed one launch"):
+            lit()
 
 
 @needs_llvm
@@ -194,9 +197,42 @@ class TraceLaunchTests(unittest.TestCase):
         whole = pictures()
         linear = trace(source, job, scene, LOOK_DOWN, 3, 3, 1.0, 2)[0]
         self.assertGreater(np.ptp(linear), 0.0, "the pixels must differ for the test to mean anything")
-        for launch in (5, 2):
+        # 4 rays per point is the sky's, the most of any light here.
+        for launch in (5, 4):
             with self.subTest(launch=launch), patch.object(ray_query, "LAUNCH", launch):
                 self.assertEqual(pictures(), whole)
+
+    def test_a_trace_launches_at_most_launch_camera_rays_at_a_time(self):
+        from r3d import reference_render
+        source = plane_source(square())
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        widths = []
+        drawn = reference_render.device_drawn_hits
+
+        def counted(source, double_materials, origin, direction):
+            widths.append(len(origin))
+            return drawn(source, double_materials, origin, direction)
+
+        with patch.object(ray_query, "LAUNCH", 5), patch.object(reference_render, "device_drawn_hits", counted):
+            trace(source, job, scene, LOOK_DOWN, 3, 3, 1.0, 2)
+        self.assertEqual(sum(widths), 3 * 3 * 2 * 2)
+        self.assertLessEqual(max(widths), 5)
+
+
+@needs_llvm
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class EmptyInputTests(unittest.TestCase):
+    def test_no_points_no_hits_and_no_rays_give_empty_answers(self):
+        from r3d import reference_render
+        query = wall_scene()
+        lights = sun_scene([0.0, 1.0, 1.0])[1].lights + [sky()]
+        self.assertEqual(light.light(np.zeros((0, 3)), np.zeros((0, 3)), [], query, lights, 0.01, ao=ao()).shape,
+                         (0, 3))
+        source = plane_source(square())
+        self.assertEqual(reference_render.hit_albedo(source, np.zeros(0, int), np.zeros((0, 3))).shape, (0, 3))
+        found = reference_render.drawn_hit_rows(source, [], np.zeros((0, 3)), np.zeros((0, 3)))
+        self.assertEqual((len(found.rays), found.where.shape), (0, (0, 3)))
+        self.assertEqual(len(query.first_hits(np.zeros((0, 3)), np.zeros((0, 3)))[0]), 0)
 
 
 def table_arrays(source, mi):

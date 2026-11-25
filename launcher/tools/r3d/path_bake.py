@@ -9,7 +9,7 @@ returns, so the albedo of the surface being baked multiplies it once.
 
 Mitsuba's variant is process-wide, so this runs on the variant of the ray queries beside it, `ray_query.VARIANT`
 unless the caller names one. Rays launch in chunks of at most `ray_query.LAUNCH`, each seeded by its number and the
-side being lit, so the light at a point depends on the points before it and never on the device.
+side being lit, so the light at a point depends on its place in the launch and never on the device.
 """
 
 from r3d import ray_query

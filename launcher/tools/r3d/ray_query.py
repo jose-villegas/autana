@@ -11,8 +11,7 @@ nothing behind it.
 A query traces on the LLVM variant `VARIANT` unless its caller names another: Embree builds one tree per mesh, so a
 mesh bake repeats byte for byte on one CPU model. A reference set names the fastest variant instead, CUDA on a GPU
 (reference_render.reference_variant; README, "Reference on the GPU"). Both are JIT variants: the queries run as
-Dr.Jit kernels of at most `LAUNCH` rays, a constant, so a result never depends on the device's memory. A worker
-forked after a query inherits the scene and traces serially on its own thread.
+Dr.Jit kernels of at most `LAUNCH` rays, a constant, so a result never depends on the device's memory.
 """
 import sys
 from typing import NamedTuple
@@ -22,6 +21,13 @@ import numpy as np
 from r3d.mitsuba_reference import import_mitsuba
 
 VARIANT = "llvm_ad_rgb"
+
+
+def is_jit(variant):
+    """True for a Mitsuba variant whose arrays are Dr.Jit kernels (LLVM or CUDA)."""
+    return (variant or "").startswith(("llvm", "cuda"))
+
+
 # Rays per Dr.Jit launch: bounds the arrays a large query allocates, and is large enough to keep a GPU busy.
 LAUNCH = 1 << 22
 # Distance a multi-hit ray steps past a hit before it is traced again: the larger of STEP and STEP_RELATIVE times
@@ -47,13 +53,16 @@ def true_count(dr, mask):
     return int(found[0] if dr.is_array_v(found) else found)
 
 
-def take(value, index, active=True):
-    """dr.gather for a flat array or a 3-vector of them (Point3f, Vector3f, Color3f, ...), one entry per index."""
-    import drjit as dr
+def vectors(kind, rows):
+    """NumPy (n, 3) rows as a Dr.Jit 3-vector of `kind` (mi.Point3f, mi.Vector3f, mi.Color3f)."""
+    rows = np.asarray(rows, np.float32).reshape(-1, 3)
+    float_type = type(kind(0).x)
+    return kind(*(float_type(rows[:, axis]) for axis in range(3)))
 
-    if dr.depth_v(value) > 1:
-        return type(value)(*(dr.gather(type(component), component, index, active) for component in value))
-    return dr.gather(type(value), value, index, active)
+
+def rows(value, count, channels=3):
+    """A Dr.Jit vector of `channels` components as NumPy (count, channels) float64 rows."""
+    return np.broadcast_to(np.array(value, np.float64).reshape(channels, -1).T, (count, channels)).copy()
 
 
 def chunks(count, per):
@@ -68,7 +77,7 @@ class RayQuery:
         mi = import_mitsuba()
         if mi is None:
             raise RuntimeError("ray queries need Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
-        if not variant.startswith(("llvm", "cuda")):
+        if not is_jit(variant):
             raise RuntimeError(f"ray queries run on a JIT variant (llvm_ad_rgb or cuda_ad_rgb), not {variant}")
         import drjit as dr
 
@@ -94,10 +103,7 @@ class RayQuery:
 
     def rays(self, origins, directions):
         """NumPy (n, 3) origins and directions as a Mitsuba ray."""
-        mi = self.mi
-        o, d = np.asarray(origins, np.float32), np.asarray(directions, np.float32)
-        return mi.Ray3f(mi.Point3f(*(mi.Float(o[:, axis]) for axis in range(3))),
-                        mi.Vector3f(*(mi.Float(d[:, axis]) for axis in range(3))))
+        return self.mi.Ray3f(vectors(self.mi.Point3f, origins), vectors(self.mi.Vector3f, directions))
 
     def corners(self, prim, active=True):
         """The three corner positions of triangles `prim`, read only where `active` (a missed ray's `prim` is no
@@ -151,11 +157,15 @@ class RayQuery:
             return o, valid & ~keep, found, prim, where, rounds
 
         width = dr.width(ray.d)
+        if not width:
+            return DeviceHit(dr.zeros(mi.Bool, 0), dr.zeros(mi.Float, 0), dr.zeros(mi.UInt32, 0),
+                             dr.zeros(mi.Point3f, 0))
         state = (mi.Point3f(o0), active & dr.full(mi.Bool, True, width), dr.zeros(mi.Bool, width),
                  dr.zeros(mi.UInt32, width), dr.zeros(mi.Point3f, width), mi.UInt32(0))
         o, alive, found, prim, where, _ = dr.while_loop(
             state, lambda o, alive, found, prim, where, rounds: alive & (rounds < MAX_HITS), body,
             labels=("o", "alive", "found", "prim", "where", "rounds"))
+        dr.eval(alive, found, prim, where)
         cut = true_count(dr, alive)
         if cut:
             print(f"ray query: {cut} rays still crossing triangles after {MAX_HITS} hits were cut off",

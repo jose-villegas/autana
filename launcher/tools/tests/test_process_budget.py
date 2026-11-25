@@ -127,17 +127,6 @@ if __name__ == '__main__':
                         pass
 
 
-class ReservationTests(unittest.TestCase):
-    def test_pose_pool_stays_inside_budget(self):
-        try:
-            from r3d.reference_render import budget_pose_capacity
-        except ImportError:
-            self.skipTest('needs reference dependencies')
-        self.assertEqual(budget_pose_capacity(700, 300, 100, 10), 4)
-        self.assertEqual(budget_pose_capacity(700, 300, 100, 2), 2)
-        self.assertEqual(budget_pose_capacity(700, 690, 100, 10), 1)
-
-
 def reservation_worker():
     from r3d.process_budget import task_reservation
     return task_reservation()
@@ -180,45 +169,3 @@ class MeasuredBudgetTests(unittest.TestCase):
                 self.assertEqual(b.pss_bytes(42), 0)
         with patch.object(pathlib.Path, 'read_text', return_value='Rss: 999 kB\n'):
             self.assertEqual(b.pss_bytes(42), 0)
-
-    def test_full_pose_budget_retains_parallelism(self):
-        from r3d import process_budget as b
-        try:
-            from r3d.reference_render import budget_pose_capacity, POSE_BASE_BYTES_PER_RAY
-        except ImportError:
-            self.skipTest('needs reference dependencies')
-        estimate = 368 * 448 * 4 * 4 * POSE_BASE_BYTES_PER_RAY
-        self.assertGreater(budget_pose_capacity(b.PREPARE_BYTES[0], b.GIB, estimate, 10), 1)
-
-
-class LivePoseCapacityTests(unittest.TestCase):
-    def test_reserved_pool_uses_both_caps_and_serial_floor(self):
-        from unittest.mock import patch, MagicMock
-        from r3d import process_budget as budget
-        try:
-            from r3d import reference_render as reference
-        except ImportError:
-            self.skipTest('needs reference dependencies')
-        estimate = 64 * 1024 ** 2
-        for budget_capacity, memory_capacity, expected in ((2, 6, 2), (6, 2, 2), (6, 0, 1)):
-            with self.subTest(budget=budget_capacity, memory=memory_capacity):
-                available = tuple(floor + memory_capacity * cost
-                                  for floor, cost in zip(budget.FLOORS, (estimate, 0, estimate)))
-                pool = MagicMock()
-                pool.__enter__.return_value.map.return_value = [(123, 0)] * 10
-                pool_budget = budget_capacity * estimate
-                with patch.object(budget, 'task_reservation', return_value=(pool_budget, 0, pool_budget)), \
-                     patch.object(budget, 'resident_bytes', return_value=(0, 0, 0)), \
-                     patch.object(budget, 'available_bytes', return_value=available), \
-                     patch.object(budget, 'cores_available', return_value=10), \
-                     patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                     patch.object(reference.multiprocessing, 'get_context'), \
-                     patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', return_value=pool) as pool_class, \
-                     patch.object(reference, '_write_pose', return_value=(123, 0)), \
-                     patch('builtins.print') as log:
-                    self.assertEqual(reference.render_poses(None, None, None, [None] * 10,
-                                     1, 1, None, 1, '.'), (0, expected))
-                    log.assert_any_call(f'pose pool workers={expected} budget_capacity={budget_capacity} '
-                                        f'memory_capacity={memory_capacity} rss=0', flush=True)
-                    if expected > 1:
-                        self.assertEqual(pool_class.call_args.kwargs['max_workers'], expected)

@@ -137,7 +137,7 @@ LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceRenderTest(unittest.TestCase):
     @needs_llvm
-    def test_main_reports_occlusion_value_error_on_serial_path(self):
+    def test_main_reports_occlusion_value_error(self):
         import contextlib
         import io
         import tempfile
@@ -157,7 +157,7 @@ class ReferenceRenderTest(unittest.TestCase):
                     patch.object(reference_render, 'occlusion_map', side_effect=ValueError(message)) as occlusion:
                 with self.assertRaises(SystemExit) as error:
                     reference_render.main(['scene', '--poses', 'poses', '--out', directory,
-                                           '--samples', '1', '--workers', '1', '--occlusion'])
+                                           '--samples', '1', '--occlusion'])
         self.assertEqual(error.exception.code, 2)
         self.assertIn(message, stderr.getvalue())
         occlusion.assert_called_once()
@@ -229,15 +229,10 @@ class ReferenceRenderTest(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
-class PooledReferenceTests(unittest.TestCase):
-    def test_pool_matches_serial_files(self):
-        import multiprocessing
+class RenderPosesTests(unittest.TestCase):
+    def test_render_poses_writes_what_trace_and_occlusion_map_give(self):
         import tempfile
         from r3d.reference_render import render_poses
-        from r3d import reference_render
-        from unittest.mock import patch
-        if "fork" not in multiprocessing.get_all_start_methods():
-            self.skipTest("pose pool needs fork")
         source = plane_source(square())
         wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))
@@ -256,9 +251,9 @@ class PooledReferenceTests(unittest.TestCase):
         poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            serial, pooled = root / "serial", root / "pooled"
-            serial.mkdir(); pooled.mkdir()
-            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1, True)
+            serial = root / "serial"
+            serial.mkdir()
+            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, True)
             from PIL import Image
             from r3d.reference_render import occlusion_map
             for index, pose in enumerate(poses):
@@ -280,17 +275,6 @@ class PooledReferenceTests(unittest.TestCase):
                 unoccluded = trace(source, job, scene, pose, 8, 8, 1., 2)[0]
                 job.bake.ao = ao
                 self.assertFalse(np.array_equal(linear, unoccluded))
-            global POSE_BARRIER
-            POSE_BARRIER = multiprocessing.get_context('fork').Barrier(2)
-            with patch.object(reference_render, '_write_pose', record_pose_pid):
-                render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2, True)
-            pids = list(pooled.glob('pid-*'))
-            self.assertGreater(len(pids), 1)
-            for marker in pids:
-                marker.unlink()
-            self.assertEqual(sorted(p.name for p in serial.iterdir()), sorted(p.name for p in pooled.iterdir()))
-            for path in serial.iterdir():
-                self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
 
 
 @unittest.skipIf(np is None, "needs NumPy")
@@ -364,39 +348,16 @@ class BounceReferenceTests(unittest.TestCase):
             with_bounce = render_linear(source, job, scene, LOOK_DOWN, 1, 1, 0.1, 1)
             np.testing.assert_allclose(with_bounce - without, 0.25 * intensity, atol=1e-12)
 
-    def test_poses_with_bounced_light_render_in_this_process_and_keep_the_pool_otherwise(self):
-        from unittest.mock import patch
-        from r3d import reference_render as reference
-        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
-                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
-            result = reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.')
-        executor.assert_not_called()
-        self.assertEqual(result[1], 1)
-
-    def test_more_workers_than_one_are_refused_for_bounced_light(self):
-        from r3d import reference_render as reference
-        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
-            reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
-
-    def test_poses_traced_on_cuda_render_in_this_process_and_cpu_poses_keep_the_pool(self):
+    def test_render_poses_reports_each_pose_in_order_and_returns_the_peak_pss(self):
         from unittest.mock import patch
         from r3d import process_budget as budget
         from r3d import reference_render as reference
-        for variant, pooled in (("cuda_ad_rgb", False), ("llvm_ad_rgb", True)):
-            source = SimpleNamespace(bounce=None, intersector=SimpleNamespace(variant=variant))
-            with self.subTest(variant=variant), patch.object(reference, '_write_pose', return_value=(1, 20)), \
-                    patch.object(budget, 'task_reservation', return_value=None), \
-                    patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
-                    patch.object(budget, 'cores_available', return_value=3), \
-                    patch.object(budget, 'worker_capacity', return_value=3), \
-                    patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                    patch.object(reference.multiprocessing, 'get_context'), \
-                    patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
-                executor.return_value.__enter__.return_value.map.return_value = [(2, 20)] * 3
-                result = reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.')
-            self.assertEqual(executor.called, pooled)
-            self.assertEqual(result[1], 3 if pooled else 1)
+        done = []
+        with patch.object(reference, 'write_pose') as write, patch.object(budget, 'pss_bytes', side_effect=[20, 30, 10]):
+            peak = reference.render_poses(None, None, None, ['a', 'b', 'c'], 8, 8, 1., 1, '.', done=done.append)
+        self.assertEqual(peak, 30)
+        self.assertEqual(done, [0, 1, 2])
+        self.assertEqual([call.args[-2:] for call in write.call_args_list], [(0, 'a'), (1, 'b'), (2, 'c')])
 
 
 def render_one_set(job, **patches):
@@ -409,7 +370,7 @@ def render_one_set(job, **patches):
     from r3d import reference_render
     from r3d.fitted_variant import poses_text
 
-    patches.setdefault("render_poses", {"return_value": (0, 1)})
+    patches.setdefault("render_poses", {"return_value": 0})
     inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
@@ -443,7 +404,7 @@ class PoseStoreTests(unittest.TestCase):
                 for suffix in reference_render.POSE_SUFFIXES:
                     (target / f"{index:04d}{suffix}").write_text(repr([float(value) for value in pose]))
                 done(index)
-            return 0, 1
+            return 0
 
         poses = out.parent / f"{out.name}.txt"
         poses.write_text(poses_text)
@@ -548,7 +509,7 @@ class RepeatTests(unittest.TestCase):
         from unittest.mock import patch
         from r3d import mitsuba_reference, ray_query
         from r3d import reference_render as reference
-        for found, expected in (("cuda_ad_rgb", "cuda_ad_rgb"), (None, ray_query.VARIANT)):
+        for found, expected in (("cuda_ad_rgb", "cuda_ad_rgb"), ("scalar_rgb", ray_query.VARIANT), (None, ray_query.VARIANT)):
             reference.reference_variant.cache_clear()
             self.addCleanup(reference.reference_variant.cache_clear)
             with self.subTest(found=found), \
@@ -567,58 +528,8 @@ class RepeatTests(unittest.TestCase):
             raised = contextlib.nullcontext() if failure is None else self.assertRaisesRegex(RuntimeError, "pose failed")
             with raised:
                 render_one_set(None, lit_source={"return_value": object()},
-                               render_poses={"side_effect": failure, "return_value": (0, 1)})
+                               render_poses={"side_effect": failure, "return_value": 0})
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
-
-
-POSE_BARRIER = None
-if np is not None:
-    from r3d.reference_render import _write_pose as original_write_pose
-
-
-def record_pose_pid(item):
-    from r3d.reference_render import POSE_STATE
-    POSE_BARRIER.wait(timeout=10)
-    pid, peak = original_write_pose(item)
-    (POSE_STATE[7] / f'pid-{pid}').touch()
-    return pid, peak
-
-
-
-
-@unittest.skipIf(np is None, "needs NumPy")
-class PoseMetricTests(unittest.TestCase):
-    def test_pool_budget_and_pss_aggregation(self):
-        from unittest.mock import Mock, patch
-        from r3d import process_budget as budget, reference_render as reference
-        pool = Mock()
-        pool.__enter__ = Mock(return_value=pool)
-        pool.__exit__ = Mock(return_value=False)
-        pool.map.return_value = [(101, 30), (102, 40), (101, 20), (102, 50)]
-        with patch.object(budget, 'task_reservation', return_value=budget.PREPARE_BYTES), \
-                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
-                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
-                patch.object(budget, 'cores_available', return_value=10), \
-                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                patch.object(reference.multiprocessing, 'get_context'), \
-                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', return_value=pool) as executor:
-            result = reference.render_poses(None, None, None, [None] * 4,
-                                            368, 448, 1., 4, '.')
-        self.assertEqual(result, (80, 2))
-        self.assertEqual(executor.call_args.kwargs['max_workers'], 2)
-        self.assertIsNone(reference.POSE_STATE)
-
-    def test_serial_pss_and_smoke_budget(self):
-        from unittest.mock import patch
-        from r3d import process_budget as budget, reference_render as reference
-        with patch.object(budget, 'task_reservation', return_value=budget.SMOKE_PREPARE_BYTES), \
-                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
-                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
-                patch.object(budget, 'cores_available', return_value=10), \
-                patch.object(reference, '_write_pose', side_effect=[(1, 20), (1, 30), (1, 10)]):
-            self.assertEqual(reference.render_poses(None, None, None, [None] * 3,
-                                                   368, 448, 1., 4, '.'), (30, 1))
-        self.assertIsNone(reference.POSE_STATE)
 
 
 if __name__ == "__main__":

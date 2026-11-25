@@ -15,7 +15,7 @@ from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
 from .obj import alpha_tested
-from .ray_query import VARIANT, take
+from .ray_query import VARIANT, is_jit, rows, vectors
 
 
 # Where a triangle's alpha is sampled: its centre and three points towards its corners, as barycentric weights.
@@ -64,11 +64,9 @@ class SurfaceTable:
         self.uv = None if not len(uv) else [mi.Point2f(mi.Float(uv[tri_t[:, corner], 0]),
                                                        mi.Float(uv[tri_t[:, corner], 1])) for corner in range(3)]
         self.tri_m = mi.UInt32(np.asarray(source.tri_m, np.uint32))
-        self.textures, self.masks = {}, {}
+        self.textures, self.uploads = {}, {}
         normals = getattr(source, "corner_normals", None)
-        self.normals = None if normals is None else [
-            mi.Vector3f(*(mi.Float(np.asarray(normals[:, corner, axis], np.float32)) for axis in range(3)))
-            for corner in range(3)]
+        self.normals = None if normals is None else [vectors(mi.Vector3f, normals[:, corner]) for corner in range(3)]
         twin = getattr(source, "twin", None)
         self.twin = None if twin is None else mi.Int32(np.asarray(twin, np.int32))
         materials = getattr(source, "materials", {})
@@ -80,10 +78,9 @@ class SurfaceTable:
         flat = np.array([texture is None for texture in source.textures] or [True])
         # albedo_from_uv: the texture times Kd, or Kd decoded by LIGHT_GAMMA where untextured.
         kd = np.where(flat[:, None], kd ** LIGHT_GAMMA, kd).astype(np.float32)
-        self.kd = mi.Color3f(*(mi.Float(kd[:, channel]) for channel in range(3)))
+        self.kd = vectors(mi.Color3f, kd)
         colors = getattr(source, "colors", None)
-        self.colors = None if colors is None else mi.Color3f(
-            *(mi.Float(np.asarray(colors, np.float32)[:, channel]) for channel in range(3)))
+        self.colors = None if colors is None else vectors(mi.Color3f, colors)
         self.tri_v = None if colors is None else mi.UInt32(np.asarray(source.tri_v, np.uint32).ravel())
 
     def texture(self, material):
@@ -93,14 +90,15 @@ class SurfaceTable:
                                                         wrap_mode=self.dr.WrapMode.Repeat, use_accel=False)
         return self.textures[material]
 
-    def mask(self, name, values, kind=None):
+    def upload(self, name, values, kind=None):
         """A host array on the device (a Bool mask unless `kind` names another type), kept under `name`."""
-        if name not in self.masks:
-            self.masks[name] = (kind or self.mi.Bool)(np.asarray(values, np.uint32 if kind else bool))
-        return self.masks[name]
+        if name not in self.uploads:
+            self.uploads[name] = (kind or self.mi.Bool)(np.asarray(values, np.uint32 if kind else bool))
+        return self.uploads[name]
 
     def interpolate(self, corners, prim, bary, active):
-        return sum((take(corner, prim, active) * weight for corner, weight in zip(corners, bary)),
+        dr = self.dr
+        return sum((dr.gather(type(corner), corner, prim, active) * weight for corner, weight in zip(corners, bary)),
                    type(corners[0])(0))
 
     def rgba(self, prim, bary, active, materials=None):
@@ -113,7 +111,7 @@ class SurfaceTable:
             return mi.Vector4f(1.0)
         slot = np.zeros(len(self.source.textures), np.uint32)
         slot[chosen] = np.arange(1, len(chosen) + 1)
-        slots = self.mask(("slots", tuple(chosen)), slot, mi.UInt32)
+        slots = self.upload(("slots", tuple(chosen)), slot, mi.UInt32)
         uv = self.interpolate(self.uv, prim, bary, active)
         where = mi.Point2f(uv.x, 1.0 - uv.y)
 
@@ -129,9 +127,9 @@ class SurfaceTable:
         dr, mi = self.dr, self.mi
         rgba = self.rgba(prim, bary, active)
         material = dr.gather(mi.UInt32, self.tri_m, prim, active)
-        albedo = mi.Color3f(rgba.x, rgba.y, rgba.z) * take(self.kd, material, active)
+        albedo = mi.Color3f(rgba.x, rgba.y, rgba.z) * dr.gather(type(self.kd), self.kd, material, active)
         if self.colors is not None:
-            albedo = albedo * sum((take(self.colors, dr.gather(mi.UInt32, self.tri_v, prim * 3 + corner, active),
+            albedo = albedo * sum((dr.gather(type(self.colors), self.colors, dr.gather(mi.UInt32, self.tri_v, prim * 3 + corner, active),
                                      active) * weight for corner, weight in enumerate(bary)), mi.Color3f(0))
         return albedo
 
@@ -142,8 +140,8 @@ class SurfaceTable:
 
 
 def surface_table(source, mi):
-    """The source's SurfaceTable on Mitsuba's current variant, built once. A copy of the source (with_triangles)
-    inherits the attribute but builds its own table, which replaces it on the copy alone."""
+    """The source's SurfaceTable on Mitsuba's current variant, built once per source and variant. A copy of the
+    source (with_triangles) inherits the attribute but builds its own table, which replaces it on the copy alone."""
     table = vars(source).get("_surface_table")
     if table is None or table.source is not source or table.variant != mi.variant():
         table = vars(source)["_surface_table"] = SurfaceTable(source, mi)
@@ -160,6 +158,7 @@ class AlphaTest:
         self.tested = (alpha_tested(source.textures) if keep_alpha is not None
                        else np.zeros(len(source.textures), bool))
         self.hidden = None if hidden is None or not np.any(hidden) else np.asarray(hidden, bool)
+        self._masks = {}
 
     def device(self, query):
         """solid(prim, where, active) for hits of `query`, a RayQuery over this source's triangles; None when every
@@ -168,7 +167,7 @@ class AlphaTest:
             return None
         dr, mi = query.dr, query.mi
         table = surface_table(self.source, mi) if self.tested.any() else None
-        masks = vars(self).setdefault("_masks", {})
+        masks = self._masks
         if mi.variant() not in masks:
             masks[mi.variant()] = (None if self.hidden is None else mi.Bool(self.hidden), mi.Bool(self.tested))
         hidden, tested = masks[mi.variant()]
@@ -192,12 +191,12 @@ class AlphaTest:
         if not len(hits):
             return np.ones((0, 4))
         mi = import_mitsuba()
-        if mi.variant() is None:
+        if not is_jit(mi.variant()):
             mi.set_variant(VARIANT)
         bary = hit_barycentrics(self.source.p, self.source.tri_v, hits, locations).astype(np.float32)
         rgba = surface_table(self.source, mi).rgba(mi.UInt32(np.asarray(hits, np.uint32)),
                                                    [mi.Float(bary[:, corner]) for corner in range(3)], mi.Bool(True))
-        return np.broadcast_to(np.array(rgba, np.float64).reshape(4, -1).T, (len(hits), 4)).copy()
+        return rows(rgba, len(hits), 4)
 
     def __call__(self, hits, locations):
         hits = np.asarray(hits)
@@ -359,18 +358,6 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd, 
     return albedo
 
 
-def vectors(kind, rows):
-    """NumPy (n, 3) rows as a Dr.Jit 3-vector of `kind` (mi.Point3f, mi.Vector3f, mi.Color3f)."""
-    rows = np.asarray(rows, np.float32).reshape(-1, 3)
-    float_type = type(kind(0).x)
-    return kind(*(float_type(rows[:, axis]) for axis in range(3)))
-
-
-def rows(value, count):
-    """A Dr.Jit 3-vector as NumPy (count, 3) float64 rows."""
-    return np.broadcast_to(np.array(value, np.float64).reshape(3, -1).T, (count, 3)).copy()
-
-
 def summed_rays(mi, kind, count, rays, value):
     """For `count` points, the sum over each point's `rays` rays of value(point, ray, chunk), a `kind` (mi.Float or
     mi.Color3f) per ray. Points go through in chunks of at most ray_query.LAUNCH rays, a constant, numbered from 0;
@@ -379,14 +366,17 @@ def summed_rays(mi, kind, count, rays, value):
 
     from r3d.ray_query import LAUNCH, chunks
 
+    if rays > LAUNCH:
+        raise ValueError(f"{rays} rays per point exceed one launch of {LAUNCH}")
     out = dr.zeros(kind, count)
-    for chunk, (start, size) in enumerate(chunks(count, max(1, LAUNCH // rays))):
+    for chunk, (start, size) in enumerate(chunks(count, LAUNCH // rays)):
         lane = dr.arange(mi.UInt32, size * rays)
-        got = kind(value(start + lane // rays, lane % rays, chunk))
+        # Opaque, so every full chunk reuses one compiled kernel instead of baking its start in.
+        got = kind(value(dr.opaque(mi.UInt32, start) + lane // rays, lane % rays, chunk))
         # Evaluated once here: each channel's block sum would otherwise re-run the whole ray kernel.
         dr.eval(got)
-        total = (dr.block_sum(got, rays) if kind is mi.Float
-                 else kind(*(dr.block_sum(got[channel], rays) for channel in range(3))))
+        total = (dr.block_sum(got, rays, mode="evaluated") if kind is mi.Float
+                 else kind(*(dr.block_sum(got[channel], rays, mode="evaluated") for channel in range(3))))
         dr.scatter(out, total, dr.arange(mi.UInt32, start, start + size))
         dr.eval(out)
     return out
@@ -421,13 +411,15 @@ def sky_directions(count):
 def hemisphere_ray(mi, origins, normals, local):
     """ray(point, k): from origins[point], along the k-th of the `local` (z-up) directions turned into the frame of
     normals[point]."""
+    import drjit as dr
+
     table = vectors(mi.Vector3f, local)
 
     def ray(point, k):
-        n = take(normals, point)
+        n = dr.gather(type(normals), normals, point)
         tu, tv = tangent_frame(n)
-        d = take(table, k)
-        return mi.Ray3f(take(origins, point), tu * d.x + tv * d.y + n * d.z)
+        d = dr.gather(type(table), table, k)
+        return mi.Ray3f(dr.gather(type(origins), origins, point), tu * d.x + tv * d.y + n * d.z)
 
     return ray
 
@@ -439,7 +431,7 @@ def bake_directional(light, ctx):
     mi, sun = ctx.mi, np.array(light["direction"], dtype=np.float64)
     sun = mi.Vector3f(*(sun / np.linalg.norm(sun)).tolist())
     lit = summed_rays(mi, mi.Float, ctx.count, 1, lambda point, _k, _chunk: dr.select(
-        ctx.query.device_blocked(mi.Ray3f(take(ctx.origin, point), sun)), 0.0, 1.0))
+        ctx.query.device_blocked(mi.Ray3f(dr.gather(type(ctx.origin), ctx.origin, point), sun)), 0.0, 1.0))
     return dr.maximum(dr.dot(ctx.normals, sun), 0.0) * lit * colour(mi, light)
 
 
@@ -498,7 +490,7 @@ def device_occlusion(query, points, normals, double_sided, ao, ray_offset):
     factor = device_local_occlusion(query, points, normals, ao, ray_offset)
     both = dr.compress(double_sided)
     if dr.width(both):
-        other = device_local_occlusion(query, take(points, both), -take(normals, both), ao, ray_offset)
+        other = device_local_occlusion(query, dr.gather(type(points), points, both), -dr.gather(type(normals), normals, both), ao, ray_offset)
         best = dr.maximum(dr.gather(mi.Float, factor, both), other)
         dr.eval(best)
         dr.scatter(factor, best, both)
@@ -566,10 +558,10 @@ def device_light(points, normals, double_sided, query, lights, ray_offset, bounc
     both = dr.compress(double_sided)
     if dr.width(both):
         groups = None if bounce_groups is None else np.asarray(bounce_groups)[np.array(both, np.int64)]
-        other = lit_side(query, take(points, both), -take(n, both), lights,
+        other = lit_side(query, dr.gather(type(points), points, both), -dr.gather(type(n), n, both), lights,
                          ray_offset, None if occlusion is None else dr.gather(mi.Float, occlusion, both), bounce,
                          groups, ao, bounce_intensity, 1)
-        mine = take(radiance, both)
+        mine = dr.gather(type(radiance), radiance, both)
         best = dr.select(dr.sum(other) > dr.sum(mine), other, mine)
         dr.eval(best)
         dr.scatter(radiance, best, both)
@@ -581,6 +573,8 @@ def light(points, normals, double_sided, intersector, lights, ray_offset, bounce
           bounce_intensity=1.0):
     """device_light for NumPy points, unit normals and double-sided flags, on the intersector's variant."""
     mi = intersector.mi
+    if not len(points):
+        return np.zeros((0, 3))
     radiance = device_light(vectors(mi.Point3f, points), vectors(mi.Vector3f, normals),
                             mi.Bool(np.asarray(double_sided, bool)), intersector, lights, ray_offset, bounce,
                             bounce_groups, ao, bounce_intensity)
@@ -608,6 +602,8 @@ def lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_gro
 
 def bounced_light(bounce, points, normals, ray_offset, groups=None, side=0):
     """`bounce.device_bounce` for every point; with NumPy `groups`, once per group on the group's mean normal."""
+    import drjit as dr
+
     if groups is None:
         return bounce.device_bounce(points, normals, ray_offset, side)
     mi = bounce.mi
@@ -617,9 +613,9 @@ def bounced_light(bounce, points, normals, ray_offset, groups=None, side=0):
     total = np.stack([np.bincount(inverse, weights=host[:, axis]) for axis in range(3)], axis=1)
     length = np.linalg.norm(total, axis=1, keepdims=True)
     mean = np.where(length > 1e-6, total / np.maximum(length, 1e-12), host[first])
-    gathered = bounce.device_bounce(take(points, mi.UInt32(first.astype(np.uint32))),
+    gathered = bounce.device_bounce(dr.gather(type(points), points, mi.UInt32(first.astype(np.uint32))),
                                     vectors(mi.Vector3f, mean), ray_offset, side)
-    return take(gathered, mi.UInt32(inverse.astype(np.uint32)))
+    return dr.gather(type(gathered), gathered, mi.UInt32(inverse.astype(np.uint32)))
 
 
 def encode_srgb8(linear):
