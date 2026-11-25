@@ -45,11 +45,13 @@ class BuildSamplerOnceTests(unittest.TestCase):
     def test_sources_pointed_elsewhere_build_anew(self):
         with mock.patch.object(track_host, "program", side_effect=["first", "refactored"]) as build:
             build_sampler_once()
-            self.addCleanup(unittest.case.doModuleCleanups)
-            with mock.patch.object(track_host, "SOURCES", [*track_host.SOURCES, pathlib.Path("refactor.c")]):
-                self.assertEqual(track_host.program(), "refactored")
-            self.assertEqual(track_host.program(), "first")
-            self.assertEqual(build.call_count, 2)
+            try:
+                with mock.patch.object(track_host, "SOURCES", [*track_host.SOURCES, pathlib.Path("refactor.c")]):
+                    self.assertEqual(track_host.program(), "refactored")
+                self.assertEqual(track_host.program(), "first")
+                self.assertEqual(build.call_count, 2)
+            finally:
+                unittest.case.doModuleCleanups()
 
     def test_without_a_compiler_program_is_left_as_it_was(self):
         for missing in (track_host.TrackHostError("no cc"), OSError("cc cannot start")):

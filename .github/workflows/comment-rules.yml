@@ -214,7 +214,8 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           CCACHE_DIR: ${{ runner.temp }}/ccache
-          CCACHE_MAXSIZE: 1G
+          # A full run's objects take under 0.1 GB (`ccache --show-stats` at the log's end).
+          CCACHE_MAXSIZE: 256M
         run: sh scripts/run-tool-tests.sh
       # Saved from main only, which every branch restores, so a branch's runs spend none of the repository's
       # cache space. Kept after a failed test too: an object ccache stored is right whatever a test then made
@@ -292,7 +293,8 @@ jobs:
       - name: Tool tests
         env:
           CCACHE_DIR: ${{ runner.temp }}/ccache
-          CCACHE_MAXSIZE: 1G
+          # A full run's objects take under 0.1 GB (`ccache --show-stats` at the log's end).
+          CCACHE_MAXSIZE: 256M
         run: sh scripts/run-tool-tests.sh --shard ${{ matrix.shard }}/2
       # Saved from main only, as on Linux.
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
