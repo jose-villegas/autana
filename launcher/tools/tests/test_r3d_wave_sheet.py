@@ -184,6 +184,13 @@ class WaveSheetTests(unittest.TestCase):
         self.assertEqual(len(set(piece[:len(two.tris)].tolist())), 1, "one shell of many materials was split")
         self.assertTrue((piece[:len(two.tris)] >= 0).all())
         self.assertTrue((piece[len(two.tris):] == -1).all(), "an open sheet was taken for a closed shell")
+        # A fin standing on one of the shell's edges, as cloth touches the rod it hangs from: that edge is used
+        # three times, and the shell stays closed while the fin, all border, does not.
+        points = np.concatenate([two.positions, [two.positions[two.tris[0, 0]] + (0.0, 0.0, 1.0)]])
+        fin = [two.tris[0, 0], two.tris[0, 1], len(two.positions)]
+        piece = closed_shells(points, np.concatenate([two.tris, [fin]]))
+        self.assertTrue((piece[:-1] >= 0).all(), "a shell touched along an edge was taken for an open one")
+        self.assertEqual(piece[-1], -1)
 
     def test_the_far_skin_is_the_one_facing_away_from_the_viewer(self):
         from r3d.mesh_import import far_skins

@@ -74,8 +74,9 @@ def weld_map(p, tolerance=1e-3):
 
 def closed_shells(p, tris, tolerance=1e-3):
     """Each triangle's closed shell, -1 for none: a piece, once positions within `tolerance` are welded and
-    triangles sharing an edge joined, where every edge is used by two of its triangles. A closed shell shows
-    only its outside, whatever materials make it up."""
+    triangles joined across each edge exactly two of them use, with no border edge (one only one uses). A
+    closed shell shows only its outside, whatever materials make it up; an edge three or more use, where a
+    shell touches another, joins nothing."""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
 
@@ -85,11 +86,13 @@ def closed_shells(p, tris, tolerance=1e-3):
     _, slot, uses = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
     slot = slot.reshape(-1)
     owner = np.tile(np.arange(len(tris)), 3)
-    # A triangle joins the edge's node; the pieces are the graph's components.
-    graph = coo_matrix((np.ones(len(owner)), (owner, len(tris) + slot)), shape=(len(tris) + len(uses),) * 2)
+    # A triangle joins the node of each edge it shares with one other; the pieces are the graph's components.
+    shared = uses[slot] == 2
+    graph = coo_matrix((np.ones(int(shared.sum())), (owner[shared], len(tris) + slot[shared])),
+                       shape=(len(tris) + len(uses),) * 2)
     _count, piece = connected_components(graph, directed=False)
     piece = piece[:len(tris)]
-    open_pieces = np.unique(owner[uses[slot] != 2])
+    open_pieces = np.unique(owner[uses[slot] == 1])
     return np.where(np.isin(piece, piece[open_pieces]), -1, piece)
 
 
