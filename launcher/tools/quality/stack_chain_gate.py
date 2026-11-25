@@ -140,16 +140,22 @@ def reachable(roots, calls):
 
 
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
-              graph=None, declared=None):
+              graph=None, declared=None, uncompiled=lambda _name: False):
+    """uncompiled(name) says a name missing from the graph is defined in a source
+    this build left out, as a scoped build does: its entries are skipped."""
     roots, own_edges = read_spec(spec_path)
     declared = own_edges if declared is None else declared
     frame, calls, pointer_callers, bad = graph or parse_graph(ci_paths)
     problems = []
+    skipped = 0
 
     covered = set()
     for caller, callee in declared + list(runner_edges):
         callers, callees = resolve(caller, frame), resolve(callee, frame)
-        if not callers or not callees:
+        missing = [n for n, found in ((caller, callers), (callee, callees)) if not found]
+        if any(uncompiled(n) for n in missing):
+            skipped += 1
+        elif missing:
             problems.append("declared edge %s > %s names a function that is "
                             "not in the graph" % (caller, callee))
         for c in callers:
@@ -158,6 +164,14 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
 
     for wrapper in resolve("vPortTaskWrapper", frame):
         calls.setdefault(wrapper, set()).update(resolve("main_task", frame))
+
+    kept = [(root, kind) for root, kind in roots
+            if resolve(root, frame) or not uncompiled(root)]
+    skipped += len(roots) - len(kept)
+    roots = kept
+    if skipped:
+        print("stack_chain_gate: %s: %d entries name functions this build does not compile"
+              % (name, skipped))
 
     root_titles = []
     for root, _kind in roots:
@@ -197,6 +211,32 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
                             (root, used, stack_bytes, reserve))
 
     return problems
+
+
+def uncompiled_definitions(db_path):
+    """A test of whether a function is defined in a first-party source the build
+    did not compile; a misspelt name is defined nowhere and still fails."""
+    with open(db_path, "r", encoding="utf-8") as fh:
+        compiled = {os.path.normcase(os.path.realpath(e["file"])) for e in json.load(fh)}
+    sources = [path for top in (MAIN_DIR, os.path.join(LAUNCHER, "test"),
+                                os.path.join(LAUNCHER, "packages"))
+               for path in Path(top).rglob("*.c")
+               if os.path.normcase(os.path.realpath(path)) not in compiled]
+    texts = {}
+
+    def uncompiled(name):
+        qualifier, _, function = name.rpartition(":")
+        definition = re.compile(r"\b%s\s*\([^;{}]*\)\s*\{" % re.escape(function))
+        for path in sources:
+            if qualifier and not path.as_posix().endswith(qualifier):
+                continue
+            if path not in texts:
+                texts[path] = path.read_text(encoding="utf-8", errors="replace")
+            if definition.search(texts[path]):
+                return True
+        return False
+
+    return uncompiled
 
 
 def app_jobs(db_path, app_dir=None, functions=()):
@@ -300,13 +340,14 @@ def main(argv):
         return 1
     declared = [edge for spec in specs for edge in read_spec(spec)[1]]
     graph = parse_graph(ci_paths)
+    uncompiled = uncompiled_definitions(db)
     status = 0
     for spec in specs:
         name = os.path.basename(os.path.dirname(spec))
         try:
             problems = check_app(name, spec, ci_paths, stack_bytes,
                                   stack_reserve(), context, runner_edges(all_jobs, spec),
-                                  graph, declared)
+                                  graph, declared, uncompiled)
         except SpecError as exc:
             problems = [str(exc)]
         for problem in problems:
