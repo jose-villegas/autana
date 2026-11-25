@@ -5,9 +5,10 @@
 Builds the host renderer once and samples the scene camera clip with sample_camera_rows
 at DT_MS intervals to determine the frame count. ANY clear-colour pixel not
 connected to the top row makes a frame holed, including four-pixel pinholes,
-unless its patch of enclosed sky holds a pixel whose ray misses the source
-mesh too: sky the source shows, as the roof opening closed in by a beam, is
-no hole of the bake, and neither is that opening's rim a pixel off the source's.
+unless its patch of enclosed sky holds a pixel the source mesh shows sky in
+too, in any part of it: sky the source shows, as the roof opening closed in by
+a beam or a notch in its rim, is no hole of the bake, and neither is that
+opening's rim a pixel off the source's.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
@@ -43,8 +44,11 @@ except ImportError:  # pragma: no cover - the tool tests' environment has them
 DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
-# Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
-MOST_HOLED_FRAMES = {"sponza": 16}
+# Rays per side of a render pixel when asking the source for sky: a notch in a jagged rim or the gap under a
+# flagpole opens to the sky through a channel narrower than a pixel, which a ray through the centre can miss.
+SUBPIXELS = 8
+# Per scene, the holed frames of its current bake plus one: the ceiling a rebake must not go above.
+MOST_HOLED_FRAMES = {"sponza": 1}
 
 
 def clear_colour():
@@ -70,9 +74,18 @@ def sky_pixels(frame, sky, source_sky=None):
     return len(ys), open_
 
 
+def pixel_sky(query, width, height, lens, near, pose, ys, xs, samples=SUBPIXELS):
+    """Whether `query`'s mesh leaves any of `samples` x `samples` rays spread over each render pixel (ys, xs) of
+    a width x height view from `pose` empty: sky the source shows in part of a pixel counts."""
+    origins, directions = pose_rays(width, height, lens, near, pose, samples)
+    per_pixel = samples * samples
+    rays = ((ys * width + xs)[:, None] * per_pixel + np.arange(per_pixel)).reshape(-1)
+    return ~query.blocked(origins[rays], directions[rays]).reshape(-1, per_pixel).all(axis=1)
+
+
 class SourceSky:
-    """Where the scene's source mesh leaves a flythrough frame's pixel empty, by one ray through the centre of the
-    render pixel a video pixel was drawn from."""
+    """Where the scene's source mesh leaves part of a flythrough frame's pixel empty (pixel_sky), for the render
+    pixel a video pixel was drawn from."""
 
     def __init__(self, scene, frames, video_size):
         camera = flight_camera(scene)
@@ -89,9 +102,8 @@ class SourceSky:
     def of_frame(self, frame):
         """`source_sky` of sky_pixels for the flythrough's frame `frame`."""
         def source_sky(ys, xs):
-            origins, directions = pose_rays(self.width, self.height, self.lens, self.near, self.poses[frame + 1])
-            rays = (ys // VIDEO_SCALE) * self.width + xs // VIDEO_SCALE
-            return ~self.query.blocked(origins[rays], directions[rays])
+            return pixel_sky(self.query, self.width, self.height, self.lens, self.near, self.poses[frame + 1],
+                             ys // VIDEO_SCALE, xs // VIDEO_SCALE)
         return source_sky
 
 
@@ -134,6 +146,18 @@ class SkyCount(unittest.TestCase):
         frame[6, 7] = sky  # a pinhole touching no sky of the source
         source = lambda ys, xs: (ys == 3) & (xs > 2) & (xs < 5)
         self.assertEqual(sky_pixels(frame, sky, source), (1, 8))
+
+    def test_sky_in_part_of_a_pixel_is_source_sky_where_the_centre_ray_hits(self):
+        # One pixel looking down +z at a wall 10 away whose sides stop short of the pixel's: the centre ray hits
+        # it, the rays near the pixel's sides pass it, as sky beside a flagpole does.
+        def wall(half_width):
+            corners = np.array([[-half_width, -20, 10], [half_width, -20, 10], [half_width, 20, 10], [-half_width, 20, 10]])
+            return RayQuery(corners, np.array([[0, 1, 2], [0, 2, 3]]), variant=SCALAR_VARIANT)
+        pose = np.array([0.0, 0, 0, 0, 0, 1])
+        one = (np.array([0]), np.array([0]))
+        self.assertFalse(pixel_sky(wall(5), 1, 1, 1.0, 0.1, pose, *one, samples=1)[0])
+        self.assertTrue(pixel_sky(wall(5), 1, 1, 1.0, 0.1, pose, *one)[0])
+        self.assertFalse(pixel_sky(wall(20), 1, 1, 1.0, 0.1, pose, *one)[0])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

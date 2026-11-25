@@ -56,8 +56,8 @@ def mesh_query(path, variant):
     return RayQuery(positions, triangles, variant=variant), np.cross(b - a, c - a), double.astype(bool)
 
 
-def pose_rays(width, height, lens, near, pose):
-    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], PIXEL_SAMPLES)
+def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
+    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
     forward = camera_basis(pose[3:])[2]
     origins += directions * (near / (directions @ forward))[:, None]
     return origins, directions
