@@ -28,7 +28,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles
+from r3d.geometry import closest_point_on_triangles, edge_uses
 from r3d.lit_mesh import MAX_CLUSTERS, MAX_TRIANGLES, MAX_VERTICES, oriented
 from r3d.lod.levels import build_levels
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
@@ -59,9 +59,8 @@ class Baked(NamedTuple):
 def border_vertices(ids):
     """The welded ids on an edge that bounds the triangles `ids` (T x 3): used
     by one triangle, or by more than two."""
-    edges = np.sort(np.stack([ids[:, [0, 1]], ids[:, [1, 2]], ids[:, [2, 0]]], axis=1).reshape(-1, 2), axis=1)
-    unique, count = np.unique(edges, axis=0, return_counts=True)
-    return np.unique(unique[count != 2])
+    edges, _slot, uses = edge_uses(ids)
+    return np.unique(edges[uses != 2])
 
 
 def push_outward(fine_ids, fine_pos, coarse_ids, cap):

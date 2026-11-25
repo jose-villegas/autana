@@ -29,7 +29,7 @@ except ImportError:
     GPU = False
 
 # The cloth the import and fit checks build: a zigzag tight enough that its coarsened skins cross, its slopes
-# (39 degrees) shallow enough that the sweep's views, tilted up to 40 degrees, never see one skin from behind.
+# shallow enough that the sweep's tilted views never see one skin from behind.
 CLOTH = dict(size=100.0, shape="zigzag", amplitude=5.0, frequency=(4, 0), pattern="checker", cells=4)
 CLOTH_COUNT = 32
 CLOTH_THICKNESS = 1.2
@@ -42,9 +42,9 @@ REGION = "region = { min = [-50.0, -50.0, 150.0], max = [50.0, 50.0, 250.0] }\n"
 
 
 def face_normals(sheet):
-    corners = sheet.positions[sheet.tris]
-    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    return normals / np.linalg.norm(normals, axis=1, keepdims=True)
+    from r3d.geometry import face_normals
+
+    return face_normals(sheet.positions, sheet.tris)[0]
 
 
 def welded_tris(sheet):
@@ -89,9 +89,9 @@ def imported(sheet, double_sided, scene=True):
 
 def facing(geometry):
     """The z of each imported triangle's normal."""
-    corners = geometry.positions[geometry.tris]
-    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    return normals[:, 2] / np.linalg.norm(normals, axis=1)
+    from r3d.geometry import face_normals
+
+    return face_normals(geometry.positions, geometry.tris)[0][:, 2]
 
 
 def every_material(sheet):
@@ -191,16 +191,26 @@ class WaveSheetTests(unittest.TestCase):
         piece = closed_shells(points, np.concatenate([two.tris, [fin]]))
         self.assertTrue((piece[:-1] >= 0).all(), "a shell touched along an edge was taken for an open one")
         self.assertEqual(piece[-1], -1)
+        # Three triangles on one place share all their edges, each used three times: open, not closed.
+        stack = np.array([[0, 1, 2], [0, 1, 2], [0, 2, 1]])
+        self.assertTrue((closed_shells(two.positions, stack) == -1).all(), "coincident open triangles closed a shell")
 
-    def test_the_far_skin_is_the_one_facing_away_from_the_viewer(self):
+    def test_the_far_skin_is_the_one_facing_away_from_the_viewer_whatever_the_wave(self):
         from r3d.mesh_import import far_skins
 
-        cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
-        skins = cloth.layer != wave_sheet.HEM
-        for towards, far_layer in (((0.0, 0.0, 200.0), wave_sheet.BACK), ((0.0, 0.0, -200.0), wave_sheet.FRONT)):
-            far = far_skins(cloth.positions, cloth.tris, np.ones(len(cloth.tris), dtype=bool), np.array(towards))
-            with self.subTest(towards=towards):
-                self.assertTrue(np.array_equal(far[skins], cloth.layer[skins] == far_layer))
+        # Above, below, and off to one side: the viewer stands where a camera region over cloth would.
+        for shape in ("sine", "zigzag", "sawtooth"):
+            cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **dict(CLOTH, shape=shape))
+            skins, every = cloth.layer != wave_sheet.HEM, np.ones(len(cloth.tris), dtype=bool)
+            for towards, far_layer in (((0.0, 0.0, 200.0), wave_sheet.BACK), ((0.0, 0.0, -200.0), wave_sheet.FRONT),
+                                       ((60.0, -40.0, 200.0), wave_sheet.BACK)):
+                far = far_skins(cloth.positions, cloth.tris, every, np.array(towards))
+                with self.subTest(shape=shape, towards=towards):
+                    self.assertTrue(np.array_equal(far[skins], cloth.layer[skins] == far_layer))
+        # A triangle with no area faces nowhere: it is never taken for the far skin.
+        flat = np.concatenate([cloth.tris, [[0, 0, 1]]])
+        far = far_skins(cloth.positions, flat, np.ones(len(flat), dtype=bool), np.array((0.0, 0.0, 200.0)))
+        self.assertFalse(far[-1])
 
     def test_the_import_keeps_the_skin_a_camera_faces_of_a_closed_shell_and_draws_it_double_sided(self):
         cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
@@ -212,6 +222,37 @@ class WaveSheetTests(unittest.TestCase):
         self.assertTrue(placed.tri_double[listed].all(), "the near skin is not double-sided")
         bare = imported(cloth, front, scene=False)
         self.assertTrue((facing(bare) < -SIDE_COS).any(), "with no camera to face, both skins are kept")
+
+    def test_the_dropped_far_skin_still_casts_light_but_is_not_drawn(self):
+        from unittest import mock
+
+        from r3d import mesh_import
+        from r3d.import_settings import albedo_jobs, load_import_settings
+
+        cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
+        built, shaded = [], []
+
+        def ray_query(points, tris, *rest, **options):
+            built.append(len(tris))
+            return mock.Mock(name=f"query of {len(tris)}")
+
+        def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
+            shaded.append(intersector)
+            return (*mesh_import.shade_unlit(src, material, mp, mt), labels)
+
+        with tempfile.TemporaryDirectory() as directory:
+            job = albedo_jobs(load_import_settings(write_import(directory, cloth, "cloth", every_material(cloth))))[0]
+            job = SimpleNamespace(settings=job.settings, renderer=job.renderer,
+                                  bake=SimpleNamespace(ray_offset=0.0, ao=None, indirect=None))
+            scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(intensity=1.0), tonemap_white=1.0,
+                                    region=np.array([[-50.0, -50.0, 150.0], [50.0, 50.0, 250.0]]))
+            with mock.patch.object(mesh_import, "RayQuery", side_effect=ray_query),                     mock.patch.object(mesh_import, "shade_lit", side_effect=shade_lit),                     mock.patch.object(mesh_import, "light", side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, "path_light_for", side_effect=lambda *rest: None):
+                geometry = mesh_import.bake_geometry(job, scene)
+        drawn, lit = built[:2]
+        self.assertLess(drawn, len(cloth.tris), "no far skin was dropped")
+        self.assertEqual(lit, len(cloth.tris), "the light no longer meets the dropped far skin")
+        self.assertTrue(shaded and all(query is geometry.intersector for query in shaded))
+        self.assertEqual(geometry.intersector._mock_name, f"query of {lit}")
 
     def test_the_import_keeps_an_open_double_sided_sheet_whole(self):
         sheet = wave_sheet.sheet(CLOTH_COUNT, **CLOTH)

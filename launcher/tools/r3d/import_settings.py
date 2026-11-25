@@ -54,6 +54,12 @@ LIGHT_FIELDS = {
 }
 
 
+def far_skin_region(settings, scene):
+    """The camera region an import's closed double_sided shells keep the skin facing (mesh_import.far_skins), or
+    None: the scene's, when the import lists double_sided materials."""
+    return scene.region if scene is not None and settings.double_sided else None
+
+
 class SettingsError(ValueError):
     """An import or scene setting cannot describe a bake."""
 
@@ -906,7 +912,7 @@ def load_scene(path):
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
                                   # A closed double_sided shell keeps the skin the region faces (mesh_import.far_skins).
                                   ("camera region", region is not None, "camera_region" in sources
-                                   or (region is not None and any(item.settings.double_sided for item in jobs)))):
+                                   or any(far_skin_region(item.settings, scene) is not None for item in jobs))):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:

@@ -26,9 +26,9 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
-from r3d.geometry import closed_shells, compact, corner_normals, weld_keeping  # noqa: E402
+from r3d.geometry import closed_shells, compact, corner_normals, face_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
+    SettingsError, albedo_jobs, far_skin_region, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -58,8 +58,6 @@ from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E
 from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-# How far inside its own triangle a far-skin ray starts, as a share of the shell's extent.
-SKIN_RAY_INSET = 1e-6
 
 
 def vertex_spacing(vpos, vtris):
@@ -78,29 +76,11 @@ def albedo_at(src, points, spacing, material):
 
 
 def far_skins(p, tris, shell, towards):
-    """Which of the triangles `shell` marks, a closed double-sided shell such as cloth built as two skins, lie on
-    its far skin from `towards`: a ray in from each triangle's centre meets the shell's other side, and of the
-    two the one facing `towards` less is far. Dropping the far skin leaves one skin, drawn from both sides, so
-    no simplification can push the far skin through the near one."""
-    from r3d.ray_query import RayQuery
-
-    far = np.zeros(len(tris), dtype=bool)
-    index = np.flatnonzero(shell)
-    corners = p[tris[index]]
-    centres = corners.mean(axis=1)
-    normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    length = np.linalg.norm(normals, axis=1)
-    whole = length > 0
-    index, centres, normals = index[whole], centres[whole], normals[whole] / length[whole, None]
-    if not len(index):
-        return far
-    view = towards - centres
-    facing = np.einsum("ij,ij->i", normals, view / np.linalg.norm(view, axis=1, keepdims=True))
-    # Start each ray a hair inside, so it cannot meet its own triangle.
-    inset = SKIN_RAY_INSET * np.ptp(p[tris[index]].reshape(-1, 3), axis=0).max()
-    hit, _distance, other = RayQuery(p, tris[index]).first_hits(centres - normals * inset, -normals)
-    far[index[hit]] = facing[hit] < facing[other[hit]]
-    return far
+    """Which of the triangles `shell` marks, of closed shells such as cloth built as two skins, face away from
+    `towards`: the far skin. Dropping it leaves one skin, drawn from both sides, so no simplification can
+    push the far skin through the near one. A triangle with no area faces nowhere and stays."""
+    normals, area = face_normals(p, tris)
+    return shell & (area > 0) & (np.einsum("ij,ij->i", normals, towards - p[tris].mean(axis=1)) < 0)
 
 
 def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
@@ -259,7 +239,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but, like a
     # carded material, keeps casting light.
     listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
-    region = scene.region if scene is not None and listed.any() else None
+    region = far_skin_region(settings, scene) if listed.any() else None
     shell = np.zeros(len(tri_v), dtype=bool)
     if region is not None:
         piece = closed_shells(src.p, tri_v)

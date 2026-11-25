@@ -100,7 +100,9 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, flight_camera, source_digest  # noqa: E402
+from r3d.import_settings import (  # noqa: E402
+    BLEND_SUFFIX, SettingsError, content_checksum, far_skin_region, flight_camera, source_digest,
+)
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -658,9 +660,9 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
-    if job.settings.double_sided and scene.region is not None:
-        # A closed double_sided shell keeps the skin the camera region faces.
-        recipe.setdefault("camera", camera_inputs(scene))
+    region = far_skin_region(job.settings, scene)
+    if region is not None:
+        recipe["far_skins"] = {"region": canonical(region)}
     simplify = job.settings.simplify
     if simplify and simplify.seal_seams and scene.camera is not None:
         # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.

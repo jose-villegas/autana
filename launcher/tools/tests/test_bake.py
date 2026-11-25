@@ -1093,6 +1093,32 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(before, bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({})),
                             "the seal's probes stand by the camera whether the mesh is lit or not")
 
+    def test_a_double_sided_mesh_is_keyed_by_the_camera_region_alone(self):
+        self.job.renderer.visibility = None
+        self.job.settings.simplify.seal_seams = False
+
+        def start_after(change):
+            before = self.keys()["start"]
+            change()
+            return before, self.keys()["start"]
+
+        def move_region():
+            low, high = self.scene.region
+            self.scene.region = (low, tuple(value + 1.0 for value in high))
+
+        def move_lens():
+            self.scene.camera.component.near_z += 1.0
+
+        self.scene.region = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        self.job.settings.double_sided = set()
+        before, after = start_after(move_region)
+        self.assertEqual(before, after, "a mesh with no double_sided material reads no region")
+        self.job.settings.double_sided = {"m"}
+        before, after = start_after(move_region)
+        self.assertNotEqual(before, after, "a closed double_sided shell keeps the skin the camera region faces")
+        before, after = start_after(move_lens)
+        self.assertEqual(before, after, "the far skins read the region, not the lens")
+
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
 

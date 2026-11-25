@@ -25,6 +25,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from r3d.geometry import corner_edges, edge_uses
+
 WAVES = ("flat", "sine", "zigzag", "sawtooth")
 PATTERNS = ("solid", "stripes", "checker", "bands")
 # Distinct colours (sRGB 0..255) for the patterns, in order.
@@ -141,9 +143,8 @@ def material_of(pattern, cells, colours, u, v, height):
 def hem(front, count):
     """The strip joining each border edge of the `front` skin's triangles to the same edge of the back skin,
     whose points follow the front's `count` points: facing out, so the two skins close into one shell."""
-    directed = np.concatenate([front[:, [0, 1]], front[:, [1, 2]], front[:, [2, 0]]])
-    _, slot, uses = np.unique(np.sort(directed, axis=1), axis=0, return_inverse=True, return_counts=True)
-    p, q = directed[uses[slot.reshape(-1)] == 1].T
+    _edges, slot, uses = edge_uses(front)
+    p, q = corner_edges(front)[uses[slot] == 1].T
     return np.concatenate([np.stack([q, p, p + count], 1), np.stack([q, p + count, q + count], 1)])
 
 

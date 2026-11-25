@@ -72,19 +72,29 @@ def weld_map(p, tolerance=1e-3):
     return first, inverse.reshape(-1)
 
 
+def corner_edges(tris):
+    """Each triangle's edges as directed pairs: every first edge, then every second, then every third."""
+    return np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+
+
+def edge_uses(tris):
+    """(edges, slot, uses): the distinct undirected edges of `tris`, the slot among them of each of
+    corner_edges(tris), and how many triangle edges lie on each."""
+    edges, slot, uses = np.unique(np.sort(corner_edges(tris), axis=1), axis=0, return_inverse=True,
+                                  return_counts=True)
+    return edges, slot.reshape(-1), uses
+
+
 def closed_shells(p, tris, tolerance=1e-3):
     """Each triangle's closed shell, -1 for none: a piece, once positions within `tolerance` are welded and
-    triangles joined across each edge exactly two of them use, with no border edge (one only one uses). A
-    closed shell shows only its outside, whatever materials make it up; an edge three or more use, where a
-    shell touches another, joins nothing."""
+    triangles joined across each edge exactly two of them use, each of whose edges two of its own triangles
+    use. A closed shell shows only its outside, whatever materials make it up; an edge three or more use,
+    where a shell touches another piece, joins nothing, and the shell stays closed."""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
 
     _first, welded = weld_map(p, tolerance)
-    corners = welded[tris]
-    edges = np.sort(np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]]), axis=1)
-    _, slot, uses = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
-    slot = slot.reshape(-1)
+    _edges, slot, uses = edge_uses(welded[tris])
     owner = np.tile(np.arange(len(tris)), 3)
     # A triangle joins the node of each edge it shares with one other; the pieces are the graph's components.
     shared = uses[slot] == 2
@@ -92,8 +102,9 @@ def closed_shells(p, tris, tolerance=1e-3):
                        shape=(len(tris) + len(uses),) * 2)
     _count, piece = connected_components(graph, directed=False)
     piece = piece[:len(tris)]
-    open_pieces = np.unique(owner[uses[slot] == 1])
-    return np.where(np.isin(piece, piece[open_pieces]), -1, piece)
+    _, within, own_uses = np.unique(piece[owner] * len(uses) + slot, return_inverse=True, return_counts=True)
+    open_pieces = piece[owner[own_uses[within.reshape(-1)] != 2]]
+    return np.where(np.isin(piece, open_pieces), -1, piece)
 
 
 def corner_normals(p, tris, crease_deg=40.0):

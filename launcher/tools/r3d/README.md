@@ -8,7 +8,7 @@ mesh. Nothing here runs on the board.
 |---|---|
 | [obj.py](obj.py) | Loads a Wavefront OBJ and its MTL, and the textures the MTL names as mip chains. |
 | [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle, the closed shells a mesh holds. |
-| [procedural/wave_sheet.py](procedural/wave_sheet.py) | Sheets whose height is a flat, sine, zigzag or sawtooth wave of chosen amplitude and frequency, coloured in stripes, checks or bands, one skin or two closed at the hem; with their formula normals, as an OBJ source or a start bundle. |
+| [procedural/wave_sheet.py](procedural/wave_sheet.py) | Coloured wave sheets (flat, sine, zigzag, sawtooth) with their formula normals, one skin or two closed at the hem, as an OBJ source or a start bundle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [leaks.py](leaks.py) | The probe step of `seal_seams`: views of the source from probes in the camera's region and from the camera path, the holes a simplified mesh shows in them (sky enclosed by wall), and one source vertex to lock per hole; see [seal_seams](../../../docs/render/offline/Mesh-Import.md#seal_seams). |

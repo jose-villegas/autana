@@ -36,6 +36,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from r3d import log  # noqa: E402
+from r3d.geometry import face_normals  # noqa: E402
 from r3d.procedural import wave_sheet  # noqa: E402
 
 AMPLITUDES = (0.02, 0.05, 0.1, 0.2, 0.4)  # sheet widths
@@ -104,11 +105,6 @@ def references(truth, double, pairs, device):
     return out
 
 
-def face_normals(points, tris):
-    n = np.cross(points[tris[:, 1]] - points[tris[:, 0]], points[tris[:, 2]] - points[tris[:, 0]])
-    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-
-
 def skins(start_normals):
     """Each start triangle's skin: +1 front (facing +z), -1 back, 0 a hem or anything edge-on."""
     return np.where(start_normals[:, 2] > 0.5, 1, np.where(start_normals[:, 2] < -0.5, -1, 0))
@@ -117,8 +113,8 @@ def skins(start_normals):
 def shape_measures(surface, start_points, points, tris):
     """flipped, flipped_start and the normal angles of a fitted mesh's welded `points` over `tris`, whose
     `start_points` it was fitted from, against `surface`."""
-    start = face_normals(start_points, tris)
-    fitted = face_normals(points, tris)
+    start = face_normals(start_points, tris)[0]
+    fitted = face_normals(points, tris)[0]
     side = skins(start)
     centres = points[tris].mean(axis=1)
     formula = surface.normal(centres[:, 0], centres[:, 1]) * side[:, None]
@@ -132,15 +128,14 @@ def shape_measures(surface, start_points, points, tris):
     around = np.zeros_like(points)
     np.add.at(around, tris.reshape(-1), np.repeat(area, 3, axis=0))
     around /= np.maximum(np.linalg.norm(around, axis=1, keepdims=True), 1e-12)
-    point_side = np.zeros(len(points), dtype=np.int64)
-    mixed = np.zeros(len(points), dtype=bool)
+    # A point takes the skin of the triangles around it; one beside two skins, or only hems, is mixed.
+    corner, corner_side = tris.reshape(-1), np.repeat(side, 3)
+    lowest, highest = np.full(len(points), 2), np.full(len(points), -2)
+    np.minimum.at(lowest, corner, np.where(corner_side == 0, 2, corner_side))
+    np.maximum.at(highest, corner, np.where(corner_side == 0, -2, corner_side))
+    mixed, point_side = lowest != highest, np.where(lowest == highest, lowest, 0)
     point_crease = np.zeros(len(points), dtype=bool)
-    for k in range(3):
-        v = tris[:, k]
-        mixed[v] |= (point_side[v] != 0) & (point_side[v] != side)
-        point_side[v] = np.where(point_side[v] == 0, side, point_side[v])
-        point_crease[v] |= crease
-    mixed |= point_side == 0
+    np.logical_or.at(point_crease, corner, np.repeat(crease, 3))
     expected = surface.normal(points[:, 0], points[:, 1]) * point_side[:, None]
     degrees = np.degrees(np.arccos(np.clip((around * expected).sum(1), -1, 1)))
     plain, kinked = degrees[~mixed & ~point_crease], degrees[~mixed & point_crease]

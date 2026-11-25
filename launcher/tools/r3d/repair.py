@@ -13,6 +13,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
+from .geometry import edge_uses
 from .lit_mesh import POSITION_SCALE
 
 
@@ -31,11 +32,8 @@ def _position_ids(pos, tolerance):
 
 def _border_edges(ids, tris):
     """Edges with one triangle on them, as sorted pairs of position ids."""
-    t = ids[tris]
-    edges = np.sort(np.concatenate([t[:, [0, 1]], t[:, [1, 2]], t[:, [2, 0]]]), axis=1)
-    edges = edges[edges[:, 0] != edges[:, 1]]
-    unique, count = np.unique(edges, axis=0, return_counts=True)
-    return unique[count == 1]
+    edges, _slot, uses = edge_uses(ids[tris])
+    return edges[(uses == 1) & (edges[:, 0] != edges[:, 1])]
 
 
 def _weld_borders(pos, tris, tolerance):
