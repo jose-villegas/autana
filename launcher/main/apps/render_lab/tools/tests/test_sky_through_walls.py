@@ -147,17 +147,65 @@ class SkyCount(unittest.TestCase):
         source = lambda ys, xs: (ys == 3) & (xs > 2) & (xs < 5)
         self.assertEqual(sky_pixels(frame, sky, source), (1, 8))
 
+    def test_patches_join_by_side_or_corner(self):
+        sky = (156, 195, 231)
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        frame[:1] = sky
+        frame[3, 3] = frame[4, 4] = sky  # corner to corner: one patch
+        frame[3, 6] = frame[4, 6] = sky  # side by side: one patch
+        frame[6, 1] = frame[6, 3] = sky  # a pixel apart: two patches
+        source = {(3, 3), (3, 6), (6, 1)}
+        self.assertEqual(sky_pixels(frame, sky, lambda ys, xs: np.array([(y, x) in source for y, x in zip(ys, xs)])),
+                         (1, 8))
+
+
+# A camera at the origin looking down +z, and the distance of the walls in front of it. Its right is world -x and
+# its up world +y (r3d.poses.camera_basis); with lens 1, a pixel of a view `height` pixels tall spans
+# 2 * WALL / height world units on the wall.
+FORWARD = np.array([0.0, 0, 0, 0, 0, 1]) if np is not None else None
+WALL = 10.0
+
+
+def quad(x0, x1, y0, y1):
+    """A RayQuery of one rectangle on the wall plane."""
+    corners = np.array([[x0, y0, WALL], [x1, y0, WALL], [x1, y1, WALL], [x0, y1, WALL]])
+    return RayQuery(corners, np.array([[0, 1, 2], [0, 2, 3]]))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class PixelSky(unittest.TestCase):
     def test_sky_in_part_of_a_pixel_is_source_sky_where_the_centre_ray_hits(self):
-        # One pixel looking down +z at a wall 10 away whose sides stop short of the pixel's: the centre ray hits
-        # it, the rays near the pixel's sides pass it, as sky beside a flagpole does.
-        def wall(half_width):
-            corners = np.array([[-half_width, -20, 10], [half_width, -20, 10], [half_width, 20, 10], [-half_width, 20, 10]])
-            return RayQuery(corners, np.array([[0, 1, 2], [0, 2, 3]]))
-        pose = np.array([0.0, 0, 0, 0, 0, 1])
+        # One pixel 20 units wide on the wall, whose sides stop 5 short of the pixel's: the centre ray hits it,
+        # the rays near the pixel's sides pass it, as sky beside a flagpole does.
         one = (np.array([0]), np.array([0]))
-        self.assertFalse(pixel_sky(wall(5), 1, 1, 1.0, 0.1, pose, *one, samples=1)[0])
-        self.assertTrue(pixel_sky(wall(5), 1, 1, 1.0, 0.1, pose, *one)[0])
-        self.assertFalse(pixel_sky(wall(20), 1, 1, 1.0, 0.1, pose, *one)[0])
+        self.assertFalse(pixel_sky(quad(-5, 5, -20, 20), 1, 1, 1.0, 0.1, FORWARD, *one, samples=1)[0])
+        self.assertTrue(pixel_sky(quad(-5, 5, -20, 20), 1, 1, 1.0, 0.1, FORWARD, *one)[0])
+        self.assertFalse(pixel_sky(quad(-20, 20, -20, 20), 1, 1, 1.0, 0.1, FORWARD, *one)[0])
+
+    def test_sky_only_in_a_pixel_corner_counts(self):
+        # A wall whose edge x + y = 16 cuts one corner off a pixel spanning -10..10: of 8 x 8 rays only the
+        # corner one, 1/16 of a pixel in, passes it; 4 x 4 rays, 1/8 in, all hit.
+        wall = RayQuery(np.array([[-100, -100, WALL], [116, -100, WALL], [-100, 116, WALL]]), np.array([[0, 1, 2]]))
+        one = (np.array([0]), np.array([0]))
+        self.assertTrue(pixel_sky(wall, 1, 1, 1.0, 0.1, FORWARD, *one)[0])
+        self.assertFalse(pixel_sky(wall, 1, 1, 1.0, 0.1, FORWARD, *one, samples=4)[0])
+
+    def test_each_pixel_is_answered_for_itself(self):
+        # A 4 x 2 view whose pixels are 10 units square on the wall; a rectangle covers pixel (y 0, x 3) alone,
+        # world x -20..-10 and y 0..10, a little past its sides but short of the neighbours' rays.
+        ys, xs = (axis.reshape(-1) for axis in np.mgrid[0:2, 0:4])
+        expected = ~((ys == 0) & (xs == 3))
+        np.testing.assert_array_equal(pixel_sky(quad(-20.3, -9.7, -0.3, 10.3), 4, 2, 1.0, 0.1, FORWARD, ys, xs), expected)
+
+    def test_a_video_frame_asks_the_source_at_its_render_pixel_and_next_pose(self):
+        # Frame i is drawn at the pose (i + 1) steps along the clip, and a video pixel at twice the render size.
+        source = SourceSky.__new__(SourceSky)
+        source.query = quad(-20, 20, -20, 20)
+        source.width = source.height = 1
+        source.lens, source.near = 1.0, 0.1
+        source.poses = [np.array([0.0, 0, 0, 0, 0, -1]), FORWARD]  # away from the wall, then at it
+        video_pixel = (np.array([VIDEO_SCALE - 1]), np.array([VIDEO_SCALE - 1]))
+        self.assertFalse(source.of_frame(0)(*video_pixel)[0])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
