@@ -1,5 +1,5 @@
 """device.py: interpreter choice, serial open and port guards, waits, records and captures."""
-import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import isolation  # (first: keeps the suite out of real records)
 import port_guard
 import ast
 import base64
@@ -550,6 +550,14 @@ class InterruptedConnection(FakeConnection):
         if not self.chunks:
             raise KeyboardInterrupt
         return super().read(size)
+
+
+class BufferedOutput(io.StringIO):
+    """A text stdout with the byte buffer --echo writes raw bytes to."""
+
+    def __init__(self):
+        super().__init__()
+        self.buffer = io.BytesIO()
 
 
 class DeviceTests(unittest.TestCase):
@@ -3103,12 +3111,7 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
     def test_echo_writes_raw_bytes_without_reprinting_errors(self):
-        class Output(io.StringIO):
-            def __init__(self):
-                super().__init__()
-                self.buffer = io.BytesIO()
-
-        output = Output()
+        output = BufferedOutput()
         raw = b"ordinary\nerror: broken\n"
         code, text, _, _, _ = self.run_listen(
             InterruptedConnection([raw]), ["--follow", "--echo"], output)
@@ -3124,12 +3127,7 @@ class ListenLifecycleTests(unittest.TestCase):
         self.assertEqual(payload, b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\nafter tests\n")
 
     def test_partial_echo_gets_newline_before_path(self):
-        class Output(io.StringIO):
-            def __init__(self):
-                super().__init__()
-                self.buffer = io.BytesIO()
-
-        output = Output()
+        output = BufferedOutput()
         code, text, entry, _, _ = self.run_listen(
             InterruptedConnection([b"partial"]), ["--follow", "--echo"], output)
         self.assertEqual(code, 0)
@@ -3192,9 +3190,7 @@ class CoredumpTests(unittest.TestCase):
     build it came from, which is not the running one after a later flash."""
 
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = isolation.scratch_root(self)
 
     def run_coredump(self, raw=b"", erase=False, elf=None, found_elf=Path("archive/834b7bb03fd6-diag.elf"),
                      read_fails=False):

@@ -2,7 +2,7 @@
 number, the guard on each port primitive, what a lost lock stops, the flash
 hand-off to build.sh and flash_image.sh, and the durations status estimates from."""
 
-import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import isolation  # (first: keeps the suite out of real records)
 import ast
 import collections
 import contextlib
@@ -102,9 +102,7 @@ def replace_lock_once(store, started):
 
 class Store(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = isolation.scratch_root(self)
         self.store = device_lock.LockStore(self.root / "locks")
 
 
@@ -1513,9 +1511,7 @@ class BuildDirectoryLockTests(Store):
 
 class SnapshotTests(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = isolation.scratch_root(self)
 
     def test_every_listed_file_is_copied_byte_for_byte_where_flash_args_puts_it(self):
         build = self.root / "build"
