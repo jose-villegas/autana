@@ -10,8 +10,7 @@
 
 static int
 luma(int r, int g, int b) {
-    return ((R3D_TEXTURE_LUMA_BT601_R * r) + (R3D_TEXTURE_LUMA_BT601_G * g) + (R3D_TEXTURE_LUMA_BT601_B * b))
-           >> R3D_TEXTURE_LUMA_BT601_SHIFT;
+    return ((R3D_TEXTURE_LUMA_R * r) + (R3D_TEXTURE_LUMA_G * g) + (R3D_TEXTURE_LUMA_B * b)) >> R3D_TEXTURE_LUMA_SHIFT;
 }
 
 /* Level l lights colour i as a vertex colour of the tint's hue and

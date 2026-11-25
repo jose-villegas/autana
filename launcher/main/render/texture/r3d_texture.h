@@ -48,18 +48,13 @@
 #define R3D_TEXTURE_LEVELS_MAX          R3D_TEXTURE_SIZE_LOG2_MAX
 /* A vertex colour's luminance as the light level reads it: BT.601 weights
  * in 1/256. */
-#define R3D_TEXTURE_LUMA_BT601_R        77
-#define R3D_TEXTURE_LUMA_BT601_G        150
-#define R3D_TEXTURE_LUMA_BT601_B        29
-#define R3D_TEXTURE_LUMA_BT601_SHIFT    8
-#define R3D_TEXTURE_LUMA_BT709_R        0.2126F
-#define R3D_TEXTURE_LUMA_BT709_G        0.7152F
-#define R3D_TEXTURE_LUMA_BT709_B        0.0722F
-#define R3D_TEXTURE_LUMA_BT709_WEIGHTS                                                                                 \
-    ((vec3f_t){R3D_TEXTURE_LUMA_BT709_R, R3D_TEXTURE_LUMA_BT709_G, R3D_TEXTURE_LUMA_BT709_B})
+#define R3D_TEXTURE_LUMA_R              77
+#define R3D_TEXTURE_LUMA_G              150
+#define R3D_TEXTURE_LUMA_B              29
+#define R3D_TEXTURE_LUMA_SHIFT          8
 /* Light levels of the colormap light: level 0 is black, the last the
  * vertex light whose luminance is 255. */
-#define R3D_TEXTURE_LIGHT_LEVELS 32
+#define R3D_TEXTURE_LIGHT_LEVELS        32
 
 typedef struct {
     const uint8_t* texels[R3D_TEXTURE_LEVELS_MAX]; /* each level, row-major, r3d_texture_level_bytes() long */

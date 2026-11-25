@@ -834,9 +834,9 @@ test_mask1_kept_colour_is_palette_colour_1_lit_by_the_tint(void) {
     memset(b + R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES, UINT8_MAX,
            (MASK_SIDE * MASK_SIDE) / R3D_TEXTURE_MASK1_PER_BYTE);
     TEST_ASSERT_EQUAL(ASSET_OK, mask_open(size));
-    const int tint_luma = ((R3D_TEXTURE_LUMA_BT601_R * tint[0]) + (R3D_TEXTURE_LUMA_BT601_G * tint[1])
-                           + (R3D_TEXTURE_LUMA_BT601_B * tint[2]))
-                          >> R3D_TEXTURE_LUMA_BT601_SHIFT;
+    const int tint_luma =
+        ((R3D_TEXTURE_LUMA_R * tint[0]) + (R3D_TEXTURE_LUMA_G * tint[1]) + (R3D_TEXTURE_LUMA_B * tint[2]))
+        >> R3D_TEXTURE_LUMA_SHIFT;
     const int levels[] = {0, R3D_TEXTURE_LIGHT_LEVELS / 2, R3D_TEXTURE_LIGHT_LEVELS - 1};
     for (size_t k = 0; k < sizeof levels / sizeof levels[0]; k++) {
         int want[R3D_TEXTURE_TINT_RGB];
