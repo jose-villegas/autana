@@ -167,6 +167,7 @@ cache_compilers() {
         done
     fi
     cc=""
+    cc_mask=""
     # shellcheck disable=SC2086
     for name in ${CC:+"$CC"} $FIND_CC_NAMES; do
         base=$(basename -- "$name" .exe)
@@ -174,15 +175,19 @@ cache_compilers() {
         case "$name" in
             */*)
                 # shellcheck disable=SC1007
-                [ "$(CDPATH= cd -- "$(dirname -- "$real")" && pwd)/$(basename -- "$real" .exe)" =                   "$(CDPATH= cd -- "$(dirname -- "$name")" 2>/dev/null && pwd)/$base" ] || continue ;;
+                found="$(CDPATH= cd -- "$(dirname -- "$real")" && pwd)/$(basename -- "$real" .exe)"
+                # shellcheck disable=SC1007
+                given="$(CDPATH= cd -- "$(dirname -- "$name")" 2>/dev/null && pwd)/$base"
+                [ "$found" = "$given" ] || continue ;;
         esac
         mask="$masks/$base$exe"
         [ -e "$mask" ] || if [ -n "$exe" ]; then cp "$ccache.exe" "$mask"; else ln -s "$ccache" "$mask"; fi
         [ -n "$cc" ] || cc=$mask
-        [ "$name" != "${CC:-}" ] || CC=$(to_native "$mask")
+        [ "$name" != "${CC:-}" ] || cc_mask=$mask
     done
     [ -n "$cc" ] && CCACHE_DISABLE=1 "$cc" --version >/dev/null 2>&1 || return 0
     PATH="$masks:$PATH"
+    [ -z "$cc_mask" ] || CC=$(to_native "$cc_mask")
     WATCH=$(to_native "$REPO_ROOT/launcher/tools/build/ccache_watch.py")
     CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR:-1}
     export PATH CCACHE_NOHASHDIR ${CC:+CC}
