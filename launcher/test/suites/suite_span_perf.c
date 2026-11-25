@@ -20,13 +20,11 @@
 #define SPAN_SOLID_COLOR             0xFFFF
 /* The textured rows' texture: one level of 32 texels a side, its texel
  * bytes counting up (INDEX4: through the palette; MASK1: a mixed cut), a
- * palette alternating SPAN_TEXTURE_SPREAD either side of the pattern's mean
- * and a grey tint, so the timing does not hang on the image and the level
- * stays textured (a one-colour level opens flat). */
+ * palette channel at the pattern's mean and a grey tint, so the timing does
+ * not hang on the image. */
 #define SPAN_TEXTURE_SIZE_LOG2       5
 #define SPAN_TEXTURE_TINT            128
 #define SPAN_TEXTURE_LEVELS          1
-#define SPAN_TEXTURE_SPREAD          (R3D_TEXTURE_ONE / 2)
 /* A `format` entry's palette and whole bytes. */
 #define SPAN_TEXTURE_PALETTE(format) ((uint32_t)r3d_texture_colours(format) * R3D_TEXTURE_PALETTE_STRIDE)
 #define SPAN_TEXTURE_BYTES(format)                                                                                     \
@@ -64,9 +62,8 @@ write_texture(uint8_t* ltex, uint8_t format) {
     ltex[R3D_TEXTURE_AT_PALETTE_OFF] = R3D_TEXTURE_HEADER_SIZE;
     ltex[R3D_TEXTURE_AT_TEXELS_OFF] = (uint8_t)(R3D_TEXTURE_HEADER_SIZE + palette);
     for (int i = 0; i < r3d_texture_colours(format); i++) {
-        const int channel =
-            (i % 2 == 0) ? R3D_TEXTURE_ONE - SPAN_TEXTURE_SPREAD : R3D_TEXTURE_ONE + SPAN_TEXTURE_SPREAD;
-        memset(ltex + R3D_TEXTURE_HEADER_SIZE + (i * R3D_TEXTURE_PALETTE_STRIDE), channel, R3D_TEXTURE_TINT_RGB);
+        memset(ltex + R3D_TEXTURE_HEADER_SIZE + (i * R3D_TEXTURE_PALETTE_STRIDE), R3D_TEXTURE_ONE,
+               R3D_TEXTURE_TINT_RGB);
     }
     uint8_t* texels = ltex + R3D_TEXTURE_HEADER_SIZE + palette;
     for (uint32_t i = 0; i < r3d_texture_level_bytes(format, SPAN_TEXTURE_SIZE_LOG2); i++) {
@@ -85,7 +82,6 @@ report_textured(const r3d_span_target_t* target, uint16_t* depth,
     write_texture(ltex, format);
     const asset_view_t view = {ltex, SPAN_TEXTURE_BYTES(format)};
     TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, texture));
-    TEST_ASSERT_EQUAL_MESSAGE(texture->levels, texture->flat_level, "the timed level draws textured");
     int64_t elapsed = 0;
     for (int round = 0; round < SPAN_ROUNDS; round++) {
         memset(depth, R3D_DEPTH_EMPTY, SPAN_WIDTH * SPAN_HEIGHT * sizeof *depth);

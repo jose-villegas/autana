@@ -700,27 +700,19 @@ kept_texels(const r3d_texture_t* t, int level, int side) {
     return kept;
 }
 
-/* `surface`'s generated texture, opened; its LTEX bytes in *ltex. The caller frees both. */
-static r3d_texture_t*
-open_surface_texture(stress_surface_t surface, uint8_t** ltex) {
-    const size_t bytes = stress_texture_bytes(surface);
-    *ltex = memory_alloc(bytes, MEMORY_PSRAM);
-    r3d_texture_t* t = memory_alloc(sizeof *t, MEMORY_PSRAM);
-    TEST_ASSERT_NOT_NULL(*ltex);
-    TEST_ASSERT_NOT_NULL(t);
-    stress_texture_write(surface, *ltex);
-    const asset_view_t view = {*ltex, (uint32_t)bytes};
-    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, t));
-    return t;
-}
-
 /* The masked presets' entry opens as a MASK1 texture with every level
  * down to MASK1's smallest; its level 0 keeps about 0.7 of a card, and
  * each mip keeps a texel where half or more of the four it covers are. */
 static void
 test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
-    uint8_t* ltex = NULL;
-    r3d_texture_t* t = open_surface_texture(STRESS_SURFACE_MASKED, &ltex);
+    const size_t bytes = stress_texture_bytes(STRESS_SURFACE_MASKED);
+    uint8_t* ltex = memory_alloc(bytes, MEMORY_PSRAM);
+    r3d_texture_t* t = memory_alloc(sizeof *t, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(ltex);
+    TEST_ASSERT_NOT_NULL(t);
+    stress_texture_write(STRESS_SURFACE_MASKED, ltex);
+    const asset_view_t view = {ltex, (uint32_t)bytes};
+    TEST_ASSERT_EQUAL(ASSET_OK, r3d_texture_from_asset(&view, t));
     TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_MASK1, t->format);
     TEST_ASSERT_EQUAL_INT(STRESS_MASK_SIZE_LOG2 - R3D_TEXTURE_MASK1_SIZE_LOG2_MIN + 1, t->levels);
     const int side = 1 << STRESS_MASK_SIZE_LOG2;
@@ -742,18 +734,6 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
             }
         }
     }
-    memory_free(t);
-    memory_free(ltex);
-}
-
-/* The textured presets' brick opens as INDEX4, flat from STRESS_BRICK_FLAT_FROM: its levels from there hold
- * only its mean, and the levels above hold bricks and mortar apart from it. */
-static void
-test_the_brick_opens_flat_from_its_mean_only_levels(void) {
-    uint8_t* ltex = NULL;
-    r3d_texture_t* t = open_surface_texture(STRESS_SURFACE_TEXTURED, &ltex);
-    TEST_ASSERT_EQUAL_UINT8(R3D_TEXTURE_INDEX4, t->format);
-    TEST_ASSERT_EQUAL_UINT8(STRESS_BRICK_FLAT_FROM, t->flat_level);
     memory_free(t);
     memory_free(ltex);
 }
@@ -1024,7 +1004,6 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_the_textured_far_twin_differs_by_its_copies_and_size_alone);
     RUN_TEST(test_foliage_cards_overlap_and_span_their_texture_corner_to_corner);
     RUN_TEST(test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card);
-    RUN_TEST(test_the_brick_opens_flat_from_its_mean_only_levels);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);

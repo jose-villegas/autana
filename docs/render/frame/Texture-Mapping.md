@@ -14,7 +14,7 @@ flowchart LR
     Mip --> Format{format}
     Format -- MASK1 --> Setup["set-up: light,<br/>u, v planes"]
     Setup -- MASK1 --> Cut["cut walk,<br/>affine"]
-    Format -- INDEX4 --> Far{"level from the<br/>texture's flat<br/>level on?"}
+    Format -- INDEX4 --> Far{"level from<br/>far_level on?"}
     Far -- yes --> Plain["solid fill:<br/>corners' mean,<br/>no u, v or texel"]
     Far -- no --> Setup
     Setup -- INDEX4 --> Tests{"divide<br/>tests"}
@@ -34,7 +34,7 @@ its tint, from black at level 0 up to `R3D_TEXTURE_LIGHT_LEVELS - 1`.
 | | INDEX4 | MASK1 |
 |---|---|---|
 | Texel | 4 bits: a palette colour | 1 bit: kept or not |
-| Pixel | the colormap at the texel's colour; a flat level, the corners' mean | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
+| Pixel | the colormap at the texel's colour; a far level, the corners' mean | texel 0 leaves the pixel; texel 1 draws palette colour 1 |
 | Steps | affine, or dividing by depth | affine |
 
 The light level is the vertex light's luminance, stepped across the triangle
@@ -58,33 +58,23 @@ finer level than they need and alias.
 The red pixels are the far part of each triangle. A per-span pick would
 remove them.
 
-## Flat levels
+## Far levels
 
-A level from the texture's flat level on reads no texel: the triangle goes
-to the solid fill, `r3d_span_triangle_mean()`, in one colour, its corners'
+A level from `texture.far_level` on reads no texel: the triangle goes to
+the solid fill, `r3d_span_triangle_mean()`, in one colour, its corners'
 mean, which is the surface's mean lit colour. It steps no u, v or light,
-and never divides.
+and never divides. 0 textures every level.
 
-Each texture finds its flat level when it opens, from its own texels: the
-first level from which every colour every level uses draws, at each light
-level of the colormap, within one just noticeable
-difference<sup>[[144]](../../Citations.md#w3c-css-color-4)</sup> of the
-pattern's mean, as OKLab measures it (`R3D_TEXTURE_FLAT_JND`). The flat fill
-draws that mean. Each light level counts because the colormap scales the
-tint up to the vertex light, so a dark tint's contrast still shows.
+The default, level 3, starts where a pixel steps eight texels or more, so
+the texels it would read average out towards that colour. The pattern is
+gone there, the colour is the same:
 
-There is no setting. A texture whose coarse levels still show their pattern
-draws flat from `R3D_TEXTURE_FLAT_LEVEL_MAX` at the latest, and MASK1 has no
-flat level.
+![Bistro's street from above: the source, the street with every level's texels, with its far levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
 
-From its flat level on the pattern is gone and the colour is the same:
-
-![Bistro's street from above: the source, the street with every level's texels, with each texture's flat levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)
-
-The crops are where the two differ most: a flat triangle meeting a nearer one
+The crops are where the two differ most: a far triangle meeting a nearer one
 at a hard edge.
 
-![The places the flat levels change most, the source above every level's texels and the flat levels untextured](../../images/render/bistro-street-far-levels.crops.png)
+![The places the far levels change most, the source above every level's texels and the far levels untextured](../../images/render/bistro-street-far-levels.crops.png)
 
 ## Perspective
 
@@ -117,4 +107,4 @@ CIE76 is the distance between two colours in CIELAB.
   palette, and a textured frame against its source
 - [Mesh-Rendering.md](../Mesh-Rendering.md): the raster this fill is part of
 - [Render-Settings.md](../Render-Settings.md): `texture.divide_px`,
-  `texture.affine_bend` and `texture.affine_level`
+  `texture.affine_bend`, `texture.affine_level` and `texture.far_level`

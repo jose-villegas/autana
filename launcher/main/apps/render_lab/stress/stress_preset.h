@@ -220,10 +220,6 @@ stress_params_t stress_copy_params(const stress_params_t* p, int copy);
  * card's do; each mip keeps a texel where half or more of the four it
  * covers are kept. A card's UVs span its texture once. */
 #define STRESS_TEXTURE_SIZE_LOG2 6
-/* The brick's first level holding only its mean colour, as a box filter
- * leaves a level whose texel spans a brick: the texture opens flat from it,
- * and stress-textured-far times that fill. */
-#define STRESS_BRICK_FLAT_FROM   3
 #define STRESS_TEXTURE_REPEATS   3
 #define STRESS_MASK_SIZE_LOG2    5
 

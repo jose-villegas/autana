@@ -20,6 +20,7 @@ from r3d.objects import carve, detail, objects_report
 from test_mesh_bundle import bundle_fixture
 from test_r3d_carve import odd_scene
 from test_r3d_detail import FOCAL, NEAR, sphere
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class DerivedDetailTests(unittest.TestCase):
@@ -66,19 +67,25 @@ class DerivedDetailTests(unittest.TestCase):
             {i: rule for i in range(3)}, NS(position_scale=4), NS(renderer=renderer), NS(camera=camera))
         self.assertTrue(all(value is rule for value in selected.values()))
 
-    def test_uncarved_import_avoids_views_and_carved_import_needs_no_rules(self):
+    @staticmethod
+    def two_copies_job(directory, triangles, ceiling):
+        """The albedo job of one stone triangle placed as objects a and b, at a variant's budget."""
         from r3d.import_settings import load_import_settings, albedo_jobs
+        root = pathlib.Path(directory)
+        (root / 'copies.obj').write_text(
+            'mtllib copies.mtl\nusemtl stone\no a\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
+            'o b\nv 10 0 0\nv 11 0 0\nv 10 1 0\nf 4 5 6\n')
+        (root / 'copies.mtl').write_text('newmtl stone\nKd 1 1 1\n')
+        path = root / 'copies.import.toml'
+        path.write_text('[source]\npath="copies.obj"\ncredit="test"\n[output]\nposition_scale=4\n'
+                        '[geometry]\nsimplify={dense_edge=100.0, colour_deviation=1.0, props=[], props_share=0.0, seal_seams=false}\n'
+                        f'[[variants]]\nname="copies"\ntriangles={triangles}\nceiling={ceiling}\n')
+        return albedo_jobs(load_import_settings(path))[0]
+
+    @needs_llvm
+    def test_uncarved_import_avoids_views_and_carved_import_needs_no_rules(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / 'copies.obj').write_text(
-                'mtllib copies.mtl\nusemtl stone\no a\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
-                'o b\nv 10 0 0\nv 11 0 0\nv 10 1 0\nf 4 5 6\n')
-            (root / 'copies.mtl').write_text('newmtl stone\nKd 1 1 1\n')
-            path = root / 'copies.import.toml'
-            path.write_text('[source]\npath="copies.obj"\ncredit="test"\n[output]\nposition_scale=4\n'
-                            '[geometry]\nsimplify={dense_edge=100.0, colour_deviation=1.0, props=[], props_share=0.0, seal_seams=false}\n'
-                            '[[variants]]\nname="copies"\ntriangles=10\nceiling=20\n')
-            job = albedo_jobs(load_import_settings(path))[0]
+            job = self.two_copies_job(directory, 10, 20)
             with patch.object(mesh_import, 'views', side_effect=AssertionError('uncarved needs no view')):
                 flat = mesh_import.bake_geometry(job, None, carve=False)
             self.assertIsNone(flat.shapes)
@@ -89,19 +96,10 @@ class DerivedDetailTests(unittest.TestCase):
             self.assertEqual(len(carved.shapes), 1)
             self.assertEqual(len(carved.shapes[0]['copies']), 2)
 
+    @needs_llvm
     def test_the_ceiling_pays_a_prototype_once_however_many_copies_draw_it(self):
-        from r3d.import_settings import load_import_settings, albedo_jobs
         with tempfile.TemporaryDirectory() as directory:
-            root = pathlib.Path(directory)
-            (root / 'copies.obj').write_text(
-                'mtllib copies.mtl\nusemtl stone\no a\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
-                'o b\nv 10 0 0\nv 11 0 0\nv 10 1 0\nf 4 5 6\n')
-            (root / 'copies.mtl').write_text('newmtl stone\nKd 1 1 1\n')
-            path = root / 'copies.import.toml'
-            path.write_text('[source]\npath="copies.obj"\ncredit="test"\n[output]\nposition_scale=4\n'
-                            '[geometry]\nsimplify={dense_edge=100.0, colour_deviation=1.0, props=[], props_share=0.0, seal_seams=false}\n'
-                            '[[variants]]\nname="copies"\ntriangles=1\nceiling=1\n')
-            job = albedo_jobs(load_import_settings(path))[0]
+            job = self.two_copies_job(directory, 1, 1)
             camera = NS(component=NS(path=None, half_fov_short_tan=1, near_z=NEAR))
             carved = mesh_import.bake_geometry(job, NS(camera=camera), carve=True)
         self.assertEqual(len(carved.shapes[0]['copies']), 2)
@@ -204,7 +202,7 @@ class FitCeilingTests(unittest.TestCase):
     def test_prune_floor_must_not_exceed_variant_ceiling(self):
         from r3d.import_settings import load_fit
         recipe = dict(prune=dict(budget=3, coverage_every_ms=1),
-                      poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
+                      poses=dict(size=[2, 2], samples=1, denoise=False, train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
                                     surface_weight=10.0, surface_margin=0.25))
         with self.assertRaisesRegex(SettingsError, 'prune.budget.*ceiling'):

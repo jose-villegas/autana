@@ -314,21 +314,11 @@ Sweep result records are the resume markers. A worker failure prints its
 traceback, kills the other workers and fails the stage. SIGTERM kills the
 workers too; workers die with their parent.
 
-Reference poses share the loaded source through copy-on-write, and every
-pose's rays are fixed, so a pose renders the same in any worker. A source with
-bounced light renders its poses in the main process, where Mitsuba's threads use
-every core. Standalone reference renders size their pool from available memory.
-An admitted prepare sizes its pool from its own admission estimate
-(`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a smoke prepare). At pool
-creation, live WSL and cgroup memory also cap the worker count, using the
-memory floors while retaining at least one worker. The pool logs the chosen
-worker count, both capacities and the parent's resident size.
-`worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
-The PSS value sums each worker's maximum end-of-pose sample from Linux
-`smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
-copy-on-write pages proportionally. Unavailable PSS samples report zero.
-Bake and visibility sampling are serial. Platforms without fork render
-poses serially.
+Reference poses render one after another in one process: on the GPU a launch
+fills the device, and on the CPU Mitsuba's threads trace one pose on every core.
+`worker reference_poses` reports `pose_peak_pss_bytes`, the process's largest
+end-of-pose PSS sample from Linux `smaps_rollup` (zero where unavailable).
+Bake and visibility sampling are serial.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.

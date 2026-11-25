@@ -100,7 +100,6 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$MAIN_DIR/render/path/r3d_path.c" \
     "$MAIN_DIR/render/texture/r3d_span_textured.c" \
     "$MAIN_DIR/render/texture/r3d_texture.c" \
-    "$MAIN_DIR/core/tune.c" \
     "$MAIN_DIR/render/r3d_span_screen.c" \
     "$MAIN_DIR/render/lod/r3d_lod.c" \
     -lm -o "$OUT_BIN"

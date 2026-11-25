@@ -65,7 +65,7 @@ Bakes job that makes a bake runs on the self-hosted runner that makes the fits (
 one; a rerun adopts an earlier attempt's bake only from a matching host.
 
 A fit's reference set is traced on Mitsuba's CUDA variant
-([Reference on the GPU](../../launcher/tools/r3d/README.md#reference-on-the-gpu)), by worker processes side by side,
+([Reference on the GPU](../../launcher/tools/r3d/README.md#reference-on-the-gpu)) in one process,
 and each traced pose is kept by its own key so a changed pose re-traces alone. The set is a bake of its own,
 locked like the start, and its row names the GPU that traced it.
 

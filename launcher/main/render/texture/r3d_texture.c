@@ -1,42 +1,16 @@
 #include "render/texture/r3d_texture.h"
-#include "render/texture/r3d_texture_internal.h"
 
 #include <stdio.h>
 #include <string.h>
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
-#include "collections/bits.h"
-#include "core/tune.h"
-#include "image/colour/oklab.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_span_internal.h"
 
-TUNE_OWNER(texture);
-/* 0 opens every texture with no flat level, so every level reads its texels:
- * a figure compares the flat fill against them. Read when a texture opens. */
-TUNE(texture, flat_levels, 1, 0, 1);
-
-/* Channel k of palette colour i lit at the tint, times R3D_TEXTURE_ONE: the
- * tint (0..255) times the pattern. */
 static int
-albedo_x_one(const uint8_t* palette, const uint8_t tint[3], int i, int k) {
-    return tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
-}
-
-int
-r3d_texture_tint_luma(const uint8_t tint[3]) {
-    const int luma = ((R3D_TEXTURE_LUMA_R * tint[0]) + (R3D_TEXTURE_LUMA_G * tint[1]) + (R3D_TEXTURE_LUMA_B * tint[2]))
-                     >> R3D_TEXTURE_LUMA_SHIFT;
-    return mathi_max(luma, 1);
-}
-
-int
-r3d_texture_light_channel(int albedo_x_one, int level, int tint_luma) {
-    /* albedo * level * 255 / (LEVELS - 1) / tint_luma */
-    const int64_t lit = ((int64_t)albedo_x_one * level * UINT8_MAX)
-                        / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
-    return (int)mathi_min((int)lit, UINT8_MAX);
+luma(int r, int g, int b) {
+    return ((R3D_TEXTURE_LUMA_R * r) + (R3D_TEXTURE_LUMA_G * g) + (R3D_TEXTURE_LUMA_B * b)) >> R3D_TEXTURE_LUMA_SHIFT;
 }
 
 /* Level l lights colour i as a vertex colour of the tint's hue and
@@ -44,106 +18,20 @@ r3d_texture_light_channel(int albedo_x_one, int level, int tint_luma) {
  * luminance, times the pattern. */
 static void
 build_colormap(r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
-    const int tint_luma = r3d_texture_tint_luma(tint);
+    const int tint_luma = mathi_max(luma(tint[0], tint[1], tint[2]), 1);
     for (int l = 0; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
         for (int i = 0; i < r3d_texture_colours(t->format); i++) {
             int32_t channel[3];
             for (int k = 0; k < 3; k++) {
-                channel[k] = (int32_t)r3d_texture_light_channel(albedo_x_one(palette, tint, i, k), l, tint_luma)
-                             << R3D_SPAN_COLOR_FRAC_BITS;
+                /* tint (0..255) * pattern * l * 255 / (LEVELS - 1) / tint_luma */
+                const int64_t albedo = (int64_t)tint[k] * palette[(i * R3D_TEXTURE_PALETTE_STRIDE) + k];
+                const int64_t lit =
+                    (albedo * l * UINT8_MAX) / ((int64_t)R3D_TEXTURE_ONE * (R3D_TEXTURE_LIGHT_LEVELS - 1) * tint_luma);
+                channel[k] = (int32_t)mathi_min((int)lit, UINT8_MAX) << R3D_SPAN_COLOR_FRAC_BITS;
             }
             t->colormap[l][i] = r3d_span_pack(channel[0], channel[1], channel[2]);
         }
     }
-}
-
-/* What a flat level is judged against: the colour the pattern's mean, a
- * pattern of R3D_TEXTURE_ONE, draws at each light level, in OKLab. The flat
- * fill draws that mean. Level 0 is black for every colour. */
-typedef struct {
-    const uint8_t* palette;
-    const uint8_t* tint;
-    int tint_luma;
-    oklabf_t mean[R3D_TEXTURE_LIGHT_LEVELS];
-    uint32_t judged; /* a bit per colour judge() has looked at */
-    uint32_t like;   /* ... and of those, the ones like the mean */
-} flat_judge_t;
-
-static void
-flat_judge_init(flat_judge_t* j, const uint8_t* palette, const uint8_t tint[3]) {
-    j->palette = palette;
-    j->tint = tint;
-    j->tint_luma = r3d_texture_tint_luma(tint);
-    for (int l = 1; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
-        uint8_t c[3];
-        for (int k = 0; k < 3; k++) {
-            c[k] = (uint8_t)r3d_texture_light_channel(tint[k] * R3D_TEXTURE_ONE, l, j->tint_luma);
-        }
-        j->mean[l] = oklabf_from_srgb_bytes(c[0], c[1], c[2]);
-    }
-    j->judged = 0;
-    j->like = 0;
-}
-
-/* Judges colour i: like the mean when it draws within R3D_TEXTURE_FLAT_JND
- * of it at every light level. */
-static void
-judge(flat_judge_t* j, int i) {
-    j->judged |= 1U << i;
-    for (int l = 1; l < R3D_TEXTURE_LIGHT_LEVELS; l++) {
-        uint8_t c[3];
-        for (int k = 0; k < 3; k++) {
-            c[k] = (uint8_t)r3d_texture_light_channel(albedo_x_one(j->palette, j->tint, i, k), l, j->tint_luma);
-        }
-        if (oklabf_distance_sq(oklabf_from_srgb_bytes(c[0], c[1], c[2]), j->mean[l])
-            > R3D_TEXTURE_FLAT_JND * R3D_TEXTURE_FLAT_JND) {
-            return;
-        }
-    }
-    j->like |= 1U << i;
-}
-
-/* Whether every colour in `used` draws like the mean, judging each once. */
-static bool
-all_like_the_mean(flat_judge_t* j, uint32_t used) {
-    for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
-        if (((used >> i) & 1U) != 0U && ((j->judged >> i) & 1U) == 0U) {
-            judge(j, i);
-        }
-    }
-    return (used & ~j->like) == 0;
-}
-
-/* A bit per palette colour INDEX4 level `level` of `t` uses. */
-static uint32_t
-colours_used(const r3d_texture_t* t, int level) {
-    const uint32_t all = bits32_run(0, R3D_TEXTURE_COLOURS);
-    const uint32_t bytes = r3d_texture_level_bytes(R3D_TEXTURE_INDEX4, t->size_log2 - level);
-    uint32_t used = 0;
-    for (uint32_t i = 0; i < bytes && used != all; i++) {
-        const uint8_t pair = t->texels[level][i];
-        used |= (1U << (pair & R3D_TEXTURE_INDEX4_MASK)) | (1U << (pair >> R3D_TEXTURE_INDEX4_BITS));
-    }
-    return used;
-}
-
-/* The first level of `t` from which every level draws flat unseen: each
- * colour it uses draws like the pattern's mean at every light level, or
- * R3D_TEXTURE_FLAT_LEVEL_MAX if that comes sooner. `levels` for MASK1, or
- * with texture.flat_levels at 0. */
-static uint8_t
-flat_level_of(const r3d_texture_t* t, const uint8_t* palette, const uint8_t tint[3]) {
-    int level = t->levels;
-    if (t->format != R3D_TEXTURE_INDEX4 || flat_levels == 0) {
-        return (uint8_t)level;
-    }
-    level = mathi_min(level, R3D_TEXTURE_FLAT_LEVEL_MAX);
-    flat_judge_t judge_of;
-    flat_judge_init(&judge_of, palette, tint);
-    while (level > 0 && all_like_the_mean(&judge_of, colours_used(t, level - 1))) {
-        level--;
-    }
-    return (uint8_t)level;
 }
 
 asset_status_t
@@ -184,7 +72,6 @@ r3d_texture_from_asset(const asset_view_t* asset, r3d_texture_t* texture) {
     texture->format = (uint8_t)format;
     texture->size_log2 = (uint8_t)size_log2;
     texture->levels = (uint8_t)levels;
-    texture->flat_level = flat_level_of(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
     build_colormap(texture, data + palette_off, data + R3D_TEXTURE_AT_TINT);
     return ASSET_OK;
 }

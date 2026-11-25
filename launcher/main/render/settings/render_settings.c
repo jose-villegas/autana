@@ -70,6 +70,8 @@ TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
 TUNE_OVERRIDE(render, texture_divide_px, RENDER_TEXTURE_DIVIDE_PX_MAX);
 TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * RENDER_TEXTURE_BEND_STEPS));
 TUNE_OVERRIDE(render, texture_affine_level, RENDER_TEXTURE_LEVEL_MAX);
+/* Overrides texture.far_level; 0 reads every level's texels. */
+TUNE_OVERRIDE(render, texture_far_level, RENDER_TEXTURE_LEVEL_MAX);
 
 TUNE_OWNER(anim);
 /* Override the pose-rate tiers in whole pixels and frames; an interval below
@@ -106,7 +108,8 @@ render_settings_tuned(const render_settings_t* set) {
         {tune_override(texture_divide_px, s.texture.divide_px),
          texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend
                                           : (float)texture_bend_steps / RENDER_TEXTURE_BEND_STEPS,
-         tune_override(texture_affine_level, s.texture.affine_level)},
+         tune_override(texture_affine_level, s.texture.affine_level),
+         tune_override(texture_far_level, s.texture.far_level)},
         s.small_fill};
     render_anim_settings_tune(&tuned.anim);
     return tuned;

@@ -1,5 +1,5 @@
 """LTEX.md's sheets of Bistro's street with and without its textures, Texture-Mapping.md's of its near floor at each
-perspective divide spacing and of its high view with and without its flat levels drawn untextured
+perspective divide spacing and of its high view with and without its far levels drawn untextured
 (r3d/texture/texture_figures.py), and its cobblestone's mip chain over the span fill's level picks
 (r3d/texture/mip_figures.py).
 
@@ -25,7 +25,7 @@ STREET = ("--scene", "launcher/demo/bistro/bistro.scene.toml", "--object", "stre
           "--title", "Bistro street, fitted full: cobblestones and beige brick textured",
           "--image", "bistro-street-textured.png", "--divides", "1,0,16,8", "--divide-image", "bistro-street-divide.png",
           "--far-frame", "47", "--far-image", "bistro-street-far-levels.png",
-          "--far-title", "Bistro street from above: every level textured, then each texture's flat levels untextured")
+          "--far-title", "Bistro street from above: every level textured, then far levels untextured")
 MIP = ("--textures", "launcher/demo/bistro/bistro.textures.toml",
        "--source", "launcher/demo/bistro/source/textures/pavement_cobblestone_02_basecolor.png",
        "--title", "A Bistro cobblestone's mip chain, each level half the last, at true size")

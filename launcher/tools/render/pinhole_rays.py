@@ -35,8 +35,6 @@ from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
 
-SCALAR_VARIANT = 'scalar_rgb'
-LLVM_VARIANT = 'llvm_ad_rgb'
 VIDEO_SCALE = 2
 PIXEL_SAMPLES = 1
 PROJECTION_SAMPLES = 400
@@ -47,12 +45,12 @@ FRONT_DEPTH_TOLERANCE = 0.15
 FIT_RENDER_SCALE = 2
 
 
-def mesh_query(path, variant):
+def mesh_query(path):
     mesh = read_lit_mesh(path)
     positions, _, triangles, double, _ = finest_triangles(mesh)
     positions = positions / float(mesh.position_scale)
     a, b, c = (positions[triangles[:, corner]] for corner in range(3))
-    return RayQuery(positions, triangles, variant=variant), np.cross(b - a, c - a), double.astype(bool)
+    return RayQuery(positions, triangles), np.cross(b - a, c - a), double.astype(bool)
 
 
 def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
@@ -154,8 +152,8 @@ def rays(args, scene):
     camera = flight_camera(scene)
     rgb = camera.background
     sky = expand_565((rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff))
-    drawn = mesh_query(args.mesh, SCALAR_VARIANT)
-    against = [(str(path), mesh_query(path, SCALAR_VARIANT)) for path in args.against]
+    drawn = mesh_query(args.mesh)
+    against = [(str(path), mesh_query(path)) for path in args.against]
     wanted = None if args.frames is None else set(args.frames)
     found = set()
     for index, video_frame in enumerate(read_video(args.video)[1]):
@@ -190,9 +188,9 @@ def grid_rays(width, height, lens, near, pose, grid):
     return origins, directions
 
 
-def count_shown(path, coverage, grid, variant=LLVM_VARIANT):
+def count_shown(path, coverage, grid):
     width, height, lens, near, poses = coverage
-    query, normals, double = mesh_query(path, variant)
+    query, normals, double = mesh_query(path)
     seen = np.zeros(len(normals), bool)
     for pose in poses:
         origins, directions = grid_rays(width, height, lens, near, pose, grid)

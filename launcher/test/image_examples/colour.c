@@ -4,7 +4,9 @@
 
 uint32_t
 colour_example_lighten(uint32_t rgb, float step) {
-    oklabf_t lab = oklabf_from_srgb_bytes((uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb);
+    const vec3f_t linear = {srgbf_decode_byte((uint8_t)(rgb >> 16)), srgbf_decode_byte((uint8_t)(rgb >> 8)),
+                            srgbf_decode_byte((uint8_t)rgb)};
+    oklabf_t lab = oklabf_from_linear(linear);
     lab.l += step;
     const vec3f_t out = oklabf_to_linear(lab); /* may leave [0, 1]; encode clamps */
     return ((uint32_t)srgbf_encode_byte(out.x) << 16) | ((uint32_t)srgbf_encode_byte(out.y) << 8)

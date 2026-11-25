@@ -13,10 +13,10 @@ one of the fit's training poses, the only ones the bake holds.
 --divides draws the textured frame at each texture.divide_px value, the first the truth (1, with affine_bend 0, so
 every triangle divides). --divide-image writes the squares of the frame's lowest third where the second value differs
 most from it: a row per square, a column per value, each headed with its CIE76 dE against the truth over that third.
-Its draws read every level's texels (texture.flat_levels 0), so they differ by the divide alone.
+Its draws read every level's texels (texture.far_level 0), so they differ by the divide alone.
 
---far-image writes path frame --far-frame textured with every level's texels and with each texture's flat level, found when it opens,
-from which its levels draw untextured, one colour a triangle, beside the source, as the first sheet, with its crops.
+--far-image writes path frame --far-frame textured with every level's texels and with the default texture.far_level,
+whose far levels draw untextured, one colour a triangle, beside the source, as the first sheet, with its crops.
 """
 import argparse
 import pathlib
@@ -54,9 +54,8 @@ AFFINE_TUNABLE = "render.texture_bend_steps"
 # texture.affine_level 0: no level steps affine for its coarseness.
 LEVEL_TUNABLE = "render.texture_affine_level"
 TRUTH = 1
-# The tunable that, at 0, opens every texture with no flat level, so every level reads its texels; at its default
-# each texture draws flat from the level found when it opens.
-FLAT_TUNABLE = "texture.flat_levels"
+# The tunable of the first level drawn untextured, one colour a triangle; 0 textures every level.
+FAR_TUNABLE = "render.texture_far_level"
 EVERY_LEVEL = 0
 # Squares the divide sheet zooms on.
 DIVIDE_CROPS = 4
@@ -88,7 +87,7 @@ def divide_sets(divide):
     """The tunables of a divide sheet's draw: every `divide` pixels, every level's texels, and for the truth no bend
     and no level allowed to step affine."""
     truth = ((AFFINE_TUNABLE, 0), (LEVEL_TUNABLE, 0)) if divide == TRUTH else ()
-    return ((DIVIDE_TUNABLE, divide), (FLAT_TUNABLE, EVERY_LEVEL), *truth)
+    return ((DIVIDE_TUNABLE, divide), (FAR_TUNABLE, EVERY_LEVEL), *truth)
 
 
 def reference_member(fit, frame, dt_ms):
@@ -156,14 +155,14 @@ def divide_sheet(args, work):
 
 
 def far_sheet(args, fit, work):
-    """Path frame args.far_frame textured with every level's texels and with each texture's flat level, found when it opens, beside
-    the source."""
+    """Path frame args.far_frame textured with every level's texels and with the default far level, beside the
+    source."""
     name = reference_member(fit, args.far_frame, args.dt)
-    every = draw(args, True, work, "far_every", args.far_frame, ((FLAT_TUNABLE, EVERY_LEVEL),))
+    every = draw(args, True, work, "far_every", args.far_frame, ((FAR_TUNABLE, EVERY_LEVEL),))
     far = draw(args, True, work, "far_default", args.far_frame)
     source = reference(args, name, Image.open(every).size, work)
     run([sys.executable, COMPARE, "--out", args.out / args.far_image, "--reference-stills", args.far_title, source,
-         every, far, "--label-a", "every level's texels", "--label-b", "flat levels: one colour", "--crops", CROPS])
+         every, far, "--label-a", "every level's texels", "--label-b", "far levels: one colour", "--crops", CROPS])
 
 
 def main(argv=None):

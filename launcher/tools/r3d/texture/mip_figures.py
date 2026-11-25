@@ -29,8 +29,8 @@ ROOT = TOOLS.parents[1]
 PROBE = pathlib.Path(__file__).with_name("mip_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/main/render/texture/r3d_span_textured.c",
            ROOT / "launcher/main/render/texture/r3d_texture.c", ROOT / "launcher/main/render/r3d_span.c",
-           ROOT / "launcher/main/render/path/r3d_path.c", ROOT / "launcher/main/core/tune.c",
-           ROOT / "launcher/main/asset/asset_pack.c", ROOT / "launcher/main/render/r3d_lit_mesh.c")
+           ROOT / "launcher/main/render/path/r3d_path.c", ROOT / "launcher/main/asset/asset_pack.c",
+           ROOT / "launcher/main/render/r3d_lit_mesh.c")
 IMAGE = "texture-mip-levels.png"
 NONE = -1
 CHAIN_GAP = 10  # level-0 texels between two levels of the chain

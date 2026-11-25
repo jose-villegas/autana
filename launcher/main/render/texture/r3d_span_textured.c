@@ -5,8 +5,8 @@
  * texture.divide_px pixels or more (render settings) and steps affine
  * between; 0 steps affine across the span. A pixel is one colormap load: the
  * texel's colour at the vertex light's dithered level. An INDEX4 level from
- * the texture's flat level (found when it opens) on draws untextured in one colour, its
- * corners' mean: the surface's mean lit colour. A MASK1 texture's span steps affine, skips the
+ * texture.far_level on draws untextured in one colour, its corners' mean:
+ * the surface's mean lit colour. A MASK1 texture's span steps affine, skips the
  * pixels whose texel is 0 and draws the rest in its one colour.
  */
 #include "render/texture/r3d_texture.h"
@@ -33,6 +33,8 @@
 #define UV_LOW_MASK  0xFFFFU
 #define U_INT_SHIFT  (UV_HALF_BITS + UV_FRAC)
 #define V_INT_SHIFT  UV_FRAC
+#define NIBBLE_BITS  4
+#define NIBBLE_MASK  0xFU
 #define MASK1_KEPT   1 /* the colour a kept MASK1 texel draws */
 /* The light level walks as 8.8. */
 #define LIGHT_FRAC   8
@@ -54,14 +56,15 @@ static const float segment_inverse[] = {0.0F, INVERSE_8(1) INVERSE_8(9) INVERSE_
 _Static_assert(sizeof segment_inverse / sizeof segment_inverse[0] == RENDER_TEXTURE_DIVIDE_PX_MAX + 1,
                "an inverse for every segment length");
 
-_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1, "texture.affine_level can name every level");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX == R3D_TEXTURE_LEVELS_MAX - 1,
+               "texture.affine_level and far_level can name every level");
 _Static_assert(BAYER4_LEVELS << DITHER_SHIFT == 1 << LIGHT_FRAC, "a threshold stays under one level");
 _Static_assert((1 << (UV_HALF_BITS - UV_FRAC)) == (int)UV_WRAP, "u and v wrap at their integer bits");
 
 R3D_PATH(cut, "texture.cut");
 R3D_PATH(divided, "texture.divided");
 R3D_PATH(affine, "texture.affine");
-R3D_PATH(flat, "texture.flat");
+R3D_PATH(far, "texture.far");
 
 static inline float
 plane_at(const r3d_span_plane_t* p, float x, float y) {
@@ -99,7 +102,7 @@ texel_offset(const sampler_t* s, uint32_t uv) {
 static inline __attribute__((always_inline)) uint32_t
 texel(const sampler_t* s, uint32_t uv) {
     const uint32_t o = texel_offset(s, uv);
-    return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * R3D_TEXTURE_INDEX4_BITS)) & R3D_TEXTURE_INDEX4_MASK;
+    return (uint32_t)(s->texels[o >> 1] >> ((o & 1U) * NIBBLE_BITS)) & NIBBLE_MASK;
 }
 
 static inline __attribute__((always_inline)) bool
@@ -302,16 +305,16 @@ level_from(int level, uint8_t from) {
     return from != 0 && level >= from;
 }
 
-/* Whether mip `level` is an INDEX4 level from texture->flat_level on, drawn
- * untextured. */
+/* Whether mip `level` is an INDEX4 level from target->texture_far_level on,
+ * drawn untextured. */
 static inline bool
-is_flat(const r3d_texture_t* texture, int level) {
-    return texture->format == R3D_TEXTURE_INDEX4 && level >= texture->flat_level;
+is_far(const r3d_span_target_t* target, const r3d_texture_t* texture, int level) {
+    return texture->format == R3D_TEXTURE_INDEX4 && level_from(level, target->texture_far_level);
 }
 
-/* What set_up() left: nothing to draw, a flat level for r3d_span_triangle_mean(), or
+/* What set_up() left: nothing to draw, a far level for r3d_span_triangle_mean(), or
  * `su` set up. */
-typedef enum { SET_UP_EMPTY, SET_UP_FLAT, SET_UP_DONE } set_up_result_t;
+typedef enum { SET_UP_EMPTY, SET_UP_FAR, SET_UP_DONE } set_up_result_t;
 
 /* A vertex colour's luminance, 0..255, as an 8.8 level, 255 the last. */
 static inline float
@@ -379,8 +382,8 @@ set_up_divide(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
 }
 
 /* Sets `su` up to fill the triangle's part in window box `box` affine, off
- * the row walks' stack chain: the frame lives only here. A flat INDEX4 level
- * (is_flat()) stops at its mip: r3d_span_triangle_mean() draws it. */
+ * the row walks' stack chain: the frame lives only here. A far INDEX4 level
+ * (is_far()) stops at its mip: r3d_span_triangle_mean() draws it. */
 static __attribute__((noinline)) set_up_result_t
 set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3D_SPAN_CORNERS],
        const vec2f_t uv[R3D_SPAN_CORNERS], const r3d_texture_t* texture, recti_t box, setup_t* su) {
@@ -391,9 +394,9 @@ set_up(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[R3D_SPA
     su->s = r3d_span_plane_of(&f, uv[0].x, uv[1].x, uv[2].x);
     su->t = r3d_span_plane_of(&f, uv[0].y, uv[1].y, uv[2].y);
     const int level = pick_level(su, texture);
-    if (is_flat(texture, level)) {
-        R3D_PATH_HIT(flat);
-        return SET_UP_FLAT;
+    if (is_far(target, texture, level)) {
+        R3D_PATH_HIT(far);
+        return SET_UP_FAR;
     }
     su->x0 = box.x;
     su->y0 = box.y;
@@ -478,7 +481,7 @@ draws_nothing(recti_t box, int32_t area2) {
 
 /* Sets up `texture` over the triangle, then walks its rows: the INDEX4
  * fill or MASK1's cut, then the target's writers over what it drew. An
- * INDEX4 level from its flat level on returns false, set up no further. */
+ * INDEX4 level from far_level on returns false, set up no further. */
 bool
 r3d_span_textured_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const vec2f_t uv[R3D_SPAN_CORNERS], const r3d_texture_t* texture) {

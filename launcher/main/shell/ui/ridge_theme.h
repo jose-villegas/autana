@@ -31,7 +31,9 @@ typedef struct {
 
 static inline ridge_oklch_t
 ridge_theme_to_oklch(uint32_t rgb) {
-    const oklabf_t lab = oklabf_from_srgb_bytes((uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb);
+    const oklabf_t lab =
+        oklabf_from_linear((vec3f_t){srgbf_decode_byte((uint8_t)(rgb >> 16)), srgbf_decode_byte((uint8_t)(rgb >> 8)),
+                                     srgbf_decode_byte((uint8_t)rgb)});
     return (ridge_oklch_t){lab.l, sqrtf((lab.a * lab.a) + (lab.b * lab.b)), atan2f(lab.b, lab.a)};
 }
 

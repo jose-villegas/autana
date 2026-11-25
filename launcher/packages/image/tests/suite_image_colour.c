@@ -13,7 +13,6 @@
 #define MID_GREY_LINEAR      0.18F
 #define MID_GREY_ENCODED     0.46135613F /* IEC 61966-2-1 curve at 18 % */
 #define HALF_ENCODED_LINEAR  0.21404114F
-#define BYTE_128             128 /* a mid byte */
 #define BYTE_128_LINEAR      0.21586050F
 #define HALF_LINEAR_BYTE     188
 
@@ -42,7 +41,7 @@ test_curve_ends_and_reference_points(void) {
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, 1.0F, srgbf_encode(1.0F));
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, HALF_ENCODED_LINEAR, srgbf_decode(0.5F));
     TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, MID_GREY_ENCODED, srgbf_encode(MID_GREY_LINEAR));
-    TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, BYTE_128_LINEAR, srgbf_decode_byte(BYTE_128));
+    TEST_ASSERT_FLOAT_WITHIN(CURVE_TOLERANCE, BYTE_128_LINEAR, srgbf_decode_byte(128));
 }
 
 static void
@@ -143,33 +142,6 @@ test_oklab_round_trips(void) {
     }
 }
 
-/* Byte red is the published red primary; a byte grey is its decoded
- * linear grey, so the byte form is the decode then the linear form. */
-static void
-test_srgb_bytes_reach_oklab_through_the_decode(void) {
-    const oklabf_t red = oklabf_from_srgb_bytes(BYTE_MAX, 0, 0);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, 0.627955F, red.l);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, 0.224863F, red.a);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, 0.125846F, red.b);
-    const oklabf_t grey = oklabf_from_srgb_bytes(BYTE_128, BYTE_128, BYTE_128);
-    const oklabf_t expected = oklabf_from_linear((vec3f_t){BYTE_128_LINEAR, BYTE_128_LINEAR, BYTE_128_LINEAR});
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, expected.l, grey.l);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, expected.a, grey.a);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, expected.b, grey.b);
-}
-
-/* The squared distance sums each axis's squared difference, symmetric and
- * zero for a colour and itself. */
-static void
-test_distance_sq_sums_each_axis(void) {
-    const oklabf_t p = {0.5F, 0.1F, -0.2F};
-    const oklabf_t q = {0.8F, -0.3F, 0.0F};
-    const float expected = (0.3F * 0.3F) + (0.4F * 0.4F) + (0.2F * 0.2F);
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, expected, oklabf_distance_sq(p, q));
-    TEST_ASSERT_FLOAT_WITHIN(OKLAB_TOLERANCE, expected, oklabf_distance_sq(q, p));
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, oklabf_distance_sq(p, p));
-}
-
 void
 suite_image_colour(void) {
     RUN_TEST(test_curve_ends_and_reference_points);
@@ -187,7 +159,5 @@ suite_image_colour(void) {
     RUN_TEST(test_published_oklab_returns_its_primary);
     RUN_TEST(test_greys_have_no_chroma_and_out_of_gamut_is_not_clamped);
     RUN_TEST(test_oklab_round_trips);
-    RUN_TEST(test_srgb_bytes_reach_oklab_through_the_decode);
-    RUN_TEST(test_distance_sq_sums_each_axis);
 }
 SUITE_REGISTER(suite_image_colour)

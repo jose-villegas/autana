@@ -116,6 +116,15 @@ cull_off(void) {
     return off;
 }
 
+#define SHIPPED_FAR_LEVEL 3 /* the first mip level the default draws untextured */
+
+/* The shipped default draws mip level 3 on in one colour a triangle, not 0 (off): a
+ * texture's far levels read no texels unless a pack or knob says otherwise. */
+static void
+test_the_default_far_level_is_three(void) {
+    TEST_ASSERT_EQUAL_INT(SHIPPED_FAR_LEVEL, RENDER_SETTINGS_DEFAULT.texture.far_level);
+}
+
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
@@ -276,6 +285,7 @@ test_tuned_settings_keep_the_callers_small_fill(void) {
 #define CALLER_DIVIDE_PX 7
 #define CALLER_BEND      3.0F
 #define CALLER_LEVEL     2
+#define CALLER_FAR_LEVEL 3
 #define KNOB_BEND_STEPS  (3 * RENDER_TEXTURE_BEND_STEPS / 2)
 
 /* A level knob at 0 sets its field, `level` in `expected`, to 0 and no other; its reset gives the caller's back. */
@@ -293,7 +303,7 @@ assert_level_knob(const render_settings_t* set, render_settings_t* expected, con
 static void
 test_each_texture_knob_overrides_only_its_own_field(void) {
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.texture = (render_texture_settings_t){CALLER_DIVIDE_PX, CALLER_BEND, CALLER_LEVEL};
+    set.texture = (render_texture_settings_t){CALLER_DIVIDE_PX, CALLER_BEND, CALLER_LEVEL, CALLER_FAR_LEVEL};
     render_settings_t expected = set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, texture_divide_px), 0));
     expected.texture.divide_px = 0;
@@ -308,6 +318,7 @@ test_each_texture_knob_overrides_only_its_own_field(void) {
     used = render_settings_tuned(&set);
     assert_settings(&expected, &used);
     assert_level_knob(&set, &expected, TUNE_NAME(render, texture_affine_level), &expected.texture.affine_level);
+    assert_level_knob(&set, &expected, TUNE_NAME(render, texture_far_level), &expected.texture.far_level);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, texture_divide_px)));
     expected.texture.divide_px = CALLER_DIVIDE_PX;
     used = render_settings_tuned(&set);
@@ -381,6 +392,7 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     RENDER_TEXTURE_DIVIDE_PX_MAX,
                                     STEP / 4,
                                     RENDER_TEXTURE_LEVEL_MAX,
+                                    RENDER_TEXTURE_LEVEL_MAX,
                                     SMALL_FILL_CEILING_MAX,
                                     SMALL_FILL_GATE_MAX,
                                     SMALL_FILL_DITHER};
@@ -400,16 +412,17 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_DIVIDE_PX_MAX, read.texture.divide_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.texture.affine_bend);
     TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_LEVEL_MAX, read.texture.affine_level);
+    TEST_ASSERT_EQUAL_INT(RENDER_TEXTURE_LEVEL_MAX, read.texture.far_level);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, read.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_MAX, read.small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, read.small_fill.style);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * the texture fields (divide_px, affine_bend, affine_level), then the small fill (ceiling, gate, style). */
+ * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style). */
 enum {
     SMALL_FILL_ROWS = 3,
-    TEXTURE_ROWS = 3,
+    TEXTURE_ROWS = 4,
     ANIM_ROWS = 5,
     PICK_EVERY_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 4,
     BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
@@ -422,6 +435,7 @@ enum {
     DIVIDE_PX_ROW,
     AFFINE_BEND_ROW,
     AFFINE_LEVEL_ROW,
+    FAR_LEVEL_ROW,
     CEILING_ROW,
     GATE_ROW,
     STYLE_ROW,
@@ -515,7 +529,7 @@ test_an_anim_interval_outside_its_range_is_refused_unread(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
 }
 
-/* A divide spacing, affine bend or affine level below 0 or past its max is refused; each limit itself
+/* A divide spacing, affine bend, affine level or far level below 0 or past its max is refused; each limit itself
  * reads. */
 static void
 test_a_texture_setting_outside_its_range_is_refused_unread(void) {
@@ -525,9 +539,10 @@ test_a_texture_setting_outside_its_range_is_refused_unread(void) {
     values[DIVIDE_PX_ROW] = RENDER_TEXTURE_DIVIDE_PX_MAX;
     values[AFFINE_BEND_ROW] = (int16_t)(RENDER_TEXTURE_BEND_MAX * STEP);
     values[AFFINE_LEVEL_ROW] = RENDER_TEXTURE_LEVEL_MAX;
+    values[FAR_LEVEL_ROW] = RENDER_TEXTURE_LEVEL_MAX;
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
-    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW, AFFINE_LEVEL_ROW};
+    const int rows[] = {DIVIDE_PX_ROW, AFFINE_BEND_ROW, AFFINE_LEVEL_ROW, FAR_LEVEL_ROW};
     for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {
         const int16_t kept = values[rows[i]];
         values[rows[i]] = -1;
@@ -620,6 +635,7 @@ void
 suite_render_settings(void) {
     RUN_TEST(test_anim_pixel_ranges_refuse_negative_and_above_max);
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
+    RUN_TEST(test_the_default_far_level_is_three);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
