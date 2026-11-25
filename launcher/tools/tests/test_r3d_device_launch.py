@@ -233,6 +233,12 @@ class EmptyInputTests(unittest.TestCase):
         found = reference_render.drawn_hit_rows(source, [], np.zeros((0, 3)), np.zeros((0, 3)))
         self.assertEqual((len(found.rays), found.where.shape), (0, (0, 3)))
         self.assertEqual(len(query.first_hits(np.zeros((0, 3)), np.zeros((0, 3)))[0]), 0)
+        for hit_filter in (None, light.AlphaTest(source, None, np.ones(len(source.tri_v), bool))):
+            with self.subTest(filtered=hit_filter is not None):
+                filtered = ray_query.RayQuery(source.p, source.tri_v, hit_filter=hit_filter)
+                nothing = filtered.rays(np.zeros((0, 3)), np.zeros((0, 3)))
+                self.assertEqual(filtered.dr.width(filtered.device_hits(nothing).valid), 0)
+                self.assertEqual(filtered.dr.width(filtered.device_blocked(nothing)), 0)
 
 
 def table_arrays(source, mi):

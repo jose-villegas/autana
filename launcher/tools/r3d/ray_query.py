@@ -140,6 +140,9 @@ class RayQuery:
         and reported on stderr."""
         self._check_variant()
         dr, mi = self.dr, self.mi
+        if not dr.width(ray.d):
+            return DeviceHit(dr.zeros(mi.Bool, 0), dr.zeros(mi.Float, 0), dr.zeros(mi.UInt32, 0),
+                             dr.zeros(mi.Point3f, 0))
         active = mi.Bool(active)
         solid = None if self.hit_filter is None else self.hit_filter.device(self)
         if solid is None and passes is None:
@@ -167,9 +170,6 @@ class RayQuery:
             return o, valid & ~keep, found, prim, where, rounds
 
         width = dr.width(ray.d)
-        if not width:
-            return DeviceHit(dr.zeros(mi.Bool, 0), dr.zeros(mi.Float, 0), dr.zeros(mi.UInt32, 0),
-                             dr.zeros(mi.Point3f, 0))
         state = (mi.Point3f(o0), active & dr.full(mi.Bool, True, width), dr.zeros(mi.Bool, width),
                  dr.zeros(mi.UInt32, width), dr.zeros(mi.Point3f, width), mi.UInt32(0))
         o, alive, found, prim, where, _ = dr.while_loop(
@@ -186,6 +186,8 @@ class RayQuery:
     def device_blocked(self, ray, active=True):
         """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
         self._check_variant()
+        if not self.dr.width(ray.d):
+            return self.dr.zeros(self.mi.Bool, 0)
         if self.hit_filter is None:
             active = self.mi.Bool(active)
             return active & self.scene.ray_test(ray, active=active)
