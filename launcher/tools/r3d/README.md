@@ -361,8 +361,8 @@ runner's GPU: two traces of one set there make the same bytes. Its bytes differ 
 names the `gpu`, as a fit's does.
 
 Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by the pose as
-`poses_text` writes it, the `reference_pose` key (the set's recipe without what only picks the poses, and the code
-`lit_source` and `_write_pose` reach) and `produce.trace_machine`: the variant, the GPU and its driver, which a set's
+`poses_text` writes it, the `reference_pose` key (the set's recipe without what only picks the poses, so its
+`aa_samples` and `denoise` too, and the code `reference_source`, `pose_state` and `_write_pose` reach) and `produce.trace_machine`: the variant, the GPU and its driver, which a set's
 cache folder names too. A set traces only the poses the store lacks, puts each in as it finishes and links the
 rest, so moving one camera pose re-traces that pose alone. The lock still records the packed set only.
 

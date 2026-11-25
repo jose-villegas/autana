@@ -78,6 +78,8 @@ class ReferenceInputs:
     size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
+    aa_samples: int = None        # the scene's [bake] rays per pixel side of a reference render
+    denoise: bool = None          # the scene's [bake]: denoise each reference render
 
     def sets(self):
         return fit_sets(self.camera.path is not None, self.probes is not None)
@@ -97,7 +99,7 @@ def reference_inputs(job, scene):
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes)
+                           probes=job.settings.fit.probes, aa_samples=scene.bake.aa_samples, denoise=scene.bake.denoise)
 
 
 def prepare_references(inputs, work, store=None, progress=None):
