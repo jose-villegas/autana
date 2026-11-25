@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot the rig paths and hand-off for docs/kinematics/Rig.md; --cc CC --out DIR."""
+"""Plot the rig flight paths for docs/kinematics/Rig.md; --cc CC --out DIR."""
 import pathlib
 
 import numpy as np
@@ -14,7 +14,7 @@ from docs.producer import Producer
 SOURCES = (pathlib.Path(__file__).with_name("rig_figures_probe.c"),
            ROOT / "launcher/packages/kinematics/src/rig/rig.c")
 PRODUCER = Producer(area="kinematics", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
-                    outputs=("rig-flight.png", "rig-handoff.png"))
+                    outputs=("rig-flight.png",))
 PATHS = (("Target", INK, "--"), ("RIG_BIND_WORLD", SLOTS[0], "-"),
          ("RIG_BIND_TARGET", SLOTS[1], "-"), ("RIG_BIND_TARGET_YAW", SLOTS[2], "-"))
 
@@ -51,19 +51,6 @@ def main():
     handles, labels = flight.get_legend_handles_labels()
     legend.legend(handles, labels, loc="center", ncols=2, frameon=False, fontsize=LABEL_SIZE)
     save(fig, out / "rig-flight.png")
-
-    fig = figure((2 * PANEL_SIZE, PANEL_SIZE))
-    axis = fig.add_subplot()
-    elapsed, weight = np.asarray(data["handoff"]).T
-    style_axes(axis, "Hand-off weight")
-    axis.plot(elapsed, weight, color=SLOTS[0])
-    over_ms = data["over_ms"]
-    axis.axvline(over_ms, linestyle="--", color=FAINT)
-    axis.annotate("over_ms", (over_ms, 0.2), xytext=(5, 0), textcoords="offset points",
-                  va="center", color=INK, fontsize=LABEL_SIZE)
-    axis.set(xlabel="Time since hand-off started (ms)", ylabel="Incoming pose weight",
-             xlim=(0, elapsed[-1]), ylim=(0, 1), yticks=(0, 0.5, 1))
-    save(fig, out / "rig-handoff.png")
     return 0
 
 

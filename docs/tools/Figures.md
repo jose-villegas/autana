@@ -13,7 +13,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
-| [kinematics](#kinematics) | 9 | 5 | 0 |
+| [kinematics](#kinematics) | 8 | 4 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 45 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
@@ -104,7 +104,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/kinematics/orbit-reset-spring.png"><img src="../images/kinematics/orbit-reset-spring.png" width="160" alt=""></a> | Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/profile-move.png"><img src="../images/kinematics/profile-move.png" width="160" alt=""></a> | Place and speed against time for a 10-unit move that cruises at its peak and a 2-unit move whose ramps meet at half the peak | [kinematics/Profile](../kinematics/Profile.md) | [profile_figures.py](../../launcher/tools/kinematics/profile_figures.py) |
 | <a href="../images/kinematics/rig-flight.png"><img src="../images/kinematics/rig-flight.png" width="160" alt=""></a> | Target and follower paths in 3D, top and side views | [kinematics/Rig](../kinematics/Rig.md) | [rig_figures.py](../../launcher/tools/kinematics/rig_figures.py) |
-| <a href="../images/kinematics/rig-handoff.png"><img src="../images/kinematics/rig-handoff.png" width="160" alt=""></a> | Smoothstep hand-off weight over time | [kinematics/Rig](../kinematics/Rig.md) | [rig_figures.py](../../launcher/tools/kinematics/rig_figures.py) |
 
 ## math
 

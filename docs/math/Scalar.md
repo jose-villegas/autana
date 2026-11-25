@@ -176,7 +176,6 @@ is the float curve.
 | `ease_out_u8(x)` | fast off the mark, settling; endpoints exact | $`255-(255-x)^2/255`$ |
 | `ease_in_u8(x)` | mirror of `ease_out_u8`: slow off the mark | $`x^2/255`$ |
 | `ease_smoothstep(e0, e1, x)` | GLSL smoothstep: eased 0 to 1 between two edges, flat past them | $`3u^2 - 2u^3`$, $`u = \mathrm{clamp}((x - e_0)/(e_1 - e_0), 0, 1)`$ |
-| `ease_smooth(elapsed, over)` | smoothstep over milliseconds, as a float from 0 to 1; exactly 1 at or past `over` and when `over` is 0 | `ease_smoothstep(0, over, elapsed)` in real arithmetic. It evaluates the lower half in double and mirrors the upper half as `1 - smoothstep(0, over, over - elapsed)`, then rounds once to float |
 | `ease_smooth_q8(elapsed, over)` | smoothstep out of 256, slow at both ends; 256 from `over` on and for `over` of 0 | $`t=\lfloor 256\,elapsed/over\rfloor`$<br>$`t^2(768-2t)/2^{16}`$ |
 
 ## math_db.h
