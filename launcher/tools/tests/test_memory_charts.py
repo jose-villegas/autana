@@ -12,12 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'build'))
 import memory_map as memory
 import iram_what_if as probe
 from doc_tables import markdown
+from test_memory_map import RUNTIME_HEAP_FIXTURE, patch_runtime_heap
 
 
 def chart_documents(doc):
     capture = doc.parent / memory.RUNTIME_HEAP
     capture.parent.mkdir(parents=True, exist_ok=True)
-    capture.write_bytes((Path(__file__).parent / 'fixtures/runtime-heap.txt').read_bytes())
+    capture.write_bytes(RUNTIME_HEAP_FIXTURE.read_bytes())
     tiers = doc.parent / 'tiers.md'
     tiers.parent.mkdir(parents=True, exist_ok=True)
     headroom = doc.parent / 'headroom.md'
@@ -46,10 +47,7 @@ BASELINES = [dict(build_id='abc-release', idf_commit='fixture',
 
 class MemoryChartTests(unittest.TestCase):
     def setUp(self):
-        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        patch_runtime_heap(self)
 
     def body(self):
         regions = [('iram0_0_seg shared alias', '0x40378000–0x40378400 (1024 B)'),

@@ -10,12 +10,9 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'gates' / 'tests'))
 import pr_body  # noqa: E402
-
-
-def git(repo, *args):
-    subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=repo,
-                   check=True, capture_output=True)
+from gate_tree import git  # noqa: E402
 
 
 def mermaid_runs():
