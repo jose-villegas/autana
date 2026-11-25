@@ -12,8 +12,8 @@ their morph targets an optional sibling [LMOR](LMOR.md) entry beside them.
 
 A double-sided cluster may carry back colours: what its triangles show seen from behind. The
 rasterizer picks front or back from the winding at triangle setup, as a fragment shader reads
-`gl_FrontFacing`<sup>[[145]](../../Citations.md#khronos-glsl-4-60)</sup> or `SV_IsFrontFace`<sup>[[146]](../../Citations.md#microsoft-hlsl-semantics)</sup>.
-A textured cluster keeps one texture on both sides, as glTF's `doubleSided`<sup>[[144]](../../Citations.md#khronos-gltf-double-sided)</sup> does; only its lighting differs.
+`gl_FrontFacing`<sup>[[147]](../../Citations.md#khronos-glsl-4-60)</sup> or `SV_IsFrontFace`<sup>[[148]](../../Citations.md#microsoft-hlsl-semantics)</sup>.
+A textured cluster keeps one texture on both sides, as glTF's `doubleSided`<sup>[[146]](../../Citations.md#khronos-gltf-double-sided)</sup> does; only its lighting differs.
 
 ```mermaid
 ---
