@@ -11,9 +11,9 @@ PRIME = read_define(OWNER, "NAME_HASH_PRIME")
 NONE = read_define(OWNER, "NAME_HASH_NONE")
 
 
-def name_hash_n(data: bytes) -> int:
-    """FNV-1a 32 over a byte span, including any embedded NUL."""
-    value = OFFSET_BASIS
+def name_hash_n(data: bytes, seed: int = OFFSET_BASIS) -> int:
+    """FNV-1a 32 over a byte span, including any embedded NUL, folded onto seed."""
+    value = seed
     for byte in data:
         value = c_uint32((value ^ byte) * PRIME).value
     return value

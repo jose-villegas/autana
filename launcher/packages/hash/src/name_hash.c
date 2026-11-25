@@ -4,14 +4,18 @@
 
 /* Fowler, Noll, Vo: FNV-1a uses unsigned bytes and modulo-32-bit arithmetic. */
 name_hash_t
-name_hash_n(const void* data, size_t size) {
+name_hash_seeded_n(name_hash_t seed, const void* data, size_t size) {
     const unsigned char* bytes = data;
-    name_hash_t hash = NAME_HASH_OFFSET_BASIS;
     for (size_t i = 0; i < size; i++) {
-        hash ^= bytes[i];
-        hash *= NAME_HASH_PRIME;
+        seed ^= bytes[i];
+        seed *= NAME_HASH_PRIME;
     }
-    return hash;
+    return seed;
+}
+
+name_hash_t
+name_hash_n(const void* data, size_t size) {
+    return name_hash_seeded_n(NAME_HASH_OFFSET_BASIS, data, size);
 }
 
 name_hash_t

@@ -48,9 +48,18 @@ class NameHashTests(unittest.TestCase):
         self.assertEqual(reference_fold64(OFFSET_BASIS64, data),
                          read_define(VECTORS, "NAME_HASH64_TEST_BYTES_HASH"))
 
+    def test_seeded_continue(self):
+        prefix = read_define(VECTORS, "NAME_HASH_TEST_PREFIX").encode("utf-8")
+        suffix = read_define(VECTORS, "NAME_HASH_TEST_SUFFIX").encode("utf-8")
+        seed = name_hash.name_hash_n(prefix)
+        self.assertEqual(seed, read_define(VECTORS, "NAME_HASH_TEST_PREFIX_HASH"))
+        continued = name_hash.name_hash_n(suffix, seed)
+        self.assertEqual(continued, read_define(VECTORS, "NAME_HASH_TEST_JOINED_HASH"))
+        self.assertEqual(continued, name_hash.name_hash_n(prefix + suffix))
+
     def test_seeded_continue64(self):
-        prefix = read_define(VECTORS, "NAME_HASH64_TEST_PREFIX").encode("utf-8")
-        suffix = read_define(VECTORS, "NAME_HASH64_TEST_SUFFIX").encode("utf-8")
+        prefix = read_define(VECTORS, "NAME_HASH_TEST_PREFIX").encode("utf-8")
+        suffix = read_define(VECTORS, "NAME_HASH_TEST_SUFFIX").encode("utf-8")
         seed = reference_fold64(OFFSET_BASIS64, prefix)
         self.assertEqual(seed, read_define(VECTORS, "NAME_HASH64_TEST_PREFIX_HASH"))
         continued = reference_fold64(seed, suffix)

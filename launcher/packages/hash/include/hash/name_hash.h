@@ -11,6 +11,9 @@ typedef uint32_t name_hash_t;
 #define NAME_HASH_OFFSET_BASIS 0x811C9DC5U
 #define NAME_HASH_PRIME        0x01000193U
 
+/* FNV-1a 32 folded onto seed. Start with NAME_HASH_OFFSET_BASIS; pass the previous result to continue. */
+name_hash_t name_hash_seeded_n(name_hash_t seed, const void* data, size_t size);
+
 /* FNV-1a 32 over size bytes, including any embedded NUL. */
 name_hash_t name_hash_n(const void* data, size_t size);
 
