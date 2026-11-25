@@ -20,8 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def write_reference_tree(work, sets=None):
@@ -128,7 +127,7 @@ def plane_source(*quads):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)])
+    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)], bake=None)
     return job, scene
 
 
@@ -137,8 +136,8 @@ LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 1.0, 0.0, 0.0, -1.0])
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ReferenceRenderTest(unittest.TestCase):
-    @needs_mitsuba
-    def test_main_reports_occlusion_value_error_on_serial_path(self):
+    @needs_llvm
+    def test_main_reports_occlusion_value_error(self):
         import contextlib
         import io
         import tempfile
@@ -158,24 +157,43 @@ class ReferenceRenderTest(unittest.TestCase):
                     patch.object(reference_render, 'occlusion_map', side_effect=ValueError(message)) as occlusion:
                 with self.assertRaises(SystemExit) as error:
                     reference_render.main(['scene', '--poses', 'poses', '--out', directory,
-                                           '--samples', '1', '--workers', '1', '--occlusion'])
+                                           '--samples', '1', '--occlusion'])
         self.assertEqual(error.exception.code, 2)
         self.assertIn(message, stderr.getvalue())
         occlusion.assert_called_once()
 
-    @needs_mitsuba
+    def test_the_command_line_traces_4_rays_a_side_and_denoises_only_when_asked(self):
+        # Doc figures call the command line: a scene's fit recipe that denoises its references must not reach them.
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        scene = SimpleNamespace(camera=SimpleNamespace(component=None), tonemap_white=1.0)
+        for extra, denoise in (([], False), (['--denoise'], True)):
+            with self.subTest(extra=extra), contextlib.redirect_stdout(io.StringIO()), \
+                    patch.object(reference_render, 'load_scene', return_value=scene), \
+                    patch.object(reference_render, 'read_poses', return_value=(1, 1, .1, .01, [None])), \
+                    patch.object(reference_render, 'source_for', return_value=(None, None)), \
+                    patch.object(reference_render, 'render_poses', return_value=0) as render, \
+                    patch.object(reference_render.pathlib.Path, 'mkdir'):
+                self.assertEqual(reference_render.main(['scene', '--poses', 'p', '--out', 'o'] + extra), 0)
+            args, kwargs = render.call_args
+            self.assertEqual((args[7], kwargs['denoise']), (4, denoise))
+
+    @needs_llvm
     def test_an_unshadowed_plane_is_exact_lambert(self):
         source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[1.0, 1.0, 1.0]]], atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_tilted_sun_scales_the_value_by_the_cosine_to_the_normal(self):
         source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.8, 0.0, 0.6]), LOOK_DOWN, 1, 1, 0.1, 1)
-        np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], atol=1e-12, rtol=0)
+        np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], rtol=1e-6)  # float32 on the device
 
-    @needs_mitsuba
+    @needs_llvm
     def test_subpixels_land_in_their_own_pixel_and_average_to_its_coverage(self):
         # The quad covers -0.5 < x < 0 and y > 0.5 of a view spanning -1..1: of the 2 x 2 pixels only the
         # top-left is reached, by its upper-right subpixel, one of its four.
@@ -183,7 +201,7 @@ class ReferenceRenderTest(unittest.TestCase):
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(picture[..., 0], [[0.25, 0.0], [0.0, 0.0]], atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
         # Double-sided and wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
@@ -193,7 +211,7 @@ class ReferenceRenderTest(unittest.TestCase):
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_single_sided_face_seen_from_behind_is_passed_as_the_device_culls_it(self):
         # Two crossing shells, as a reduced source leaves them: the eye at z = 1 meets the back of a face at z = 0.5
         # first. The device culls it and draws the floor at z = 0; double-sided, it is drawn itself.
@@ -207,14 +225,14 @@ class ReferenceRenderTest(unittest.TestCase):
         locations = primary_hits(source, job, LOOK_DOWN, 1, 1, 0.1, 1)[2]
         np.testing.assert_allclose(locations[:, 2], [0.5], atol=1e-6)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_back_face_over_its_twin_draws_the_twin(self):
         # The two sides of a thin wall share positions: whichever the tracer meets, the eye sees the front one.
         source = plane_source(square(up=False), square(), square(-1.0))
         faces = primary_hits(source, *sun_scene([0.0, 0.0, 1.0])[:1], LOOK_DOWN, 1, 1, 0.1, 1)[4]
         self.assertIn(faces[0], (2, 3))
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
         source = plane_source(square())
         away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
@@ -230,15 +248,11 @@ class ReferenceRenderTest(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
-class PooledReferenceTests(unittest.TestCase):
-    def test_pool_matches_serial_files(self):
-        import multiprocessing
+class RenderPosesTests(unittest.TestCase):
+    @needs_llvm
+    def test_render_poses_writes_what_trace_and_occlusion_map_give(self):
         import tempfile
         from r3d.reference_render import render_poses
-        from r3d import reference_render
-        from unittest.mock import patch
-        if "fork" not in multiprocessing.get_all_start_methods():
-            self.skipTest("pose pool needs fork")
         source = plane_source(square())
         wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))
@@ -257,9 +271,9 @@ class PooledReferenceTests(unittest.TestCase):
         poses = [LOOK_DOWN + np.array([i * .1, 0., 0., 0., 0., 0.]) for i in range(6)]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            serial, pooled = root / "serial", root / "pooled"
-            serial.mkdir(); pooled.mkdir()
-            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, 1, True)
+            serial = root / "serial"
+            serial.mkdir()
+            render_poses(source, job, scene, poses, 8, 8, 1., 2, serial, True, True)
             from PIL import Image
             from r3d.reference_render import occlusion_map
             for index, pose in enumerate(poses):
@@ -281,21 +295,108 @@ class PooledReferenceTests(unittest.TestCase):
                 unoccluded = trace(source, job, scene, pose, 8, 8, 1., 2)[0]
                 job.bake.ao = ao
                 self.assertFalse(np.array_equal(linear, unoccluded))
-            global POSE_BARRIER
-            POSE_BARRIER = multiprocessing.get_context('fork').Barrier(2)
-            with patch.object(reference_render, '_write_pose', record_pose_pid):
-                render_poses(source, job, scene, poses, 8, 8, 1., 2, pooled, True, 2, True)
-            pids = list(pooled.glob('pid-*'))
-            self.assertGreater(len(pids), 1)
-            for marker in pids:
-                marker.unlink()
-            self.assertEqual(sorted(p.name for p in serial.iterdir()), sorted(p.name for p in pooled.iterdir()))
-            for path in serial.iterdir():
-                self.assertEqual(path.read_bytes(), (pooled / path.name).read_bytes(), path.name)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class PerPointDirectionsTests(unittest.TestCase):
+    @needs_llvm
+    def test_a_turned_frame_stays_orthonormal_about_the_normal_and_turns_a_point_alike_in_any_batch(self):
+        from r3d.light import turned_frame
+
+        rng = np.random.default_rng(0)
+        points = rng.uniform(-100.0, 100.0, (64, 3))
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        tu, tv = turned_frame(points, normals)
+        for a, b in ((tu, tu), (tv, tv), (tu, tv), (tu, normals), (tv, normals)):
+            np.testing.assert_allclose((a * b).sum(axis=1), 1.0 if a is b else 0.0, atol=1e-6)  # float32 tangents
+        alone = [turned_frame(points[i:i + 1], normals[i:i + 1]) for i in (5, 40)]
+        reversed_u, _ = turned_frame(points[::-1], normals[::-1])
+        for i, (u, v) in zip((5, 40), alone):
+            self.assertTrue(np.array_equal(u[0], tu[i]) and np.array_equal(v[0], tv[i]))
+            self.assertTrue(np.array_equal(reversed_u[len(points) - 1 - i], tu[i]))
+
+    @needs_llvm
+    def test_a_device_point_turns_as_the_numpy_row_of_its_float32_coordinates(self):
+        import mitsuba as mi
+
+        from r3d.light import turned_frame
+        from r3d.ray_query import rows, vectors
+
+        rng = np.random.default_rng(1)
+        points = rng.uniform(-100.0, 100.0, (64, 3)).astype(np.float32).astype(np.float64)
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        host = turned_frame(points, normals)
+        device = turned_frame(vectors(mi.Point3f, points), vectors(mi.Vector3f, normals))
+        for want, got in zip(host, device):
+            np.testing.assert_allclose(rows(got, len(points)), want, atol=1e-6)
+
+    @needs_llvm
+    def test_neighbouring_points_on_one_plane_turn_apart_where_a_fixed_frame_does_not(self):
+        from r3d.light import fixed_frame, turned_frame
+
+        points = np.array([[x, 0.0, 0.0] for x in np.linspace(0.0, 1e-3, 16)])
+        up = np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        fixed = fixed_frame(points, up)[0]
+        turned = turned_frame(points, up)[0]
+        self.assertTrue(np.all(fixed == fixed[0]))
+        angles = np.arctan2(turned[:, 1], turned[:, 0])
+        self.assertEqual(len(np.unique(angles)), len(points))
+        # Spread over the whole turn, not clustered: every quarter holds some of the angles.
+        quarters = np.floor((angles + np.pi) / (np.pi / 2)).astype(int) % 4
+        self.assertEqual(set(quarters), {0, 1, 2, 3})
+
+    @needs_llvm
+    def test_a_trace_turns_every_hemisphere_term_per_point(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.light import turned_frame
+
+        source = plane_source(square())
+        with patch.object(reference_render, "device_light", wraps=reference_render.device_light) as lit:
+            trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 0.1, 1)
+        self.assertIs(lit.call_args.kwargs["frame"], turned_frame)
+
+    @needs_llvm
+    def test_a_denoised_trace_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source(square())
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise), \
+                    patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
+                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1, denoise)
+                self.assertEqual(filtered.call_count, int(denoise))
+                np.testing.assert_array_equal(linear, plain[0] + float(denoise))
+                np.testing.assert_array_equal(normal, plain[2])
+                if denoise:
+                    colour, albedo, guide = filtered.call_args.args
+                    np.testing.assert_array_equal(colour, plain[0])
+                    np.testing.assert_allclose(albedo, 1.0, atol=1e-12)
+                    np.testing.assert_array_equal(guide, plain[2])
+
+    def test_oidn_takes_the_grain_out_of_a_flat_surface_and_keeps_its_level(self):
+        from r3d.reference_render import denoised
+
+        rng = np.random.default_rng(0)
+        size = 64
+        level = 0.4
+        noisy = level * rng.uniform(0.5, 1.5, (size, size, 3))
+        albedo = np.full((size, size, 3), 0.8)
+        normal = np.tile([0.0, 0.0, 1.0], (size, size, 1))
+        clean = denoised(noisy, albedo, normal)
+        self.assertEqual(clean.dtype, np.float64)
+        self.assertLess(clean.std(), noisy.std() / 4)
+        self.assertAlmostEqual(clean.mean(), noisy.mean(), delta=0.02 * level)
 
 
 @unittest.skipIf(np is None, "needs NumPy")
 class ReferenceSetTests(unittest.TestCase):
+    @needs_llvm
     def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
         import contextlib
         import io
@@ -311,7 +412,8 @@ class ReferenceSetTests(unittest.TestCase):
         background = SimpleNamespace(background=0x123456)
         scene.camera = SimpleNamespace(component=background)
         inputs = ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=None,
-                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={})
+                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={},
+                                 samples=4, denoise=False)
         shifts = ([0.], [.5], [-.5, 1.])
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -348,10 +450,13 @@ class ReferenceSetTests(unittest.TestCase):
 @unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
-        def bounce(self, points, normals, ray_offset):
-            return np.full((len(points), 3), 0.25)
+        def device_bounce(self, points, normals, ray_offset, side, frame):
+            import drjit as dr
+            import mitsuba as mi
 
-    @needs_mitsuba
+            return dr.full(mi.Color3f, 0.25, dr.width(points))
+
+    @needs_llvm
     def test_the_reference_adds_the_bounce_to_each_hit(self):
         source = plane_source(square())
         without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
@@ -362,25 +467,29 @@ class BounceReferenceTests(unittest.TestCase):
             with_bounce = render_linear(source, job, scene, LOOK_DOWN, 1, 1, 0.1, 1)
             np.testing.assert_allclose(with_bounce - without, 0.25 * intensity, atol=1e-12)
 
-    def test_poses_with_bounced_light_render_in_this_process_and_keep_the_pool_otherwise(self):
+    def test_render_poses_reports_each_pose_in_order_and_returns_the_peak_pss(self):
         from unittest.mock import patch
+        from r3d import process_budget as budget
         from r3d import reference_render as reference
-        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
-                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
-            result = reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.')
-        executor.assert_not_called()
-        self.assertEqual(result[1], 1)
+        done = []
+        with patch.object(reference, 'write_pose') as write, patch.object(budget, 'pss_bytes', side_effect=[20, 30, 10]):
+            peak = reference.render_poses(None, None, None, ['a', 'b', 'c'], 8, 8, 1., 1, '.', done=done.append)
+        self.assertEqual(peak, 30)
+        self.assertEqual(done, [0, 1, 2])
+        self.assertEqual([call.args[-2:] for call in write.call_args_list], [(0, 'a'), (1, 'b'), (2, 'c')])
 
-    def test_more_workers_than_one_are_refused_for_bounced_light(self):
-        from r3d import reference_render as reference
-        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
-            reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
+    def test_a_reference_set_traces_at_its_inputs_samples_and_denoising(self):
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise):
+                render_poses = render_one_set(None, samples=3, denoise=denoise, lit_source={"return_value": object()})["render_poses"]
+                args, kwargs = render_poses.call_args
+                self.assertEqual((args[7], kwargs["denoise"]), (3, denoise))
 
 
-def render_one_set(job, **patches):
+def render_one_set(job, samples=1, denoise=False, **patches):
     """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
-    patched by its keyword arguments (render_poses returns no work unless given); returns the patches by name."""
+    patched by its keyword arguments (render_poses returns no work unless given), the inputs tracing at `samples`
+    with `denoise`; returns the patches by name."""
     import contextlib
     import io
     import tempfile
@@ -388,8 +497,8 @@ def render_one_set(job, **patches):
     from r3d import reference_render
     from r3d.fitted_variant import poses_text
 
-    patches.setdefault("render_poses", {"return_value": (0, 1)})
-    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+    patches.setdefault("render_poses", {"return_value": 0})
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, samples=samples, denoise=denoise)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
         poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
@@ -401,11 +510,97 @@ def render_one_set(job, **patches):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class PoseStoreTests(unittest.TestCase):
+    """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone."""
+
+    def render(self, poses_text, cache, out, key="render", store=True):
+        """render_sets of one poses file holding `poses_text` with a PoseStore under `key` (none unless `store`);
+        returns the poses traced, each of which told progress once. A traced pose's files hold its pose line, so a
+        set shows which pose each index got."""
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from bake import produce
+        from r3d import reference_render
+
+        traced, told = [], []
+
+        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None,
+                        denoise=False):
+            for index, pose in enumerate(poses):
+                traced.append(list(pose))
+                for suffix in reference_render.POSE_SUFFIXES:
+                    (target / f"{index:04d}{suffix}").write_text(repr([float(value) for value in pose]))
+                done(index)
+            return 0
+
+        poses = out.parent / f"{out.name}.txt"
+        poses.write_text(poses_text)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None, samples=1, denoise=False)
+        with patch.object(reference_render, "lit_source", return_value=object()), \
+                patch.object(reference_render, "render_poses", side_effect=fake_render), \
+                patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
+                patch.object(produce.keys, "gpu_name", return_value="GPU"), \
+                patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key) if store else None,
+                                         progress=lambda: told.append(1))
+        self.assertEqual(len(told), len(traced), "each traced pose is progress for the stage's guard")
+        return traced
+
+    def test_a_changed_pose_is_traced_again_and_the_rest_come_from_the_store(self):
+        import tempfile
+        from r3d.fitted_variant import poses_text
+        from r3d.reference_render import POSE_SUFFIXES
+
+        poses = [[0.0, 0.0, float(z), 0.0, 0.0, -1.0] for z in (1, 2, 3)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            cache = root / "cache"
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, poses), cache, root / "first"), poses)
+            moved = poses[:1] + [[0.0, 0.0, 9.0, 0.0, 0.0, -1.0]] + poses[2:]
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "second"), [moved[1]])
+            for index, pose in enumerate(moved):
+                for suffix in POSE_SUFFIXES:
+                    self.assertEqual((root / "second" / f"{index:04d}{suffix}").read_text(), repr(pose))
+            self.assertFalse((root / "second" / ".tracing").exists())
+            self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "third"), [],
+                             "every pose is held")
+            self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "fourth", key="other")),
+                             3, "another render key traces every pose")
+            self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
+                             "another pose size traces every pose")
+            self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "sixth", store=False)),
+                             3,
+                             "without a store every pose is traced, each telling progress")
+
+
+# A floor and a wall in OBJ: a scene a spawned worker loads from its file.
+WALL_OBJ = """mtllib box.mtl
+v -2 -2 0
+v 2 -2 0
+v 2 2 0
+v -2 2 0
+v 1 -2 0
+v 1 2 0
+v 1 2 2
+v 1 -2 2
+vt 0 0
+usemtl white
+f 1/1 2/1 3/1
+f 1/1 3/1 4/1
+f 5/1 6/1 7/1
+f 5/1 7/1 8/1
+"""
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+@unittest.skipIf(np is None, "needs NumPy")
 class RepeatTests(unittest.TestCase):
     """A reference set is the fit's target, and a fit magnifies a one-pixel change into a different mesh, so the set
     must repeat byte for byte however often its scene is built (ray_query.py: OptiX may build a different tree)."""
 
-    @needs_mitsuba
+    @needs_llvm
     @needs_llvm
     def test_a_reference_repeats_byte_for_byte_from_a_scene_built_again(self):
         from r3d.path_bake import PathLight
@@ -425,19 +620,31 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
-    def test_a_set_traces_on_the_bake_variant(self):
-        from r3d import ray_query
+    def test_a_set_traces_its_rays_and_bounced_light_on_the_reference_variant(self):
         from tests.test_r3d_path_bake import corridor
 
         def variant_of(call, at):
             args, kwargs = call
-            given = kwargs.get("variant", args[at] if len(args) > at else None)
-            return given or ray_query.VARIANT
+            return kwargs.get("variant", args[at] if len(args) > at else None)
 
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
-        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
-        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
-        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
+        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={},
+                               reference_variant={"return_value": "cuda_ad_rgb"})
+        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), "cuda_ad_rgb")
+        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), "cuda_ad_rgb")
+
+    def test_the_reference_variant_is_the_fastest_this_machine_traces_on_else_the_bake_variant(self):
+        from unittest.mock import patch
+        from r3d import mitsuba_reference, ray_query
+        from r3d import reference_render as reference
+        for found, expected in (("cuda_ad_rgb", "cuda_ad_rgb"), ("scalar_rgb", ray_query.VARIANT), (None, ray_query.VARIANT)):
+            reference.reference_variant.cache_clear()
+            self.addCleanup(reference.reference_variant.cache_clear)
+            with self.subTest(found=found), \
+                    patch.object(mitsuba_reference, "import_mitsuba",
+                                 return_value=found and SimpleNamespace(variant=lambda: None)), \
+                    patch.object(mitsuba_reference, "default_variant", return_value=found):
+                self.assertEqual(reference.reference_variant(), expected)
 
     def test_the_bounced_light_cache_is_dropped_even_when_a_pose_fails(self):
         import contextlib
@@ -449,92 +656,8 @@ class RepeatTests(unittest.TestCase):
             raised = contextlib.nullcontext() if failure is None else self.assertRaisesRegex(RuntimeError, "pose failed")
             with raised:
                 render_one_set(None, lit_source={"return_value": object()},
-                               render_poses={"side_effect": failure, "return_value": (0, 1)})
+                               render_poses={"side_effect": failure, "return_value": 0})
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
-
-
-@needs_mitsuba
-@unittest.skipIf(np is None, "needs NumPy")
-class SkyStreamingTests(unittest.TestCase):
-    def test_sky_directions_are_streamed_and_match_list(self):
-        from unittest.mock import patch
-        from r3d import light as lighting
-        source = plane_source(square())
-        original = lighting.unshadowed_count
-        sky = {"type": "sky", "mode": LIGHT_MODE_BAKED, "rays": 7, "color": [.5, .7, .9], "intensity": .8}
-        points = np.array([[0., 0., .5], [.2, .3, .1]])
-        normals = np.array([[0., 0., -1.], [0., 0., 1.]])
-
-        def render():
-            return lighting.light(points, normals, np.array([False, False]), source.intersector, [sky], .01)
-
-        def streamed(intersector, origin, directions):
-            self.assertFalse(isinstance(directions, list))
-            return original(intersector, origin, directions)
-
-        with patch.object(lighting, 'unshadowed_count', side_effect=streamed):
-            actual = render()
-
-        def list_bake_sky(light, ctx):
-            n = ctx.normals
-            tu, tv = lighting.tangent_frame(n)
-            directions = [tu * x + tv * y + n * z for x, y, z in lighting.sky_directions(light['rays'])]
-            visible = original(ctx.intersector, ctx.origin, directions) / light['rays']
-            return visible[:, None] * np.array(light['color']) * light['intensity']
-
-        with patch.dict(lighting.LIGHTS, sky=(lighting.LIGHTS['sky'][0], list_bake_sky)):
-            expected = render()
-        self.assertEqual(actual.tobytes(), expected.tobytes())
-
-
-POSE_BARRIER = None
-if np is not None:
-    from r3d.reference_render import _write_pose as original_write_pose
-
-
-def record_pose_pid(item):
-    from r3d.reference_render import POSE_STATE
-    POSE_BARRIER.wait(timeout=10)
-    pid, peak = original_write_pose(item)
-    (POSE_STATE[7] / f'pid-{pid}').touch()
-    return pid, peak
-
-
-
-
-@unittest.skipIf(np is None, "needs NumPy")
-class PoseMetricTests(unittest.TestCase):
-    def test_pool_budget_and_pss_aggregation(self):
-        from unittest.mock import Mock, patch
-        from r3d import process_budget as budget, reference_render as reference
-        pool = Mock()
-        pool.__enter__ = Mock(return_value=pool)
-        pool.__exit__ = Mock(return_value=False)
-        pool.map.return_value = [(101, 30), (102, 40), (101, 20), (102, 50)]
-        with patch.object(budget, 'task_reservation', return_value=budget.PREPARE_BYTES), \
-                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
-                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
-                patch.object(budget, 'cores_available', return_value=10), \
-                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
-                patch.object(reference.multiprocessing, 'get_context'), \
-                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor', return_value=pool) as executor:
-            result = reference.render_poses(None, None, None, [None] * 4,
-                                            368, 448, 1., 4, '.')
-        self.assertEqual(result, (80, 2))
-        self.assertEqual(executor.call_args.kwargs['max_workers'], 2)
-        self.assertIsNone(reference.POSE_STATE)
-
-    def test_serial_pss_and_smoke_budget(self):
-        from unittest.mock import patch
-        from r3d import process_budget as budget, reference_render as reference
-        with patch.object(budget, 'task_reservation', return_value=budget.SMOKE_PREPARE_BYTES), \
-                patch.object(budget, 'resident_bytes', return_value=(budget.GIB, 0, budget.GIB)), \
-                patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
-                patch.object(budget, 'cores_available', return_value=10), \
-                patch.object(reference, '_write_pose', side_effect=[(1, 20), (1, 30), (1, 10)]):
-            self.assertEqual(reference.render_poses(None, None, None, [None] * 3,
-                                                   368, 448, 1., 4, '.'), (30, 1))
-        self.assertIsNone(reference.POSE_STATE)
 
 
 if __name__ == "__main__":

@@ -19,9 +19,9 @@
  * header, every byte an AVI carries besides frame data and index entries. */
 #define RENDER_VIDEO_FIXED_BYTES (12 + 12 + (8 + 56) + 12 + (8 + 56) + (8 + 40) + 12 + 8)
 
-/* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
- * before that wraps, so no video is let past this. */
-#define RENDER_VIDEO_MAX_BYTES   ((int64_t)1024 * 1024 * 1024)
+/* RIFF AVI 1.0 keeps its whole size, and idx1 each frame's offset, in a
+ * 32-bit field, so no video is let past what that field holds. */
+#define RENDER_VIDEO_MAX_BYTES   ((int64_t)UINT32_MAX)
 
 static void
 put_u32(FILE* f, uint32_t v) {
@@ -40,12 +40,13 @@ put_fourcc(FILE* f, const char cc[4]) {
     fwrite(cc, 1, 4, f);
 }
 
+/* Rewrites a header field once every byte is out. Header fields sit in the
+ * first few hundred bytes, so `pos` fits a long; the end of a video past
+ * 2 GB does not on Windows, so the caller never asks for it with ftell. */
 static void
 patch_u32(FILE* f, long pos, uint32_t v) {
-    const long here = ftell(f);
     fseek(f, pos, SEEK_SET);
     put_u32(f, v);
-    fseek(f, here, SEEK_SET);
 }
 
 static uint32_t
@@ -189,24 +190,28 @@ render_video_close(render_video_t* v) {
     }
     FILE* f = v->out;
 
-    const uint32_t movi_size = (uint32_t)(ftell(f) - v->movi_fourcc_pos);
+    /* Sizes are counted, not read back with ftell: past 2 GB a Windows long can't hold them. */
+    const int64_t chunk = 8 + (int64_t)v->frame_bytes;
+    const int64_t movi_size = 4 + (int64_t)v->frame_count * chunk;
+    const int64_t idx1_size = 8 + (int64_t)v->frame_count * 16;
 
     put_fourcc(f, "idx1");
     put_u32(f, v->frame_count * 16u);
-    long offset = 4; /* the first '00dc' chunk starts right after 'movi' */
+    int64_t offset = 4; /* the first '00dc' chunk starts right after 'movi' */
     for (uint32_t i = 0; i < v->frame_count; i++) {
         put_fourcc(f, "00dc");
         put_u32(f, 0x10); /* AVIIF_KEYFRAME: every frame stands on its own */
         put_u32(f, (uint32_t)offset);
         put_u32(f, (uint32_t)v->frame_bytes);
-        offset += 8 + v->frame_bytes;
+        offset += chunk;
     }
 
-    const uint32_t riff_size = (uint32_t)(ftell(f) - (v->riff_size_pos + 4));
+    const int64_t riff_end = v->movi_fourcc_pos + movi_size + idx1_size;
+    const uint32_t riff_size = (uint32_t)(riff_end - (v->riff_size_pos + 4));
     patch_u32(f, v->riff_size_pos, riff_size);
     patch_u32(f, v->avih_total_frames_pos, v->frame_count);
     patch_u32(f, v->strh_length_pos, v->frame_count);
-    patch_u32(f, v->movi_size_pos, movi_size);
+    patch_u32(f, v->movi_size_pos, (uint32_t)movi_size);
 
     const bool ok = fclose(f) == 0;
     v->out = NULL;

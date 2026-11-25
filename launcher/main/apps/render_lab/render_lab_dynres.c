@@ -27,7 +27,7 @@ render_lab_dynres_on(void) {
 
 bool
 render_lab_dynres_set_on(bool on) {
-    return render_lab_budget_set_ms(on ? RENDER_LAB_TARGET_MS : 0);
+    return render_lab_budget_set_ms(on ? RENDER_LAB_FRAME_TARGET_MS : 0);
 }
 
 void

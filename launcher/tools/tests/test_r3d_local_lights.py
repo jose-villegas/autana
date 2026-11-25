@@ -1,17 +1,18 @@
 """Point and spot lights in the bake: the inverse-square falloff and its range window over a plane, a box's hard shadow,
-a shadow ray that stops at the light, a spot's cone, the probe term, and a sun that bakes as before."""
+a shadow ray that stops at the light, a spot's cone, the probe term, and a probe sun that bakes as before.
+
+The surface bake runs in float32 on Dr.Jit, so its values match the float64 formulas to float32 rounding."""
 import math
 import pathlib
 import sys
 import unittest
-from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
     from tests import soup
     from tests.soup import lamp, sun
-    from r3d.light import bake_punctual, light, unshadowed_count
+    from r3d.light import light
     from r3d.sh_probe_asset import COEFFICIENTS
     from r3d.sh_probe_bake import basis, direct_term
 except ImportError:
@@ -19,6 +20,7 @@ except ImportError:
 from tests.r3d_env import needs_mitsuba  # noqa: E402
 
 OFFSET = 0.01
+FLOAT32 = 1e-6
 HEIGHT = 1.0
 RANGE = 4.0
 FAR = [50.0, 50.0, 50.0]
@@ -62,7 +64,7 @@ class PointLightTests(unittest.TestCase):
     def test_a_point_light_over_a_plane_falls_off_by_inverse_square_to_zero_at_its_range(self):
         got = bake(self.points, self.normals, [lamp([0, HEIGHT, 0], RANGE, color=(1, .5, .25), intensity=2)], self.open)
         want = 2 * expected(self.points, self.normals, [0, HEIGHT, 0], RANGE)
-        np.testing.assert_allclose(got, want[:, None] * [1, .5, .25], rtol=1e-12, atol=0)
+        np.testing.assert_allclose(got, want[:, None] * [1, .5, .25], rtol=FLOAT32, atol=0)
         reach = np.linalg.norm(self.points + self.normals * OFFSET - [0, HEIGHT, 0], axis=1)
         self.assertTrue((got[reach >= RANGE] == 0).all())
         self.assertTrue((got[reach < RANGE] > 0).all())
@@ -78,7 +80,7 @@ class PointLightTests(unittest.TestCase):
         self.assertTrue(shadow.any())
         self.assertTrue((want[shadow] > 0).all())
         np.testing.assert_array_equal(got[shadow], 0.0)
-        np.testing.assert_allclose(got[clear], want[clear], rtol=1e-12)
+        np.testing.assert_allclose(got[clear], want[clear], rtol=FLOAT32)
 
     def test_a_blocker_beyond_the_light_casts_no_shadow(self):
         above = box_at([0.0, HEIGHT + 0.5, 0.0], [4.0, 0.2, 4.0])
@@ -102,7 +104,7 @@ class SpotLightTests(unittest.TestCase):
         point = bake(points, normals, [lamp([0, HEIGHT, 0], RANGE)], open_)[:, 0]
         ramp = np.clip((np.cos(np.radians(angles)) - math.cos(math.radians(outer)))
                        / (math.cos(math.radians(inner)) - math.cos(math.radians(outer))), 0, 1) ** 2
-        np.testing.assert_allclose(spot, point * ramp, rtol=1e-9, atol=1e-15)
+        np.testing.assert_allclose(spot, point * ramp, rtol=FLOAT32, atol=0)
         self.assertEqual(list(ramp[:2]), [1.0, 1.0])
         self.assertEqual(list(spot[-2:]), [0.0, 0.0])
         self.assertTrue(((ramp[2:5] > 0) & (ramp[2:5] < 1)).all())
@@ -120,24 +122,8 @@ class SpotLightTests(unittest.TestCase):
 
 @needs_mitsuba
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class SunUnchangedTests(unittest.TestCase):
-    """The one-shadow-ray sun formulas from before point and spot lights, kept here as the reference."""
-
-    def test_a_sun_bakes_bit_for_bit_as_before(self):
-        rng = np.random.default_rng(3)
-        points = rng.uniform(-2, 2, (200, 3))
-        normals = rng.normal(size=(200, 3))
-        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
-        box = box_at([0.0, 1.0, 0.0], [1.0, 0.5, 1.0])
-        origin = points + normals * OFFSET
-        ctx = SimpleNamespace(normals=normals, origin=origin, intersector=box, occlusion=None, ray_offset=OFFSET)
-        for direction in ([0.3, 1.0, 0.2], [0.0, 1.0, 0.0], [-1.0, 0.1, 0.4]):
-            light_ = sun(direction, (1, .7, .4), 1.7)
-            unit = np.array(direction, dtype=np.float64)
-            unit /= np.linalg.norm(unit)
-            lit = unshadowed_count(box, origin, [unit])
-            before = (np.maximum(normals @ unit, 0.0) * lit)[:, None] * np.array(light_["color"]) * light_["intensity"]
-            np.testing.assert_array_equal(bake_punctual(light_, ctx), before)
+class ProbeSunUnchangedTests(unittest.TestCase):
+    """The probe sun formula from before point and spot lights, kept here as the reference."""
 
     def test_the_probe_sun_term_is_bit_for_bit_as_before(self):
         rng = np.random.default_rng(4)

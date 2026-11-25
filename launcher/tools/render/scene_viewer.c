@@ -11,7 +11,6 @@
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
 #include "scene/scene.h"
-#include "scene/transform/transform.h"
 #include "scene_viewer.h"
 
 static const char* scene_id;
@@ -25,8 +24,6 @@ static camera_present_t present;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
-static const char* poses_path;
-static FILE* poses;
 static entity_t shown;
 static entity_t camera;
 
@@ -43,7 +40,6 @@ reset_options(void) {
     present = CAMERA_PRESENT_NEAREST;
     view = RENDER_DEBUG_VIEW_SHADED;
     counts_path = NULL;
-    poses_path = NULL;
 }
 
 static bool
@@ -90,8 +86,6 @@ options(int argc, char** argv) {
             generating = strcmp(value, "1") == 0;
         } else if (strcmp(flag, "--counts") == 0) {
             counts_path = value;
-        } else if (strcmp(flag, "--poses") == 0) {
-            poses_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -210,21 +204,10 @@ setup(int quarter) {
     }
     shown = scene;
     camera = camera_active(); /* the one chosen_camera() found above */
-    /* What a caller sampling the path along its length reads. */
-    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
     render_context_set_frame_generation(context, generating);
     if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
-        scene_release(scene);
-        return false;
-    }
-    if (poses_path != NULL
-        && (poses = render_rows_open(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw", "scene_viewer")) == NULL) {
-        if (counts != NULL) {
-            fclose(counts);
-            counts = NULL;
-        }
         scene_release(scene);
         return false;
     }
@@ -236,22 +219,11 @@ setup(int quarter) {
     return true;
 }
 
-/* One row per frame of what the cull view counted from the camera, and of where the camera stood. */
+/* One row per frame of what the cull view counted from the camera. */
 static void
 draw(const provider_frame_t* frame) {
-    const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
         render_counts_row(&counts, frame);
-    }
-    if (poses != NULL) {
-        const transformf_t world = transform_world(camera);
-        fprintf(poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame->index, (unsigned)frame->elapsed_ms,
-                (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
-                (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
-        if (last) {
-            fclose(poses);
-            poses = NULL;
-        }
     }
 }
 
@@ -261,10 +233,6 @@ teardown(void) {
     if (counts != NULL) {
         fclose(counts);
         counts = NULL;
-    }
-    if (poses != NULL) {
-        fclose(poses);
-        poses = NULL;
     }
     shown = ENTITY_NONE;
     camera = ENTITY_NONE;

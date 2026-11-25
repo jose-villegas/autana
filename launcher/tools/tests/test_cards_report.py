@@ -15,6 +15,7 @@ from r3d.import_settings import albedo_jobs, load_import_settings
 from r3d.light import drop_masked
 from r3d.mesh_source import load_source
 from tests.test_cards import SEEDS, SIDE, leaf_import, quads, card_settings
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def report_job(root):
@@ -31,6 +32,7 @@ def report_job(root):
 
 
 class CardsReportTests(unittest.TestCase):
+    @needs_llvm
     def test_cards_report_csv_fields_and_accepted(self):
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)
@@ -48,7 +50,7 @@ class CardsReportTests(unittest.TestCase):
                     assert cards_report.main([str(scene), '--object', job.object.name, '--docs']) == 0
                 with (data / 'leaves-fitted-full-cards.csv').open(newline='') as stream:
                     reader = csv.DictReader(stream)
-                    assert reader.fieldnames == ['material', 'see_through', 'covered', 'accepted', 'replaced', 'cards',
+                    assert reader.fieldnames == ['material', 'see_through', 'covered', 'covered_area', 'accepted', 'replaced', 'cards',
                                                  'pages', 'texture_bytes', 'triangles', 'ceiling', 'budget', 'scene_total']
                     leaf, total = list(reader)
                 assert leaf['material'] == 'leaf'
@@ -59,6 +61,7 @@ class CardsReportTests(unittest.TestCase):
                 assert int(total['scene_total']) > int(leaf['cards'])
                 assert job.bake is not None
 
+    @needs_llvm
     def test_cards_report_table(self):
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)
@@ -71,11 +74,12 @@ class CardsReportTests(unittest.TestCase):
             assert cards_report.main([str(data), '--table', str(output)]) == 0
             text = output.read_text()
             leaf, total = rows
-            assert '| Material | See-through | Covered | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |' in text
-            assert (f"| leaf\\|branch | always | {leaf['covered']:.1%} | yes | {leaf['replaced']} | {leaf['cards']} | {leaf['pages']} | {leaf['texture_bytes']} |") in text
+            assert '| Material | See-through | Covered (seen) | Covered (all area) | Carded | Triangles without cards | Card triangles | Pages | Texture bytes |' in text
+            assert (f"| leaf\\|branch | always | {leaf['covered']:.1%} | {leaf['covered_area']:.1%} | yes | {leaf['replaced']} | {leaf['cards']} | {leaf['pages']} | {leaf['texture_bytes']} |") in text
             assert (f"requested {total['triangles']}, ceiling {total['ceiling']}, "
                     f"rest budget {total['budget']}, emitted by the unlit import {total['scene_total']}") in text
 
+    @needs_llvm
     def test_cards_report_rejected_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)
@@ -87,6 +91,7 @@ class CardsReportTests(unittest.TestCase):
             assert leaf['replaced'] > 0
             assert total['budget'] == job.renderer.variant.triangles
 
+    @needs_llvm
     def test_cards_report_budget(self):
         with tempfile.TemporaryDirectory() as directory:
             tmp_path = Path(directory)

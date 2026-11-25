@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import simplify as owner
 from soup import edge_counts
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def props():
@@ -34,6 +35,7 @@ class ObjectBudgetTests(unittest.TestCase):
         self.assertNotEqual(groups[0], groups[2])
 
 
+    @needs_llvm
     def test_ownership_through_bake_geometry(self):
         from types import SimpleNamespace as NS
         from unittest.mock import patch

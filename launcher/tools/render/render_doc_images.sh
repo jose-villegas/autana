@@ -54,7 +54,7 @@ for app_dir in $(app_directories launcher); do
 done
 
 DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
-DEMO_OBJECT=atrium
+DEMO_OBJECT=atrium_fitted_full
 # The skinned mesh the skeleton and skin figures draw, a cached bake, and its clip.
 SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
@@ -130,19 +130,13 @@ case "${1:-}" in
         # when its name up to the first dot appears in the script that makes the
         # launcher images, the scene scripts, or an app's doc_images.sh; when the
         # demo script spells it ${ID}-... or ends it with a loop variable, which
-        # claims any name under that prefix (${ID}-view-$view); or when it is a
-        # pair sheet doc_tables.py lists for the demo scene; or when a producer
+        # claims any name under that prefix (${ID}-view-$view); or when a producer
         # declares it (figures_runner.py list --outputs).
         comparing=1
         status=0
-        pairs=
         . "$ROOT/scripts/lib/python.sh"
         PYTHON=$(find_python) || exit 2
         declared=$("$PYTHON" launcher/tools/docs/figures_runner.py list --outputs) || exit 2
-        if [ -f "$DEMO_SCENE" ]; then
-            pairs=$("$PYTHON" "$TOOLS_DIR/doc_tables.py" --pairs "$DEMO_SCENE" "$DEMO_OBJECT") || exit 2
-            pairs=$(printf '%s\n' "$pairs" | awk '{print "compare-" $3 "-" $4}')
-        fi
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
             case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             if printf '%s\n' "$declared" | grep -qxF -- "$image"; then
@@ -158,9 +152,6 @@ case "${1:-}" in
                         continue
                     fi ;;
             esac
-            if printf '%s\n' "$pairs" | grep -qxF -- "$stem"; then
-                continue
-            fi
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
@@ -202,10 +193,6 @@ esac
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
 PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
-if [ "$AUDIO_ONLY" = 0 ] && ! command -v ffmpeg > /dev/null 2>&1; then
-    echo "ffmpeg not found." >&2
-    exit 2
-fi
 
 run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
@@ -213,16 +200,9 @@ run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 if [ "$AUDIO_ONLY" = 0 ]; then
 # The cached bakes the figures draw, fetched first so a renamed output fails here, not after the renders.
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
-# The demo object's lite mesh bundle.
-lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
-scene_bakes=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh) || exit 2
-lite_output=$(echo "$scene_bakes" |
-    awk -F '\t' -v stem="$lite_stem" '{ name = $1; sub(/\.[^.]*$/, "", name) } name == stem { print $1 }')
-if [ -z "$lite_output" ] || [ "$(echo "$lite_output" | wc -l)" -ne 1 ]; then
-    echo "$DEMO_SCENE bakes no single $lite_stem output: '$lite_output'" >&2
-    exit 2
-fi
-tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$lite_output") || exit 2
+# The demo object's delivered mesh bundle.
+tree_stem="$(basename "$DEMO_SCENE" .scene.toml).$DEMO_OBJECT"
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$tree_stem.bundle") || exit 2
 
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
@@ -365,8 +345,8 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/light_figures.py --out "$OUT/render" > "$WORK/light_figures.log" 2>&1
 # --orphans scans this runner: light-point-spot.png
 
-# The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
-run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$lite_stem" --out "$OUT/render" \
+# The baked mesh's figures: the demo scene's delivered mesh, its clusters and tree, and the clusterizer's build.
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$tree_stem" --out "$OUT/render" \
     > "$WORK/mesh_figures.log" 2>&1
 # --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 

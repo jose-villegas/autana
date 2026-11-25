@@ -117,10 +117,12 @@ def bent(x, y, angle):
     return (ELBOW + dx * math.cos(angle) - y * math.sin(angle), dx * math.sin(angle) + y * math.cos(angle), 0.0)
 
 
-class GltfSkinTest(unittest.TestCase):
+class StripTest(unittest.TestCase):
     def setUp(self):
         self.asset = gltf_skin.SkinnedAsset(*gltf_skin.parse_glb(strip_glb()))
 
+
+class GltfSkinTest(StripTest):
     def assert_points(self, actual, expected):
         for a, e in zip(actual, expected):
             for p, q in zip(a, e):
@@ -162,10 +164,7 @@ class GltfSkinTest(unittest.TestCase):
 
 
 @unittest.skipIf(gltf_preview is None, "Pillow is not installed")
-class GltfPreviewTest(unittest.TestCase):
-    def setUp(self):
-        self.asset = gltf_skin.SkinnedAsset(*gltf_skin.parse_glb(strip_glb()))
-
+class GltfPreviewTest(StripTest):
     def test_sheet_tiles_four_views_of_the_requested_size(self):
         sheet = gltf_preview.bind_sheet(self.asset, (48, 40))
         self.assertEqual(sheet.size, (96, 80))

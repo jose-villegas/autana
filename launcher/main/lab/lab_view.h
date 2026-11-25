@@ -1,7 +1,7 @@
 /*
  * lab_view: the view tunables every lab has, declared once here and
  * registered per lab under its name: "<name>.scale", "<name>.present",
- * "<name>.layout" and "<name>.orbit_ms".
+ * "<name>.layout", "<name>.orbit_ms" and "<name>.orbit_zoom".
  */
 #pragma once
 
@@ -10,12 +10,17 @@
 #include "core/tune.h"
 #include "scene/camera/camera.h"
 
-#define LAB_SCALE_UNIT    100
-#define LAB_SCALE_DEFAULT (2 * LAB_SCALE_UNIT)
-#define LAB_SCALE_MAX     (8 * LAB_SCALE_UNIT)
+#define LAB_SCALE_UNIT      100
+#define LAB_SCALE_DEFAULT   (2 * LAB_SCALE_UNIT)
+#define LAB_SCALE_MAX       (8 * LAB_SCALE_UNIT)
 
 /* The slowest orbit_ms turn: one a minute. */
-#define LAB_ORBIT_MAX_MS  60000
+#define LAB_ORBIT_MAX_MS    60000
+
+/* orbit_zoom is in hundredths of the distance that fits the subject: the
+ * default fits it, and the farthest is four times that. */
+#define LAB_ORBIT_ZOOM_UNIT 100
+#define LAB_ORBIT_ZOOM_MAX  (4 * LAB_ORBIT_ZOOM_UNIT)
 
 /* The framebuffer layout a lab asks for when it enters a scene. */
 typedef enum {
@@ -26,11 +31,14 @@ typedef enum {
 } lab_layout_t;
 
 typedef enum {
-    LAB_VIEW_SCALE,    /* in hundredths: 200 renders at half size */
-    LAB_VIEW_PRESENT,  /* a camera_present_t */
-    LAB_VIEW_LAYOUT,   /* a lab_layout_t, taken at the next enter or scene switch */
-    LAB_VIEW_ORBIT_MS, /* 0 holds an orbiting camera where it is steered; otherwise
-                        * it also turns once about its subject every orbit_ms */
+    LAB_VIEW_SCALE,      /* in hundredths: 200 renders at half size */
+    LAB_VIEW_PRESENT,    /* a camera_present_t */
+    LAB_VIEW_LAYOUT,     /* a lab_layout_t, taken at the next enter or scene switch */
+    LAB_VIEW_ORBIT_MS,   /* 0 holds an orbiting camera where it is steered; otherwise
+                          * it also turns once about its subject every orbit_ms */
+    LAB_VIEW_ORBIT_ZOOM, /* where an orbiting camera starts and a double tap returns it, in
+                          * LAB_ORBIT_ZOOM_UNITs of the distance that fits its subject from
+                          * every angle; taken at the next enter or scene switch */
     LAB_VIEW_COUNT,
 } lab_view_tunable_t;
 
@@ -59,3 +67,5 @@ int lab_view_scale(const lab_view_t* view);
 camera_present_t lab_view_present(const lab_view_t* view);
 lab_layout_t lab_view_layout(const lab_view_t* view);
 int lab_view_orbit_ms(const lab_view_t* view);
+/* orbit_zoom as a multiple of the fitting distance: 1 fits the subject. */
+float lab_view_orbit_zoom(const lab_view_t* view);

@@ -90,8 +90,8 @@ set, else 1. For point or spot light $j$ in direction $`\hat l_j`$, $`V_j`$ is
 
 | Term | Function in [`light.py`](../../launcher/tools/r3d/light.py) | Shadow it gives | Detail |
 |---|---|---|---|
-| sun $`c_s I_s`$, direction $`\omega_s`$ | `bake_punctual()`: one shadow ray | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md) |
-| point or spot $`c_j I_j`$, falloff $`W_j`$ | `bake_punctual()`: one shadow ray no farther than the light; inverse square windowed at the range<sup>[[135]](../Citations.md#karis-2013)</sup>, times a spot's cone<sup>[[134]](../Citations.md#khr-lights-punctual)</sup> | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md#point-and-spot-lights) |
+| sun $`c_s I_s`$, direction $`\omega_s`$ | `bake_directional()`: one shadow ray | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md) |
+| point or spot $`c_j I_j`$, falloff $`W_j`$ | `bake_local()`: one shadow ray no farther than the light; inverse square windowed at the range<sup>[[147]](../Citations.md#karis-2013)</sup>, times a spot's cone<sup>[[146]](../Citations.md#khr-lights-punctual)</sup> | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md#point-and-spot-lights) |
 | sky $`c_k I_k`$ | `bake_sky()`: the share of $R$ fixed cosine-weighted rays that escape | soft, under overhangs | [Scene-Files.md](scene/Scene-Files.md#sky) |
 | ambient $`c_a I_a`$ | `bake_ambient()`, times $f$ | none, except through $f$ | [Scene-Files.md](scene/Scene-Files.md#ambient) |
 | occlusion $f$ | `local_occlusion()`, a distance-limited obscurance<sup>[[14]](../Citations.md#zhukov-1998)</sup> | darkens corners and wall feet | [Bake-Method.md](offline/Bake-Method.md#local-occlusion-implementation) |
@@ -124,7 +124,7 @@ baked shadow at the grid's resolution.
 |---|---|---|
 | Lighting modes: direct, renormalised, table | import `[skin].lighting`, `skin_set_light_mode()` | [Skinned-Lighting.md](animation/Skinned-Lighting.md#lighting-modes) |
 | Probe bake | `bake.py --kind sh_probes`, a sibling `<scene>.probes.toml` | [SH-Probes.md](offline/SH-Probes.md) |
-| Probe sampling | `scene_set_probes()` | [Skinned-Meshes.md](animation/Skinned-Meshes.md#ambient-irradiance) |
+| Probe sampling | `scene_set_probes()` | [Light-Probes.md](frame/Light-Probes.md) |
 | Per-vertex cost | about 23 cycles per light, direct mode | [Skinned-Lighting.md](animation/Skinned-Lighting.md#lighting-modes) |
 
 ## Shadows
@@ -141,7 +141,7 @@ baked shadow at the grid's resolution.
 
 A mover casts no baked shadow and the probes do not see it, so a dithered
 dark disc on the ground under it stands in. Placing and drawing it:
-[Skinned-Meshes.md](animation/Skinned-Meshes.md#contact-discs).
+[Contact-Shadows.md](frame/Contact-Shadows.md).
 
 ![A skinned mover with its contact blob on the floor of a baked atrium](../images/render/contact-blob-atrium.png)
 

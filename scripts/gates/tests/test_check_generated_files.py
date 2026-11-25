@@ -77,8 +77,7 @@ class GateTests(unittest.TestCase):
         self.add(app, header("python tools/gen.py 1 > " + app, 1))
         self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
         self.add(doc, "# Tools\n")
-        done = subprocess.run([sys.executable, str(GATE), "--root", str(self.root), "--write-table"],
-                              capture_output=True, text=True)
+        done = self.gate("--write-table")
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertIn("FAIL " + doc, done.stdout)
 
@@ -109,6 +108,10 @@ class GateTests(unittest.TestCase):
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True)
         return path
 
+    def gate(self, *args):
+        return subprocess.run([sys.executable, str(GATE), "--root", str(self.root), *args],
+                              capture_output=True, text=True)
+
     def test_check_table_checks_and_write_table_rewrites_engine_and_underscore_app_tables(self):
         import re
         engine = "main/a.h"
@@ -120,24 +123,21 @@ class GateTests(unittest.TestCase):
         self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
         block = TABLE_BLOCK + "-synthetic-app"
         app_doc = self.add(doc, f"<!-- generated: {block} -->\n<!-- /generated: {block} -->\n")
-        def gate(*args):
-            return subprocess.run([sys.executable, str(GATE), "--root", str(self.root), *args],
-                                  capture_output=True, text=True)
-        stale = gate("--check-table")
+        stale = self.gate("--check-table")
         self.assertEqual(stale.returncode, 1, stale.stdout + stale.stderr)
         for owner in (TABLE_DOC, doc):
             self.assertIn(f"FAIL {owner}", stale.stdout)
         # The banners are current; the stale tables are the markers' to report.
-        full = gate()
+        full = self.gate()
         self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
-        written = gate("--write-table")
+        written = self.gate("--write-table")
         self.assertEqual(written.returncode, 0, written.stdout + written.stderr)
-        fresh = gate("--check-table")
+        fresh = self.gate("--check-table")
         self.assertEqual(fresh.returncode, 0, fresh.stdout + fresh.stderr)
         for target in re.findall(r"\]\(([^)]+)\)", app_doc.read_text()):
             self.assertTrue((app_doc.parent / target).is_file(), target)
         app_doc.write_text("No generated block here.\n")
-        missing = gate("--check-table")
+        missing = self.gate("--check-table")
         self.assertEqual(missing.returncode, 1)
         self.assertIn(f"FAIL {doc}", missing.stdout)
         self.assertNotIn("Traceback", missing.stderr)
@@ -147,18 +147,15 @@ class GateTests(unittest.TestCase):
         self.add("main/a.h", header("python tools/gen.py 1 > main/a.h", 2))
         doc = self.add(TABLE_DOC, f"<!-- generated: {TABLE_BLOCK} -->\n<!-- /generated: {TABLE_BLOCK} -->\n")
         marker = f"<!-- generated: {TABLE_BLOCK} check: {TABLE_CHECK} -->"
-        def gate(*args):
-            return subprocess.run([sys.executable, str(GATE), "--root", str(self.root), *args],
-                                  capture_output=True, text=True)
-        stale = gate("--check-table")
+        stale = self.gate("--check-table")
         self.assertEqual(stale.returncode, 1, stale.stdout + stale.stderr)
         self.assertIn(f"FAIL {TABLE_DOC}", stale.stdout)
         self.assertNotIn("main/a.h", doc.read_text())
-        self.assertEqual(gate("--write-table").returncode, 0)
-        fresh = gate("--check-table")
+        self.assertEqual(self.gate("--write-table").returncode, 0)
+        fresh = self.gate("--check-table")
         self.assertEqual(fresh.returncode, 0, fresh.stdout + fresh.stderr)
         self.assertTrue(doc.read_text().startswith(marker + "\n"))
-        self.assertEqual(gate().returncode, 1)
+        self.assertEqual(self.gate().returncode, 1)
 
     def test_the_named_check_command_fails_a_stale_table_and_writes_nothing(self):
         # TABLE_CHECK run as the generated-document gate runs it, over current banners.
@@ -169,8 +166,7 @@ class GateTests(unittest.TestCase):
         before = doc.read_bytes()
         self.assertIsNotNone(run_check(GATE.parents[2], command))
         self.assertEqual(before, doc.read_bytes())
-        subprocess.run([sys.executable, str(GATE), "--root", str(self.root), "--write-table"], check=True,
-                       capture_output=True)
+        self.assertEqual(self.gate("--write-table").returncode, 0)
         self.assertIsNone(run_check(GATE.parents[2], command))
 
     def test_finds_only_tracked_files_with_the_marker_in_their_first_five_lines(self):

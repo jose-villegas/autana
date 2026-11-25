@@ -12,6 +12,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from doc_tables import table_rows
+from markdown_fences import fenced_lines
 
 from c_constants import constants
 from c_comments import balanced_end, blank_comments
@@ -238,25 +239,20 @@ def masked_tables(text):
 
 
 def mermaid_lines(text):
-    fenced = False
+    fenced = fenced_lines(text)
     for number, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            fenced = line.lstrip().startswith("```mermaid")
-            continue
-        if fenced:
+        fence = fenced.get(number)
+        if fence and fence.language == "mermaid" and number not in (fence.line, fence.close):
             yield number, line
 
 
 def sentences(path, text=None):
     """Yield non-code Markdown sentences with their first source line."""
-    fenced = False
     pending, first = "", 1
     text = text if text is not None else path.read_text(encoding="utf-8", errors="replace")
+    fenced = fenced_lines(text)
     for number, line in enumerate(text.splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            continue
-        if fenced:
+        if number in fenced:
             continue
         if ESCAPE in line:
             line = ESCAPE + " " + line

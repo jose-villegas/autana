@@ -19,7 +19,7 @@
 
 #include <stdbool.h>
 
-#define MATH_DEFINE_TRANSFORM(P, V, Q, M, OPS)                                                                         \
+#define MATH_DEFINE_TRANSFORM(P, V, Q, M, AIM)                                                                         \
                                                                                                                        \
     typedef struct {                                                                                                   \
         V##_t position;                                                                                                \
@@ -83,14 +83,9 @@
         return M##_view_from_axes(x, y, z, t->position);                                                               \
     }                                                                                                                  \
                                                                                                                        \
-    /* f = normalize(direction), r = normalize(up x f), u = f x r, */                                                  \
-    /* rotation = from_basis(r, u, f). `up` must not be parallel to `direction`, */                                    \
-    /* and `direction` must be nonzero. */                                                                             \
+    /* Aim local +Z with the number type's direction and up rules. */                                                  \
     static inline void P##_look_along(P##_t* t, V##_t direction, V##_t up) {                                           \
-        const V##_t forward = V##_normalize(direction);                                                                \
-        const V##_t right = V##_normalize(V##_cross(up, forward));                                                     \
-        const V##_t above = V##_cross(forward, right);                                                                 \
-        P##_set_rotation(t, Q##_from_basis(right, above, forward));                                                    \
+        P##_set_rotation(t, AIM(direction, up));                                                                       \
     }                                                                                                                  \
                                                                                                                        \
     /* Faces target - position, with the same constraints as look_along. */                                            \
@@ -98,7 +93,7 @@
         P##_look_along(t, V##_sub(target, t->position), up);                                                           \
     }                                                                                                                  \
                                                                                                                        \
-    /* Unit scale at position, facing forward; forward must be nonzero and not parallel to up. */                      \
+    /* Unit scale at position, with the same direction and up rules as look_along. */                                  \
     static inline P##_t P##_looking(V##_t position, V##_t forward, V##_t up) {                                         \
         P##_t pose = {0};                                                                                              \
         pose.position = position;                                                                                      \
