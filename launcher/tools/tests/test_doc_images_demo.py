@@ -26,13 +26,13 @@ class DocImageFailureTest(unittest.TestCase):
         from anim_probe import write_camera_clip
         from r3d.import_settings import SettingsError, load_scene
         from r3d.mesh_import import fidelity_poses
-        from test_r3d_import import FIT, FIT_HEAD, SIMPLIFY, VARIANT, VARIANT_OUTPUT, renderer, sun_object, write_import
+        from test_r3d_import import FIT, HEAD, SIMPLIFY, VARIANT, VARIANT_OUTPUT, renderer, sun_object, write_import
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             clip = write_camera_clip(work, name="orbit", reach=2.0, degrees=90.0, node="orbit_view")
             write_import(work, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
             scene_path = work / "gallery.scene.toml"
-            scene_path.write_text(FIT_HEAD + sun_object() + renderer(name="painting", extra=
+            scene_path.write_text(HEAD + sun_object() + renderer(name="painting", extra=
                 'variant = "mesh"\nbake = true\n' + FIT.replace('[184, 224]', '[8, 6]')) +
                 renderer(name="frame", extra='variant = "mesh"\nbake = true\n') +
                 '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'

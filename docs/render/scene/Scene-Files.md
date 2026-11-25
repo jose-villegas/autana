@@ -53,7 +53,7 @@ visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit]      # fitted to reference renders of the source
 prune = { budget = 13313, coverage_every_ms = 20 }
-poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
+poses = { size = [184, 224], samples = 4, denoise = true, train_every_ms = 1000, held_out_every_ms = 5000 }
 
 [objects.mesh_renderer.fit.optimise]
 steps = 2000
@@ -91,7 +91,6 @@ or skinned renderer.
 | A scene with | Must carry | May also carry |
 |---|---|---|
 | a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility and `seal_views` | `[indirect]`, when a renderer bakes `[bake].indirect` |
-| a fitted renderer (`fit`) | `[bake]`'s `aa_samples` and `denoise`, beside what a baked renderer carries | |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
@@ -106,7 +105,7 @@ is in [Mesh-Import.md](../offline/Mesh-Import.md#import-options).
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }`, `aa_samples`, `denoise` | Scene-wide tracing settings. | Required by a baked renderer; `aa_samples` and `denoise` required by a fitted renderer, rejected without one. | [bake](#bake) |
+| `[bake]` | `ray_offset`, `colour_merge_step`; `indirect = { bounces, rays }`, `ao = { distance, rays; strength, indirect }` | Scene-wide tracing settings. | Required by a baked renderer. | [bake](#bake) |
 | `[indirect]` | `; intensity, albedo_boost` | Sets the appearance of the baked bounced light. | `1.0 each`; rejected unless a baked renderer uses [bake].indirect. | [indirect](#indirect) |
 | `[sky]` | `color`, `intensity`, `rays` | Hemisphere light for bakes. | Rejected unless a renderer bakes. | [sky](#sky) |
 | `[ambient]` | `color`, `intensity` | Constant linear light for bakes and skinned renderers. | Absent: zero intensity. | [ambient](#ambient) |
@@ -121,24 +120,6 @@ the bake. The image compares albedo with the result of a renderer whose
 `bake = true` light is then [fitted](../offline/Appearance-Fit.md).
 
 ![Albedo against the fitted bake](../../images/render/import-light.png)
-
-#### bake: reference traces
-
-`aa_samples` and `denoise` set how the reference renders a fit learns from are
-traced ([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)).
-A fitted renderer needs both. They are in the reference set's bake key and not
-in a vertex bake's, which never reads them.
-
-| Field | Meaning |
-|---|---|
-| `aa_samples` | Rays per pixel along each side, at least 1: `aa_samples`² primary rays per pixel. |
-| `denoise` | `true` filters each render with Open Image Denoise<sup>[[143]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
-
-```toml
-[bake]
-aa_samples = 4      # 4 x 4 rays per pixel
-denoise = true      # OIDN with albedo + normal guides
-```
 
 #### bake: indirect
 
@@ -217,6 +198,8 @@ coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
 size = [184, 224]
+samples = 4         # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -240,7 +223,7 @@ normal_weight = 1.0
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
-| `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.poses` | `size`, `samples`, `denoise`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
@@ -325,6 +308,14 @@ pixels over. How a fit runs: [Appearance-Fit.md](../offline/Appearance-Fit.md#st
 `size = [width, height]` sets the pose resolution; `train_every_ms` spaces the
 training poses along the camera path, and poses at multiples of
 `held_out_every_ms` are held out and only scored ([Poses](../offline/Appearance-Fit.md#poses)).
+
+`samples` and `denoise` set how the reference renders are traced
+([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)):
+
+| Field | Meaning |
+|---|---|
+| `samples` | Rays per pixel along each side, at least 1: `samples`² primary rays per pixel. |
+| `denoise` | `true` filters each render with Open Image Denoise<sup>[[143]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
 
 #### fit.optimise
 

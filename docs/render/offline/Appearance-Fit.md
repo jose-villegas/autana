@@ -24,6 +24,8 @@ Measured results are in
 | `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
+| `fit.poses.samples` | | reference rays per pixel side |
+| `fit.poses.denoise` | | Open Image Denoise on each reference render |
 | `fit.poses.train_every_ms` | | camera-path spacing of the training poses |
 | `fit.poses.held_out_every_ms` | | which of those poses are held out and only scored |
 | `fit.optimise.steps` | $`K`$ | optimiser steps |
@@ -166,9 +168,12 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 ```
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
-$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
-$[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
-clear colour, as the device and reference do.
+$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
+clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
+shortest start edge from its start (a seam-held point follows its target): the
+fit refines the start in place, and a corner cannot slide across its own face.
+Where nothing is drawn the renderer shows the scene's clear colour, as the
+device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
 import at its writer and is not lit again. A fit is judged on held-out poses by
@@ -260,7 +265,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
@@ -268,6 +273,8 @@ and a learning rate decaying geometrically. It changes the rest:
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
 Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
+The same holds for a point the colour views rarely see: each sporadic gradient moves it a full step, and the
+weak terms that hold it barely pull back, so without the reach it can drift many edge lengths off the source.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can

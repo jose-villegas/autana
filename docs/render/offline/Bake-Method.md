@@ -28,8 +28,8 @@ reference render turns each point's frame about its normal by its own angle,
 hashed from the point's coordinates<sup>[[142]](../../Citations.md#steele-2014)</sup>.
 With one fixed frame, neighbouring pixels on a flat surface trace the same rays
 and share one error, which shows as straight-edged light and dark patches. Turned
-frames leave grain instead, which the scene's
-[`[bake]` `denoise`](../scene/Scene-Files.md#bake-reference-traces) removes.
+frames leave grain instead, which the fit recipe's
+[`denoise`](../scene/Scene-Files.md#fitposes) removes.
 
 ## Local-occlusion implementation
 

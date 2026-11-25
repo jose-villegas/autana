@@ -11,7 +11,7 @@ fit.
 
 | Stage | Where it runs | What dominates | Why |
 |---|---|---|---|
-| Reference set | GPU runner's CPU: Mitsuba LLVM, as mesh bakes trace | the bounced light: Mitsuba's path integrator at every primary hit | one set per reference key |
+| Reference set | GPU runner: Mitsuba CUDA, one process, the pose on the device from camera ray to colour | the bounced light: Mitsuba's path integrator at every primary hit | one set per reference key |
 | Start (mesh bake) | hosted runner, CPU | the camera-path visibility pass: single-threaded NumPy bookkeeping around `RayQuery.hit_rounds`; rays stop at their first drawn hit plus the tie distance | the same pass as every mesh |
 | Fit | GPU (torch, nvdiffrast) | the optimiser steps | already on the GPU |
 | Mesh bake (CI) | hosted runner, CPU | the same Mitsuba and NumPy work, minutes per mesh | not a problem today |
@@ -25,7 +25,7 @@ flowchart LR
     CI["bakes.yml CPU job"] -- "mesh kind, starts too" --> Lock["bakes.lock + release"]
     Lock -- "start bytes" --> Fit
     Inputs["ReferenceInputs"] --> RefKey["reference key"]
-    RefKey --> Ref["render_sets: LLVM"]
+    RefKey --> Ref["render_sets: CUDA"]
     Ref -- "one set per key, runner cache" --> Fit["fit: torch, nvdiffrast"]
     Fit --> Lock
 ```
@@ -34,8 +34,8 @@ flowchart LR
 # r3d/fitted_variant.py: ReferenceInputs (every field a reference set reads), reference_inputs(job, scene)
 # r3d/reference_render.py
 def render_sets(inputs: ReferenceInputs, sets: list[tuple[Path, Path]], samples=4) -> None
-    # loads the source and builds PathLight once on ray_query.VARIANT, "llvm_ad_rgb" (isa-pinned), as mesh
-    # bakes do, renders each (poses file, folder); OptiX builds a different tree each time, so not the GPU
+    # loads the source and builds PathLight once on reference_variant(), "cuda_ad_rgb" on the GPU runner,
+    # renders each (poses file, folder) in this process; a set repeats on one GPU model (README, Reference on the GPU)
 
 # bake/bake.py
 def stage_keys(job, scene, tools, start_sha256=None) -> dict
@@ -67,7 +67,7 @@ workflows already run in.
 | 2 | Reference traced on `ray_query.VARIANT`, as mesh bakes trace | `reference_render.py` and `reference_set.py` are in the reference closure only, so the fits re-key and no mesh does | none: a set repeats byte for byte on one kind of CPU | references are never locked; fits are pinned by bytes, so the change reaches a pack at the next refit |
 | 3 | Visibility pass stops each ray at its first drawn hit plus the tie distance instead of collecting every hit | `mesh_import.py` is in every closure: every mesh, start, reference and fit key changes | identical visible sets, so identical mesh and start bytes (a test asserts the set) | CPU run re-makes meshes with the locked bytes under new keys; a fit re-keys only through the reference closure |
 | 4 | Parallel across cores: `bake.py bake` runs independent bakes as a stage graph, CPU stages beside GPU ones | none | none | none |
-| 5 | Native code only if the profile after steps 2 and 3 shows NumPy dominating: candidates are the reference's per-hit albedo and normals, and the visibility bookkeeping | the stage's closure (C sources count) | must be identical, asserted | as step 3 |
+| 5 | Native code only if the profile after steps 2 and 3 shows NumPy dominating: the candidate is the visibility bookkeeping | the stage's closure (C sources count) | must be identical, asserted | as step 3 |
 
 Not planned: pose-level worker processes. Mitsuba's LLVM backend already spreads one pose over every core,
 and forked workers each held a copy of the scene and ran the machine out of memory (`render_poses`).
