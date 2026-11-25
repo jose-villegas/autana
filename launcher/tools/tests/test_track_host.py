@@ -22,12 +22,30 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from anim import track_host  # noqa: E402
 from bake.bake import digest  # noqa: E402
 from r3d.poses import sample_camera_rows  # noqa: E402
-from anim_probe import has_compiler, write_camera_clip  # noqa: E402
+from anim_probe import build_sampler_once, has_compiler, write_camera_clip  # noqa: E402
 
 
 def read_poses(text):
     lines = text.splitlines()
     return lines[:2], [[float(value) for value in line.split()[1:]] for line in lines[2:] if line.startswith("pose ")]
+
+
+class BuildSamplerOnceTests(unittest.TestCase):
+    def test_the_build_serves_every_later_sample_until_the_file_ends(self):
+        built = pathlib.Path("track_host_program")
+        original = track_host.program
+        with mock.patch.object(track_host, "program", return_value=built) as build:
+            build_sampler_once()
+            self.assertEqual([track_host.program() for _ in range(3)], [built] * 3)
+            self.assertEqual(build.call_count, 1)
+            unittest.case.doModuleCleanups()
+            self.assertIs(track_host.program, build)
+        self.assertIs(track_host.program, original)
+
+    def test_without_a_compiler_program_is_left_as_it_was(self):
+        with mock.patch.object(track_host, "program", side_effect=track_host.TrackHostError("no cc")) as build:
+            build_sampler_once()
+            self.assertIs(track_host.program, build)
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")

@@ -130,8 +130,8 @@ def build_sampler_once():
     """Builds track_host and has track_host.program() return that build until the calling test file ends.
 
     program() asks the compiler for the program's headers on every call to see whether to rebuild, which
-    costs more than the sample it serves; no source changes while a test file runs. Call it from
-    setUpModule. Without a compiler it does nothing, and each sample fails as it would have."""
+    costs more than the sample it serves, and a test file does not change the sources it builds from. Call
+    it from setUpModule. Without a compiler it does nothing."""
     try:
         built = track_host.program()
     except track_host.TrackHostError:

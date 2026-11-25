@@ -27,7 +27,8 @@
 # run is a failure, not something to wave through quietly.
 #
 # Each file's block in the log ends with its slowest tests' seconds
-# (unittest --durations), so a slow file says where its time goes.
+# (unittest --durations, Python 3.12 on), so a slow file says where its time
+# goes.
 #
 # Default output is the verdict and test count. A passing run can emit
 # thousands of characters; the full stream, each file's output in one block
@@ -52,7 +53,7 @@ if [ "${1:-}" = --unit ]; then
     started=$(date +%s)
     case "$2" in
         *.mjs) node --test "$REPO_ROOT/$2" ;;
-        *) "$PYTHON" -u -m unittest discover --durations "$DURATIONS" -s "$REPO_ROOT/$(dirname -- "$2")" -p "$(basename -- "$2")" ;;
+        *) "$PYTHON" -u -m unittest discover ${DURATIONS:+--durations "$DURATIONS"} -s "$REPO_ROOT/$(dirname -- "$2")" -p "$(basename -- "$2")" ;;
     esac >"$out.log" 2>&1 && rc=0 || rc=$?
     # unittest before Python 3.12 passes a file in which it found no test.
     if [ "$rc" -eq 0 ] && grep -aq '^Ran 0 tests' "$out.log"; then
@@ -105,8 +106,10 @@ fi
 # shellcheck source=lib/native_path.sh
 . "$REPO_ROOT/scripts/lib/native_path.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
-# The slowest tests a file's block in the log names.
-DURATIONS=10
+# The slowest tests a file's block in the log names; unittest has
+# --durations from Python 3.12.
+DURATIONS=""
+[ -z "$PYTHON" ] || ! "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 12))' 2>/dev/null || DURATIONS=10
 export PYTHON UNIT_DIR DURATIONS
 
 quiet_begin "$QUIET_LOG"
@@ -141,9 +144,9 @@ mkdir -p "$UNIT_DIR"
 # each compiler they can find (cc, gcc, clang, or $CC) is a same-named copy of
 # ccache in a folder first on PATH, ccache's masquerade, so a translation unit
 # compiled once, in this run or a cached earlier one, is not compiled again.
-# The real compiler's folder follows it, where Windows finds ccache's DLLs
-# too. CCACHE_NOHASHDIR lets two build dirs share an object; a hit's debug
-# info names the first one's folder.
+# The real compiler's folder follows the copies on PATH because on Windows a
+# copy loads ccache's DLLs from there. CCACHE_NOHASHDIR lets two build dirs
+# share an object; a hit's debug info names the first one's folder.
 cache_compilers() {
     ccache=$(command -v ccache) || return 0
     exe=""

@@ -106,7 +106,7 @@ class NightlyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # The six-commit repository every test starts from, made once: each test takes a copy of it,
-        # which costs one tree copy where making it costs two dozen git launches.
+        # which is cheaper than the git launches that make it.
         temp = tempfile.TemporaryDirectory()
         cls.addClassCleanup(temp.cleanup)
         cls.template = Path(temp.name) / "repo"

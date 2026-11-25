@@ -25,9 +25,12 @@ POLL_SECONDS = 0.02
 
 
 def fake_running(call):
-    """Whether the fake that recorded `call` still runs: its pid is alive and began when the fake did, so a
-    later process Windows gave the same pid does not count."""
-    return process_alive(call["pid"]) and process_start(call["pid"]) in (None, call["started"])
+    """Whether the fake that recorded `call` still runs: its pid is alive and, where both starts are known,
+    began when the fake did, so a later process Windows gave the same pid does not count."""
+    if not process_alive(call["pid"]):
+        return False
+    started = process_start(call["pid"])
+    return None in (started, call["started"]) or started == call["started"]
 
 
 def assert_fakes_ended(case, calls):
