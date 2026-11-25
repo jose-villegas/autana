@@ -33,6 +33,14 @@ SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_co
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
+BINDING_MODES = ("world_space", "lock_to_target", "lock_to_target_with_world_up")
+WORLD_UP_TYPES = ("scene_up", "object_up", "object_rotation_up", "vector", "none")
+WORLD_UP_OBJECT_TYPES = frozenset(("object_up", "object_rotation_up"))
+CONSTRAINT_SOURCES_MAX = read_define(SCENE_OWNER.with_name("scene_format.h"), "SCENE_CONSTRAINT_SOURCES_MAX")
+SCENE_FORWARD = (0.0, 0.0, -1.0)
+SCENE_UP = (0.0, 1.0, 0.0)
+ZERO_VECTOR = (0.0, 0.0, 0.0)
+FULL_WEIGHT = 1.0
 
 LIGHT_MODES = ("realtime", "baked")
 LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
@@ -651,13 +659,52 @@ def load_timeline(table, base):
     return clip
 
 
-def load_constraint(table, where):
-    defaults = dict(follow=None, look_at=None, offset=(0.0, 0.0, 0.0), look_offset=(0.0, 0.0, 0.0),
-                    bind="world", lag_ms=0.0, handoff_ms=0.0, weight=1.0)
-    check_keys(table, (), where, optional=defaults)
-    readers = dict(follow=identifier, look_at=identifier, offset=vector, look_offset=vector,
-                   bind=text, lag_ms=number, handoff_ms=number, weight=number)
-    return SimpleNamespace(**(defaults | {key: readers[key](value, f"{where}.{key}") for key, value in table.items()}))
+def constraint_weight(value, where):
+    weight = number(value, where)
+    if not 0 <= weight <= FULL_WEIGHT:
+        raise SettingsError(f"{where} must be in 0..1")
+    return weight
+
+
+def load_constraint(table, where, readers, defaults):
+    check_keys(table, ("sources",), where, optional=(*readers, "weight"))
+    sources = table["sources"]
+    if not isinstance(sources, list) or not 1 <= len(sources) <= CONSTRAINT_SOURCES_MAX:
+        raise SettingsError(f"{where}.sources must have 1..{CONSTRAINT_SOURCES_MAX} entries")
+    parsed = []
+    for index, source in enumerate(sources):
+        spot = f"{where}.sources[{index}]"
+        check_keys(source, ("target",), spot, optional=("weight",))
+        parsed.append(SimpleNamespace(target=text(source["target"], f"{spot}.target"),
+                                      weight=constraint_weight(source.get("weight", FULL_WEIGHT), f"{spot}.weight")))
+    values = {key: reader(table[key], f"{where}.{key}") for key, reader in readers.items() if key in table}
+    return SimpleNamespace(**(defaults | values), sources=parsed,
+                           weight=constraint_weight(table.get("weight", FULL_WEIGHT), f"{where}.weight"))
+
+
+def load_position_constraint(table, where):
+    constraint = load_constraint(table, where, dict(binding_mode=text, translation_offset=vector),
+                                 dict(binding_mode=BINDING_MODES[0], translation_offset=ZERO_VECTOR))
+    if constraint.binding_mode not in BINDING_MODES:
+        raise SettingsError(f"{where}.binding_mode must be one of {', '.join(BINDING_MODES)}")
+    return constraint
+
+
+def load_aim_constraint(table, where):
+    readers = dict(aim_vector=vector, up_vector=vector, world_up_type=text, world_up_vector=vector,
+                   world_up_object=text, rotation_offset=vector)
+    defaults = dict(aim_vector=SCENE_FORWARD, up_vector=SCENE_UP, world_up_type=WORLD_UP_TYPES[0],
+                    world_up_vector=SCENE_UP, world_up_object=None, rotation_offset=ZERO_VECTOR)
+    constraint = load_constraint(table, where, readers, defaults)
+    if constraint.world_up_type not in WORLD_UP_TYPES:
+        raise SettingsError(f"{where}.world_up_type must be one of {', '.join(WORLD_UP_TYPES)}")
+    object_up = constraint.world_up_type in WORLD_UP_OBJECT_TYPES
+    if object_up != (constraint.world_up_object is not None):
+        raise SettingsError(f"{where}.world_up_object is required for object_up and object_rotation_up only")
+    for key in ("aim_vector", "up_vector"):
+        if not any(getattr(constraint, key)):
+            raise SettingsError(f"{where}.{key} must be nonzero")
+    return constraint
 
 
 def load_hinge(table, where):
@@ -738,7 +785,7 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 def load_object(value, base, where):
     check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator",
-                                                       "constraint", "hinge", *COMPONENTS))
+                                                       "position_constraint", "aim_constraint", "hinge", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
@@ -766,7 +813,10 @@ def load_object(value, base, where):
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
         obj.component = load_camera(value[kind], base, spot)
-    obj.constraint = load_constraint(value["constraint"], f"{where}.constraint") if "constraint" in value else None
+    obj.position_constraint = (load_position_constraint(value["position_constraint"], f"{where}.position_constraint")
+                               if "position_constraint" in value else None)
+    obj.aim_constraint = (load_aim_constraint(value["aim_constraint"], f"{where}.aim_constraint")
+                          if "aim_constraint" in value else None)
     obj.hinge = load_hinge(value["hinge"], f"{where}.hinge") if "hinge" in value else None
     obj.animator = None
     if "animator" in value:
