@@ -20,11 +20,16 @@ def write(root, path, text):
     target.write_text(text, encoding="utf-8")
 
 
+def git(root, *args, identity=("t", "t@t"), environment=None):
+    """git in `root` as `identity`, so a commit needs no configured user."""
+    subprocess.run(["git", "-c", f"user.name={identity[0]}", "-c", f"user.email={identity[1]}", *args], cwd=root,
+                   check=True, capture_output=True, env=environment)
+
+
 def commit(root, *paths, message="fixture", identity=("t", "t@t"), environment=None):
-    git = ["git", "-c", f"user.name={identity[0]}", "-c", f"user.email={identity[1]}"]
-    subprocess.run(git + ["init", "-q"], cwd=root, check=True)
-    subprocess.run(git + ["add", *paths], cwd=root, check=True)
-    subprocess.run(git + ["commit", "-qm", message], cwd=root, check=True, env=environment)
+    git(root, "init", "-q", identity=identity)
+    git(root, "add", *paths, identity=identity)
+    git(root, "commit", "-qm", message, identity=identity, environment=environment)
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True,
                           capture_output=True, text=True).stdout.strip()
 

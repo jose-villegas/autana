@@ -95,6 +95,14 @@ class RecordTests(unittest.TestCase):
         with self.assertRaisesRegex(framerec.StreamError, "the format's is"):
             framerec.parse(header() + record("FRAME", struct.pack("<I", 0)))
 
+    def test_a_mesh_lit_per_face_reads_back_with_its_face_colours_where_they_are(self):
+        positions, colours, batch = (1, 10, 100), (1, 11, 200), (2, 12, 300)
+        body = framerec.MESH.pack(3, framerec.MESH_KINDS["STATIC"], True, True, *positions, *colours, *batch,
+                                  *[0.0] * 16)
+        mesh = framerec.decode_mesh(body)
+        self.assertTrue(mesh["faces"])
+        self.assertEqual((mesh["positions"], mesh["colours"], mesh["batch"]), (positions, colours, batch))
+
 
 if __name__ == "__main__":
     unittest.main()

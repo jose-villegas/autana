@@ -10,7 +10,8 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.cards import CARD_EPSILON, CANDIDATE_MIN_SAMPLES, SAMPLES_PER_TRIANGLE
-from r3d.cards.choose import card_from, choose_cards as select_cards, samples, split_cards
+from r3d.cards.choose import card_from, choose_cards as select_cards, probe_weights, samples, split_cards
+from r3d.views.probes import FACE_LENS
 from r3d.cards.bake import bake_card, corner_colours
 from r3d import mesh_bundle, mesh_import
 from r3d.lit_mesh import read_bundle_mesh
@@ -53,7 +54,8 @@ def choose_cards(p, t, **options):
                          options.pop('tri_uv', t), np.zeros(len(t), int),
                          uv=options.pop('uv', p[:, :2] / SIDE + 0.5))
     sampled = samples(sub, rng, options.pop('keep_alpha', 0.5))
-    return split_cards(select_cards(sampled, rng, views=views, query=RayQuery(p, t), **options))[0]
+    weights = probe_weights(sampled[0], views, RayQuery(p, t), FACE_LENS, near_floor=0.)
+    return split_cards(select_cards(sampled, rng, weights=weights, **options))[0]
 
 
 def card_settings(path):
@@ -272,6 +274,27 @@ class CardTests(unittest.TestCase):
             cards = choose_cards(p, t, seed=seed, views=poses)
             self.assertEqual(len(cards), 1)
             self.assertLess(abs(cards[0]['c'][0]), SIDE)
+
+    def test_coverage_counts_what_the_probes_see(self):
+        from r3d.cards import CARD_COVERED_MIN
+        from r3d.cards.emit import make_shape
+        from r3d.mesh_source import load_source
+        from r3d.views.probes import FACE_LENS
+        p, t = quads()
+        # A second grid of the same leaf far beside the first, which no probe sees.
+        p = np.concatenate([p, p + [SIDE * 4, 0, 0]])
+        t = np.concatenate([t, t + len(p) // 2])
+        with tempfile.TemporaryDirectory() as directory:
+            settings = card_settings(leaf_import(pathlib.Path(directory), p, t))
+            src = load_source(settings)
+            leaf = src.names.index('leaf')
+            views = SimpleNamespace(training=[np.array([0, 0, SIDE, 0, 0, -1])], held_out=[], face_lens=FACE_LENS,
+                                    record={'spacing': 0.})
+            query = RayQuery(src.p, src.tri_v, hit_filter=AlphaTest(src, settings.alpha_keep))
+            _, report = make_shape(src, leaf, settings.cards, settings.seed, settings.alpha_keep, views=views,
+                                   query=query)
+        self.assertGreaterEqual(report['covered'], CARD_COVERED_MIN)
+        self.assertLess(report['covered_area'], CARD_COVERED_MIN)
 
     def test_split_masks_keep_parent_texel_size(self):
         from unittest.mock import Mock

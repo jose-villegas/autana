@@ -7,6 +7,7 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_pack.h"
 #include "collections/bits.h"
+#include "collections/bytes_write.h"
 #include "core/memory.h"
 #include "image/pixel/bayer.h"
 #include "image/pixel/rgb565.h"
@@ -67,31 +68,21 @@ cleanup(void) {
     spare = NULL;
 }
 
-static void
-put_u16(uint8_t* at, uint16_t v) {
-    memcpy(at, &v, sizeof v);
-}
-
-static void
-put_u32(uint8_t* at, uint32_t v) {
-    memcpy(at, &v, sizeof v);
-}
-
 /* An 8x8 INDEX4 texture with two mips: texel (x, y) of level 0 holds
  * index (x + y) & 15, each mip the index of its level; colour i is i * 16
  * in every channel, 15 being 1.0 white. */
 static void
 write_ltex(uint8_t* b) {
     memset(b, 0, TEX_BYTES);
-    put_u16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
-    put_u16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
+    bytes_write_u16(b + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    bytes_write_u16(b + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_INDEX4);
     b[R3D_TEXTURE_AT_SIZE_LOG2] = TEX_LOG2;
     b[R3D_TEXTURE_AT_LEVELS] = TEX_LEVELS;
     b[R3D_TEXTURE_AT_TINT] = TINT_GREY;
     b[R3D_TEXTURE_AT_TINT + 1] = TINT_GREY;
     b[R3D_TEXTURE_AT_TINT + 2] = TINT_GREY;
-    put_u32(b + R3D_TEXTURE_AT_PALETTE_OFF, PALETTE_OFF);
-    put_u32(b + R3D_TEXTURE_AT_TEXELS_OFF, TEXELS_OFF);
+    bytes_write_u32(b + R3D_TEXTURE_AT_PALETTE_OFF, PALETTE_OFF);
+    bytes_write_u32(b + R3D_TEXTURE_AT_TEXELS_OFF, TEXELS_OFF);
     for (int i = 0; i < R3D_TEXTURE_COLOURS; i++) {
         const uint8_t level = i == WHITE_INDEX ? R3D_TEXTURE_ONE : (uint8_t)(i * 16);
         memset(b + PALETTE_OFF + (i * R3D_TEXTURE_PALETTE_STRIDE), level, 3);
@@ -448,13 +439,13 @@ mask_entry(int log2, int levels, bool palette_last, uint32_t* size) {
     TEST_ASSERT_NOT_NULL(mask_ltex);
     const uint32_t palette_off = palette_last ? R3D_TEXTURE_HEADER_SIZE + texel_bytes : R3D_TEXTURE_HEADER_SIZE;
     const uint32_t texels_off = palette_last ? R3D_TEXTURE_HEADER_SIZE : R3D_TEXTURE_HEADER_SIZE + MASK_PALETTE_BYTES;
-    put_u16(mask_ltex + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
-    put_u16(mask_ltex + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_MASK1);
+    bytes_write_u16(mask_ltex + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION);
+    bytes_write_u16(mask_ltex + R3D_TEXTURE_AT_FORMAT, R3D_TEXTURE_MASK1);
     mask_ltex[R3D_TEXTURE_AT_SIZE_LOG2] = (uint8_t)log2;
     mask_ltex[R3D_TEXTURE_AT_LEVELS] = (uint8_t)levels;
     memset(mask_ltex + R3D_TEXTURE_AT_TINT, TINT_GREY, R3D_TEXTURE_TINT_RGB);
-    put_u32(mask_ltex + R3D_TEXTURE_AT_PALETTE_OFF, palette_off);
-    put_u32(mask_ltex + R3D_TEXTURE_AT_TEXELS_OFF, texels_off);
+    bytes_write_u32(mask_ltex + R3D_TEXTURE_AT_PALETTE_OFF, palette_off);
+    bytes_write_u32(mask_ltex + R3D_TEXTURE_AT_TEXELS_OFF, texels_off);
     memset(mask_ltex + palette_off + R3D_TEXTURE_PALETTE_STRIDE, R3D_TEXTURE_ONE, R3D_TEXTURE_TINT_RGB);
     return mask_ltex;
 }
@@ -980,16 +971,16 @@ write_luvs(uint8_t* b, const luvs_parts_t* in) {
     const uint32_t code_bytes =
         (in->triangles + R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE - 1U) / R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE;
     memset(b, 0, LUVS_BYTES_MAX);
-    put_u16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
-    put_u16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, in->material_count != 0 ? in->material_count : 1);
-    put_u32(b + R3D_TEXTURE_UVS_AT_VERTEX_COUNT, in->vertices);
-    put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, in->clusters);
-    put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, in->triangles);
-    put_u32(b + R3D_TEXTURE_UVS_AT_UV_COUNT, in->uv_count);
-    put_u32(b + R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_off);
-    put_u32(b + R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_off);
-    put_u32(b + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_off);
-    put_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, triangles_off);
+    bytes_write_u16(b + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
+    bytes_write_u16(b + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, in->material_count != 0 ? in->material_count : 1);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_VERTEX_COUNT, in->vertices);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_CLUSTER_COUNT, in->clusters);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLE_COUNT, in->triangles);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_UV_COUNT, in->uv_count);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_UVS_OFF, uvs_off);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_SHIFTS_OFF, shifts_off);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_CLUSTERS_OFF, clusters_off);
+    bytes_write_u32(b + R3D_TEXTURE_UVS_AT_TRIANGLES_OFF, triangles_off);
     memcpy(b + uvs_off, in->uvs, in->uv_count * UV_PAIR_BYTES);
     memcpy(b + shifts_off, in->shifts, in->clusters * sizeof(int32_t));
     memcpy(b + clusters_off, in->materials, in->clusters * R3D_TEXTURE_CHARTS);
@@ -1294,7 +1285,7 @@ test_luvs_chart_1_uvs_past_the_entrys_are_refused(void) {
     scene_t* s = scene_fixture();
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
-    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t), READ_CHART_OFFSET + 1);
+    bytes_write_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t), READ_CHART_OFFSET + 1);
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "chart 1's UVs one past the entry's");
 }
 
@@ -1302,8 +1293,8 @@ test_luvs_chart_1_uvs_past_the_entrys_are_refused(void) {
  * entry has them. */
 static void
 shift_cluster_1(scene_t* s, int32_t moved) {
-    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t),
-            (uint32_t)(int32_t)(READ_CHART_OFFSET + moved));
+    bytes_write_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF) + sizeof(int32_t),
+                    (uint32_t)(int32_t)(READ_CHART_OFFSET + moved));
 }
 
 static void
@@ -1333,9 +1324,9 @@ test_luvs_one_chart_cluster_opens_with_a_shift_out_of_range(void) {
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
     const int32_t far = 1000;
-    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)far);
+    bytes_write_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)far);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
-    put_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)-far);
+    bytes_write_u32(s->luvs + header_word(s, R3D_TEXTURE_UVS_AT_SHIFTS_OFF), (uint32_t)-far);
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
 }
 
@@ -1445,7 +1436,7 @@ test_luvs_with_fewer_uvs_than_vertices_is_refused(void) {
     const uint32_t size = write_plain_entry(s);
     s->luvs[header_word(s, R3D_TEXTURE_UVS_AT_CLUSTERS_OFF) + R3D_TEXTURE_CHARTS + 1] = R3D_TEXTURE_NONE;
     TEST_ASSERT_EQUAL(ASSET_OK, open_texturing(s, size, &mesh));
-    put_u32(s->luvs + R3D_TEXTURE_UVS_AT_UV_COUNT, READ_VERTICES - 1);
+    bytes_write_u32(s->luvs + R3D_TEXTURE_UVS_AT_UV_COUNT, READ_VERTICES - 1);
     expect_refused(s, size, &mesh, ASSET_ERR_FORMAT, "one UV fewer than vertices");
 }
 
@@ -1454,7 +1445,7 @@ static void
 expect_offset_refused(scene_t* s, uint32_t at, uint32_t value, const char* why) {
     const r3d_lit_mesh_t mesh = read_mesh();
     const uint32_t size = write_read_entry(s);
-    put_u32(s->luvs + at, value);
+    bytes_write_u32(s->luvs + at, value);
     expect_refused(s, size, &mesh, ASSET_ERR_BOUNDS, why);
 }
 
@@ -2404,10 +2395,10 @@ test_set_texture_keeps_divide_px_and_the_bend_in_steps_and_rounds_a_fine_bend_up
                                                           RENDER_TEXTURE_LEVEL_MAX, 0});
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_DIVIDE_PX_MAX, t.texture_divide_px);
     TEST_ASSERT_EQUAL_UINT8(RENDER_TEXTURE_LEVEL_MAX, t.texture_affine_level);
-    TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS), t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    TEST_ASSERT_EQUAL_UINT8((int)(RENDER_TEXTURE_BEND_MAX * RENDER_TEXTURE_BEND_STEPS), t.texture_bend_steps);
+    r3d_span_set_texture(&t, &(render_texture_settings_t){1, 1.0F / (2.0F * RENDER_TEXTURE_BEND_STEPS), 0, 0});
     TEST_ASSERT_EQUAL_UINT8(1, t.texture_bend_steps);
-    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * R3D_SPAN_BEND_STEPS), 0, 0});
+    r3d_span_set_texture(&t, &(render_texture_settings_t){0, 1.0F / (4.0F * RENDER_TEXTURE_BEND_STEPS), 0, 0});
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_bend_steps);
     TEST_ASSERT_EQUAL_UINT8(0, t.texture_divide_px);
     r3d_span_set_texture(&t, &(render_texture_settings_t){.far_level = RENDER_TEXTURE_LEVEL_MAX});
@@ -2679,14 +2670,14 @@ test_a_mesh_cuts_when_its_luvs_names_a_mask1_material(void) {
         TEST_ASSERT_NOT_NULL(base);
         test_pack_t built = test_pack_begin(base, PACK_BYTES, 2);
         uint8_t* uvs = test_pack_add(&built, MESH_ID R3D_TEXTURE_UVS_NAME_SUFFIX, R3D_TEXTURE_UVS_ASSET, uvs_bytes);
-        put_u16(uvs + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
-        put_u16(uvs + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
+        bytes_write_u16(uvs + R3D_TEXTURE_UVS_AT_VERSION, R3D_TEXTURE_UVS_VERSION);
+        bytes_write_u16(uvs + R3D_TEXTURE_UVS_AT_MATERIAL_COUNT, 1);
         const bool cut = material == 1;
         uint8_t* entry = test_pack_add(&built, MESH_ID R3D_TEXTURE_MATERIAL_SUFFIX "0", R3D_TEXTURE_ASSET,
                                        cut ? mask_bytes : TEX_BYTES);
         memcpy(entry, cut ? mask_ltex : ltex, cut ? mask_bytes : TEX_BYTES);
         if (material == 2) {
-            put_u16(entry + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION + 1);
+            bytes_write_u16(entry + R3D_TEXTURE_AT_VERSION, R3D_TEXTURE_VERSION + 1);
         }
         asset_pack_t pack;
         TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(&pack, base, test_pack_finish(&built)));

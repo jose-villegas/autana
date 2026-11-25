@@ -22,6 +22,8 @@ import sys
 import urllib.parse
 
 from tracked import tracked_files
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from markdown_fences import blank_fences  # noqa: E402
 
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")
@@ -36,23 +38,6 @@ def tracked_docs(root):
 
 def tracked_markdown(root):
     return {name for name in tracked_files(root) if name.endswith(".md")}
-
-def blank_fences(lines):
-    """`lines` with the content of each fenced code block, delimiters
-    included, replaced by an empty string. Same length and positions as
-    `lines`, so a line number computed against the result still matches
-    the original file; a shell transcript's own "```"-shaped text can
-    never be mistaken for prose this way either."""
-    fenced = False
-    out = []
-    for line in lines:
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
-            out.append("")
-            continue
-        out.append("" if fenced else line)
-    return out
-
 
 def doc_headings(path):
     """Every heading's raw text in `path`, in document order, duplicates

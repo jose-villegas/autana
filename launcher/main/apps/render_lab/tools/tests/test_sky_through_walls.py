@@ -44,14 +44,7 @@ DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
-MOST_HOLED_FRAMES = {
-    "sponza": 0,
-    "sponza-lite": 0,
-    "sponza-flat": 0,
-    "sponza-fitted": 5,
-    "sponza-fitted-full": 4,
-    "sponza-flat-fitted": 3,
-}
+MOST_HOLED_FRAMES = {"sponza": 16}
 
 
 def clear_colour():

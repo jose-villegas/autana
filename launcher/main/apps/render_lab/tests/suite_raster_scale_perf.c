@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
@@ -418,9 +419,6 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     const resolution_model_t* model, uint16_t* picture, frame_record_t* records) {
     entity_t flown = scene_load(SPONZA_SCENE);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(flown));
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        entity_set_enabled(entity_find(flown, name_hash(sponza_bakes[i])), i == (int)SCENE_BAKED_FULL);
-    }
     const name_hash_t camera_name = name_hash(camera);
     const entity_t flown_camera = entity_find(flown, camera_name);
     TEST_ASSERT_TRUE(camera_activate(entity_find(flown, camera_name)));
@@ -487,7 +485,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {RENDER_LAB_TARGET_MS * MATH_US_PER_MS, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_FRAME_TARGET_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {
@@ -563,10 +561,10 @@ run_raster_scale_perf_suite(void) {
     camera_entity = handle_is_none(scene) ? ENTITY_NONE : entity_find(scene, name_hash(sponza_cameras[0]));
     (void)render_lab_apply_camera_settings(camera_entity);
     if (!handle_is_none(scene)) {
-        const entity_t full = entity_find(scene, name_hash(sponza_bakes[SCENE_BAKED_FULL]));
-        const char* id = handle_is_none(full) ? NULL : renderer_mesh_id(full);
+        const entity_t bake = entity_find(scene, name_hash(baked_sponza.bake));
+        const char* id = handle_is_none(bake) ? NULL : renderer_mesh_id(bake);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
-            ESP_LOGE(TAG, "the scene's full bake did not open");
+            ESP_LOGE(TAG, "the scene's bake did not open");
             scene_release(scene);
             scene = ENTITY_NONE;
         }

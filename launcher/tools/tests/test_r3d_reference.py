@@ -20,8 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
-from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
+from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
 
 
 def write_reference_tree(work, sets=None):
@@ -128,7 +127,7 @@ def plane_source(*quads):
 def sun_scene(direction):
     settings = SimpleNamespace(double_sided=set(), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None))
-    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)])
+    scene = SimpleNamespace(lights=[soup.sun(direction, [1.0, 1.0, 1.0], 1.0)], bake=None)
     return job, scene
 
 
@@ -295,6 +294,85 @@ class PooledReferenceTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs NumPy")
+class PerPointDirectionsTests(unittest.TestCase):
+    def test_a_turned_frame_stays_orthonormal_about_the_normal_and_turns_a_point_alike_in_any_batch(self):
+        from r3d.light import turned_frame
+
+        rng = np.random.default_rng(0)
+        points = rng.uniform(-100.0, 100.0, (64, 3))
+        normals = rng.normal(size=(64, 3))
+        normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+        tu, tv = turned_frame(points, normals)
+        for a, b in ((tu, tu), (tv, tv), (tu, tv), (tu, normals), (tv, normals)):
+            np.testing.assert_allclose((a * b).sum(axis=1), 1.0 if a is b else 0.0, atol=1e-12)
+        alone = [turned_frame(points[i:i + 1], normals[i:i + 1]) for i in (5, 40)]
+        reversed_u, _ = turned_frame(points[::-1], normals[::-1])
+        for i, (u, v) in zip((5, 40), alone):
+            self.assertTrue(np.array_equal(u[0], tu[i]) and np.array_equal(v[0], tv[i]))
+            self.assertTrue(np.array_equal(reversed_u[len(points) - 1 - i], tu[i]))
+
+    def test_neighbouring_points_on_one_plane_turn_apart_where_a_fixed_frame_does_not(self):
+        from r3d.light import fixed_frame, turned_frame
+
+        points = np.array([[x, 0.0, 0.0] for x in np.linspace(0.0, 1e-3, 16)])
+        up = np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        fixed = fixed_frame(points, up)[0]
+        turned = turned_frame(points, up)[0]
+        self.assertTrue(np.all(fixed == fixed[0]))
+        angles = np.arctan2(turned[:, 1], turned[:, 0])
+        self.assertEqual(len(np.unique(angles)), len(points))
+        # Spread over the whole turn, not clustered: every quarter holds some of the angles.
+        quarters = np.floor((angles + np.pi) / (np.pi / 2)).astype(int) % 4
+        self.assertEqual(set(quarters), {0, 1, 2, 3})
+
+    @needs_mitsuba
+    def test_a_trace_turns_every_hemisphere_term_per_point(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.light import turned_frame
+
+        source = plane_source(square())
+        with patch.object(reference_render, "light", wraps=reference_render.light) as lit:
+            trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 0.1, 1)
+        self.assertIs(lit.call_args.kwargs["frame"], turned_frame)
+
+    @needs_mitsuba
+    def test_a_denoised_trace_filters_the_colour_guided_by_the_albedo_and_normal_it_traced(self):
+        from unittest.mock import patch
+        from r3d import reference_render
+
+        source = plane_source(square())
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        plain = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1)
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise), \
+                    patch.object(reference_render, "denoised", side_effect=lambda c, a, n: c + 1.0) as filtered:
+                linear, covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 0.1, 1, denoise)
+                self.assertEqual(filtered.call_count, int(denoise))
+                np.testing.assert_array_equal(linear, plain[0] + float(denoise))
+                np.testing.assert_array_equal(normal, plain[2])
+                if denoise:
+                    colour, albedo, guide = filtered.call_args.args
+                    np.testing.assert_array_equal(colour, plain[0])
+                    np.testing.assert_allclose(albedo, 1.0, atol=1e-12)
+                    np.testing.assert_array_equal(guide, plain[2])
+
+    def test_oidn_takes_the_grain_out_of_a_flat_surface_and_keeps_its_level(self):
+        from r3d.reference_render import denoised
+
+        rng = np.random.default_rng(0)
+        size = 64
+        level = 0.4
+        noisy = level * rng.uniform(0.5, 1.5, (size, size, 3))
+        albedo = np.full((size, size, 3), 0.8)
+        normal = np.tile([0.0, 0.0, 1.0], (size, size, 1))
+        clean = denoised(noisy, albedo, normal)
+        self.assertEqual(clean.dtype, np.float64)
+        self.assertLess(clean.std(), noisy.std() / 4)
+        self.assertAlmostEqual(clean.mean(), noisy.mean(), delta=0.02 * level)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
 class ReferenceSetTests(unittest.TestCase):
     def test_render_sets_writes_the_files_main_writes_for_each_pose_file_with_normals(self):
         import contextlib
@@ -311,7 +389,8 @@ class ReferenceSetTests(unittest.TestCase):
         background = SimpleNamespace(background=0x123456)
         scene.camera = SimpleNamespace(component=background)
         inputs = ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=None,
-                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={})
+                                 tonemap_white=scene.tonemap_white, camera=background, size=(size, size), poses={},
+                                 aa_samples=reference_render.FALLBACK_SAMPLES, denoise=False)
         shifts = ([0.], [.5], [-.5, 1.])
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -348,7 +427,7 @@ class ReferenceSetTests(unittest.TestCase):
 @unittest.skipIf(np is None, "needs NumPy")
 class BounceReferenceTests(unittest.TestCase):
     class Constant:
-        def bounce(self, points, normals, ray_offset):
+        def bounce(self, points, normals, ray_offset, frame):
             return np.full((len(points), 3), 0.25)
 
     @needs_mitsuba
@@ -377,10 +456,52 @@ class BounceReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "leave --workers unset"):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
+    def test_denoised_poses_render_in_this_process_and_refuse_more_workers(self):
+        from unittest.mock import patch
+        from r3d import reference_render as reference
+        source = SimpleNamespace(bounce=None)
+        with patch.object(reference, '_write_pose', side_effect=[(1, 20)] * 3), \
+                patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+            result = reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', denoise=True)
+        executor.assert_not_called()
+        self.assertEqual(result[1], 1)
+        with self.assertRaisesRegex(ValueError, "leave --workers unset"):
+            reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.', workers=2, denoise=True)
 
-def render_one_set(job, **patches):
+    def test_poses_traced_on_cuda_render_in_this_process_and_cpu_poses_keep_the_pool(self):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        from r3d import reference_render as reference
+        for variant, pooled in (("cuda_ad_rgb", False), ("llvm_ad_rgb", True)):
+            source = SimpleNamespace(bounce=None, intersector=SimpleNamespace(variant=variant))
+            with self.subTest(variant=variant), patch.object(reference, '_write_pose', return_value=(1, 20)), \
+                    patch.object(budget, 'task_reservation', return_value=None), \
+                    patch.object(budget, 'available_bytes', return_value=(1 << 60,) * 3), \
+                    patch.object(budget, 'cores_available', return_value=3), \
+                    patch.object(budget, 'worker_capacity', return_value=3), \
+                    patch.object(reference.multiprocessing, 'get_all_start_methods', return_value=['fork']), \
+                    patch.object(reference.multiprocessing, 'get_context'), \
+                    patch.object(reference.concurrent.futures, 'ProcessPoolExecutor') as executor:
+                executor.return_value.__enter__.return_value.map.return_value = [(2, 20)] * 3
+                result = reference.render_poses(source, None, None, [None] * 3, 8, 8, 1., 1, '.')
+            self.assertEqual(executor.called, pooled)
+            self.assertEqual(result[1], 3 if pooled else 1)
+
+
+    def test_a_reference_set_traces_at_its_inputs_samples_and_denoising(self):
+        for denoise in (False, True):
+            with self.subTest(denoise=denoise):
+                render_poses = render_one_set(None, aa_samples=3, denoise=denoise, lit_source={"return_value": object()},
+                                              render_poses={"return_value": (0, 1)})["render_poses"]
+                args, kwargs = render_poses.call_args
+                self.assertEqual((args[7], kwargs["denoise"]), (3, denoise))
+
+
+def render_one_set(job, aa_samples=1, denoise=False, **patches):
     """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
-    patched by its keyword arguments (render_poses returns no work unless given); returns the patches by name."""
+    patched by its keyword arguments (render_poses returns no work unless given), the inputs tracing at `aa_samples`
+    with `denoise`; returns the patches by name."""
     import contextlib
     import io
     import tempfile
@@ -389,7 +510,7 @@ def render_one_set(job, **patches):
     from r3d.fitted_variant import poses_text
 
     patches.setdefault("render_poses", {"return_value": (0, 1)})
-    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None, aa_samples=aa_samples, denoise=denoise)
     with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
         poses = pathlib.Path(directory) / "poses.txt"
         poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
@@ -398,6 +519,168 @@ def render_one_set(job, **patches):
                  for name, kwargs in patches.items()}
         reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
     return mocks
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class PoseStoreTests(unittest.TestCase):
+    """A set traces only the poses its pose store lacks; a pose whose text changes is traced again, alone, in this
+    process or in CUDA workers alike."""
+
+    def render(self, poses_text, cache, out, key="render", workers=1, store=True):
+        """render_sets of one poses file holding `poses_text` with a PoseStore under `key` (none unless `store`), its
+        poses traced here or by `workers` workers; returns the poses traced, each of which told progress once. A
+        traced pose's files hold its pose line, so a set shows which pose each index got."""
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from bake import produce
+        from r3d import reference_render
+
+        traced, told = [], []
+
+        def fake_render(source, job, scene, poses, width, height, lens, samples, target, normals=False, done=None,
+                        denoise=False):
+            for index, pose in enumerate(poses):
+                traced.append(list(pose))
+                for suffix in reference_render.POSE_SUFFIXES:
+                    (target / f"{index:04d}{suffix}").write_text(repr([float(value) for value in pose]))
+                done(index)
+            return 0, 1
+
+        def fake_workers(inputs, plans, done, count):
+            self.assertEqual(count, workers)
+            for plan in plans:
+                _out, target, _folders, _missing, poses, size = plan
+                fake_render(None, None, None, poses, *size, inputs.aa_samples, target, done=lambda index: done(plan, index))
+
+        poses = out.parent / f"{out.name}.txt"
+        poses.write_text(poses_text)
+        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None, aa_samples=1, denoise=False)
+        with patch.object(reference_render, "lit_source", return_value=object()), \
+                patch.object(reference_render, "render_poses", side_effect=fake_render), \
+                patch.object(reference_render, "reference_variant", return_value="cuda_ad_rgb"), \
+                patch.object(reference_render, "gpu_workers", return_value=workers), \
+                patch.object(reference_render, "trace_in_workers", side_effect=fake_workers), \
+                patch.object(produce.keys, "gpu_name", return_value="GPU"), \
+                patch.object(produce.keys, "gpu_driver", return_value="1.0"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            reference_render.render_sets(inputs, [(poses, out)], store=produce.PoseStore(cache, key) if store else None,
+                                         progress=lambda: told.append(1))
+        self.assertEqual(len(told), len(traced), "each traced pose is progress for the stage's guard")
+        return traced
+
+    def test_a_changed_pose_is_traced_again_and_the_rest_come_from_the_store(self):
+        import tempfile
+        from r3d.fitted_variant import poses_text
+        from r3d.reference_render import POSE_SUFFIXES
+
+        for workers in (1, 3):
+            with self.subTest(workers=workers):
+                poses = [[0.0, 0.0, float(z), 0.0, 0.0, -1.0] for z in (1, 2, 3)]
+                with tempfile.TemporaryDirectory() as directory:
+                    root = pathlib.Path(directory)
+                    cache = root / "cache"
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, poses), cache, root / "first", workers=workers), poses)
+                    moved = poses[:1] + [[0.0, 0.0, 9.0, 0.0, 0.0, -1.0]] + poses[2:]
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "second", workers=workers), [moved[1]])
+                    for index, pose in enumerate(moved):
+                        for suffix in POSE_SUFFIXES:
+                            self.assertEqual((root / "second" / f"{index:04d}{suffix}").read_text(), repr(pose))
+                    self.assertFalse((root / "second" / ".tracing").exists())
+                    self.assertEqual(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "third"), [],
+                                     "every pose is held")
+                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "fourth", key="other")),
+                                     3, "another render key traces every pose")
+                    self.assertEqual(len(self.render(poses_text(8, 4, 1.0, 0.01, moved), cache, root / "fifth")), 3,
+                                     "another pose size traces every pose")
+                    self.assertEqual(len(self.render(poses_text(4, 4, 1.0, 0.01, moved), cache, root / "sixth",
+                                                     workers=workers, store=False)), 3,
+                                     "without a store every pose is traced, each telling progress")
+
+
+# A floor and a wall in OBJ: a scene a spawned worker loads from its file.
+WALL_OBJ = """mtllib box.mtl
+v -2 -2 0
+v 2 -2 0
+v 2 2 0
+v -2 2 0
+v 1 -2 0
+v 1 2 0
+v 1 2 2
+v 1 -2 2
+vt 0 0
+usemtl white
+f 1/1 2/1 3/1
+f 1/1 3/1 4/1
+f 5/1 6/1 7/1
+f 5/1 7/1 8/1
+"""
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class WorkerTraceTests(unittest.TestCase):
+    """Poses traced by spawned CUDA workers are the bytes one process writes for them."""
+
+    @needs_mitsuba
+    def test_two_cuda_workers_write_the_files_one_process_writes(self):
+        import contextlib
+        import io
+        import tempfile
+        from unittest.mock import patch
+        from r3d import reference_render
+        from r3d.fitted_variant import poses_text
+        from r3d.reference_set import ReferenceInputs
+
+        if reference_render.reference_variant() != "cuda_ad_rgb":
+            self.skipTest("needs Mitsuba's CUDA variant")
+        if sys.platform != "linux":
+            self.skipTest("CUDA workers trace on Linux only (gpu_workers)")
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "box.obj").write_text(WALL_OBJ)
+            (root / "box.mtl").write_text("newmtl white\nKd 0.8 0.8 0.8\n")
+            settings = SimpleNamespace(source={"path": root / "box.obj"}, path=root / "box.obj", alpha_keep=None,
+                                       double_sided=set(), cards=None, seed=1)
+            inputs = ReferenceInputs(settings=settings, bake=SimpleNamespace(ray_offset=0.01, ao=None, indirect=None),
+                                     lights=[soup.sun([0.3, 0.2, -1.0], [1.0, 1.0, 1.0], 1.0)], indirect=None,
+                                     tonemap_white=2.0, camera=SimpleNamespace(background=0x123456), size=(8, 8),
+                                     poses={}, aa_samples=4, denoise=False)
+            poses = root / "poses.txt"
+            poses.write_text(poses_text(8, 8, 1.0, 0.01, [(LOOK_DOWN + [x, 0.0, 2.0, 0.0, 0.0, 0.0]).tolist()
+                                                         for x in (-0.5, 0.0, 0.5, 1.0)]))
+            for workers in (1, 2):
+                with patch.object(reference_render, "gpu_workers", return_value=workers), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    reference_render.render_sets(inputs, [(poses, root / str(workers))])
+            names = sorted(path.name for path in (root / "1").iterdir())
+            self.assertEqual(len(names), 4 * len(reference_render.POSE_SUFFIXES))
+            self.assertEqual(sorted(path.name for path in (root / "2").iterdir()), names)
+            for name in names:
+                self.assertEqual((root / "1" / name).read_bytes(), (root / "2" / name).read_bytes(), name)
+
+
+class GpuWorkerTests(unittest.TestCase):
+    """CUDA poses go to as many worker processes as host and GPU memory hold; off CUDA to this process."""
+
+    def workers(self, variant, poses, room):
+        from unittest.mock import patch
+        from r3d import process_budget as budget
+        from r3d import reference_render
+        available = tuple(floor + room * cost for floor, cost in zip(budget.FLOORS, budget.REFERENCE_GPU_BYTES))
+        with patch.object(reference_render, "reference_variant", return_value=variant), \
+                patch.object(reference_render.sys, "platform", "linux"), \
+                patch.object(budget, "available_bytes", return_value=available), \
+                patch.object(budget, "cores_available", return_value=32):
+            return reference_render.gpu_workers(poses)
+
+    def test_cuda_takes_the_workers_memory_holds_and_no_more_than_the_poses(self):
+        self.assertEqual(self.workers("cuda_ad_rgb", 100, 3), 3)
+        self.assertEqual(self.workers("cuda_ad_rgb", 2, 3), 2)
+        self.assertEqual(self.workers("cuda_ad_rgb", 100, 0), 1, "one process even without room for a worker")
+
+    def test_off_cuda_or_for_one_pose_this_process_traces(self):
+        self.assertEqual(self.workers("llvm_ad_rgb", 100, 3), 1)
+        self.assertEqual(self.workers("cuda_ad_rgb", 1, 3), 1)
 
 
 @unittest.skipIf(np is None, "needs NumPy")
@@ -425,19 +708,31 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
-    def test_a_set_traces_on_the_bake_variant(self):
-        from r3d import ray_query
+    def test_a_set_traces_its_rays_and_bounced_light_on_the_reference_variant(self):
         from tests.test_r3d_path_bake import corridor
 
         def variant_of(call, at):
             args, kwargs = call
-            given = kwargs.get("variant", args[at] if len(args) > at else None)
-            return given or ray_query.VARIANT
+            return kwargs.get("variant", args[at] if len(args) > at else None)
 
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None, cards=None))
-        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
-        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
-        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
+        mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={},
+                               reference_variant={"return_value": "cuda_ad_rgb"})
+        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), "cuda_ad_rgb")
+        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), "cuda_ad_rgb")
+
+    def test_the_reference_variant_is_the_fastest_this_machine_traces_on_else_the_bake_variant(self):
+        from unittest.mock import patch
+        from r3d import mitsuba_reference, ray_query
+        from r3d import reference_render as reference
+        for found, expected in (("cuda_ad_rgb", "cuda_ad_rgb"), (None, ray_query.VARIANT)):
+            reference.reference_variant.cache_clear()
+            self.addCleanup(reference.reference_variant.cache_clear)
+            with self.subTest(found=found), \
+                    patch.object(mitsuba_reference, "import_mitsuba",
+                                 return_value=found and SimpleNamespace(variant=lambda: None)), \
+                    patch.object(mitsuba_reference, "default_variant", return_value=found):
+                self.assertEqual(reference.reference_variant(), expected)
 
     def test_the_bounced_light_cache_is_dropped_even_when_a_pose_fails(self):
         import contextlib

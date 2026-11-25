@@ -78,6 +78,8 @@ class ReferenceInputs:
     size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
+    aa_samples: int = None        # the scene's [bake] rays per pixel side of a reference render
+    denoise: bool = None          # the scene's [bake]: denoise each reference render
 
     def sets(self):
         return fit_sets(self.camera.path is not None, self.probes is not None)
@@ -97,13 +99,14 @@ def reference_inputs(job, scene):
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes)
+                           probes=job.settings.fit.probes, aa_samples=scene.bake.aa_samples, denoise=scene.bake.denoise)
 
 
-def prepare_references(inputs, work):
+def prepare_references(inputs, work, store=None, progress=None):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
-    has only those) and the references of every training and held-out set with their normals.
+    has only those) and the references of every training and held-out set with their normals, each pose taken
+    from or traced into the pose `store` when given, progress() after each pose traced (reference_render.render_sets).
     Returns the training views."""
     from r3d.mesh_source import camera_path_poses
     from r3d.reference_render import render_sets
@@ -126,7 +129,8 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
+                store=store, progress=progress)
     return count
 
 

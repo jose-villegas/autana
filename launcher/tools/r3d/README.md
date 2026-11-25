@@ -28,7 +28,7 @@ mesh. Nothing here runs on the board.
 | [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
 | [skin_light/](skin_light/report_skin_light.sh) | Skinned-mesh lighting measured on the host, direct N.L against a lookup table: from a skinned glTF, runs the benchmark, draws the sheet and rewrites the document's tables; see [Skinned-Mesh Lighting](../../../docs/render/animation/Skinned-Lighting.md). |
-| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
+| [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
@@ -186,6 +186,36 @@ and `place=stratified|centroid`. Without `--variant` the
 mesh is baked as its import file declares it, byte for byte the tracked bake.
 It prints a table sorted by mean ΔE.
 
+### Material ID differences
+
+Compare a triangle ID capture against the full source from `launcher/`.
+`POSES` must match the capture's camera positions, directions and lens.
+
+```sh
+render_host --scene ID --object OBJECT --view triangles --ids IDS_DIR -o frame.bmp
+$PY tools/render/render_compare.py --material-ids SCENE.scene.toml OBJECT POSES IDS_DIR --out sheet.png
+```
+
+Capture a frame per pose with `--camera-poses POSES`. Add shaded PNGs with `--reference DIR`,
+select the worst N frames with `--views N`, or show up to N crop clusters per view with `--crops N`.
+
+Add any combination of these options. Each can be repeated, and the first
+match in argument order owns the pixel.
+
+| Option | Excluded reference pixels |
+| --- | --- |
+| `--exclude-material GLOB` | Source material name matches the glob. |
+| `--exclude-object GLOB` | Source object name matches the glob. |
+| `--exclude alpha-tested` | Source material is alpha-tested (its texture cuts texels away). |
+| `--exclude thin=T` | Source object's total triangle area divided by its bounding-box diagonal is below `T` in source units. |
+| `--exclude not-drawn` | No triangle in a rest mesh, placed copy or card maps to the source object by nearest source triangle. |
+
+The sheet colours excluded pixels separately. `sheet.csv` counts them by
+reference material, and `sheet.excluded.csv` lists their first selector,
+source object ID and name, material name and pixel count, largest first.
+`sheet.confusions.csv` counts wrong-material pairs. Each CSV begins with
+a comment listing the selectors, as shown in the sheet header.
+
 ## Appearance fit
 
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
@@ -313,30 +343,43 @@ The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
 [Appearance-Fit.md describes the surface term](../../../docs/render/offline/Appearance-Fit.md#surface).
 
-### Reference on the CPU
+### Reference on the GPU
 
-A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
-made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)), and between CPU models of one vendor.
-It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
-triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
-hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
-than the GPU, paid once per reference key: the fits that read a set share it.
+A reference set traces its rays and bounced light on the fastest variant the machine runs
+(`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
+A bake takes `cuda_ad_rgb` only (`produce.REFERENCE_VARIANT`) and fails on any other, so a locked set is always a
+GPU trace; tools that only look at a set may trace one on the CPU.
+A pose's trace is NumPy-bound on the CPU and leaves the GPU mostly idle, so on CUDA spawned worker processes trace
+the poses side by side (`reference_render.gpu_workers`), as many as free host and GPU memory hold at
+`process_budget.REFERENCE_GPU_BYTES` each. Each pose is traced alone with its own seeds, so its files do not depend
+on the worker. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
 
-Since a set differs between CPU models, the bake locks it: the Bakes plan job chooses its poses once,
-its shards render those poses, and the join job packs what the fit reads
+OptiX does not promise the same acceleration structure from the same
+triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>, and a shadow ray grazing an edge hits or
+misses by the build, which the fit would turn into a different mesh. So a set is proven to repeat on the Bakes
+runner's GPU: two traces of one set there make the same bytes. Its bytes differ between GPU models, so its lock row
+names the `gpu`, as a fit's does.
+
+Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by the pose as
+`poses_text` writes it, the `reference_pose` key (the set's recipe without what only picks the poses, so its
+`aa_samples` and `denoise` too, and the code `reference_source`, `pose_state` and `_write_pose` reach) and `produce.trace_machine`: the variant, the GPU and its driver, which a set's
+cache folder names too. A set traces only the poses the store lacks, puts each in as it finishes and links the
+rest, so moving one camera pose re-traces that pose alone. The lock still records the packed set only.
+
+Since a set differs between GPU models, the bake locks it: the Bakes reference job chooses its poses, renders
+them and packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.
 
-The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
+The path-traced backend runs on `cuda_ad_rgb` too where it loads a scene. Under WSL 2 the Windows driver ships only
 an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
-`libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
-profile:
+`libnvidia-gpucomp` and `nvoptix.bin` sit in `~/gpu/optix`, which [optix_env.sh](optix_env.sh) names to the shell
+that traces, never to the shell's profile:
 
 ```sh
-DRJIT_LIBOPTIX_PATH=~/gpu/optix/libnvoptix.so.1 LD_LIBRARY_PATH=~/gpu/optix \
-    sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py
+(. launcher/tools/r3d/optix_env.sh && sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/mitsuba_probe.py)
 ```
 
 The probe renders one Cornell box on `cuda_ad_rgb` or prints why it cannot. Sources: Mitsuba

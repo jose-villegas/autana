@@ -1,5 +1,6 @@
-"""Skips for the r3d tests that trace rays: numpy alone does not bring Mitsuba."""
+"""Runtime dependency checks for r3d tests that trace rays."""
 
+import atexit
 import ctypes
 import sys
 import unittest
@@ -23,8 +24,21 @@ try:
     from r3d import mitsuba_reference
 
     HAVE_MITSUBA = mitsuba_reference.import_mitsuba() is not None
+    # Dr.Jit loads LLVM on its first traced call, often after this import: pin it again at exit, which runs
+    # before Dr.Jit's own exit handler since that one was registered first.
     pin_llvm()
+    atexit.register(pin_llvm)
 except ImportError:
     HAVE_MITSUBA = False
 
+
+def have_llvm():
+    if not HAVE_MITSUBA:
+        return False
+    import drjit as dr
+
+    return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
+
+
 needs_mitsuba = unittest.skipIf(not HAVE_MITSUBA, "needs Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
+needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")

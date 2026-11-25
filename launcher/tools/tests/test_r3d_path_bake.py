@@ -23,18 +23,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import HAVE_MITSUBA, needs_mitsuba  # noqa: E402
-
-
-def have_llvm():
-    if not HAVE_MITSUBA:
-        return False
-    import drjit as dr
-
-    return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
-
-
-needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
+from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
 
 SKY = {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
 
@@ -55,8 +44,15 @@ def bounce_at_the_wall_foot(**kwargs):
     return bounce_at(path_light(**kwargs), [0.5])[0]
 
 
+class SameBytes:
+    """A bake on the variant the test class sets gives the same bytes twice."""
+
+    def test_the_same_scene_gives_the_same_bytes(self):
+        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
+
+
 @needs_mitsuba
-class BounceTests(unittest.TestCase):
+class BounceTests(SameBytes, unittest.TestCase):
     def test_a_floor_beside_a_sunlit_wall_gets_half_the_walls_radiance(self):
         # The wall covers half of the floor point's cosine-weighted hemisphere, and sends back its albedo times the
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
@@ -113,9 +109,6 @@ class BounceTests(unittest.TestCase):
         one, two = bounce_at_the_wall_foot(bounces=1), bounce_at_the_wall_foot(bounces=2)
         self.assertGreater(two[0], one[0])
 
-    def test_the_same_scene_gives_the_same_bytes(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
-
     def test_ambient_is_left_to_the_bake(self):
         ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
         np.testing.assert_array_equal(bounce_at_the_wall_foot(lights=[ambient]), [0.0, 0.0, 0.0])
@@ -161,7 +154,7 @@ class SideBounce:
     def __init__(self, up=(0.0, 0.0, 0.0), down=(0.0, 0.0, 0.0)):
         self.up, self.down, self.calls = np.array(up), np.array(down), []
 
-    def bounce(self, points, normals, ray_offset):
+    def bounce(self, points, normals, ray_offset, frame):
         self.calls.append(normals)
         return np.where(normals[:, 1:2] > 0, self.up, self.down)
 
@@ -236,7 +229,7 @@ class LightPlumbingTests(unittest.TestCase):
 
 @needs_mitsuba
 @needs_llvm
-class LlvmBounceTests(unittest.TestCase):
+class LlvmBounceTests(SameBytes, unittest.TestCase):
     def setUp(self):
         ray_query.VARIANT = "llvm_ad_rgb"
 
@@ -273,9 +266,6 @@ class LlvmBounceTests(unittest.TestCase):
         finally:
             path_bake.BATCH = original
         np.testing.assert_allclose(split, alone, rtol=1e-4)
-
-    def test_the_same_scene_gives_the_same_bytes_on_llvm(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
 
 if __name__ == "__main__":

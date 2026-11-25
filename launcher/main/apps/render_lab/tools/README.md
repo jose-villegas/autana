@@ -37,11 +37,11 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
-bakes, from `variant`), then the rows the showing scene declares in its
-`controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
-index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
-and host scene keys are unchanged.
+`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (the herd's
+sizes, from `variant`), then the rows the showing scene declares in its
+`controls` (Capybara's CLIP and BLEND; TEXTURES on a bake whose pack mesh has textures,
+the setting `render_lab.textures`). Order in `scenes[]` is the order of every list, and
+index 0 (Sponza) is the scene a start with no key shows.
 
 ### Water
 
@@ -441,23 +441,18 @@ apply it every frame, and the perf suites size and compose the same way.
 autana tune render_lab.present 1
 autana suite run_sponza_perf_suite --set render_lab.present=1
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/present
-/tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
+/tmp/present/render_lab_render --scene sponza --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
 ```
 
 Seeded `perf_compare` on one board, eight seeds per side, ms per frame:
 
 | Scene | NEAREST | SCANLINE | Δ |
 |---|---:|---:|---:|
-| sponza fitted-full | 45.4 | 32.9 | −27.7% |
-| sponza full | 43.1 | 31.2 | −27.7% |
-| sponza flat | 32.7 | 25.1 | −23.3% |
-| sponza lite | 34.8 | 24.3 | −30.0% |
-| sponza fitted | 35.2 | 24.8 | −29.5% |
-| sponza flat-fitted | 32.9 | 25.4 | −22.7% |
+| sponza | 45.4 | 32.9 | −27.7% |
 | capybara render (paused) | 6.75 | 3.87 | −42.7% |
 
 A separate scoped A/B on the same day (one flash, two interleaved repeats) timed
-all three modes on sponza fitted-full, in ms:
+all three modes on sponza, in ms:
 
 | Quarter | NEAREST | DOUBLE | SCANLINE |
 |---|---:|---:|---:|
@@ -498,7 +493,7 @@ scene with no lit mesh, an unknown name or no value fails the run.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
 cluster a flat hue, with disjoint IDs across instances.
 
-![The meshlets view: full, lite and fitted](../../../../../docs/images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../../../../docs/images/render/sponza-view-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
@@ -519,7 +514,7 @@ results belong in `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 [Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface):
 
 ```sh
-sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro-fitted-full     launcher/demo/sponza/sponza.scene.toml:sponza-fitted-full launcher/demo/sponza/sponza.scene.toml:sponza-fitted     launcher/demo/sponza/sponza.scene.toml:sponza-flat-fitted launcher/demo/sponza/sponza.scene.toml:sponza     launcher/demo/sponza/sponza.scene.toml:sponza-flat launcher/demo/sponza/sponza.scene.toml:sponza-lite
+sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro     launcher/demo/sponza/sponza.scene.toml:sponza
 ```
 
 The tour is authored as camera keys in `launcher/demo/sponza/tour.keys.toml`;
@@ -542,13 +537,14 @@ its scene by name rather than through the menu:
 | `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms, which the picker then keeps (its current blend when omitted) |
 | `autana render view <name>` | holds the Capybara scene's camera still on a named view: `home`, `front`, `side`, `back`, or `close` (home's angle at the zoom-in limit) |
 | `autana render scenes` | every scene's key and name, and which one is showing |
-| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza` or `bistro` |
 | `sh launcher/main/apps/render_lab/tools/floor_shots.sh [--flash] --out <dir>/shots.txt <scene>@<ms>...` | screenshots each pose at the chosen size and at the dynamic-resolution floor, into `<dir>` |
 | `autana render pose <ms>` | holds the scene's path at that time: a baked scene's camera, or the capybara's gallop; `autana render pose play` lets it move again |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
+| `autana tune render_lab.orbit_zoom <n>` | where the Capybara and Herd scenes' camera starts, in hundredths of the distance that fits the subject from every angle: below 100 starts closer; taken at the next enter or scene switch |
 
 ### Flying the camera
 
@@ -557,7 +553,7 @@ mouse while the board draws it, to look at a scene, a fit or an LOD from
 anywhere:
 
 ```sh
-python launcher/main/apps/render_lab/tools/fly.py --scene sponza-fitted-full
+python launcher/main/apps/render_lab/tools/fly.py --scene sponza
 ```
 
 | Input | Does |
@@ -617,7 +613,7 @@ be checked to have measured the same thing.
 | Image | Shows |
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
+| `render-lab-herd.gif` | the biggest herd (`herd-8`) walking for 12 s, each clip at the pace of its ground speed, as the camera turns a fifth of the way round it from closer than its home view (`render_lab.orbit_zoom`) |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
 
 Run the app shots from the repository root with Python, Pillow and numpy:
@@ -650,7 +646,7 @@ python launcher/tools/anim/track_host.py \
     --every "$pose_every_ms" \
     --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh sponza.atrium -
+        --mesh sponza.atrium_fitted_full -
 ```
 
 ## The capybara asset
@@ -737,13 +733,13 @@ matching reference views.
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
 `SPONZA_PERF_POSE_EVERY_MS`: the showcase bake with culling on and off, and
-the full bake placed by a moving model. Each frame-cost row reports mean,
+the bake placed by a moving model. Each frame-cost row reports mean,
 worst, median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each fitted Sponza scene's camera clip,
-Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
+`run_render_lab_frame_profile_suite` plays Sponza's and Bistro's camera clips
+and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
 After each playback the suite finds its frame peaks: the path is a loop, so

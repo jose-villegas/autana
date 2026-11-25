@@ -278,22 +278,11 @@ class SealCameraTests(unittest.TestCase):
 
     def test_seal_views_add_the_paths_views_at_their_size_and_lens(self):
         views = SimpleNamespace(every_ms=33, size=(8, 6))
-        with mock.patch.object(mesh_import, "camera_path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
+        with mock.patch("r3d.poses.path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
             camera = mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
         self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
-        self.assertIs(sampled.call_args.args[1], views)
-        self.assertEqual(sampled.call_args.kwargs["camera"].path, "the flight")
-
-    def test_a_path_is_read_from_the_scene_camera_of_a_scene_that_lists_no_objects(self):
-        """The reference set's planner samples the path with a scene that carries its camera alone."""
-        from r3d import mesh_source
-
-        component = SimpleNamespace(path=SimpleNamespace(animation="a clip", node="camera"), half_fov_short_tan=0.5, near_z=2.0)
-        scene = SimpleNamespace(camera=SimpleNamespace(component=component))
-        with mock.patch.object(mesh_source, "sample_camera_path", return_value=(8, 6, 0.5, 2.0, ["a pose"])) as sampled:
-            poses = mesh_source.camera_path_poses(scene, SimpleNamespace(every_ms=33, size=(8, 6)), either_way_up=False)
-        self.assertEqual(poses, (8, 6, 0.5, 2.0, ["a pose"]))
-        self.assertEqual(sampled.call_args.args[:2], ("a clip", "camera"))
+        self.assertEqual(sampled.call_args.args[0].path, "the flight")
+        self.assertEqual(sampled.call_args.args[1:], ((8, 6), 33))
 
 
 if __name__ == "__main__":

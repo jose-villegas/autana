@@ -81,11 +81,11 @@ def path_light_for(src, job, scene, variant=None):
     return PATH_LIGHTS[key]
 
 
-def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True, camera=None):
-    """The path of `camera`, the scene camera when None, sampled every `every_ms` (the visibility
+def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
+    """The scene camera's path sampled every `every_ms` (the visibility
     step's own when None) at the step's size, through a square view that
     covers the panel held either way up unless `either_way_up` is False."""
-    camera = camera or scene.camera.component
+    camera = scene.camera.component
     width, height = visibility.size
     poses = sample_camera_path(camera.path.animation, camera.path.node,
                                every_ms or visibility.every_ms, width, height, camera.half_fov_short_tan, camera.near_z)

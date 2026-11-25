@@ -1,9 +1,12 @@
 """Card atlases keep independent masks through packing, mip generation and LUVS encoding."""
+import pathlib
+import sys
 import unittest
 
 import numpy as np
 
-from soup import Soup
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from soup import Soup  # noqa: E402
 from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
 from r3d.mesh_source import with_triangles
@@ -106,9 +109,9 @@ class CardSamplingTests(unittest.TestCase):
             normals = np.tile([0., 0., 1.], (len(points), 1))
             faces = [np.array([0., 0., EYE_Z, 0., 0., -1.])]
             wall = RayQuery(source.p, source.tri_v, "scalar_rgb")
-            np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0), 0)
+            np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0, near_floor=0.), 0)
             cut = RayQuery(source.p, source.tri_v, "scalar_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
-            weight = probe_weights(points, faces, cut, 1.0)
+            weight = probe_weights(points, faces, cut, 1.0, near_floor=0.)
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
 

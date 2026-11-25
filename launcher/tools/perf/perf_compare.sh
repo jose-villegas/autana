@@ -7,6 +7,8 @@
 #   -o, --out DIR            output directory
 #   --send-a LINE           repeatable setup before each A capture (idempotent sequence)
 #   --send-b LINE           repeatable setup before each B capture (idempotent sequence)
+#   --set-a NAME=VALUE     repeatable, echo-checked tunable before each A capture
+#   --set-b NAME=VALUE     repeatable, echo-checked tunable before each B capture
 #   --threshold PCT         equivalence margin
 #   --alpha P               nominal family error rate
 #   --max-seeds N           seed cap per side
@@ -52,7 +54,7 @@ while [ "$remaining" -gt 0 ]; do
             name=$1; tests=$2; table=$3
             shift 3; remaining=$((remaining - 3))
             set -- "$@" --suite "$name" "$tests" "$table" ;;
-        --threshold|--alpha|--max-seeds|--max-minutes|--rng-seed|--timeout|--wait|--autana|--send-a|--send-b)
+        --threshold|--alpha|--max-seeds|--max-minutes|--rng-seed|--timeout|--wait|--autana|--send-a|--send-b|--set-a|--set-b)
             value=${1:?option value required}; shift; remaining=$((remaining - 1))
             case "$arg" in
                 --autana) autana=$value ;;
@@ -61,7 +63,7 @@ while [ "$remaining" -gt 0 ]; do
             set -- "$@" "$arg" "$value" ;;
         --) ;;
         -h|--help)
-            sed -n '3,19s/^# //p' "$0"
+            sed -n '3,21s/^# //p' "$0"
             exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)

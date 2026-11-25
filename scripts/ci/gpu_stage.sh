@@ -1,5 +1,5 @@
 #!/bin/sh
-# A quiet-host stage waits for board work, then holds heavy; any other runs beside it on its CPU share.
+# A quiet-host stage waits for board work, then holds heavy; any other runs beside it on every CPU.
 set -eu
 : "${GPU_WORKFLOW:?GPU_WORKFLOW is required}"
 status=0
