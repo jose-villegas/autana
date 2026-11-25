@@ -18,6 +18,7 @@ flowchart LR
 | [Scene-Loading.md](Scene-Loading.md) | Blocking and async loading, release, what memory a scene holds |
 | [Scene-Frame.md](Scene-Frame.md) | What the shell does with the scenes each frame, and the calls beneath it |
 | [Camera.md](Camera.md) | A scene camera: pose and lens, how a view is built, lens shift, which lens fields animate |
+| [Constraint.md](Constraint.md) | Position and aim sources, weight curves and transform ownership |
 
 The entry's bytes are [SCNE](../../assets/formats/SCNE.md); a first scene, step
 by step, is [Building a Scene](../Building-a-Scene.md).

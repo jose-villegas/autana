@@ -14,8 +14,7 @@ _Static_assert(SCENE_WORLD_SLOT_NONE == 0xFFFFU, "world_slots are cleared with 0
 
 static scene_row_t
 parent_of(const scene_t* scene, scene_row_t entity) {
-    const uint16_t parent = scene->asset.parents[entity];
-    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : (scene_row_t)parent;
+    return scene_asset_parent(&scene->asset, entity);
 }
 
 bool
@@ -228,6 +227,12 @@ scene_row_world(const scene_root_t* root, scene_row_t row) {
     return transformf_compose(&root->local, &world);
 }
 
+transformf_t
+scene_row_parent_world(const scene_root_t* root, scene_row_t row) {
+    const scene_row_t parent = scene_row_parent(root->scene, row);
+    return scene_row_world(root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+}
+
 mat4f_t
 scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
     const transformf_t local = scene_row_local(root, row);
@@ -243,12 +248,11 @@ scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
 
 void
 scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world) {
-    const scene_row_t parent = scene_row_parent(root->scene, row);
     if (row == SCENE_ROW_ROOT) {
         scene_row_set_local(root, row, world);
         return;
     }
-    const transformf_t parent_world = scene_row_world(root, parent == SCENE_ROW_NONE ? SCENE_ROW_ROOT : parent);
+    const transformf_t parent_world = scene_row_parent_world(root, row);
     scene_row_set_local(root, row, transformf_relative(&parent_world, &world));
 }
 

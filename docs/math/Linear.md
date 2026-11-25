@@ -113,6 +113,7 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_dot(a, b)` | four-component dot product | $`a_x b_x + a_y b_y + a_z b_z + a_w b_w`$ |
 | `P_identity()` | the no-rotation quaternion | $`(0,\ 0,\ 0,\ 1)`$ |
 | `P_from_axis_angle(axis, angle)` | rotation of `angle` about unit `axis` | $`u = \mathit{axis}\,\sin\tfrac{\mathit{angle}}{2}`$<br> $`w = \cos\tfrac{\mathit{angle}}{2}`$<br> $`(u_x,\ u_y,\ u_z,\ w)`$ |
 | `P_conjugate(q)` | inverse of a unit rotation | $`(-q_x, -q_y, -q_z, q_w)`$ |
@@ -218,6 +219,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
 | <a id="transform-blend"></a>`transformf_blend(&a, &b, weight)` | float only: linear position and scale, shortest-arc nlerp rotation; the result's cached matrix is cleared, so it is rebuilt on next use | $`w = \min(1, \max(0, \mathit{weight}))`$<br>$`p = (1-w)p_a + w p_b`$<br>$`s = (1-w)s_a + w s_b`$<br>$`q = \mathrm{nlerp}(q_a,q_b,w)`$ |
 | `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
+| `transformf_inverse_point(&frame, point)` | float only, maps a world point into the frame with nonzero scale on each axis | $`p_{\mathrm{local}} = \overline{q}\,(p_{\mathrm{world}} - t) \oslash s`$ |
 | `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
 | `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
 | `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#shepperd-1978)</sup> |

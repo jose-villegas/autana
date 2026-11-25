@@ -75,17 +75,23 @@ transformf_scale_is_even(const transformf_t* t) {
     return most - least <= TRANSFORMF_MATRIX_TOLERANCE * largest;
 }
 
+/* Maps a point into the frame. The scale axes must be nonzero. */
+static inline vec3f_t
+transformf_inverse_point(const transformf_t* frame, vec3f_t point) {
+    const vec3f_t axes = quatf_rotate(quatf_conjugate(frame->rotation), vec3f_sub(point, frame->position));
+    return (vec3f_t){axes.x / frame->scale.x, axes.y / frame->scale.y, axes.z / frame->scale.z};
+}
+
 /* The inverse of transformf_compose: the child that, placed in `parent`,
  * stands at `world`. `parent`'s scale must be even and nonzero. */
 static inline transformf_t
 transformf_relative(const transformf_t* parent, const transformf_t* world) {
     const quatf_t back = quatf_conjugate(parent->rotation);
     const float inverse_scale = 1.0F / parent->scale.x;
-    return (transformf_t){
-        .position = vec3f_scale(quatf_rotate(back, vec3f_sub(world->position, parent->position)), inverse_scale),
-        .rotation = quatf_normalize(quatf_mul(back, world->rotation)),
-        .scale = vec3f_scale(world->scale, inverse_scale),
-        .cached = false};
+    return (transformf_t){.position = transformf_inverse_point(parent, world->position),
+                          .rotation = quatf_normalize(quatf_mul(back, world->rotation)),
+                          .scale = vec3f_scale(world->scale, inverse_scale),
+                          .cached = false};
 }
 
 /* Decomposes affine TRS; refuses shear, reflection, singular or nonfinite matrices. */

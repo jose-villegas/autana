@@ -13,7 +13,7 @@
 #include "math/scalar/mathf.h"
 
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
-MATH_DEFINE_QUAT_NORMALIZE(quatf, vec3f, float, mathf)
+MATH_DEFINE_QUAT_NORMALIZE(quatf, vec3f, float, mathf, quatf_dot)
 
 /* Shortest-arc interpolation, t in 0..1; b is negated when a . b < 0, so q and
  * -q give one path. Nearly parallel inputs take nlerp; the rest Eberly's series

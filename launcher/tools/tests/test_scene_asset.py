@@ -116,6 +116,16 @@ angle = 0.25
         self.assertEqual(packed["aim_constraints"][0]["rotation_offset"][1], -aim["rotation_offset"][1])
         self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
 
+    def test_writer_refuses_invalid_aim_direction_and_offset(self):
+        aim = '[objects.aim_constraint]\nsources = [{target = "camera"}]\n'
+        camera = renderer("a.import.toml") + lens() + aim + 'world_up_type = "vector"\n'
+        for field in ("aim_vector", "up_vector", "world_up_vector"):
+            with self.subTest(field=field), self.assertRaisesRegex((SceneError, SettingsError), field):
+                self.entry(camera + f"{field} = [0, 0, 0]\n")
+        with mock.patch.object(scene_asset.copy_batches, "quaternion", return_value=(0, 0, 0, 2)):
+            with self.assertRaisesRegex(SceneError, "rotation_offset"):
+                self.entry(camera)
+
     def test_decoder_refuses_bad_motion_rows(self):
         head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
         camera = lens() + ('[objects.position_constraint]\nsources = [{target = "camera"}]\n'
@@ -430,6 +440,31 @@ def authored_entry():
 
 
 class SceneEntryRefusalTests(unittest.TestCase):
+    def test_aim_world_up_vector_depends_on_mode(self):
+        for mode in scene_asset.WORLD_UP:
+            ref = 1 if mode in scene_asset.WORLD_UP_OBJECT_TYPES else scene_asset.WORLD_UP_OBJECT_NONE
+            for vector in ((0, 0, 0), (float("nan"), 0, 0)):
+                with self.subTest(mode=mode, vector=vector):
+                    row = (scene_asset.WORLD_UP[mode], 1, 0, ref, 1,
+                           0, 0, 1, 0, 1, 0, *vector, 0, 0, 0, 1)
+                    if mode in ("vector", "object_rotation_up"):
+                        with self.assertRaisesRegex(SceneError, "world_up_vector|nonfinite"):
+                            scene_asset.decode_constraint("aim_constraints", row, 2, 1)
+                    else:
+                        scene_asset.decode_constraint("aim_constraints", row, 2, 1)
+
+    def test_aim_rotation_offset_unit_tolerance(self):
+        tolerance = scene_asset.AIM_ROTATION_TOLERANCE
+        for multiple in (0.5, 2.0):
+            with self.subTest(multiple=multiple):
+                row = (scene_asset.WORLD_UP["vector"], 1, 0, scene_asset.WORLD_UP_OBJECT_NONE, 1,
+                       0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, math.sqrt(1 + multiple * tolerance))
+                if multiple <= 1:
+                    scene_asset.decode_constraint("aim_constraints", row, 2, 1)
+                else:
+                    with self.assertRaisesRegex(SceneError, "rotation_offset must be a unit quaternion"):
+                        scene_asset.decode_constraint("aim_constraints", row, 2, 1)
+
     def test_overlapping_sections_are_refused(self):
         entry = authored_entry()
         count = len(scene_asset.PARTS)

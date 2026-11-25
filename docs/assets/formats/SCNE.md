@@ -397,7 +397,7 @@ title Content: hinges, 28 bytes each from hinges_off
 | Aim constraint | `world_up_type` is `scene_up` (0), `object_up` (1), `object_rotation_up` (2), `vector` (3) or `none` (4). `world_up_object` is an entity row for types 1 and 2 and `SCENE_ASSET_WORLD_UP_OBJECT_NONE` (0xFFFF) otherwise. Aim and up vectors are nonzero. The tool bakes Euler degrees to an x, y, z, w quaternion. |
 | Constraint source | `target` is the hash of a named scene entity. `weight` is finite and in 0..1. |
 | Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
-| Unsupported rows | `scene_load()` rejects a scene with a position or aim constraint as unsupported and names `constraint`. It names `hinge` for a hinge. |
+| Unsupported rows | `scene_load()` reports hinge rows as unsupported and names `hinge`. |
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |
