@@ -27,6 +27,8 @@ from r3d.reference_render import camera_hidden, main
 from r3d.texture import texture_asset as ltex, uv_transfer as luvs
 from r3d.texture.texture_asset import mask_texture, MASK1_MIP_KEPT, MASK1_SIZE_LOG2_MIN, SIZE_LOG2_MAX
 from r3d.views.probes import ProbeViews
+from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 # A probe 10 above the origin looking down -z, and a ray query in which nothing blocks.
@@ -38,9 +40,9 @@ class SharedOwnerTests(unittest.TestCase):
         self.source = NS(p=np.eye(3), tri_v=np.array([[0, 1, 2]]), tri_t=np.array([[0, 1, 2]]),
                          tri_m=np.array([0]), names=['leaf'], textures=[None], uv=np.zeros((3, 2)))
 
+    @needs_llvm
     def test_rgba_samples_opaque_colour_too(self):
-        texture = NS(levels=[np.ones((1, 1, 4))],
-                     sample=lambda uv, lod: np.tile([0.2, 0.3, 0.4, 1.0], (len(uv), 1)))
+        texture = NS(levels=[np.tile([0.2, 0.3, 0.4, 1.0], (1, 1, 1))])
         source = self.source
         source.textures = [texture]
         alpha = AlphaTest(source, 0.5)
@@ -59,11 +61,14 @@ class SharedOwnerTests(unittest.TestCase):
             emit.carded(source, settings, None)
         self.assertEqual(query.call_count, 1)
 
+    @needs_llvm
     def test_camera_filter_combines_hidden_and_alpha(self):
-        source = NS(camera_hidden=np.array([True, False, False]),
-                    alpha_test=NS(tested=np.array([True])))
-        source.alpha_test = type('Alpha', (), {'tested': np.array([True]),
-            '__call__': lambda self, hits, where: hits != 1})()
+        # Triangle 0 is hidden, triangle 1 is on a fully cut texel, triangle 2 is opaque.
+        cut, opaque = (NS(levels=[np.full((1, 1, 4), alpha)]) for alpha in (0.0, 1.0))
+        source = NS(p=np.eye(3), tri_v=np.zeros((3, 3), int) + [0, 1, 2], tri_t=np.zeros((3, 3), int) + [0, 1, 2],
+                    tri_m=np.array([1, 0, 1]), names=['cut', 'opaque'], textures=[cut, opaque], uv=np.zeros((3, 2)),
+                    camera_hidden=np.array([True, False, False]))
+        source.alpha_test = AlphaTest(source, 0.5)
         keep = mesh_source.camera_filter(source)
         np.testing.assert_array_equal(keep(np.arange(3), np.zeros((3, 3))), [False, False, True])
         self.assertIsNone(mesh_source.camera_filter(NS()))
@@ -86,15 +91,16 @@ class SharedOwnerTests(unittest.TestCase):
         self.assertIs(choose.call_args.kwargs['weights'], weigh.return_value)
 
 
+    @needs_llvm
     def test_reference_sets_accept_materials_once(self):
         source = self.source
         job = NS(settings=NS(cards=NS(), alpha_keep=.5))
-        inputs = NS(job=lambda: job, scene=lambda: NS())
+        inputs = NS(job=lambda: job, scene=lambda: NS(), samples=1, denoise=False)
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(reference_render, 'load_source', return_value=source), \
                 patch.object(reference_render, 'RayQuery'), patch.object(reference_render, 'path_light_for'), \
-                patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [])), \
-                patch.object(reference_render, 'render_poses', return_value=(0, 1)) as render, \
+                patch.object(reference_render, 'read_poses', return_value=(1, 1, 1., .01, [[0.] * 6])), \
+                patch.object(reference_render, 'render_poses', return_value=0) as render, \
                 patch.object(emit, 'carded', return_value=([(0, {}, {})], {})) as accepted:
             reference_render.render_sets(inputs, [('one', pathlib.Path(folder)/'one'),
                                                    ('two', pathlib.Path(folder)/'two')])
@@ -139,6 +145,7 @@ class CardContractTests(unittest.TestCase):
         for count in range(5):
             self.assertEqual(bool(mip[divmod(count, 4)]), count >= MASK1_MIP_KEPT)
 
+    @needs_llvm
     def test_probe_weights_visibility_distance_lens_and_accumulation(self):
         points = np.array([[0., 0., 0.], [0., 0., -5.], [12., 0., 0.]])
         weights = probe_weights(points, [PROBE_FACE], CLEAR, 1.0, near_floor=0.)
@@ -155,11 +162,11 @@ class CardContractTests(unittest.TestCase):
         for z, visible in ((0.5, True), (2., False)):
             self.assertEqual(z < VISIBILITY_MARGIN, visible)
             wall = np.array([[-20., -20., z], [20., -20., z], [0., 20., z]])
-            query = RayQuery(wall, np.array([[0, 1, 2]]), 'scalar_rgb')
+            query = RayQuery(wall, np.array([[0, 1, 2]]), 'llvm_ad_rgb')
             weight = probe_weights(points[:1], [PROBE_FACE], query, 1.0, near_floor=0.)
             self.assertEqual(bool(weight[0]), visible)
         surface = RayQuery(np.array([[-20., -20., 0.], [20., -20., 0.], [0., 20., 0.]]),
-                           np.array([[0, 1, 2]]), 'scalar_rgb')
+                           np.array([[0, 1, 2]]), 'llvm_ad_rgb')
         self.assertGreater(probe_weights(points[:1], [PROBE_FACE], surface, 1.0, near_floor=0.)[0], 0)
 
     def test_probe_weight_floor_bounds_a_sample_close_to_the_probe(self):
@@ -182,6 +189,7 @@ class CardContractTests(unittest.TestCase):
         self.assertEqual(len(rects), len(pieces))
         self.assertTrue(pages)
 
+    @needs_llvm
     def test_settings_epsilon_reaches_baked_slab(self):
         p = np.array([[-3., -3., -2.], [3., -3., -2.], [-3., 3., -2.], [3., 3., -2.]])
         t = np.array([[0, 1, 2], [2, 1, 3]])
@@ -190,13 +198,14 @@ class CardContractTests(unittest.TestCase):
         def plane(*args, epsilon, **kwargs):
             return [card_from(np.zeros(3), np.array([0., 0., 1.]), p * [1, 1, 0], epsilon)]
         views = ProbeViews([], [], {'spacing': 1.})
-        with patch.object(emit, 'choose_cards', side_effect=plane), patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+        with patch.object(emit, 'choose_cards', side_effect=plane), patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             for epsilon, kept in ((1., False), (3., True)):
                 shape, report = emit.make_shape(source, 0, NS(epsilon=epsilon, area_cost=0.), 0, .5,
                                                 views=views, query=None)
                 self.assertEqual(shape is not None, kept)
                 self.assertEqual(report['cards'] > 0, kept)
 
+    @needs_llvm
     def test_candidates_count_the_surface_alpha_cuts_not_mean_alpha_per_triangle(self):
         # A quad whose texture is cut in thin stripes: each triangle's mean alpha is at least keep_alpha,
         # so only the samples the alpha test cuts tell a tight-cut leaf from a hedge.

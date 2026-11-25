@@ -24,7 +24,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from r3d import gltf_preview, gltf_skin  # noqa: E402
 from r3d.skin_light import skin_light_data  # noqa: E402
-from device.gfx_color import expand  # noqa: E402
+from device.gfx_color import rgb888_of_rgb565  # noqa: E402
 from docs.figures import save_gif, save_png  # noqa: E402
 
 COLUMNS = 3
@@ -54,10 +54,6 @@ CAPTION = 16
 def heat(t):
     t = min(max(t, 0.0), 1.0)
     return (int(255 * min(1.0, 3 * t)), int(255 * min(1.0, max(0.0, 3 * t - 1))), int(255 * max(0.0, 3 * t - 2)))
-
-
-def unpack(native):
-    return expand((native >> 11) & 0x1F, (native >> 5) & 0x3F, native & 0x1F)
 
 
 def direction_colour(n):
@@ -182,7 +178,7 @@ def read_runs(bench, name, count, frames):
     values = struct.unpack(f"<{len(raw) // 2}H", raw)
     if len(values) != count * frames * len(labels):
         sys.exit(f"{bench}: expected {len(labels)} runs of {frames} frames of {count} colours in {name}.bin")
-    colours = [unpack(v) for v in values]
+    colours = [rgb888_of_rgb565(v) for v in values]
     run = count * frames
     return labels, [[colours[r * run + f * count:r * run + (f + 1) * count] for f in range(frames)]
                     for r in range(len(labels))]

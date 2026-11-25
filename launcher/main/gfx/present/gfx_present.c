@@ -2,9 +2,11 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/capture/gfx_panel_capture.h"
 #include "gfx/present/expand/gfx_quarter_select.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
+#include "gfx/present/gfx_panel.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/send/gfx_full_redraw.h"
 #include "gfx/target/gfx_color.h"
@@ -36,7 +38,7 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
  * places it: clones inherit the attribute; a mapping names only the original.
  * run_present is noinline so flash callers cannot inline its body out of IRAM.
  * Development overlays and send auditing make dev and diag larger.
- * IRAM budget: release 2355 B, dev 2778 B, diag 2778 B */
+ * IRAM budget: release 2345 B, dev 2722 B, diag 2722 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -500,10 +502,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int run_start, int run_end, bool
     (void)refined;
     (void)border;
 #endif
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    dev_bytes_sent += (int64_t)w * h * sizeof(gfx_color_t);
-#endif
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, x0, y0, x1, y1, slot);
+    const esp_err_t err = gfx_panel_send(x0, y0, x1, y1, slot);
     if (err != ESP_OK) {
         note_send_failure(err);
         return;
@@ -521,9 +520,8 @@ send_fb_rows(int y0, int y1) {
     memcpy(slot, present_fb + ((size_t)y0 * GFX_WIDTH), (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
-    dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    const esp_err_t err = gfx_panel_send(0, y0, GFX_WIDTH, y1, slot);
     if (err == ESP_OK) {
         return true;
     }
@@ -557,9 +555,8 @@ send_picture_rows(int y0, int y1) {
     if (strip_overlay_row >= 0) {
         mark_strip_overlay(slot, strip_overlay_row);
     }
-    dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
 #endif
-    const esp_err_t err = esp_lcd_panel_draw_bitmap(panel, 0, y0, GFX_WIDTH, y1, slot);
+    const esp_err_t err = gfx_panel_send(0, y0, GFX_WIDTH, y1, slot);
     if (err == ESP_OK) {
         return true;
     }
@@ -813,11 +810,13 @@ run_present_raw_full(void) {
 
 static void GFX_PRESENT_IRAM_ATTR __attribute__((noinline))
 run_present(void) {
+    gfx_panel_capture_begin();
     if (present_task_mode == PRESENT_TASK_RAW_FULL) {
         run_present_raw_full();
     } else {
         run_present_normal();
     }
+    gfx_panel_capture_commit();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
     if (!present_async_on) {

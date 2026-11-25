@@ -91,6 +91,7 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$SCRIPT_DIR/../anim/camera_poses.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$MAIN_DIR/render/view/r3d_triangle_size.c" \
+    "$LAUNCHER_DIR/packages/math/src/linear/quatf.c" \
     "$MAIN_DIR/asset/asset_pack.c" \
     "$MAIN_DIR/asset/asset_file.c" \
     "$MAIN_DIR/render/render_view.c" \

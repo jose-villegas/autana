@@ -19,13 +19,18 @@ import os
 import copy
 import shutil
 
+RUNTIME_HEAP_FIXTURE = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+
+
+def patch_runtime_heap(test):
+    """read_runtime_heap answers the fixture capture for the rest of `test`."""
+    test.enterContext(patch.object(memory, 'read_runtime_heap',
+                                   return_value=memory.parse_runtime_heap(RUNTIME_HEAP_FIXTURE.read_text())))
+
 
 class MemoryMapTests(unittest.TestCase):
     def setUp(self):
-        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        patch_runtime_heap(self)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -1060,10 +1065,7 @@ print(m.render(builds))
 
 class GateRegressions(unittest.TestCase):
     def setUp(self):
-        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        patch_runtime_heap(self)
 
     def test_compile_source_spellings(self):
         for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):

@@ -24,6 +24,8 @@ Measured results are in
 | `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
+| `fit.poses.samples` | | reference rays per pixel side |
+| `fit.poses.denoise` | | Open Image Denoise on each reference render |
 | `fit.poses.train_every_ms` | | camera-path spacing of the training poses |
 | `fit.poses.held_out_every_ms` | | which of those poses are held out and only scored |
 | `fit.optimise.steps` | $`K`$ | optimiser steps |
@@ -70,26 +72,6 @@ from the fit's frozen-copy draw and copy-coverage gate.
 
 The fitted candidate carries baked colours, with no texture alpha to test.
 The importer's `alpha_mask` triangle drop applies to its drawn geometry.
-
-### How cards compose
-
-The foliage is split in two. Its shadows and bounced light stay on the
-surfaces behind it, and its shape becomes masked cards drawn over them. The four steps at one
-atrium pose, traced from the source with the bake lighting:
-
-| 1. Source, foliage drawn | 2. Foliage light-only | 3. Cards alone | 4. Composite |
-|---|---|---|---|
-| ![The source with its foliage](../../images/render/cards-atrium_fitted_full-source.png) | ![The foliage hidden from the camera](../../images/render/cards-atrium_fitted_full-light-only.png) | ![The cards on the background](../../images/render/cards-atrium_fitted_full-cards.png) | ![The cards over the light-only render](../../images/render/cards-atrium_fitted_full-composite.png) |
-
-| Step | What it shows |
-|---|---|
-| 1 | The alpha-tested source as the bake lights it: the picture the fitted rest and the cards together approximate. |
-| 2 | The camera reference the fit learns from: camera rays pass the carded materials, which still cast shadows and bounce light onto what is behind them. |
-| 3 | The accepted cards alone, cut by their MASK1 pages, in the vertex colours the import bakes into them. |
-| 4 | The cards over step 2 wherever they are nearer. Step 2 stands in for the fitted rest, so this approximates what the fitted rest and the cards draw together. |
-
-[`composition_figures.py`](../../../launcher/tools/r3d/cards/composition_figures.py) traces them on the CPU
-at the panel size (368x448), 2x2 rays per pixel, at 8 s on the Sponza atrium's camera path.
 
 ## Poses
 
@@ -186,9 +168,12 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 ```
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
-$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
-$[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
-clear colour, as the device and reference do.
+$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
+clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
+shortest start edge from its start (a seam-held point follows its target): the
+fit refines the start in place, and a corner cannot slide across its own face.
+Where nothing is drawn the renderer shows the scene's clear colour, as the
+device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
 import at its writer and is not lit again. A fit is judged on held-out poses by
@@ -291,7 +276,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
@@ -299,6 +284,8 @@ and a learning rate decaying geometrically. It changes the rest:
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
 Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
+The same holds for a point the colour views rarely see: each sporadic gradient moves it a full step, and the
+weak terms that hold it barely pull back, so without the reach it can drift many edge lengths off the source.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can

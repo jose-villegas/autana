@@ -8,11 +8,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(TOOLS), str(TOOLS / "render")]
 from r3d.import_settings import MESHLET_TRIANGLES, load_import_settings
 from test_r3d_import import write_import
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 SHIPPED = str(MESHLET_TRIANGLES)  # the fixture captures' shipped row
 
@@ -97,7 +99,8 @@ class MeshletSettingsTests(unittest.TestCase):
         job = scene.renderers[0]
         changed = copy.deepcopy(job)
         changed.settings.meshlet_triangles = job.settings.meshlet_triangles // 2
-        self.assertNotEqual(mesh_recipe(job, scene, {}), mesh_recipe(changed, scene, {}))
+        poses = SimpleNamespace(digest=lambda *args, **kwargs: "poses")
+        self.assertNotEqual(mesh_recipe(job, scene, {}, poses), mesh_recipe(changed, scene, {}, poses))
 
 class MeshletReportTests(unittest.TestCase):
     def test_pose_interval_contracts_and_swapped_rows(self):
@@ -139,6 +142,7 @@ class MeshletReportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "poses"):
                 meshlet_sizes.capture_means(root, "atrium", SHIPPED)
 
+    @needs_llvm
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()

@@ -50,11 +50,14 @@ void console_emit_line(const char* prefix, const char* payload);
 #define CONSOLE_PACKET_HEAD_MAX  48
 #define CONSOLE_PACKET_BYTES_MAX (CONSOLE_PACKET_MAX - CONSOLE_PACKET_HEAD_MAX)
 
-/* Sends `count` raw bytes, at most CONSOLE_PACKET_BYTES_MAX, as one packet:
- * the line "<tag>_BIN <count> <crc32 hex>" then the bytes, composed in
- * `scratch` (CONSOLE_PACKET_MAX bytes) and sent in one driver write, so no
- * other task's output lands inside it. docs/tools/Console-Framing.md. */
-void console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch);
+/* Sends up to CONSOLE_PACKET_BYTES_MAX bytes with a CRC header in one
+ * driver write, so other output cannot split the packet. `scratch` holds
+ * CONSOLE_PACKET_MAX bytes. False on write failure. A bounded write gives
+ * up when USB stops draining. */
+bool console_emit_packet(const char* tag, const void* bytes, size_t count, uint8_t* scratch, bool bounded);
+
+/* A short protocol line with a bounded USB queue wait. */
+void console_emit_line_bounded(const char* line);
 
 /* True once per unclaimed line, `out` filled; false with `out` untouched. */
 bool console_take_unclaimed_line(char* out, size_t out_size);

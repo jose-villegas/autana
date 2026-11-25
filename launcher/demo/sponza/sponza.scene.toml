@@ -30,7 +30,8 @@ color = [1.0, 0.92, 0.78]
 intensity = 3.0
 
 # The scene camera: anywhere in the atrium, on no path. The fits train on
-# probes spread through its region (geometry.probes), so no flight shapes them.
+# probes spread through its region (geometry.probes), so no flight shapes them;
+# only the rest mesh's seal also looks along the flight (seal_views).
 [[objects]]
 name = "visitor"
 
@@ -75,12 +76,15 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+seal_views = { every_ms = 33, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
 size = [184, 224]
+samples = 4         # 4 x 4 rays per pixel (docs/render/scene/Scene-Files.md#fitposes)
+denoise = true      # OIDN with albedo + normal guides
 train_every_ms = 1000
 held_out_every_ms = 5000
 

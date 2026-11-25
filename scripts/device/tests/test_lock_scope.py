@@ -28,6 +28,8 @@ from unittest import mock
 DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 sys.path.insert(0, str(DEVICE.parents[1] / "launcher" / "tools" / "build"))
+sys.path.insert(0, str(DEVICE.parent / "lib"))
+from local_port import free_port  # noqa: E402
 BOARD = "90:70:69:FE:A3:08"
 WINDOWS = os.name == "nt"
 LINUX = sys.platform.startswith("linux")
@@ -191,12 +193,6 @@ HOOK = textwrap.dedent("""
             seen = "held"
         open(sys.argv[2], "w").write(seen)
 """)
-
-
-def free_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 def port_is_free(port):

@@ -79,8 +79,6 @@ The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
 bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
-`doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
-meshlet still; its normal run also writes that image beside the view GIFs.
 Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's fitted renderer.
@@ -218,8 +216,8 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
-bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task,
+bake or reference pose has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
 `GPU_STAGE_HANG_SECONDS`. A dispatch starts at once and keeps the board-lock
 wait; `force` controls freshness independently.
 
@@ -316,21 +314,11 @@ Sweep result records are the resume markers. A worker failure prints its
 traceback, kills the other workers and fails the stage. SIGTERM kills the
 workers too; workers die with their parent.
 
-Reference poses share the loaded source through copy-on-write, and every
-pose's rays are fixed, so a pose renders the same in any worker. A source with
-bounced light renders its poses in the main process, where Mitsuba's threads use
-every core. Standalone reference renders size their pool from available memory.
-An admitted prepare sizes its pool from its own admission estimate
-(`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a smoke prepare). At pool
-creation, live WSL and cgroup memory also cap the worker count, using the
-memory floors while retaining at least one worker. The pool logs the chosen
-worker count, both capacities and the parent's resident size.
-`worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
-The PSS value sums each worker's maximum end-of-pose sample from Linux
-`smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
-copy-on-write pages proportionally. Unavailable PSS samples report zero.
-Bake and visibility sampling are serial. Platforms without fork render
-poses serially.
+Reference poses render one after another in one process: on the GPU a launch
+fills the device, and on the CPU Mitsuba's threads trace one pose on every core.
+`worker reference_poses` reports `pose_peak_pss_bytes`, the process's largest
+end-of-pose PSS sample from Linux `smaps_rollup` (zero where unavailable).
+Bake and visibility sampling are serial.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
@@ -453,7 +441,8 @@ through their recorded views.
 
 Each draw receives a `provider_frame_t`. The optional `frame_count` hook
 sets the default count after provider options. Optional `path_ms` and `seek` hooks
-expose a provider's path duration and camera cuts. The scene-file provider
+expose a provider's path duration and camera cuts; a run with `path_ms` prints
+`RENDER path_ms=<n>` on stderr after setup. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.
@@ -578,9 +567,8 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
                                                      # checks frame count, size and rate agree
 ```
 
-Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
-field's 4 GB, so a run whose video would pass 1 GB is refused before
-anything is drawn, with the frame count
+A RIFF AVI 1.0 file keeps its size in a 32-bit field, so a run whose
+video would pass 4 GB is refused before anything is drawn, with the frame count
 that does fit stated in the refusal; `render_host_video_frames_fit()` gives
 an open run that count, and a run stepped past its `--frames` stops its
 video there with an error. `--video` never changes what a scene's
