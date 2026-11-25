@@ -3,4 +3,5 @@ matplotlib==3.11.2
 mitsuba==3.9.1
 numpy==2.4.6
 pillow==12.3.0
+pyoidn==2.5.1.0
 scipy==1.17.1

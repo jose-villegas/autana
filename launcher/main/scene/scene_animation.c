@@ -18,12 +18,6 @@
 static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COUNT] = {
     SCENE_COMPONENT_LIST(SCENE_COMPONENT_TABLE)};
 
-static void
-attach_component(anim_target_t* targets, anim_component_ref_t* refs, int row, int component, void* base) {
-    refs[row * SCENE_COMPONENT_COUNT + component] = (anim_component_ref_t){SCENE_COMPONENTS[component], base};
-    targets[row].component_count = component + 1;
-}
-
 scene_anim_targets_t
 scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
     const int entities = asset->entity_count;
@@ -48,15 +42,15 @@ scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
     }
     for (int c = 0; c < asset->camera_count; c++) {
         const int e = asset->cameras[c].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_LENS, scene ? &scene->cameras[c].lens : NULL);
+        refs[e * SCENE_COMPONENT_COUNT + SCENE_COMPONENT_LENS] =
+            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_LENS], scene ? &scene->cameras[c].lens : NULL};
+        out.targets[e].component_count = SCENE_COMPONENT_LENS + 1;
     }
     for (int s = 0; s < asset->skinned_renderer_count; s++) {
         const int e = asset->skinned_renderers[s].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_ANIMATOR, NULL);
-    }
-    for (int c = 0; c < asset->constraint_count; c++) {
-        const int e = asset->constraints[c].entity;
-        attach_component(out.targets, refs, e, SCENE_COMPONENT_CNST, scene ? &scene->constraints[c].values : NULL);
+        refs[e * SCENE_COMPONENT_COUNT + SCENE_COMPONENT_ANIMATOR] =
+            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_ANIMATOR], NULL};
+        out.targets[e].component_count = SCENE_COMPONENT_ANIMATOR + 1;
     }
     return out;
 }
@@ -195,25 +189,20 @@ scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t
 }
 
 static bool
-scalar_keys_fit(const anim_track_t* curve, bool (*fits)(float)) {
+lens_keys_fit(const anim_track_t* curve) {
     for (int key = 0; key < curve->count; key++) {
         float value[ANIM_WIDTH_MAX];
         anim_track_sample(curve, curve->times[key], value);
-        if (!fits(value[0])) {
+        if (!lens_value_fits(value[0])) {
             return false;
         }
     }
     return true;
 }
 
-static bool
-weight_fits(float value) {
-    return value >= 0.0F && value <= 1.0F;
-}
-
 scene_failure_t
 scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
-                           const char* clip, int self, scene_field_mask_t* owned, anim_binding_location_t* locations) {
+                           const char* clip, int self, scene_field_mask_t* owned) {
     for (int i = 0; i < tracks->count; i++) {
         anim_binding_t binding;
         (void)anim_tracks_binding_at(tracks, i, &binding);
@@ -221,21 +210,10 @@ scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* t
         if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
-        if (locations != NULL) {
-            locations[i] = location;
-        }
         const scene_field_mask_t bit = scene_field_bit(location.component, location.field);
         const scene_row_t entity = location.target;
-        const bool property_transform = owned != NULL && binding.component == ANIM_COMPONENT_TRANSFORM;
-        if (((binding.component == ANIM_COMPONENT_ANIMATOR || binding.component == ANIM_COMPONENT_CONSTRAINT)
-             && owned != NULL)
-            || (property_transform && scene_constraint_covers(claims->protected_rows, entity))
-            || (binding.component == ANIM_COMPONENT_CAMERA && !scalar_keys_fit(&binding.curve, lens_value_fits))
-            || (binding.component == ANIM_COMPONENT_CONSTRAINT && location.field == CONSTRAINT_FIELD_WEIGHT
-                && !scalar_keys_fit(&binding.curve, weight_fits))
-            || (binding.component == ANIM_COMPONENT_CONSTRAINT
-                && (location.field == CONSTRAINT_FIELD_LAG_MS || location.field == CONSTRAINT_FIELD_HANDOFF_MS)
-                && !scalar_keys_fit(&binding.curve, scene_constraint_duration_fits))
+        if ((binding.component == ANIM_COMPONENT_ANIMATOR && owned != NULL)
+            || (binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
             || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
             return scene_binding_failure(ASSET_ERR_FORMAT, &binding);
         }
@@ -428,7 +406,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
-    scene_constraint_step(scene, scene_timeline_step(scene, dt_ms));
+    scene_timeline_step(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

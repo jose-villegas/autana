@@ -17,7 +17,6 @@ flowchart LR
 | [Scene-Components.md](Scene-Components.md) | The calls an app makes, one module per component |
 | [Scene-Loading.md](Scene-Loading.md) | Blocking and async loading, release, what memory a scene holds |
 | [Scene-Frame.md](Scene-Frame.md) | What the shell does with the scenes each frame, and the calls beneath it |
-| [Constraint.md](Constraint.md) | Follow, look-at, and sampling targets on the timeline |
 | [Camera.md](Camera.md) | A scene camera: pose and lens, how a view is built, lens shift, which lens fields animate |
 
 The entry's bytes are [SCNE](../../assets/formats/SCNE.md); a first scene, step

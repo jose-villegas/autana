@@ -22,6 +22,7 @@ class LocalHookTests(ShellGateTestCase):
         for path in tracked_files(ROOT, ('scripts', 'launcher/tools/build',
                                          'launcher/tools/render/generated_blocks.py',
                                          'launcher/tools/render/doc_tables.py',
+                                         'launcher/tools/render/markdown_fences.py',
                                          'launcher/tools/docs/figure_index.py')):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / path, self.root / path)

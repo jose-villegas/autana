@@ -25,6 +25,9 @@ PREPARE_BYTES = (21 * GIB // 4, 0, 21 * GIB // 4)
 BAKE_BYTES = (17 * GIB // 4, 0, 17 * GIB // 4)
 MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
+# One CUDA reference worker (reference_render.gpu_workers): the source and its bounced light. The largest peaks
+# measured on an RTX 5080 over the repository's fitted scenes: 3.24 GiB RSS and 2.03 GiB GPU.
+REFERENCE_GPU_BYTES = (4 * GIB, 5 * GIB // 2, 4 * GIB)
 GPU_QUERY_FAILURE_SECONDS = 300
 GPU_QUERY_LOG_SECONDS = 60
 _task_reservation = None

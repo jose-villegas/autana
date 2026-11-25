@@ -81,12 +81,6 @@ blend(const anim_track_t* track, int lo, float seconds, float* out) {
 }
 
 SORT_DEFINE_LAST_AT_MOST(float_key_at, float)
-SORT_DEFINE_LAST_AT_MOST(ms_key_at, uint32_t)
-
-int
-anim_track_key_at_ms(const uint32_t* times, int count, uint32_t ms) {
-    return ms_key_at(times, count, ms);
-}
 
 int
 anim_track_key_at(const anim_track_t* track, float seconds) {

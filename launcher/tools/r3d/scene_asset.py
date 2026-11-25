@@ -11,7 +11,8 @@ from asset.asset_pack import NAME_BYTES
 from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
-from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.import_settings import (ANIM_WRAPS, BINDING_MODES, CONSTRAINT_SOURCES_MAX, WORLD_UP_OBJECT_TYPES,
+                                 WORLD_UP_TYPES, SettingsError, color_fits, load_scene, rotation_matrix)
 from r3d import skin_pack
 from r3d.float32 import f32
 from r3d.mesh_asset import checked_struct
@@ -35,7 +36,8 @@ SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/lin
                               "TRANSFORMF_MATRIX_TOLERANCE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings",
-         "parents", "batches", "chunks", "places", "turns", "timeline", "constraints", "hinges")
+         "parents", "batches", "chunks", "places", "turns", "timeline", "position_constraints", "aim_constraints",
+         "sources", "hinges")
 ALIGN = 4
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{-2 * (1 + len(PARTS)) % ALIGN}x{len(PARTS)}I")
 CAMERA = struct.Struct("<HHffI")
@@ -45,7 +47,9 @@ ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 PARENT = struct.Struct("<H")
 BINDS = {name: read_define(OWNER, "SCENE_ASSET_BIND_" + name.upper())
-         for name in ("world", "target", "target_yaw")}
+         for name in BINDING_MODES}
+WORLD_UP = {name: read_define(OWNER, "SCENE_ASSET_WORLD_UP_" + name.upper()) for name in WORLD_UP_TYPES}
+WORLD_UP_OBJECT_NONE = read_define(OWNER, "SCENE_ASSET_WORLD_UP_OBJECT_NONE")
 HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
 
 
@@ -54,16 +58,24 @@ TIMELINE_PAD_BYTES = read_define(OWNER, "SCENE_ASSET_TIMELINE_PAD_BYTES")
 TIMELINE = checked_struct(OWNER, "SCENE_ASSET_TIMELINE",
                           (("CLIP", f"{NAME_BYTES}s"), ("WRAP", "B"), ("PAD", f"{TIMELINE_PAD_BYTES}s")),
                           size_suffix="SIZE")
-CONSTRAINT = checked_struct(OWNER, "SCENE_ASSET_CONSTRAINT",
-                            (("ENTITY", "H"), ("BIND", "B"), ("PAD", "B"), ("FOLLOW", "I"), ("LOOK_AT", "I"),
-                             ("OFFSET", VECTOR), ("LOOK_OFFSET", VECTOR), ("LAG_MS", "f"), ("HANDOFF_MS", "f"),
-                             ("WEIGHT", "f")), size_suffix="SIZE")
+POSITION_CONSTRAINT = checked_struct(
+    OWNER, "SCENE_ASSET_POSITION_CONSTRAINT",
+    (("ENTITY", "H"), ("BINDING_MODE", "B"), ("SOURCE_COUNT", "B"), ("SOURCE_FIRST", "H"), ("PAD", "H"),
+     ("WEIGHT", "f"), ("TRANSLATION_OFFSET", VECTOR)), size_suffix="SIZE")
+AIM_CONSTRAINT = checked_struct(
+    OWNER, "SCENE_ASSET_AIM_CONSTRAINT",
+    (("ENTITY", "H"), ("WORLD_UP_TYPE", "B"), ("SOURCE_COUNT", "B"), ("SOURCE_FIRST", "H"),
+     ("WORLD_UP_OBJECT", "H"), ("WEIGHT", "f"), ("AIM_VECTOR", VECTOR), ("UP_VECTOR", VECTOR),
+     ("WORLD_UP_VECTOR", VECTOR), ("ROTATION_OFFSET", f"{copy_batches.QUATERNION}f")), size_suffix="SIZE")
+CONSTRAINT_SOURCE = checked_struct(OWNER, "SCENE_ASSET_CONSTRAINT_SOURCE", (("TARGET", "I"), ("WEIGHT", "f")),
+                                  size_suffix="SIZE")
 HINGE = checked_struct(OWNER, "SCENE_ASSET_HINGE",
                        (("ENTITY", "H"), ("PAD", "H"), ("AXIS", VECTOR), ("MIN", "f"), ("MAX", "f"), ("ANGLE", "f")),
                        size_suffix="SIZE")
 
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT,
-        copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN, TIMELINE, CONSTRAINT, HINGE)
+        copy_batches.BATCH, copy_batches.CHUNK, copy_batches.PLACE, copy_batches.TURN, TIMELINE,
+        POSITION_CONSTRAINT, AIM_CONSTRAINT, CONSTRAINT_SOURCE, HINGE)
 # A batch's renderer row opens its mesh at this colour set; each copy names its own.
 BATCH_COLOUR_SET = 0
 
@@ -113,9 +125,23 @@ def encode(scene, cache=None, offline=False):
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
-        constraint = getattr(obj, "constraint", None)
-        if constraint is not None:
-            rows["constraints"].append(constraint_row(obj.name, entity, constraint, index))
+        position = getattr(obj, "position_constraint", None)
+        if position is not None:
+            count, first = append_constraint_sources(rows["sources"], position, index, f"{obj.name}.position_constraint")
+            rows["position_constraints"].append((entity, BINDS[position.binding_mode], count, first, 0,
+                                                 position.weight, *position.translation_offset))
+        aim = getattr(obj, "aim_constraint", None)
+        if aim is not None:
+            where = f"{obj.name}.aim_constraint"
+            count, first = append_constraint_sources(rows["sources"], aim, index, where)
+            up_object = WORLD_UP_OBJECT_NONE
+            if aim.world_up_object is not None:
+                if aim.world_up_object not in index:
+                    raise SceneError(f"{where}.world_up_object: unknown object {aim.world_up_object!r}")
+                up_object = index[aim.world_up_object]
+            rotation = copy_batches.quaternion(rotation_matrix(aim.rotation_offset))
+            rows["aim_constraints"].append((entity, WORLD_UP[aim.world_up_type], count, first, up_object,
+                                            aim.weight, *aim.aim_vector, *aim.up_vector, *aim.world_up_vector, *rotation))
         hinge = getattr(obj, "hinge", None)
         if hinge is not None:
             rows["hinges"].append((entity, 0, *hinge.axis, hinge.min, hinge.max, hinge.angle))
@@ -157,17 +183,13 @@ def encode(scene, cache=None, offline=False):
     return entry
 
 
-def constraint_row(name, entity, constraint, index):
-    targets = []
-    for key in ("follow", "look_at"):
-        value = getattr(constraint, key)
-        if value is not None and value not in index:
-            raise SceneError(f"{name}.constraint.{key}: unknown object {value!r}")
-        targets.append(HASH_NONE if value is None else name_hash(value))
-    if constraint.bind not in BINDS:
-        raise SceneError(f"{name}.constraint.bind must be world, target or target_yaw")
-    return (entity, BINDS[constraint.bind], 0, *targets, *constraint.offset, *constraint.look_offset,
-            constraint.lag_ms, constraint.handoff_ms, constraint.weight)
+def append_constraint_sources(rows, constraint, index, where):
+    first = len(rows)
+    for source in constraint.sources:
+        if source.target not in index:
+            raise SceneError(f"{where}.sources.target: unknown object {source.target!r}")
+        rows.append((name_hash(source.target), source.weight))
+    return len(constraint.sources), first
 
 
 def name_rows(objects):
@@ -385,29 +407,47 @@ def decode_motion_rows(rows, out):
             raise SceneError("timeline: invalid wrap")
         out["timeline"].append(dict(clip=text_at(clip, "timeline clip"), wrap=wrap))
     entities = out["entities"]
-    targets = {HASH_NONE, *(row["name_hash"] for row in entities)}
-    for part in ("constraints", "hinges"):
+    targets = {row["name_hash"] for row in entities}
+    for target, weight in rows["sources"]:
+        if target not in targets or not 0 <= weight <= 1:
+            raise SceneError("constraint source: invalid target or weight")
+        out["sources"].append(dict(target=target, weight=weight))
+    for part in ("position_constraints", "aim_constraints", "hinges"):
         seen = set()
         for entity, *row in rows[part]:
             if entity >= len(entities) or entity in seen:
                 raise SceneError(f"{part}: entity out of range or duplicate")
             seen.add(entity)
-            decoded = decode_constraint(row, targets) if part == "constraints" else decode_hinge(row)
+            if part == "hinges":
+                decoded = decode_hinge(row)
+            else:
+                decoded = decode_constraint(part, row, len(entities), len(rows["sources"]))
             out[part].append(dict(entity=entity, **decoded))
 
 
-def decode_constraint(row, targets):
-    bind, pad, follow, look_at, *values = row
-    offset, look_offset = values[:TRANSFORM_AXES], values[TRANSFORM_AXES:2 * TRANSFORM_AXES]
-    lag_ms, handoff_ms, weight = values[2 * TRANSFORM_AXES:]
-    if pad or bind not in BINDS.values() or follow not in targets or look_at not in targets:
-        raise SceneError("constraint: invalid bind, follow, look_at or padding")
-    if not all(map(math.isfinite, (*offset, *look_offset))):
-        raise SceneError("constraint: offset and look_offset must be finite")
-    if not nonnegative(lag_ms) or not nonnegative(handoff_ms) or not 0 <= weight <= 1:
-        raise SceneError("constraint: invalid lag_ms, handoff_ms or weight")
-    return dict(bind=bind, follow=follow, look_at=look_at, offset=tuple(offset), look_offset=tuple(look_offset),
-                lag_ms=lag_ms, handoff_ms=handoff_ms, weight=weight)
+def decode_constraint(part, row, entity_count, total_sources):
+    mode, count, first, reference, weight, *values = row
+    if not 1 <= count <= CONSTRAINT_SOURCES_MAX or first + count > total_sources:
+        raise SceneError(f"{part}: invalid sources range")
+    if not 0 <= weight <= 1 or not all(map(math.isfinite, values)):
+        raise SceneError(f"{part}: invalid weight or nonfinite vector or rotation")
+    fields = dict(source_count=count, source_first=first, weight=weight)
+    if part == "position_constraints":
+        if mode not in BINDS.values() or reference:
+            raise SceneError(f"{part}: invalid binding_mode or padding")
+        return dict(**fields, binding_mode=mode, translation_offset=tuple(values))
+    if mode not in WORLD_UP.values():
+        raise SceneError(f"{part}: invalid world_up_type")
+    object_up = mode in (WORLD_UP[name] for name in WORLD_UP_OBJECT_TYPES)
+    if not (reference < entity_count if object_up else reference == WORLD_UP_OBJECT_NONE):
+        raise SceneError(f"{part}: invalid world_up_object")
+    aim = tuple(values[:TRANSFORM_AXES])
+    up = tuple(values[TRANSFORM_AXES:2 * TRANSFORM_AXES])
+    if not any(aim) or not any(up):
+        raise SceneError(f"{part}: aim_vector and up_vector must be nonzero")
+    return dict(**fields, world_up_type=mode, world_up_object=reference, aim_vector=aim, up_vector=up,
+                world_up_vector=tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES]),
+                rotation_offset=tuple(values[3 * TRANSFORM_AXES:]))
 
 
 def decode_hinge(row):

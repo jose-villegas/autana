@@ -14,7 +14,8 @@ _Static_assert(SCENE_WORLD_SLOT_NONE == 0xFFFFU, "world_slots are cleared with 0
 
 static scene_row_t
 parent_of(const scene_t* scene, scene_row_t entity) {
-    return scene_asset_parent(&scene->asset, entity);
+    const uint16_t parent = scene->asset.parents[entity];
+    return parent == SCENE_ASSET_PARENT_ROOT ? SCENE_ROW_NONE : (scene_row_t)parent;
 }
 
 bool
@@ -190,11 +191,6 @@ scene_row_parent(const scene_t* scene, scene_row_t row) {
 void
 scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
     scene_t* scene = root->scene;
-    const bool watched = scene != NULL && scene->asset.constraint_count != 0;
-    const uint8_t placed = SCENE_FLAG_PLACED | (watched ? SCENE_FLAG_CONSTRAINT_INPUT : 0);
-    if (watched) {
-        scene->constraint_inputs_placed = true;
-    }
     if (row == SCENE_ROW_ROOT) {
         /* The root is every top-level row's parent: the rule below holds for it too. */
         assert(transformf_scale_is_even(&local));
@@ -203,7 +199,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
         root->placed = !scene_transform_is_identity(&root->world);
         for (int e = 0; scene != NULL && e < scene->asset.entity_count; e++) {
             if (parent_of(scene, (scene_row_t)e) == SCENE_ROW_NONE) {
-                scene->flags[e] |= placed;
+                scene->flags[e] |= SCENE_FLAG_PLACED;
             }
         }
         return;
@@ -212,7 +208,7 @@ scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
      * loader and the importer keep content so. */
     assert(scene->world_slots[row] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
     scene->locals[row] = local;
-    scene->flags[row] |= placed;
+    scene->flags[row] |= SCENE_FLAG_PLACED;
 }
 
 transformf_t
@@ -220,37 +216,16 @@ scene_row_local(const scene_root_t* root, scene_row_t row) {
     return row == SCENE_ROW_ROOT ? root->local : root->scene->locals[row];
 }
 
-static transformf_t
-local_at(const scene_t* scene, scene_row_t row, const anim_playhead_t* time) {
-    return time == NULL ? scene->locals[row] : scene_timeline_local_at(scene, row, time, scene->locals[row]);
-}
-
-transformf_t
-scene_row_sample_world(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time) {
-    if (row == SCENE_ROW_ROOT) {
-        return root->local;
-    }
-    transformf_t world = local_at(root->scene, row, time);
-    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
-        const transformf_t parent = local_at(root->scene, e, time);
-        world = transformf_compose(&parent, &world);
-    }
-    return transformf_compose(&root->local, &world);
-}
-
-vec3f_t
-scene_row_sample_point(const scene_root_t* root, scene_row_t row, const anim_playhead_t* time, vec3f_t point) {
-    for (scene_row_t e = row; e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
-        const transformf_t local = local_at(root->scene, e, time);
-        const mat4f_t matrix = transformf_compute_matrix(&local);
-        point = mat4f_apply(&matrix, point);
-    }
-    return root->placed ? mat4f_apply(&root->world, point) : point;
-}
-
 transformf_t
 scene_row_world(const scene_root_t* root, scene_row_t row) {
-    return scene_row_sample_world(root, row, NULL);
+    transformf_t world = scene_row_local(root, row);
+    if (row == SCENE_ROW_ROOT) {
+        return world;
+    }
+    for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
+        world = transformf_compose(&root->scene->locals[e], &world);
+    }
+    return transformf_compose(&root->local, &world);
 }
 
 mat4f_t

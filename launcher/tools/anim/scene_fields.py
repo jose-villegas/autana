@@ -29,20 +29,14 @@ TRANSFORM = read_define(TRACK_FORMAT_HEADER, "ANIM_COMPONENT_TRANSFORM")
 COMPONENT_DEFINITION = r"\banim_component_fields_t\s+\w+\s*="
 COMPONENT_TABLE = re.compile(COMPONENT_DEFINITION + r"\s*\{\s*(\w+)\s*,\s*(\w+)\s*,")
 FIELD_TABLE = re.compile(r"\banim_field_t\s+(\w+)\s*\[\s*\]\s*=\s*\{(.*?)\}", re.DOTALL)
-STEP_ONLY = 1 << 0
-ALLOW_NONE = 1 << 1
-FIELD_MACROS = {
-    "ANIM_FIELD": 0,
-    "ANIM_FIELD_STEP": STEP_ONLY,
-    "ANIM_FIELD_STEP_OPTIONAL_NAME": STEP_ONLY | ALLOW_NONE,
-}
+FIELD_MACROS = {"ANIM_FIELD": False, "ANIM_FIELD_STEP": True}
 FIELD_CALL = r"\b(" + "|".join(FIELD_MACROS) + r")\s*\("
 FIELD_DECL = re.compile(FIELD_CALL + r"\s*\w+\s*,\s*(\w+)\s*,\s*(\w+)\s*\)")
 TRANSFORM_FIELDS = {"position": "translation", "rotation": "rotation", "scale": "scale"}
 
 
 def discover(root=MAIN):
-    """Map (component tag, field name) to (value type, flags) from C."""
+    """Map (component tag, field name) to (value type, step only) from C."""
     tags, sources, field_lists = {}, {}, {}
     for path in sorted(root.rglob("*.[ch]")):
         source = path.read_text(encoding="utf-8")

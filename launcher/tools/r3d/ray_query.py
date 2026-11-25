@@ -6,11 +6,12 @@ hit rounds a caller can retire rays from. `RayQuery` answers them as `first_hit`
 and every triangle is hit from both sides. An optional `hit_filter(triangles, locations)` returns which hits are
 solid; every query method steps past the rest, so a cut-out texel hides nothing behind it.
 
-Every bake traces on the LLVM variant `VARIANT`, reference sets included: Embree builds one tree per mesh, so a bake
-repeats byte for byte, while OptiX promises no such thing (README, "Reference on the CPU"). A mesh bake is NumPy-bound
-on the CPU anyway, and a CUDA context per forked pose worker would cost memory and copies for nothing. Tests set
-`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker forked after a query
-inherits the scene and traces serially on its own thread.
+A query traces on the LLVM variant `VARIANT` unless its caller names another: Embree builds one tree per mesh, so a
+mesh bake repeats byte for byte on one CPU model. A mesh bake is NumPy-bound on the CPU anyway, and a CUDA context per
+forked worker would cost memory and copies for nothing. A reference set names the fastest variant instead, CUDA on a
+GPU (reference_render.reference_variant; README, "Reference on the GPU"). Tests set `VARIANT` to `scalar_rgb`, which
+needs no libLLVM and traces one ray at a time. A worker forked after a query inherits the scene and traces serially
+on its own thread.
 """
 import sys
 

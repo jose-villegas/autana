@@ -55,6 +55,14 @@ def _mirror_turn(rotation, largest):
     return tuple(value * sign for value, sign in zip(rotation, kept))
 
 
+def _mirror_aim_constraint(entity, mode, count, first, up_object, weight, *values):
+    aim = mirror_point(values[:AXIS_COUNT])
+    up = mirror_point(values[AXIS_COUNT:2 * AXIS_COUNT])
+    world_up = mirror_point(values[2 * AXIS_COUNT:3 * AXIS_COUNT])
+    rotation = tuple(value * sign for value, sign in zip(values[3 * AXIS_COUNT:], ROTATION_SIGNS))
+    return (entity, mode, count, first, up_object, weight, *aim, *up, *world_up, *rotation)
+
+
 def _mirror_scene_rows(entry, out, header):
     """Copy placements and motion vectors in the engine frame."""
     parts = scene_asset.PARTS
@@ -64,8 +72,9 @@ def _mirror_scene_rows(entry, out, header):
                           (*mirror_point((centre_x, centre_y, centre_z)), reach)),
                          ("places", lambda x, y, z, colour_set: (*_mirror_position((x, y, z)), colour_set)),
                          ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest)),
-                         ("constraints", lambda e, bind, pad, follow, look, ox, oy, oz, lx, ly, lz, *scalars:
-                          (e, bind, pad, follow, look, *_mirror_point(ox, oy, oz), *_mirror_point(lx, ly, lz), *scalars)),
+                         ("position_constraints", lambda e, mode, count, first, pad, weight, x, y, z:
+                          (e, mode, count, first, pad, weight, *mirror_point((x, y, z)))),
+                         ("aim_constraints", _mirror_aim_constraint),
                          ("hinges", lambda e, pad, x, y, z, *angles:
                           (e, pad, *(value * sign for value, sign in zip((x, y, z), ROTATION_SIGNS)), *angles))):
         row = scene_asset.ROWS[parts.index(part)]

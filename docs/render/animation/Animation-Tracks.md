@@ -217,10 +217,8 @@ keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]
 
 [`scene_fields.py`](../../../launcher/tools/anim/scene_fields.py) reads the
 component tags and field tables from C. A field declared with
-`ANIM_FIELD_STEP` requires `interp = "step"`.
-
-In track form, NAME keys use step interpolation and take strings.
-An empty string (`""`) encodes no name (`NAME_HASH_NONE`).
+`ANIM_FIELD_STEP` requires `interp = "step"`. Name values are authored
+as strings and use step interpolation.
 
 An omitted offset member defaults to zero position or identity rotation.
 

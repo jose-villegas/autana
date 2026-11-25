@@ -246,7 +246,7 @@ def clip_tracks(document, binary, animation):
                 aspect = document["cameras"][camera]["perspective"].get("aspectRatio", 1.0)
                 channel = dict(channel, values=gltf_read.camera_half_fov_short_tan_curve(
                     channel["values"], channel["interpolation"], aspect))
-            step_only = fields[component, field][1] & scene_fields.STEP_ONLY
+            _, step_only = fields[component, field]
             if step_only and channel["interpolation"] != "STEP":
                 raise TracksError(f"{name}: field requires step interpolation")
             if value_type == VALUE_NAME:

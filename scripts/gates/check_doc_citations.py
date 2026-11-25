@@ -39,10 +39,12 @@ import re
 import sys
 
 from c_comments import SOURCE_GLOBS, excluded, scan
-from check_doc_index import blank_fences, doc_headings
+from check_doc_index import doc_headings
 from code_vocabulary import vocabulary
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
 from tracked import tracked_files
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from markdown_fences import blank_fences, fenced_lines  # noqa: E402
 
 INLINE = re.compile(r"`([^`\n]+)`")
 FUNCTION = re.compile(r"^([a-z][a-z0-9_]*)\(\)$")
@@ -112,18 +114,11 @@ def cited_lines(root):
         doc = path.relative_to(root).as_posix()
         if doc.startswith(PLANS):
             continue
-        fenced = False
-        skip = False
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if line.lstrip().startswith("```"):
-                if not fenced:
-                    language = line.lstrip()[3:].strip().lower()
-                    skip = language in SKIP_FENCES
-                    fenced = True
-                else:
-                    fenced = skip = False
-                continue
-            if not skip:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        fenced = fenced_lines(text)
+        for number, line in enumerate(text.splitlines(), 1):
+            fence = fenced.get(number)
+            if not fence or number not in (fence.line, fence.close) and fence.language not in SKIP_FENCES:
                 yield doc, number, line
 
 

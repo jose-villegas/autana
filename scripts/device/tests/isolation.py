@@ -72,6 +72,11 @@ def write_config(project, **settings):
     (Path(project) / "autana.local.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def scratch_root(test):
+    """A fresh folder for `test`, removed when it ends."""
+    return Path(test.enterContext(tempfile.TemporaryDirectory()))
+
+
 @contextlib.contextmanager
 def project(**settings):
     """A fresh project folder holding `settings` as its autana.local.toml (

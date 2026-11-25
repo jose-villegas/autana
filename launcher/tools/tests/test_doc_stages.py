@@ -631,14 +631,17 @@ class KeeperTests(unittest.TestCase):
         return next(folder for folder, made in self.keeper.made.items() if made is future)
 
     def test_a_reference_set_asked_for_twice_is_made_once_in_the_bakes_folder(self):
-        from bake.produce import REFERENCES
-        first = self.keeper.references(self.jobs[0], self.scene)
-        self.assertIs(self.keeper.references(self.jobs[0], self.scene), first)
+        from unittest import mock
+        from bake import produce
+        with mock.patch.object(produce, "trace_machine", return_value=["cuda_ad_rgb", "GPU", "1.0"]):
+            first = self.keeper.references(self.jobs[0], self.scene)
+            self.assertIs(self.keeper.references(self.jobs[0], self.scene), first)
+            folder = produce.reference_folder(self.root / "cache", self.keeper.keys(self.jobs[0], self.scene)["reference"])
         self.assertEqual(len(self.submitted), 1)
         function, (key, *_rest, cache), _options = self.submitted[0]
         self.assertIs(function, stages.kept_references)
         self.assertEqual((key, cache), (self.keeper.keys(self.jobs[0], self.scene)["reference"], self.root / "cache"))
-        self.assertIs(first, self.keeper.made[self.root / "cache" / REFERENCES / key])
+        self.assertIs(first, self.keeper.made[folder])
 
     def test_a_done_folder_is_not_made_again_and_replays_its_steps(self):
         from bake.produce import DONE
