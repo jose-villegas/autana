@@ -22,6 +22,7 @@ from r3d.mesh_source import with_triangles
 from r3d.light import AlphaTest
 from r3d.ray_query import RayQuery
 from tests import soup  # noqa: F401
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 SIDE = CARD_EPSILON * 12
 SEEDS = range(3)
@@ -95,6 +96,7 @@ class CardTests(unittest.TestCase):
         settings = card_settings(leaf_import(pathlib.Path(directory.name), *quads()))
         return settings, load_source(settings)
 
+    @needs_llvm
     def test_alpha_mask_alone_cards_leaf(self):
         from r3d.import_settings import albedo_jobs
         settings, src = self.import_fixture()
@@ -123,6 +125,7 @@ class CardTests(unittest.TestCase):
         self.assertEqual(geometry.mesh_report['scene_total'],
                          len(geometry.tris) + sum(report['triangles'] for report in geometry.mesh_report['cards'].values()))
 
+    @needs_llvm
     def test_fringe_box_is_not_a_candidate(self):
         from r3d.cards.decide import candidates
         settings, src = self.import_fixture()
@@ -139,6 +142,7 @@ class CardTests(unittest.TestCase):
         texture.levels = [pixels]
         self.assertEqual(candidates(src, settings), [])
 
+    @needs_llvm
     def test_low_coverage_stays_geometry(self):
         from r3d.cards import CARD_COVERED_MIN, decide
         from r3d.import_settings import albedo_jobs
@@ -149,6 +153,7 @@ class CardTests(unittest.TestCase):
         self.assertFalse(geometry.shapes)
         self.assertIn(geometry.src.names.index('leaf'), geometry.tri_mat)
 
+    @needs_llvm
     def test_all_geometry_replaced_by_cards_with_simplification(self):
         from r3d.import_settings import albedo_jobs
         settings, src = self.import_fixture()
@@ -165,6 +170,7 @@ class CardTests(unittest.TestCase):
         self.assertTrue(geometry.shapes)
         self.assertTrue(geometry.mesh_report['cards']['leaf']['accepted'])
 
+    @needs_llvm
     def test_never_keeps_passing_leaf(self):
         from r3d.import_settings import albedo_jobs
         settings, _ = self.import_fixture()
@@ -174,6 +180,7 @@ class CardTests(unittest.TestCase):
         self.assertFalse(geometry.shapes)
         self.assertIn(geometry.src.names.index('leaf'), geometry.tri_mat)
 
+    @needs_llvm
     def test_always_overrides_failed_coverage(self):
         from r3d.cards import CARD_COVERED_MIN, decide
         from r3d.import_settings import albedo_jobs
@@ -207,6 +214,7 @@ class CardTests(unittest.TestCase):
         with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
             candidates(src, settings)
 
+    @needs_llvm
     def test_camera_hidden_is_exactly_accepted_materials(self):
         from r3d.cards import CARD_COVERED_MIN, decide
         from r3d.reference_render import camera_hidden
@@ -223,6 +231,7 @@ class CardTests(unittest.TestCase):
         settings.cards.never = ['leaf']
         self.assertFalse(camera_hidden(src, settings).any())
 
+    @needs_llvm
     def test_one_flat_quad_and_crossed_quads(self):
         for seed in SEEDS:
             for crossed in (False, True):
@@ -235,15 +244,15 @@ class CardTests(unittest.TestCase):
                     if crossed:
                         self.assertEqual(set(normals.argmax(axis=1)), {0, 2})
 
+    @needs_llvm
     def test_samples_drop_transparent_uvs_and_keep_triangle_weights(self):
         from r3d.cards.choose import samples
-        from unittest.mock import Mock
         p, t = quads(True)
         uv = p[:, :2] / SIDE + 0.5
-        texture = Mock()
-        texture.levels = [np.zeros((1, 1, 4))]
-        texture.sample.side_effect = lambda uv, lod: np.column_stack([
-            np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+        # Opaque where u >= 0.5: the bilinear alpha crosses 0.5 exactly there.
+        level = np.ones((CHECKER_TEXELS, CHECKER_TEXELS, 4))
+        level[:, :CHECKER_TEXELS // 2, 3] = 0.0
+        texture = SimpleNamespace(levels=[level])
         for seed in SEEDS:
             sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
             points, normals, area = samples(sub, np.random.default_rng(seed), 0.5)
@@ -253,18 +262,17 @@ class CardTests(unittest.TestCase):
             np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1)
             triangle_area = (SIDE / SUBDIVISIONS) ** 2 / 2
             np.testing.assert_allclose(area, triangle_area / SAMPLES_PER_TRIANGLE)
-            texture.sample.side_effect = lambda uv, lod: np.zeros((len(uv), 4))
-            self.assertEqual(choose_cards(p, t, uv=uv, tri_uv=t, texture=texture,
-                                          keep_alpha=0.5, seed=seed), [])
-            texture.sample.side_effect = lambda uv, lod: np.column_stack([
-                np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+            clear = SimpleNamespace(levels=[np.zeros_like(level)])
+            self.assertEqual(choose_cards(p, t, uv=uv, tri_uv=t, texture=clear, keep_alpha=0.5, seed=seed), [])
 
+    @needs_llvm
     def test_area_cost_can_stop_selection(self):
         p, t = quads(True)
         for seed in SEEDS:
             self.assertGreater(len(choose_cards(p, t, area_cost=0, seed=seed)), 0)
             self.assertEqual(choose_cards(p, t, area_cost=100, seed=seed), [])
 
+    @needs_llvm
     def test_probe_weights_unseen_quad_to_zero(self):
         p, t = quads()
         p = np.concatenate([p, p + [SIDE * 4, 0, 0]])
@@ -275,6 +283,7 @@ class CardTests(unittest.TestCase):
             self.assertEqual(len(cards), 1)
             self.assertLess(abs(cards[0]['c'][0]), SIDE)
 
+    @needs_llvm
     def test_coverage_counts_what_the_probes_see(self):
         from r3d.cards import CARD_COVERED_MIN
         from r3d.cards.emit import make_shape
@@ -296,6 +305,7 @@ class CardTests(unittest.TestCase):
         self.assertGreaterEqual(report['covered'], CARD_COVERED_MIN)
         self.assertLess(report['covered_area'], CARD_COVERED_MIN)
 
+    @needs_llvm
     def test_split_masks_keep_parent_texel_size(self):
         from unittest.mock import Mock
         from r3d.cards import CARD_MAX_SIDE
@@ -318,17 +328,19 @@ class CardTests(unittest.TestCase):
             mask = bake_pixels(trimmed, query)[0]
             self.assertEqual(mask.shape, (CARD_MASK_TEXELS // 8,) * 2)
 
+    @needs_llvm
     def test_trimmed_mask_keeps_parent_texel_size(self):
-        from unittest.mock import Mock
         p, t = quads()
         uv = p[:, :2] / SIDE + 0.5
         card = dict(c=np.zeros(3), a=np.eye(3)[0], b=np.eye(3)[1], n=np.eye(3)[2],
                     lo=np.full(2, -SIDE / 2), hi=np.full(2, SIDE / 2), depth=(-CARD_EPSILON, CARD_EPSILON),
                     texel_size=SIDE / CARD_MASK_TEXELS)
-        texture = Mock()
-        texture.levels = [np.zeros((1, 1, 4))]
-        texture.sample.side_effect = lambda uv, lod: np.column_stack([
-            np.ones((len(uv), 3)), ((uv > 0.25) & (uv < 0.75)).all(axis=1).astype(float)])
+        # Opaque where both texture coordinates lie in 0.25..0.75.
+        side = CHECKER_TEXELS
+        level = np.ones((side, side, 4))
+        level[..., 3] = 0.0
+        level[side // 4:3 * side // 4, side // 4:3 * side // 4, 3] = 1.0
+        texture = SimpleNamespace(levels=[level])
         sub = with_triangles(SimpleNamespace(p=p, uv=uv, textures=[texture]), t, t, np.zeros(len(t), int))
         query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
         trimmed, mask, _, _ = bake_card(card, query)
@@ -345,6 +357,7 @@ class CardTests(unittest.TestCase):
             self.assertAlmostEqual(float(np.linalg.norm(axis)), 1.0)
             self.assertAlmostEqual(float(axis @ normal), 0.0)
 
+    @needs_llvm
     def test_a_card_with_no_extent_bakes_to_nothing(self):
         p, t = quads()
         uv = p[:, :2] / SIDE + 0.5
@@ -355,6 +368,7 @@ class CardTests(unittest.TestCase):
             query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
             self.assertIsNone(bake_card(card, query))
 
+    @needs_llvm
     def test_long_card_splits(self):
         from r3d.cards import CARD_MAX_SIDE
         p, t = quads()
@@ -366,6 +380,7 @@ class CardTests(unittest.TestCase):
         self.assertEqual(splits, len(pieces) - 1)
         self.assertTrue(all(max(c['hi'] - c['lo']) <= CARD_MAX_SIDE for c in pieces))
 
+    @needs_llvm
     def test_uniform_texture_and_mask_roundtrip(self):
         from PIL import Image
         p, t = quads()
@@ -385,6 +400,7 @@ class CardTests(unittest.TestCase):
         self.assertTrue(mask.any())
 
 
+    @needs_llvm
     def test_alpha_rejected_front_surface_reveals_back_and_empty_drops(self):
         from PIL import Image
         p, t = quads()
@@ -405,10 +421,11 @@ class CardTests(unittest.TestCase):
             query = RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5))
             baked = bake_card(card, query)
             self.assertIsNotNone(baked)
-            sub.uv = np.tile([0.25, 0.5], (len(p), 1))
-            empty = bake_card(card, query)
+            sub = with_triangles(sub, t, t, sub.tri_m, uv=np.tile([0.25, 0.5], (len(p), 1)))
+            empty = bake_card(card, RayQuery(p, t, hit_filter=AlphaTest(sub, 0.5)))
             self.assertIsNone(empty)
 
+    @needs_llvm
     def test_the_replaced_material_still_casts_light_but_not_visibility(self):
         from unittest import mock
         from r3d.import_settings import load_import_settings, albedo_jobs
@@ -446,6 +463,7 @@ class CardTests(unittest.TestCase):
         self.assertTrue(all(query is geometry.intersector for query in shaded))
         self.assertEqual(geometry.intersector._mock_name, f"query of {built[1]}")
 
+    @needs_llvm
     def test_import_emits_masked_shape_and_atlas(self):
         from PIL import Image
         from r3d.cards.emit import make_shape

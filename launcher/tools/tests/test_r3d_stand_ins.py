@@ -15,6 +15,7 @@ from r3d.meshopt import PERMISSIVE, simplify_with_update
 from r3d.objects import stand_ins
 from r3d.simplify import _shared_passes
 from tests.soup import box, concatenate
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 BUDGET = 24
 WEIGHT = 0.01
@@ -40,7 +41,7 @@ def choose(data, budget=BUDGET, lock=None):
 
 class StandInTests(unittest.TestCase):
     def test_plank_table(self):
-        with patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+        with patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             candidate, rows = choose(table())
         assert candidate.kind == 'plane'
         assert rows[1]['error'] < rows[0]['error']
@@ -90,11 +91,12 @@ class StandInTests(unittest.TestCase):
         assert candidate is not None
 
 
+    @needs_llvm
     def test_self_and_hole_error(self):
         p, c, t, m = table()
         source = stand_ins.StandIn('source', p, c, t, m, None)
         hole = stand_ins.StandIn('hole', p, c, t[12:], m[12:], None)
-        with patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+        with patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             assert stand_ins.view_error(source, source) == 0.
             assert stand_ins.view_error(source, hole) > 0.
 
@@ -107,7 +109,7 @@ class StandInTests(unittest.TestCase):
         owners = np.repeat([0, 1], len(t))
         rule = dict(triangles=BUDGET)
         shapes = []
-        with patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+        with patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             emitted, consumed, rows = _shared_passes(pos, rgb, tris, labels, owners, {0: rule, 1: rule},
                 {0: 'free', 1: 'free'}, [(owners == i, BUDGET) for i in range(2)],
                 np.zeros(len(pos), dtype=bool), 1., PERMISSIVE, None, shapes)

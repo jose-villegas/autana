@@ -140,8 +140,7 @@ bake's heatmap, all on that one scale.
 place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
 camera and poses, and shares exposure, tone map and RGB565 conversion. `bake` is the default backend.
 This backend's variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
-`llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`); only
-the tests are small enough for the scalar one.
+`llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`).
 
 | Option | Meaning |
 |---|---|
@@ -351,10 +350,10 @@ A reference set traces its rays and bounced light on the fastest variant the mac
 (`reference_render.reference_variant`): `cuda_ad_rgb` where Mitsuba loads a scene on the GPU, else `llvm_ad_rgb`.
 A bake takes `cuda_ad_rgb` only (`produce.REFERENCE_VARIANT`) and fails on any other, so a locked set is always a
 GPU trace; tools that only look at a set may trace one on the CPU.
-A pose's trace is NumPy-bound on the CPU and leaves the GPU mostly idle, so on CUDA spawned worker processes trace
-the poses side by side (`reference_render.gpu_workers`), as many as free host and GPU memory hold at
-`process_budget.REFERENCE_GPU_BYTES` each. Each pose is traced alone with its own seeds, so its files do not depend
-on the worker. The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
+A pose stays on the device from its camera rays to each hit's colour and normal (`reference_render.trace`), in
+launches of at most `ray_query.LAUNCH` rays, so the set's poses are traced in one process, one after another.
+Each pose is traced alone with its own seeds, so its files do not depend on what was traced before it.
+The probe faces are chosen and the set is packed on the CPU. Mesh bakes stay on `llvm_ad_rgb`.
 
 OptiX does not promise the same acceleration structure from the same
 triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>, and a shadow ray grazing an edge hits or
@@ -364,9 +363,10 @@ names the `gpu`, as a fit's does.
 
 Each traced pose is kept in the bake cache's `reference-poses` folder (`produce.PoseStore`), keyed by the pose as
 `poses_text` writes it, the `reference_pose` key (the set's recipe without what only picks the poses, so its
-`aa_samples` and `denoise` too, and the code `reference_source`, `pose_state` and `_write_pose` reach) and `produce.trace_machine`: the variant, the GPU and its driver, which a set's
-cache folder names too. A set traces only the poses the store lacks, puts each in as it finishes and links the
-rest, so moving one camera pose re-traces that pose alone. The lock still records the packed set only.
+`samples` and `denoise` too, and the code `reference_source`, `REFERENCE_NORMALS` and `write_pose` reach) and
+`produce.trace_machine`: the variant, the GPU and its driver, which a set's cache folder names too. A set traces
+only the poses the store lacks, puts each in as it finishes and links the rest, so moving one camera pose re-traces
+that pose alone. The lock still records the packed set only.
 
 Since a set differs between GPU models, the bake locks it: the Bakes reference job chooses its poses, renders
 them and packs what the fit reads
