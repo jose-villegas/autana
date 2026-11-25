@@ -439,20 +439,8 @@ max = 1.2
 angle = 0.0
 ```
 
-| Component | Field | Meaning and default |
-|---|---|---|
-| Both constraints | `weight` | Constraint influence, 0..1. Defaults to 1. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Both constraints | `sources` | Ordered list of 1 through `SCENE_CONSTRAINT_SOURCES_MAX` sources. Unity averages their contributions by weight. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
-| Source | `target` | Required name of a scene object. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[148]](../../Citations.md#unity-constraints)</sup> |
-| Source | `weight` | Source influence, 0..1. Defaults to 1. <sup>[[148]](../../Citations.md#unity-constraints)</sup> <sup>[[145]](../../Citations.md#unity-position-constraint-api)</sup> |
-| Position | `translation_offset` | Offset from each source in its binding frame. Defaults to `[0, 0, 0]`. <sup>[[144]](../../Citations.md#unity-position-constraint)</sup> |
-| Position | `binding_mode` | Frame of the offset. Defaults to `world_space`. `lock_to_target` uses the target frame and `lock_to_target_with_world_up` uses its yaw around world up. <sup>[[149]](../../Citations.md#unity-cinemachine-binding)</sup> |
-| Aim | `aim_vector` | Nonzero local direction toward the target. Defaults to authored `[0, 0, -1]`, the camera's forward axis. The pack mirrors it to engine +Z. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Aim | `up_vector` | Nonzero local up direction. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
-| Aim | `world_up_type` | Up reference. Defaults to `scene_up`. Other choices are `object_up`, `object_rotation_up`, `vector` and `none`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `world_up_vector` | Up reference vector. Defaults to `[0, 1, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `world_up_object` | Name of a scene object. Required for `object_up` and `object_rotation_up` and forbidden for the other types. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[147]](../../Citations.md#unity-aim-world-up-type)</sup> |
-| Aim | `rotation_offset` | Euler degrees in the same order as `rotation`. Defaults to `[0, 0, 0]`. <sup>[[146]](../../Citations.md#unity-aim-constraint)</sup> |
+Contributions are averaged by weight. See [Constraint](Constraint.md) for
+field definitions and defaults.
 
 A hinge takes a unit axis and ordered bounds in radians.
 Its starting angle defaults to zero.
@@ -461,10 +449,11 @@ Its starting angle defaults to zero.
 |---|---|
 | `CPOS.weight` | Position constraint influence. |
 | `CAIM.weight` | Aim constraint influence. |
-| `CPOS.weight0` through `CPOS.weight3` | Relative influence of the indexed position source. |
-| `CAIM.weight0` through `CAIM.weight3` | Relative influence of the indexed aim source. |
+| `CPOS.weight0` through `CPOS.weightN-1` | Relative influence of the indexed position source. |
+| `CAIM.weight0` through `CAIM.weightN-1` | Relative influence of the indexed aim source. |
 
-Weights are float curves. A track naming a source index absent from its
+Weights are float curves, where N = `SCENE_CONSTRAINT_SOURCES_MAX`.
+A track naming a source index absent from its
 scene row fails load and reports the field.
 
 ### Light options

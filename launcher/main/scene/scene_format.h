@@ -69,6 +69,7 @@
 #define SCENE_ASSET_HINGE_AT_MIN                              16U
 #define SCENE_ASSET_HINGE_AT_MAX                              20U
 #define SCENE_ASSET_HINGE_AT_ANGLE                            24U
+#define SCENE_ASSET_AIM_ROTATION_TOLERANCE                    0.0001F
 #define SCENE_ASSET_HINGE_AXIS_TOLERANCE                      0.0001F
 
 typedef enum {

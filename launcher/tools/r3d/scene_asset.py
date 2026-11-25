@@ -50,6 +50,7 @@ BINDS = {name: read_define(OWNER, "SCENE_ASSET_BIND_" + name.upper())
          for name in BINDING_MODES}
 WORLD_UP = {name: read_define(OWNER, "SCENE_ASSET_WORLD_UP_" + name.upper()) for name in WORLD_UP_TYPES}
 WORLD_UP_OBJECT_NONE = read_define(OWNER, "SCENE_ASSET_WORLD_UP_OBJECT_NONE")
+AIM_ROTATION_TOLERANCE = read_define(OWNER, "SCENE_ASSET_AIM_ROTATION_TOLERANCE")
 HINGE_AXIS_TOLERANCE = read_define(OWNER, "SCENE_ASSET_HINGE_AXIS_TOLERANCE")
 
 
@@ -443,11 +444,18 @@ def decode_constraint(part, row, entity_count, total_sources):
         raise SceneError(f"{part}: invalid world_up_object")
     aim = tuple(values[:TRANSFORM_AXES])
     up = tuple(values[TRANSFORM_AXES:2 * TRANSFORM_AXES])
-    if not any(aim) or not any(up):
-        raise SceneError(f"{part}: aim_vector and up_vector must be nonzero")
+    world_up = tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES])
+    rotation = tuple(values[3 * TRANSFORM_AXES:])
+    for field, direction in (("aim_vector", aim), ("up_vector", up), ("world_up_vector", world_up)):
+        if not any(direction):
+            raise SceneError(f"{part}: {field} must be nonzero")
+    length_squared = 0.0
+    for value in rotation:
+        length_squared = f32(length_squared + f32(value * value))
+    if abs(f32(length_squared - 1)) > f32(AIM_ROTATION_TOLERANCE):
+        raise SceneError(f"{part}: rotation_offset must be a unit quaternion")
     return dict(**fields, world_up_type=mode, world_up_object=reference, aim_vector=aim, up_vector=up,
-                world_up_vector=tuple(values[2 * TRANSFORM_AXES:3 * TRANSFORM_AXES]),
-                rotation_offset=tuple(values[3 * TRANSFORM_AXES:]))
+                world_up_vector=world_up, rotation_offset=rotation)
 
 
 def decode_hinge(row):

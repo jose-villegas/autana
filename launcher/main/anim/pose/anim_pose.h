@@ -26,15 +26,14 @@ anim_bind_status_t anim_bind_skeleton(const anim_tracks_t* clip, const anim_skel
                                       anim_joint_bound_t* out, int count, int* failed);
 void anim_sample_pose(const anim_joint_bound_t* bound, int count, float seconds, anim_pose_t* pose);
 
-#define ANIM_POSE_TRANSFORM_FIELD_LIST                                                                                 \
-    ANIM_FIELD(transformf_t, position, ANIM_VALUE_VEC3), ANIM_FIELD(transformf_t, rotation, ANIM_VALUE_QUAT),          \
-        ANIM_FIELD(transformf_t, scale, ANIM_VALUE_VEC3)
+enum { ANIM_POSE_POSITION_FIELD, ANIM_POSE_ROTATION_FIELD, ANIM_POSE_SCALE_FIELD, ANIM_POSE_TRANSFORM_FIELD_COUNT };
 
-enum {
-    ANIM_POSE_POSITION_FIELD,
-    ANIM_POSE_ROTATION_FIELD,
-    ANIM_POSE_TRANSFORM_FIELD_COUNT =
-        sizeof((const anim_field_t[]){ANIM_POSE_TRANSFORM_FIELD_LIST}) / sizeof(anim_field_t)
-};
+#define ANIM_POSE_TRANSFORM_FIELD_LIST                                                                                 \
+    [ANIM_POSE_POSITION_FIELD] = ANIM_FIELD(transformf_t, position, ANIM_VALUE_VEC3),                                  \
+    [ANIM_POSE_ROTATION_FIELD] = ANIM_FIELD(transformf_t, rotation, ANIM_VALUE_QUAT),                                  \
+    [ANIM_POSE_SCALE_FIELD] = ANIM_FIELD(transformf_t, scale, ANIM_VALUE_VEC3)
+
+_Static_assert(ANIM_POSE_POSITION_FIELD == 0 && ANIM_POSE_ROTATION_FIELD == 1,
+               "transform writer claims use position and rotation in field order");
 
 extern const anim_component_fields_t ANIM_POSE_TRANSFORM_FIELDS;

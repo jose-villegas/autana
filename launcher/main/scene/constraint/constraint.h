@@ -2,7 +2,7 @@
 #pragma once
 
 #include "anim/anim_binding.h"
-#include "scene/scene_format.h"
+#include "scene/scene_asset.h"
 
 #define ANIM_COMPONENT_POSITION_CONSTRAINT ASSET_TYPE('C', 'P', 'O', 'S')
 #define ANIM_COMPONENT_AIM_CONSTRAINT      ASSET_TYPE('C', 'A', 'I', 'M')
@@ -19,6 +19,19 @@ enum {
     CONSTRAINT_FIRST_SOURCE_FIELD,
     CONSTRAINT_WEIGHT_FIELD_COUNT = CONSTRAINT_FIRST_SOURCE_FIELD + SCENE_CONSTRAINT_SOURCES_MAX
 };
+
+typedef union {
+    struct {
+        float weight, weight0, weight1, weight2, weight3;
+    };
+
+    float values[CONSTRAINT_WEIGHT_FIELD_COUNT];
+} scene_constraint_weights_t;
+
+typedef struct {
+    scene_constraint_weights_t weights;
+    scene_row_t targets[SCENE_CONSTRAINT_SOURCES_MAX];
+} scene_constraint_inputs_t;
 
 extern const anim_component_fields_t POSITION_CONSTRAINT_FIELDS;
 extern const anim_component_fields_t AIM_CONSTRAINT_FIELDS;

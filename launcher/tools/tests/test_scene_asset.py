@@ -116,6 +116,16 @@ angle = 0.25
         self.assertEqual(packed["aim_constraints"][0]["rotation_offset"][1], -aim["rotation_offset"][1])
         self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
 
+    def test_writer_refuses_invalid_aim_direction_and_offset(self):
+        aim = '[objects.aim_constraint]\nsources = [{target = "camera"}]\n'
+        camera = renderer("a.import.toml") + lens() + aim
+        for field in ("aim_vector", "up_vector", "world_up_vector"):
+            with self.subTest(field=field), self.assertRaisesRegex((SceneError, SettingsError), field):
+                self.entry(camera + f"{field} = [0, 0, 0]\n")
+        with mock.patch.object(scene_asset.copy_batches, "quaternion", return_value=(0, 0, 0, 2)):
+            with self.assertRaisesRegex(SceneError, "rotation_offset"):
+                self.entry(camera)
+
     def test_decoder_refuses_bad_motion_rows(self):
         head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
         camera = lens() + ('[objects.position_constraint]\nsources = [{target = "camera"}]\n'

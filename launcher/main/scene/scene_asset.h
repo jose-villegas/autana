@@ -10,6 +10,8 @@
 #include "render/batch/r3d_batch.h"
 #include "scene/scene_format.h"
 
+typedef uint16_t scene_row_t;
+
 typedef struct {
     mat3f_t linear;
     vec3f_t position;
