@@ -28,7 +28,7 @@ from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
-                   shapes=1, recorder=None, name=None):
+                   shapes=1, recorder=None, name=None, back=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -40,7 +40,8 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         at = np.array([index * 8., 0, 0])
         instance = Instance(str(index), linear, at, mirrored, 0.)
         faces = t[:, ::-1] if mirrored else t
-        copies.append((instance, (p @ linear.T + at, rgb + index, faces, np.full(len(t), materials[index]))))
+        colours = rgb + index if back is None else np.concatenate([rgb + index, np.full(p.shape, back + index)], axis=1)
+        copies.append((instance, (p @ linear.T + at, colours, faces, np.full(len(t), materials[index]))))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
                                scale={}, shapes=[dict(shape, rule={**rule, 'triangles': 1 + k}) for k in range(shapes)],
@@ -431,6 +432,23 @@ class FitCopiesTests(unittest.TestCase):
         luvs.codes[:] = uv_transfer.PLAIN
         entries[-2] = (uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs))
         self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
+
+    def test_a_double_sided_copy_keeps_its_back_colours_in_its_set_and_the_fit_draws_them_beside_its_front(self):
+        from r3d.fit.copies import placed_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            data, copies, _geometry, _job, _scene = bundle_fixture(directory, materials=(1, 1, 1), back=200)
+            entries, _rows = mesh_bundle.decode(data)
+            sets = [(name, lcol_asset.decode(blob)) for name, kind, blob in entries if kind == lcol_asset.TYPE]
+            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+            start.write_bytes(data)
+            sided, plain = placed_copies(start, False, backs=True), placed_copies(start, False)
+        self.assertTrue(sets and all(count == back for _, (_, count, back, _) in sets),
+                        "a double-sided copy's set does not hold a back colour per vertex")
+        self.assertEqual((sided.rgb.shape[1], plain.rgb.shape[1]), (6, 3))
+        np.testing.assert_array_equal(sided.rgb[:, :3], plain.rgb)
+        backs = {tuple(np.rint(row * 255)) for row in sided.rgb[:, 3:]}
+        self.assertEqual(backs, {(200 + k,) * 3 for k in range(len(copies))})
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies

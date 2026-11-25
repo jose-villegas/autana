@@ -1,8 +1,9 @@
 """Checks the wave sheet (r3d/procedural/wave_sheet.py): its triangles follow the formula and face their side,
 two skins close into one shell, a colour edge opens no crack, and its source reads back through the OBJ loader.
-It also checks the import of a closed double-sided shell: the skin the camera region does not face leaves it,
-and on CUDA the fitted cloth then shows no far skin, where kept whole it does. Needs the pinned r3d
-environment (tools/r3d/requirements.txt); the fit needs CUDA, PyTorch and nvdiffrast."""
+It also checks the import of a closed double-sided shell: it collapses to one sheet halfway between its skins
+(r3d/source/midsurface.py), the far skin gone but still what the sheet shows from behind, and on CUDA the fitted
+cloth then shows no far skin, where kept whole it does. Needs the pinned r3d environment
+(tools/r3d/requirements.txt) with LLVM for the import; the fit needs CUDA, PyTorch and nvdiffrast."""
 
 import collections
 import pathlib
@@ -12,6 +13,8 @@ import unittest
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 try:
     import numpy as np
@@ -56,8 +59,8 @@ def directed_edges(tris):
     return collections.Counter((int(a), int(b)) for t in tris for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])))
 
 
-def write_import(directory, sheet, name, double_sided):
-    """`sheet` as an import listing `double_sided` materials; its path."""
+def write_import(directory, sheet, name, double_sided, triangles=CLOTH_TRIANGLES):
+    """`sheet` as an import listing `double_sided` materials, simplified to `triangles`; its path."""
     root = pathlib.Path(directory)
     wave_sheet.write_source(sheet, root, name)
     listed = ", ".join(f'"{material}"' for material in double_sided)
@@ -66,19 +69,19 @@ def write_import(directory, sheet, name, double_sided):
         f'[source]\npath="{name}.obj"\ncredit="test"\n[output]\nposition_scale=8\n'
         f"[materials]\ndouble_sided=[{listed}]\n"
         '[geometry]\nsimplify={dense_edge=100.0, colour_deviation=1.0, props=[], props_share=0.0, seal_seams=false}\n'
-        f'[[variants]]\nname="{name}"\ntriangles={CLOTH_TRIANGLES}\n')
+        f'[[variants]]\nname="{name}"\ntriangles={triangles}\n')
     return path
 
 
-def imported(sheet, double_sided, scene=True):
-    """The geometry the import makes of `sheet`: placed in a scene whose camera region is REGION, or with
-    `scene` False as a bare import, which has no camera."""
+def imported(sheet, double_sided, scene=True, triangles=CLOTH_TRIANGLES):
+    """The geometry the import makes of `sheet`, simplified to `triangles`: placed in a scene whose camera region
+    is REGION, or with `scene` False as a bare import, which has no camera."""
     from r3d import mesh_import
     from r3d.import_settings import albedo_jobs, load_import_settings, load_scene
     from test_r3d_import import renderer, write_scene
 
     with tempfile.TemporaryDirectory() as directory:
-        path = write_import(directory, sheet, "cloth", double_sided)
+        path = write_import(directory, sheet, "cloth", double_sided, triangles)
         if not scene:
             return mesh_import.bake_geometry(albedo_jobs(load_import_settings(path))[0], None)
         camera = '[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n' + REGION
@@ -212,29 +215,55 @@ class WaveSheetTests(unittest.TestCase):
         far = far_skins(cloth.positions, flat, np.ones(len(flat), dtype=bool), np.array((0.0, 0.0, 200.0)))
         self.assertFalse(far[-1])
 
-    def test_the_import_keeps_the_skin_a_camera_faces_of_a_closed_shell_and_draws_it_double_sided(self):
+    @needs_llvm
+    def test_the_import_collapses_a_closed_shell_to_one_double_sided_sheet_halfway_between_its_skins(self):
+        from r3d.geometry import nearest_triangles, triangle_search
+
         cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
         front = every_material(cloth)[:-1]  # the far skin's own colour is not listed: the shell is still closed
         placed = imported(cloth, front)
         self.assertTrue(len(placed.tris))
         self.assertFalse((facing(placed) < -SIDE_COS).any(), "a triangle of the far skin is left")
         listed = np.isin(placed.tri_mat, [placed.src.names.index(name) for name in front])
-        self.assertTrue(placed.tri_double[listed].all(), "the near skin is not double-sided")
+        self.assertTrue(placed.tri_double[listed].all(), "the sheet is not double-sided")
+        # Each vertex of the sheet lies as far from one skin as from the other, before the simplifier, which
+        # follows the folds only as far as its budget lets it, moves any.
+        whole = imported(cloth, front, triangles=len(cloth.tris))
+        skin = {layer: triangle_search(cloth.positions[cloth.tris[cloth.layer == layer]])
+                for layer in (wave_sheet.FRONT, wave_sheet.BACK)}
+        gap = {layer: nearest_triangles(whole.positions, search)[2] for layer, search in skin.items()}
+        # Exactly halfway off the creases; at a crease the ray along the averaged normal is longer than the
+        # thickness, and its midpoint stands nearer the inside of the fold.
+        for layer in (wave_sheet.FRONT, wave_sheet.BACK):
+            off = np.abs(gap[layer] - CLOTH_THICKNESS / 2)
+            self.assertLess(np.median(off), CLOTH_THICKNESS / 100)
+            self.assertLess(off.max(), CLOTH_THICKNESS / 4)
+        # The rim goes and the whole near skin stays: the sheet covers the cloth.
+        self.assertEqual(len(whole.tris), int((cloth.layer == wave_sheet.FRONT).sum()))
+        # From behind it shows the far skin's colour, unlit: an import draws albedo.
+        self.assertEqual(placed.rgb.shape[1], 6)
+        double_vertices = np.unique(placed.tris[listed])
+        back = np.median(placed.rgb[double_vertices, 3:], axis=0)
+        np.testing.assert_allclose(back, wave_sheet.BACK_COLOUR, atol=2)
         bare = imported(cloth, front, scene=False)
         self.assertTrue((facing(bare) < -SIDE_COS).any(), "with no camera to face, both skins are kept")
 
-    def test_the_dropped_far_skin_still_casts_light_but_is_not_drawn(self):
+    @needs_llvm
+    def test_the_far_skin_leaves_the_light_too_where_the_sheet_casts_it(self):
         from unittest import mock
 
         from r3d import mesh_import
         from r3d.import_settings import albedo_jobs, load_import_settings
+        from r3d.ray_query import RayQuery
 
         cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
         built, shaded = [], []
 
         def ray_query(points, tris, *rest, **options):
             built.append(len(tris))
-            return mock.Mock(name=f"query of {len(tris)}")
+            query = RayQuery(points, tris, *rest, **options)
+            query.name = f"query of {len(tris)}"
+            return query
 
         def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
             shaded.append(intersector)
@@ -248,11 +277,11 @@ class WaveSheetTests(unittest.TestCase):
                                     region=np.array([[-50.0, -50.0, 150.0], [50.0, 50.0, 250.0]]))
             with mock.patch.object(mesh_import, "RayQuery", side_effect=ray_query),                     mock.patch.object(mesh_import, "shade_lit", side_effect=shade_lit),                     mock.patch.object(mesh_import, "light", side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, "path_light_for", side_effect=lambda *rest: None):
                 geometry = mesh_import.bake_geometry(job, scene)
-        drawn, lit = built[:2]
-        self.assertLess(drawn, len(cloth.tris), "no far skin was dropped")
-        self.assertEqual(lit, len(cloth.tris), "the light no longer meets the dropped far skin")
+        far = int((cloth.layer == wave_sheet.BACK).sum())
+        drawn = len(geometry.src.tri_v)
+        self.assertLessEqual(drawn, len(cloth.tris) - far, "the far skin is still drawn")
         self.assertTrue(shaded and all(query is geometry.intersector for query in shaded))
-        self.assertEqual(geometry.intersector._mock_name, f"query of {lit}")
+        self.assertEqual(geometry.intersector.name, f"query of {drawn}", "the light meets more than the sheet")
 
     def test_the_import_keeps_an_open_double_sided_sheet_whole(self):
         sheet = wave_sheet.sheet(CLOTH_COUNT, **CLOTH)
@@ -265,12 +294,14 @@ class WaveSheetTests(unittest.TestCase):
 class FittedClothTests(unittest.TestCase):
     """A two-skin cloth through the import and the fit: its far skin must never show through the near one, as it
     did on Sponza's drapes while both skins of their closed fabric were kept. The cloth's near skin faces every
-    view, so a pixel showing a triangle from behind shows the far skin."""
+    training view, so a pixel showing a triangle from behind shows the far skin. Seen from below, the collapsed
+    sheet shows its back colours, read off the far skin: no worse than keeping both skins."""
 
     def fitted_measures(self, scene):
         """The held-out measures of the cloth imported, with a camera to face (`scene`) or bare so that both
-        skins are kept, written as the import draws it and fitted to the cloth as it is: a closed shell."""
-        from r3d.appearance_simplify import optimise, start_mesh
+        skins are kept, written as the import draws it and fitted to the cloth as it is: a closed shell; and
+        below_de76, its mean dE76 over held-out views from under it."""
+        from r3d.appearance_simplify import delta_e_total, optimise, start_mesh
         from r3d.fit import wave_sweep
         from r3d.lit_mesh import write_lit_mesh
 
@@ -286,7 +317,11 @@ class FittedClothTests(unittest.TestCase):
                                          clear=wave_sweep.CLEAR,
                                          source=SimpleNamespace(p=cloth.positions, tri_v=cloth.tris),
                                          **dict(wave_sweep.FIT_DEFAULTS, steps=FIT_STEPS))
-        return wave_sweep.picture_measures(mesh._replace(points=points, rgb=rgb), held_out, "cuda")
+        fitted = mesh._replace(points=points, rgb=rgb)
+        below = wave_sweep.references(cloth, False, wave_sweep.views(wave_sweep.HELD_OUT_VIEWS, 0.5, below=True),
+                                      "cuda")
+        total, pixels = delta_e_total(fitted, below, wave_sweep.VIEW_SIZE, wave_sweep.CLEAR)
+        return {**wave_sweep.picture_measures(fitted, held_out, "cuda"), "below_de76": total / pixels}
 
     def test_an_imported_and_fitted_cloth_shows_no_far_skin_where_kept_whole_it_would(self):
         placed = self.fitted_measures(True)
@@ -294,6 +329,8 @@ class FittedClothTests(unittest.TestCase):
         whole = self.fitted_measures(False)
         self.assertGreater(whole["back_px"], 0, "the cloth is too gentle for its far skin to show when kept")
         self.assertLessEqual(placed["holes"], whole["holes"], "dropping the far skin opened holes")
+        self.assertLessEqual(placed["below_de76"], whole["below_de76"],
+                             "seen from behind, the sheet is further from the cloth than its two skins were")
 
 
 if __name__ == "__main__":

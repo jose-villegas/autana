@@ -983,6 +983,29 @@ class AppearanceFitTests(unittest.TestCase):
         cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
         self.assertGreater(float(cosine), 0.999)
 
+    def test_a_double_sided_triangle_seen_from_behind_shows_its_back_colours_and_trains_only_them(self):
+        """Six-channel colours hold the back beside the front: the side the winding faces on screen picks
+        which one a pixel shows, and only that half takes the pixel's gradient, flat or smooth."""
+        from r3d.appearance_simplify import Renderer
+
+        size = (32, 24)
+        points = cuda([[-0.8, -0.7, 0.0], [0.7, -0.6, 0.0], [0.6, 0.8, 0.0]])
+        front, back = [0.8, 0.2, 0.1], [0.1, 0.6, 0.3]
+        for flat in (False, True):
+            for eye, shown in (([0, 0, 2], front), ([0, 0, -2], back)):
+                with self.subTest(flat=flat, eye=eye):
+                    render = Renderer(np.array([[0, 1, 2]]), [True], np.arange(3), size, "cuda", flat=flat)
+                    colours = cuda([front + back] * (1 if flat else 3)).requires_grad_()
+                    matrix = cuda(projection(eye, [0, 0, -eye[2]], *size, 0.62, 0.5))
+                    image = render(points, colours, matrix)
+                    centre = image[size[1] // 2, size[0] // 2]
+                    torch.testing.assert_close(centre, cuda(shown), atol=1e-5, rtol=0)
+                    gradient = torch.autograd.grad(image.sum(), colours)[0]
+                    trained = slice(0, 3) if shown is front else slice(3, 6)
+                    untouched = slice(3, 6) if shown is front else slice(0, 3)
+                    self.assertTrue((gradient[:, trained] != 0).any())
+                    self.assertTrue((gradient[:, untouched] == 0).all(), "the hidden side took a gradient")
+
     def test_renderer_backward_is_bitwise_repeatable(self):
         from r3d.appearance_simplify import Renderer, deterministic_fit
 

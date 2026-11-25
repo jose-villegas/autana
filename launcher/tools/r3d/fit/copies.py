@@ -13,7 +13,7 @@ import numpy as np
 from r3d import lcol_asset, mesh_bundle
 from r3d.texture import texture_asset, uv_transfer
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import finest, read_bundle_mesh, rgb888
+from r3d.lit_mesh import filled_back, finest, read_bundle_mesh, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -49,10 +49,11 @@ def hidden_materials(entries, rows):
     return {row["match"]["material"] for row in masked_copies(entries, rows)}
 
 
-def placed_copies(bundle, flat):
+def placed_copies(bundle, flat, backs=False):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
-    vertex, or per triangle when `flat`. None when the bundle has no copies. No weld by value, so a copy's
+    vertex, or per triangle when `flat`, and with `backs` the back colours of its set beside them, as the rest's
+    (lit_mesh.both_sides()). None when the bundle has no copies. No weld by value, so a copy's
     vertices and triangles are the ones a mesh without levels holds."""
     from r3d.appearance_simplify import FitMesh
 
@@ -74,13 +75,19 @@ def placed_copies(bundle, flat):
         renumber[vertices] = np.arange(len(vertices))
         local, welded = np.unique(mesh.pos[vertices], axis=0, return_inverse=True)
         local, welded = local / float(mesh.position_scale), welded.reshape(-1)
-        encoding, _count, _back, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
+        encoding, count, back_count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
                              f"and its rest is not")
         for row in (row for row in rows if row["mesh"] == name):
-            colours = sets[row["colour_set"]]
-            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat                 else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
+            stored = rgb888(np.frombuffer(sets[row["colour_set"]], "<u2")) if flat \
+                else np.frombuffer(sets[row["colour_set"]], "u1").reshape(-1, 3)
+            front = stored[:count]
+            colours = front[faces] if flat else front[vertices]
+            if backs:
+                back = filled_back(mesh.clusters, front, stored[count:count + back_count], not flat) if back_count \
+                    else front
+                colours = np.concatenate([colours, back[faces] if flat else back[vertices]], axis=1)
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
             rgb.append(colours / 255.0)
             tris.append(renumber[mesh.tris[faces]] + vertex_count)

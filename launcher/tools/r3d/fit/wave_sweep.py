@@ -65,16 +65,18 @@ PLOTTED = ("flipped", "normal_p95", "back_px", "dark_px", "holes")
 FIELDS = ("mode", "shape", "amplitude", "frequency") + MEASURES
 
 
-def views(count, offset, size=VIEW_SIZE):
+def views(count, offset, size=VIEW_SIZE, below=False):
     """`count` (clip matrix, eye) pairs on a ring above a sheet of width SIZE at the origin, tilted from
-    straight above through VIEW_TILT_DEG, `offset` turning the ring so held-out views fall between."""
+    straight above through VIEW_TILT_DEG, `offset` turning the ring so held-out views fall between; with
+    `below` the ring mirrored under the sheet, which sees its back."""
     from r3d.appearance_simplify import projection
 
     out = []
     for k in range(count):
         turn = 2 * np.pi * (k + offset) / count
         tilt = np.radians(np.interp(k % 4, (0, 3), VIEW_TILT_DEG))
-        eye = VIEW_DISTANCE * SIZE * np.array([np.sin(tilt) * np.cos(turn), np.sin(tilt) * np.sin(turn), np.cos(tilt)])
+        eye = VIEW_DISTANCE * SIZE * np.array([np.sin(tilt) * np.cos(turn), np.sin(tilt) * np.sin(turn),
+                                               -np.cos(tilt) if below else np.cos(tilt)])
         out.append((projection(eye, -eye, size[0], size[1], LENS, NEAR), eye))
     return out
 

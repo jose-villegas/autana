@@ -43,7 +43,9 @@ from r3d.light import (  # noqa: E402
 )
 from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
-from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
+from r3d.lit_mesh import (  # noqa: E402
+    POSITION_SCALE, WELD_PER_TICK, back_rows, bundle_entries, panel_colour, build_lit_mesh,
+)
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
 from r3d.obj import alpha_tested
 from r3d.objects.budget import ceiling_split, prototype_groups
@@ -54,6 +56,7 @@ from r3d.texture import texture_asset, uv_transfer
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
+from r3d.source import midsurface  # noqa: E402
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
 from r3d.thin import pieces, thin, thin_keep
 
@@ -77,33 +80,90 @@ def albedo_at(src, points, spacing, material):
 
 def far_skins(p, tris, shell, towards):
     """Which of the triangles `shell` marks, of closed shells such as cloth built as two skins, face away from
-    `towards`: the far skin. Dropping it leaves one skin, drawn from both sides, so no simplification can
-    push the far skin through the near one. A triangle with no area faces nowhere and stays."""
+    `towards`: the far skin. The near skin moves onto the shell's midsurface (midsurface.collapse()), one sheet
+    drawn from both sides, so no simplification can push one skin through the other. A triangle with no area
+    faces nowhere and is never far."""
     normals, area = face_normals(p, tris)
     return shell & (area > 0) & (np.einsum("ij,ij->i", normals, towards - p[tris].mean(axis=1)) < 0)
 
 
+def back_albedo_at(src, points, normals, front, spacing):
+    """What vertices of a double-sided material show from behind: the far skin's albedo where the sheet stands for
+    two skins (midsurface.back_albedo()), else the front's."""
+    far = getattr(src, "far_skin", None)
+    if far is None:
+        return front
+
+    def at_hit(hits, rows, hit):
+        out, spacing_at = np.empty((len(hits), 3)), spacing[hit]
+        for material in np.unique(far.src.tri_m[rows]):
+            mine = far.src.tri_m[rows] == material
+            kd = src.materials.get(src.names[material], {}).get("Kd", (1.0, 1.0, 1.0))
+            out[mine] = sample_albedo(hits[mine], spacing_at[mine], material, far.src.p, far.src.uv, far.src.tri_v,
+                                      far.src.tri_t, far.src.tri_m, far.src.textures, kd, far.src.colors)
+        return out
+
+    return midsurface.back_albedo(points, normals, front, far.query, far.src.p[far.src.tri_v], far.reach, at_hit)
+
+
+def sided_light(points, normals, double, front_albedo, back_albedo, intersector, scene, job, **options):
+    """sRGB colours lit on `normals`, with what a double-sided surface shows from behind, lit on the reversed
+    normals, beside them (lit_mesh.both_sides()): six channels, the back ones zero where `double` is False."""
+    alone = np.zeros(len(points), dtype=bool)
+    lit = dict(bounce_intensity=scene.indirect.intensity, ao=job.bake.ao, **options)
+    front = to_srgb8(front_albedo * light(points, normals, alone, intersector, scene.lights, job.bake.ray_offset,
+                                          **lit), scene.tonemap_white)
+    back = np.zeros_like(front)
+    if np.any(double):
+        back = to_srgb8(back_albedo * light(points, -normals, alone, intersector, scene.lights, job.bake.ray_offset,
+                                            **lit), scene.tonemap_white)
+        back[~np.asarray(double, dtype=bool)] = 0
+    return np.concatenate([front, back], axis=1)
+
+
 def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
-    """Vertices split along creases and lit on their own normals, near colours merged."""
+    """Vertices split along creases and lit on their own normals, near colours merged. In a scene with a
+    double-sided material (src.two_sided) colours have six channels: the front, lit on the normal, and the back,
+    lit on the reversed normal, zero for a single-sided material."""
     normals = corner_normals(mp, mt)
     corner_pos, corner_n = mp[mt].reshape(-1, 3), normals.reshape(-1, 3)
     grid = WELD_PER_TICK * (job.settings.position_scale or POSITION_SCALE)
     key = np.concatenate([np.round(corner_pos * grid), np.round(corner_n * 64)], axis=1).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     vpos, vn, vtris = corner_pos[first], corner_n[first], inverse.reshape(-1, 3)
-    albedo = albedo_at(src, vpos, vertex_spacing(vpos, vtris), material)
+    spacing = vertex_spacing(vpos, vtris)
+    albedo = albedo_at(src, vpos, spacing, material)
     welded = np.unique(np.round(vpos * grid).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
-    radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset, bounce,
-                     bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
-    vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
+    if getattr(src, "two_sided", False):
+        back = back_albedo_at(src, vpos, vn, albedo, spacing) if double else albedo
+        vrgb = sided_light(vpos, vn, np.full(len(vpos), double), albedo, back, intersector, scene, job,
+                           bounce=bounce, bounce_groups=welded)
+    else:
+        radiance = light(vpos, vn, np.full(len(vpos), double), intersector, scene.lights, job.bake.ray_offset,
+                         bounce, bounce_groups=welded, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity)
+        vrgb = to_srgb8(albedo * radiance, scene.tonemap_white)
     if preserve_corners:
         return corner_pos, vrgb[inverse], np.arange(len(corner_pos)).reshape(-1, 3), labels
     return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step, labels=labels)
 
 
 def shade_unlit(src, material, mp, mt):
-    """The material's albedo, with no light: the colour the source authored."""
-    return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
+    """The material's albedo, with no light: the colour the source authored; in a scene with a double-sided
+    material, the back's beside it (shade_lit())."""
+    spacing = vertex_spacing(mp, mt)
+    albedo = albedo_at(src, mp, spacing, material)
+    rgb = encode_srgb8(albedo)
+    if getattr(src, "two_sided", False):
+        back = np.zeros_like(rgb)
+        if src.names[material] in src.double_names:
+            back = encode_srgb8(back_albedo_at(src, mp, vertex_normals(mp, mt), albedo, spacing))
+        rgb = np.concatenate([rgb, back], axis=1)
+    return mp, rgb, mt
+
+
+def vertex_normals(p, tris):
+    """Area-weighted unit normals of `tris` at each of the points `p`."""
+    return midsurface.vertex_normals(p, tris, np.arange(len(p)), len(p))
 
 
 def fidelity_poses(scene, object_name, frames, dt):
@@ -236,8 +296,12 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    # A closed double-sided shell keeps the skin the camera region faces; the other leaves the geometry but, like a
-    # carded material, keeps casting light.
+    # A closed double-sided shell, cloth built as two skins, collapses to one sheet halfway between them, drawn
+    # from both sides: the skin the camera region faces moves onto it, the far skin and the rim where the two meet
+    # leave the geometry, and the far skin stays what the sheet shows from behind.
+    src.double_names = settings.double_sided
+    src.two_sided = any(name in settings.double_sided for name in src.names)
+    src.far_skin = None
     listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
     region = far_skin_region(settings, scene) if listed.any() else None
     shell = np.zeros(len(tri_v), dtype=bool)
@@ -245,14 +309,21 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         piece = closed_shells(src.p, tri_v)
         shell = np.isin(piece, piece[listed & (piece >= 0)])
     if shell.any():
-        with recorder.step("far skins", len(tri_v)) as step:
+        with recorder.step("midsurface", len(tri_v)) as step:
             far = far_skins(src.p, tri_v, shell, np.mean(region, axis=0))
-            log(f"far skins dropped: {int(far.sum())} of {int(shell.sum())} triangles of the closed shells of "
-                f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}")
-            dropped = tri_v[far], tri_t[far], tri_m[far]
-            light_only = dropped if light_only is None else tuple(np.concatenate(pair) for pair in zip(light_only, dropped))
-            tri_v, tri_t, tri_m = tri_v[~far], tri_t[~far], tri_m[~far]
-            src.tri_o = src.tri_o[~far]
+            sheet = midsurface.collapse(src.p, tri_v, far, np.where(shell, piece, -1), RayQuery)
+            far_rows = np.flatnonzero(sheet.far)
+            rim = int((~sheet.drawn & ~sheet.far).sum())
+            log(f"midsurface: {int(shell.sum())} triangles of the closed shells of "
+                f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}: {len(far_rows)} far skin and {rim} rim "
+                f"dropped, the rest moved halfway to the far skin")
+            src.p = sheet.points
+            far_src = with_triangles(src, tri_v[far_rows], tri_t[far_rows], tri_m[far_rows])
+            src.far_skin = SimpleNamespace(src=far_src, reach=sheet.reach,
+                                           query=RayQuery(src.p, far_src.tri_v) if len(far_rows) else None)
+            keep = sheet.drawn
+            tri_v, tri_t, tri_m = sheet.tri_v[keep], tri_t[keep], tri_m[keep]
+            src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
             step["triangles_out"] = len(tri_v)
     meshes = variant_meshes(settings.meshes, renderer.variant)
@@ -325,7 +396,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
         positions = np.concatenate(all_pos) if all_pos else np.empty((0, 3))
-        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, 3), dtype=int)
+        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, 6 if src.two_sided else 3), dtype=int)
         tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=int)
         tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
@@ -365,13 +436,12 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
 
     for _, card_shape, _ in accepted_cards:
         p, albedo = card_shape['positions'], card_shape['albedo']
+        # A card keeps one texture on both sides; only its light differs, front and back each lit on its own side.
         if job.bake:
-            radiance = light(p, card_shape['normals'], np.ones(len(p), bool), intersector, scene.lights,
-                             job.bake.ray_offset, bounce, ao=job.bake.ao,
-                             bounce_intensity=scene.indirect.intensity)
-            colours = to_srgb8(albedo * radiance, scene.tonemap_white)
+            colours = sided_light(p, card_shape['normals'], np.ones(len(p), bool), albedo, albedo, intersector,
+                                  scene, job, bounce=bounce)
         else:
-            colours = encode_srgb8(albedo)
+            colours = np.tile(encode_srgb8(albedo), 2)
         instance = Instance(card_shape['owner'], np.eye(3), np.zeros(3), False, 0.0)
         card_shape['copies'] = [(instance, (p, colours, card_shape['tris'], card_shape['labels']))]
         shapes = [] if shapes is None else shapes
@@ -427,11 +497,13 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
     if "sky_rays" in knobs:
         rays = knobs.pop("sky_rays")
         lights = [{**item, "rays": rays} if item["type"] == "sky" else item for item in lights]
+    back = (lambda points, normals, front, spacing, _material: back_albedo_at(src, points, normals, front, spacing)
+            ) if getattr(src, "two_sided", False) else None
     return face_colours(geometry.positions, geometry.tris, geometry.tri_mat, range(len(src.names)), double_materials,
                         lambda centres, spacing, material: albedo_at(src, centres, spacing, material), geometry.intersector,
                         lights, job.bake.ray_offset, scene.tonemap_white, samples, max_samples=sample_max,
                         sample_area=sample_area, min_samples=sample_min, bounce=geometry.bounce,
-                        ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
+                        ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, back_albedo_of=back, **knobs)
 
 
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
@@ -494,7 +566,8 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
                 placed.positions, placed.tris, placed.tri_mat = p, t, labels
                 colours.append(flat_colours(job, scene, placed, job.renderer.face_samples))
             else:
-                colours.append(rgb[t].reshape(-1, 3))
+                colours.append(rgb[t].reshape(-1, rgb.shape[1]))
+        width = colours[0].shape[1]
         keys = np.concatenate(colours, axis=1)
         mesh = build_lit_mesh(local, None if flat else keys,
                               tris, double, face_rgb=keys if flat else None,
@@ -514,11 +587,20 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         encoding = lcol_asset.RGB565 if flat else lcol_asset.RGB888
         keys = mesh.face_keys if flat else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
-        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if flat
-                else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
+        # A set is a copy's front colours, then its back colours on the double-sided clusters (LCOL v2).
+        sided = width > channels and any(cluster[-1] for cluster in mesh.clusters)
+
+        def pack(colours):
+            return panel_colour(colours).tobytes() if flat else colours.astype('u1').tobytes()
+
+        sets, back_count = [], 0
+        for k in range(0, keys.shape[1], width):
+            back = back_rows(mesh.clusters, keys[:, k + channels:k + width], not flat) if sided else keys[:0, :channels]
+            back_count = len(back)
+            sets.append(pack(keys[:, k:k + channels]) + pack(back))
         entries.extend(bundle_entries(mesh_id, mesh, morph_blob if job.settings.morph else None))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
-                        lcol_asset.encode(encoding, len(keys), 0, sets)))
+                        lcol_asset.encode(encoding, len(keys), back_count, sets)))
         for index, (instance, _) in enumerate(copies):
             rows.append(dict(name=mesh_bundle.copy_name(job.object.name if job.object else name, mesh_id, index), mesh=mesh_id,
                              matrix=(instance.linear @ reflect).tolist(), position=instance.position.tolist(),

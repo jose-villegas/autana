@@ -118,12 +118,15 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     array, the mesh is colourless. back_rgb (beside rgb) and back_face_rgb
     (beside face_rgb) are what a double-sided triangle shows from behind,
     returned as back_rgb and back_face_colors; they weld and cut with the
-    front colours."""
+    front colours. Six-channel rgb or face_rgb holds the back colours beside
+    the front ones already (both_sides())."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     flat = face_rgb is not None
-    back = back_face_rgb if flat else back_rgb
-    col = None if flat or rgb is None else np.clip(np.rint(both_sides(rgb, back)), 0, 255).astype(np.int64)
-    face = np.clip(np.rint(both_sides(face_rgb, back)), 0, 255).astype(np.int64) if flat else None
+    front = face_rgb if flat else rgb
+    both = None if front is None else both_sides(front, back_face_rgb if flat else back_rgb)
+    sided = both is not None and np.shape(both)[1] > RGB_CHANNELS
+    both = None if both is None else np.clip(np.rint(both), 0, 255).astype(np.int64)
+    col, face = (None, both) if flat else (both, None)
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
     channels = 0 if col is None else col.shape[1]
     if vertex_uvs is not None:
@@ -147,7 +150,7 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
             for entry in part:
                 entry["page"] = int(page)
             entries.extend(part)
-    return split_back(assemble(q, col, entries, position_scale, leaf_triangles, vertex_uvs=vertex_uvs), back is not None)
+    return split_back(assemble(q, col, entries, position_scale, leaf_triangles, vertex_uvs=vertex_uvs), sided)
 
 
 def both_sides(front, back):
@@ -182,6 +185,19 @@ def back_rows(clusters, colours, per_vertex):
     runs = [colours[vb:vb + vc] if per_vertex else colours[tb:tb + tc]
             for vb, vc, tb, tc, *_, double in clusters if double]
     return np.concatenate(runs) if runs else colours[:0]
+
+
+def filled_back(clusters, front, rows, per_vertex):
+    """Back colours as long as `front`, back_rows()'s inverse: `rows` where a double-sided cluster holds them, the
+    front colours elsewhere, which a single-sided triangle never shows from behind."""
+    full = np.array(front, copy=True)
+    at = 0
+    for vb, vc, tb, tc, *_, double in clusters:
+        if double:
+            first, n = (vb, vc) if per_vertex else (tb, tc)
+            full[first:first + n] = rows[at:at + n]
+            at += n
+    return full
 
 
 def meshlet_entries(q, tris, double, face, meshlet_triangles):
@@ -390,8 +406,10 @@ def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False
         mesh = mesh_builder(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
     if colourless:
-        mesh.colour_keys, mesh.face_keys = mesh.rgb, mesh.face_colors
-        mesh.rgb = mesh.face_colors = None
+        back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
+        mesh.colour_keys = None if mesh.rgb is None else both_sides(mesh.rgb, back_rgb)
+        mesh.face_keys = None if mesh.face_colors is None else both_sides(mesh.face_colors, back_face)
+        mesh.rgb = mesh.face_colors = mesh.back_rgb = mesh.back_face_colors = None
     return mesh
 
 
@@ -573,14 +591,7 @@ def read_lit_mesh(path, levels=None):
         count = back_entries(blob, per_vertex)
         rows = (array(back_at, "u1", count * 3).reshape(-1, 3) if per_vertex
                 else rgb888(array(back_at, "<u2", count)))
-        # Full length beside the front colours: the back rows where a double-sided cluster has them.
-        full = (mesh.rgb if per_vertex else mesh.face_colors).copy()
-        at = 0
-        for vb, vc, tb, tc, *_, dbl in mesh.clusters:
-            if dbl:
-                first, n = (vb, vc) if per_vertex else (tb, tc)
-                full[first:first + n] = rows[at:at + n]
-                at += n
+        full = filled_back(mesh.clusters, mesh.rgb if per_vertex else mesh.face_colors, rows, per_vertex)
         if per_vertex:
             mesh.back_rgb = full
         else:
@@ -614,11 +625,15 @@ def finest_count(mesh):
 def finest_triangles(mesh):
     """(pos, rgb, tris, double, face) of a read mesh's finest level with the
     per-cluster vertex copies welded back together: one vertex per position
-    and colour, or per position alone for a flat mesh, whose rgb is None."""
+    and colour, or per position alone for a flat mesh, whose rgb is None. A
+    mesh with back colours gives them beside the front ones (both_sides()),
+    six channels a row."""
     double = np.zeros(len(mesh.tris), dtype=np.int64)
     shown = np.zeros(len(mesh.tris), dtype=bool)
     for (_, _, tbase, tcount, _, _, is_double), level0 in zip(mesh.clusters, finest(mesh)):
         double[tbase : tbase + tcount] = int(is_double)
         shown[tbase : tbase + tcount] = level0
-    face = None if mesh.face_colors is None else mesh.face_colors[shown]
-    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris[shown], double[shown], face)
+    back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
+    rgb = None if mesh.rgb is None else both_sides(mesh.rgb, back_rgb)
+    face = None if mesh.face_colors is None else both_sides(mesh.face_colors, back_face)[shown]
+    return weld_quantised(mesh.pos, rgb, mesh.tris[shown], double[shown], face)

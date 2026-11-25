@@ -9,7 +9,7 @@ drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 flowchart TB
     subgraph Cut["1 · Choose triangles"]
     direction LR
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Drop far skins<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Collapse to midsurface<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
     subgraph Light["2 · Colour vertices"]
     direction LR
@@ -75,9 +75,19 @@ number of quantisation ticks per model unit.
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
 
-Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import drops the skin
-facing away from its centre, so the simplified skins cannot cross; that skin still casts light. Open sheets
-stay whole.
+A double-sided triangle carries what it shows from behind as well: its back colours, lit on the reversed
+normal, which the renderer picks by winding ([LMSH](../../assets/formats/LMSH.md)). Its front is lit on its
+normal alone. Cards keep one texture on both sides; only their light differs.
+
+Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import collapses it to
+one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[147]](../../Citations.md#rezayat-1996)</sup><sup>[[148]](../../Citations.md#ye-2026-gmidsurf)</sup>.
+Each face of the skin facing the region's centre casts a ray along its inward normal, as the shape diameter
+function measures thickness<sup>[[149]](../../Citations.md#shapira-2008)</sup>, and pairs with the far skin where
+that skin faces back within 1.5 times the shell's median thickness. Faces that do not pair are the rim joining the
+skins and go, with the far skin. Each vertex of a paired face moves halfway along its own inward ray, or by half
+the median thickness where that ray grazes the far skin's edge. The far skin stays the source of the sheet's back
+colours, read where a vertex's ray meets it, or at the far skin's nearest point where the ray misses it.
+Simplification keeps the sheet's border on its border. The sheet casts the light; open sheets stay whole.
 
 ### Skin lighting
 
