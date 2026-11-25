@@ -9,10 +9,10 @@ from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from tests.r3d_env import needs_mitsuba
+from tests.r3d_env import needs_llvm
 
 
-@needs_mitsuba
+@needs_llvm
 class PinholeRays(unittest.TestCase):
     def setUp(self):
         import numpy as np
@@ -57,18 +57,12 @@ class PinholeRays(unittest.TestCase):
         self.assertEqual(sample.call_args.kwargs['until_ms'], 66)
 
     def test_shown_excludes_hidden_triangle(self):
-        import drjit as dr
         mesh = self.mesh('stack', [[-4, -4, -2], [4, -4, -2], [0, 4, -2],
                                    [-4, -4, -3], [4, -4, -3], [0, 4, -3]])
-        for variant in ('scalar_rgb', self.tool.LLVM_VARIANT):
-            with self.subTest(variant=variant):
-                if variant == self.tool.LLVM_VARIANT and not dr.has_backend(dr.JitBackend.LLVM):
-                    self.skipTest('the LLVM variant needs libLLVM')
-                self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5), variant=variant),
-                                 (1, 2))
+        self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5)), (1, 2))
 
     def first_hit(self, mesh):
-        query, normals, double = self.tool.mesh_query(mesh, 'scalar_rgb')
+        query, normals, double = self.tool.mesh_query(mesh)
         origin, direction = self.tool.pose_rays(1, 1, 1, 0.1, self.pose)
         tri, depth = self.tool.front_hits(query, normals, double, origin, direction)
         self.assertGreaterEqual(tri[0], 0)

@@ -65,8 +65,8 @@ the solid fill, `r3d_span_triangle_mean()`, in one colour, its corners'
 mean, which is the surface's mean lit colour. It steps no u, v or light,
 and never divides. 0 textures every level.
 
-The default, level 3, starts where a pixel steps eight texels or more, so
-the texels it would read average out towards that colour. The pattern is
+The default, level 4, starts where a pixel steps sixteen texels or more,
+so the texels it would read average out towards that colour. The pattern is
 gone there, the colour is the same:
 
 ![Bistro's street from above: the source, the street with every level's texels, with its far levels untextured, and each one's CIE76 against the source](../../images/render/bistro-street-far-levels.png)

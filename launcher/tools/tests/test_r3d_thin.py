@@ -14,6 +14,7 @@ from r3d.geometry import triangle_areas
 from r3d.simplify import Allocation, simplify
 from r3d.thin import AGGREGATE_PIECES_MIN, pieces, thin, thin_keep
 from soup import sphere
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 QUAD = 1.0  # a test piece's side
 SPACING = 3.0  # piece origins apart, so no two pieces touch
@@ -123,6 +124,7 @@ class HeldTests(unittest.TestCase):
 
 
 class BakeTests(unittest.TestCase):
+    @needs_llvm
     def test_a_cut_out_aggregate_keeps_a_thinned_enlarged_share_through_simplify(self):
         from r3d import mesh_import
         leaf_p, leaf_v = quads(2 * AGGREGATE_PIECES_MIN, z=5.0)

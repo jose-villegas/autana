@@ -33,8 +33,15 @@ from bake import bake, produce  # noqa: E402
 import http_get  # noqa: E402
 from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from test_r3d_import import (FIT, FIT_HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
+from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
                              write_import, write_scene)
+from anim_probe import build_sampler_once  # noqa: E402
+
+
+def setUpModule():
+    # Every fit and reference key samples its camera clip.
+    build_sampler_once()
+
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
 START_SHA256 = "5" * 64
@@ -562,8 +569,8 @@ class StageTests(unittest.TestCase):
         # files (normals) must move it, not only the set's key.
         units, _ = bake.stage_units("reference_pose")
         reached = {name for unit in units if unit.path.name == "reference_render.py" for name in unit.names}
-        self.assertTrue({"reference_source", "lit_source", "reference_variant", "pose_state", "REFERENCE_NORMALS",
-                         "_write_pose"} <= reached, reached)
+        self.assertTrue({"reference_source", "lit_source", "reference_variant", "REFERENCE_NORMALS", "write_pose"}
+                        <= reached, reached)
 
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
@@ -660,7 +667,7 @@ def write_fitted_tree(root, names=("fit",), visibility=PATH):
         renderer(name=name, extra='variant = "mesh"\nbake = true\n' + visibility
                  + FIT.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
         for index, name in enumerate(names))
-    return write_scene(root, objects + sun_object() + camera(path=True, region=False), FIT_HEAD)
+    return write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
 
 
 def row_of(item, sha256, **fields):

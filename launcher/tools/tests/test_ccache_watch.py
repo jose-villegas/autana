@@ -39,7 +39,18 @@ def pinned_ccache():
 
 
 CCACHE = pinned_ccache()
-CC = shutil.which("gcc") or shutil.which("cc")
+def real_compiler():
+    """The first gcc or cc on PATH that is not a ccache under a compiler's name (its masquerade)."""
+    caches = {Path(found).resolve().read_bytes() for found in (CCACHE, shutil.which("ccache")) if found}
+    for name in ("gcc", "cc"):
+        for folder in os.environ.get("PATH", "").split(os.pathsep):
+            found = shutil.which(name, path=folder)
+            if found and Path(found).resolve().read_bytes() not in caches:
+                return found
+    return None
+
+
+CC = real_compiler()
 
 
 def hold(cache, paths, keepalive, until_killed=False):

@@ -17,7 +17,7 @@ from scipy import ndimage
 from r3d.views import probes
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
 from r3d.poses import camera_rays
-from r3d.ray_query import BATCH, RayQuery
+from r3d.ray_query import LAUNCH, RayQuery
 
 # The seed of the probes' jitter.
 PROBE_SEED = 1
@@ -47,11 +47,11 @@ class LeakProbes:
         self.finished = []
 
     def _batches(self):
-        """(views, origins, directions) for runs of views of at most BATCH rays, a view's rays in rows."""
+        """(views, origins, directions) for runs of views of at most LAUNCH rays, a view's rays in rows."""
         start = 0
         while start < len(self.views):
             end, rays = start, 0
-            while end < len(self.views) and (end == start or rays + self.views[end][0] * self.views[end][1] <= BATCH):
+            while end < len(self.views) and (end == start or rays + self.views[end][0] * self.views[end][1] <= LAUNCH):
                 rays += self.views[end][0] * self.views[end][1]
                 end += 1
             traced = [camera_rays(width, height, lens, pose[:3], pose[3:6], 1) for width, height, lens, pose in self.views[start:end]]

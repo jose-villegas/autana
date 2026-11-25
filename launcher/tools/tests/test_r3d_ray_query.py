@@ -1,6 +1,6 @@
-"""Checks the Mitsuba ray queries against a brute-force ray-triangle test on a random triangle soup, on both the
-scalar variant and (where libLLVM exists) the LLVM variant the bake runs on, plus the edges: batching, far
-coordinates, multi-hit stepping, the variant guard and the missing-runtime errors."""
+"""Checks the Mitsuba ray queries against a brute-force ray-triangle test on a random triangle soup, on the LLVM
+variant the bake runs on, plus the edges: launch sizes, far coordinates, multi-hit stepping, hit filters, the variant
+guard and the missing-runtime errors."""
 
 import io
 import pathlib
@@ -19,7 +19,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_llvm, needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def brute_force(positions, tris, origin, direction):
@@ -102,7 +102,7 @@ class QueryChecks(SoupFixture):
     def test_batches_give_the_unbatched_answers(self):
         whole = (self.query.first_hits(self.origins, self.directions), self.query.blocked(self.origins, self.directions))
         for size in (7, 64, 200):
-            with mock.patch.object(ray_query, "BATCH", size):
+            with mock.patch.object(ray_query, "LAUNCH", size):
                 hit, distance, tri = self.query.first_hits(self.origins, self.directions)
                 blocked = self.query.blocked(self.origins, self.directions)
             np.testing.assert_array_equal(hit, whole[0][0])
@@ -163,7 +163,7 @@ class QueryChecks(SoupFixture):
         origins[2, 0] = 10.0
         active = np.ones(len(origins), bool)
         query = RayQuery(positions, tris, variant=self.VARIANT)
-        with mock.patch.object(query, "_first_hits", wraps=query._first_hits) as traced:
+        with mock.patch.object(query, "first_hits", wraps=query.first_hits) as traced:
             rounds = query.hit_rounds(origins, directions, active)
             first = next(rounds)
             self.assertEqual(first[0].tolist(), [0, 0])
@@ -204,9 +204,9 @@ class QueryChecks(SoupFixture):
                          f"ray query: 1 rays still crossing triangles after {ray_query.MAX_HITS} hits were cut off\n")
 
 
-@needs_mitsuba
-class ScalarQueryTests(QueryChecks, unittest.TestCase):
-    VARIANT = "scalar_rgb"
+@needs_llvm
+class LlvmQueryTests(QueryChecks, unittest.TestCase):
+    VARIANT = "llvm_ad_rgb"
 
     def test_the_crossings_survive_far_from_the_origin(self):
         shift = np.array([1400.0, 0.0, 1400.0])
@@ -220,30 +220,48 @@ class ScalarQueryTests(QueryChecks, unittest.TestCase):
         # float32 at 1400 resolves 1e-4: a hit on a triangle's very edge may fall either way.
         self.assertLessEqual(len(got ^ set(want)), 0.03 * len(want))
 
+    def test_a_filter_is_stepped_past_on_the_device(self):
+        """first_hits, blocked and hit_rounds look through the hits a filter rejects, however many lie in front of
+        the solid one, and each filter keeps its own mask."""
+        from types import SimpleNamespace
+
+        from r3d.light import AlphaTest
+
+        positions, tris, origin, direction = stack(4, 1.0)
+        source = SimpleNamespace(p=positions, tri_v=tris, uv=np.zeros((len(positions), 2)), tri_t=tris,
+                                 tri_m=np.zeros(len(tris), np.int64), textures=[None])
+        for hidden, first in (([True, False, False, False], 1), ([True, True, True, False], 3),
+                              ([False, True, False, False], 0), ([True, True, True, True], None)):
+            with self.subTest(hidden=hidden):
+                query = RayQuery(positions, tris, variant=self.VARIANT, hit_filter=AlphaTest(source, None, hidden))
+                hit, distance, tri = query.first_hits(origin, direction)
+                self.assertEqual(bool(hit[0]), first is not None)
+                self.assertEqual(bool(query.blocked(origin, direction)[0]), first is not None)
+                if first is not None:
+                    self.assertEqual((int(tri[0]), round(float(distance[0]), 4)), (first, first + 1.0))
+                rounds = [int(found) for tris_found, _, _ in query.hit_rounds(origin, direction) for found in tris_found]
+                self.assertEqual(rounds, [index for index, hide in enumerate(hidden) if not hide])
+
 
 @needs_llvm
-class LlvmQueryTests(QueryChecks, unittest.TestCase):
-    VARIANT = "llvm_ad_rgb"
-
-    @classmethod
-    def tearDownClass(cls):
-        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
-
-
-@needs_mitsuba
 class RuntimeGuardTests(unittest.TestCase):
     def test_a_query_refuses_to_trace_after_the_variant_changed(self):
         mi = mitsuba_reference.import_mitsuba()
         positions, tris, origin, direction = stack(1, 1.0)
-        query = RayQuery(positions, tris, variant="scalar_rgb")
+        query = RayQuery(positions, tris, variant="llvm_ad_rgb")
         try:
-            mi.set_variant("scalar_spectral")
+            mi.set_variant("llvm_ad_mono")
             for call in (query.blocked, query.first_hits, query.first_hit, lambda o, d: all_hits(query, o, d)):
-                with self.assertRaisesRegex(RuntimeError, "scalar_rgb"):
+                with self.assertRaisesRegex(RuntimeError, "llvm_ad_rgb"):
                     call(origin, direction)
         finally:
-            mi.set_variant("scalar_rgb")
+            mi.set_variant("llvm_ad_rgb")
         self.assertTrue(query.blocked(origin, direction)[0])
+
+    def test_a_scalar_variant_is_refused(self):
+        positions, tris, _, _ = stack(1, 1.0)
+        with self.assertRaisesRegex(RuntimeError, "JIT variant"):
+            RayQuery(positions, tris, variant="scalar_rgb")
 
     def test_the_llvm_variant_without_libllvm_names_what_is_missing(self):
         import drjit as dr
@@ -252,7 +270,6 @@ class RuntimeGuardTests(unittest.TestCase):
         with mock.patch.object(dr, "has_backend", return_value=False):
             with self.assertRaisesRegex(RuntimeError, "libLLVM"):
                 RayQuery(positions, tris, variant="llvm_ad_rgb")
-            RayQuery(positions, tris, variant="scalar_rgb")
 
     def test_without_mitsuba_the_error_names_the_requirements(self):
         positions, tris, _, _ = stack(1, 1.0)
