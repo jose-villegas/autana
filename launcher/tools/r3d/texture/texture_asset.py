@@ -18,7 +18,7 @@ HEADER_FIELDS = (("VERSION", "H"), ("FORMAT", "H"), ("SIZE_LOG2", "B"), ("LEVELS
                  ("TINT", f"{TINT_RGB}s{TINT_PADDING}x"), ("PALETTE_OFF", "I"), ("TEXELS_OFF", "I"))
 HEADER = checked_struct(OWNER, "R3D_TEXTURE", HEADER_FIELDS)
 BYTE_MAX = 255
-NIBBLE_BITS = 4
+INDEX4_BITS, INDEX4_MASK = read_defines(OWNER, "R3D_TEXTURE_", ("INDEX4_BITS", "INDEX4_MASK"))
 # The source's transfer, as obj.Texture linearises it: a pure power, so a display-space product is the
 # display value of the linear product and the pattern multiplies a vertex colour exactly.
 GAMMA = 2.2
@@ -116,7 +116,7 @@ def pack_ltex(indexed):
             texels.extend(np.packbits(array.astype(np.uint8).ravel(), bitorder="little").tobytes())
         else:
             for row in rows:
-                texels.extend(row[x] | (row[x + 1] << NIBBLE_BITS) for x in range(0, len(row), INDEX4_PER_BYTE))
+                texels.extend(row[x] | (row[x + 1] << INDEX4_BITS) for x in range(0, len(row), INDEX4_PER_BYTE))
     header = HEADER.pack(VERSION, indexed.format, log2, len(indexed.levels), bytes(indexed.tint),
                          HEADER.size, HEADER.size + len(palette))
     return header + palette + bytes(texels)
@@ -148,7 +148,7 @@ def decode(entry):
         if masked:
             indices = np.unpackbits(packed, bitorder="little")
         else:
-            indices = np.column_stack([packed & ((1 << NIBBLE_BITS) - 1), packed >> NIBBLE_BITS]).ravel()
+            indices = np.column_stack([packed & INDEX4_MASK, packed >> INDEX4_BITS]).ravel()
         levels.append(indices.reshape(side, side).astype(int).tolist())
         at += size
     if at != len(entry):
