@@ -200,10 +200,21 @@ jobs:
       - name: Each vendored copy is taken from its submodule's pinned commit
         run: python3 scripts/deps/vendored.py check
 
+      # The objects the suites' builds compiled last run (run-tool-tests.sh compiles through ccache).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: ${{ !cancelled() }}
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: tool-tests-ccache-linux-${{ github.run_id }}
+          restore-keys: tool-tests-ccache-linux-
+
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
         if: ${{ !cancelled() }}
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          CCACHE_MAXSIZE: 1G
         run: sh scripts/run-tool-tests.sh
 
       # Each file's seconds and slowest tests, which show where the step's time goes.
@@ -264,7 +275,16 @@ jobs:
           key: tool-tests-windows-times-${{ github.run_id }}
           restore-keys: tool-tests-windows-times-
           enableCrossOsArchive: true
+      # The objects this shard's builds compiled last run (run-tool-tests.sh compiles through ccache).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: tool-tests-ccache-windows-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: tool-tests-ccache-windows-${{ matrix.shard }}-
       - name: Tool tests
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          CCACHE_MAXSIZE: 1G
         run: sh scripts/run-tool-tests.sh --shard ${{ matrix.shard }}/2
       # A native crash past Python's own shutdown, where the faulthandler is off, is named by Windows' crash record.
       - name: Crashed processes

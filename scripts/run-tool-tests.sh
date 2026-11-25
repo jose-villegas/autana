@@ -102,6 +102,8 @@ fi
 
 # shellcheck source=lib/python.sh
 . "$REPO_ROOT/scripts/lib/python.sh"
+# shellcheck source=lib/native_path.sh
+. "$REPO_ROOT/scripts/lib/native_path.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 # The slowest tests a file's block in the log names.
 DURATIONS=10
@@ -133,6 +135,36 @@ fi
 
 rm -rf "$UNIT_DIR"
 mkdir -p "$UNIT_DIR"
+
+# Several suites compile the same sources: run_tests.sh's host build, each in
+# a build dir of its own, and a scene renderer per suite. With ccache on PATH,
+# each compiler they can find (cc, gcc, clang, or $CC) is a same-named copy of
+# ccache in a folder first on PATH, ccache's masquerade, so a translation unit
+# compiled once, in this run or a cached earlier one, is not compiled again.
+# The real compiler's folder follows it, where Windows finds ccache's DLLs
+# too. CCACHE_NOHASHDIR lets two build dirs share an object; a hit's debug
+# info names the first one's folder.
+cache_compilers() {
+    ccache=$(command -v ccache) || return 0
+    exe=""
+    [ ! -f "$ccache.exe" ] || exe=.exe
+    masks="$UNIT_DIR/compilers"
+    mkdir -p "$masks"
+    real_dirs=""
+    for name in ${CC:+"$CC"} cc gcc clang; do
+        real=$(command -v "$name") || continue
+        mask="$masks/$(basename -- "$name" .exe)$exe"
+        if [ ! -e "$mask" ]; then
+            if [ -n "$exe" ]; then cp "$ccache.exe" "$mask"; else ln -s "$ccache" "$mask"; fi
+            real_dirs="$real_dirs$(CDPATH= cd -- "$(dirname -- "$real")" && pwd):"
+        fi
+        [ "$name" != "${CC:-}" ] || CC=$(to_native "$mask")
+    done
+    PATH="$masks:$real_dirs$PATH"
+    CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR:-1}
+    export PATH CCACHE_NOHASHDIR ${CC:+CC}
+}
+cache_compilers
 # This run's seconds and files; a shard's go in files of its own, and every
 # seconds file is read.
 case "$SHARD" in 1/1) RUN="$BUILD_DIR/run-tool-tests" ;; *) RUN="$BUILD_DIR/run-tool-tests.${SHARD%/*}" ;; esac
