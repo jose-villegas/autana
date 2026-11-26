@@ -789,9 +789,7 @@ draw_orientation_guide(void) {
         .width = screen_w,
         .height = screen_h,
     };
-    ui_scale_begin(MOTION_HUD_SCALE);
     guided_step_draw(&orientation_capture.guide, &view);
-    ui_scale_end();
 }
 
 static void

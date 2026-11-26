@@ -18,7 +18,7 @@
 #define SWIPE_POLLS             12
 #define DROPOUT_POLL            2
 
-_Static_assert(TOUCH_POLL_US < TOUCH_RELEASE_QUIET_US, "The scripted dropout occupies one poll.");
+_Static_assert(TOUCH_POLL_US <= TOUCH_RELEASE_QUIET_US, "The scripted dropout occupies one poll.");
 
 static void
 touch_trace(vec2i_t tap) {

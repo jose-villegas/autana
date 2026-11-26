@@ -33,12 +33,15 @@ def event_markers(axis, x, y, events, styles):
                   markerfacecolor="none" if marker == "o" else colour, label=label)
 
 
-def binary_traces(axes, time, raw, down, titles, raw_labels, xlabel):
+def binary_traces(axes, time, raw, down, titles, raw_labels, xlabel, *, raw_samples=False):
     for axis, values, colour, title, labels in (
         (axes[0], raw, SLOTS[0], titles[0], raw_labels),
         (axes[1], down, SLOTS[2], titles[1], ("Up", "Down")),
     ):
-        axis.step(time, values, where="post", color=colour)
+        if raw_samples and axis is axes[0]:
+            axis.plot(time, values, ".", color=colour, markersize=CONTACT_DOT_SIZE)
+        else:
+            axis.step(time, values, where="post", color=colour)
         axis.set(yticks=(0, 1), yticklabels=labels, ylim=TRACE_LIMITS, xlim=(time[0], time[-1]))
         axis.grid(axis="x", alpha=0.24)
         style_axes(axis, title)
@@ -72,7 +75,7 @@ def touch_figure(data, us_per_ms, render, out):
     panel.set_axis_off()
 
     binary_traces((raw, fsm), time, contact, down, ("Controller contact", "Touch FSM · down"), ("No point", "Point"),
-                  f"Time (ms) · {data['poll_hz']} Hz polling")
+                  f"Time (ms) · {data['poll_hz']} Hz polling", raw_samples=True)
     quiet = data["quiet_us"] / us_per_ms
     last_contact = 0
     for t, have_point, released in zip(time, contact, events[1]):
