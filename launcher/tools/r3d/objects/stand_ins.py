@@ -32,6 +32,8 @@ TOUCH_SHARE = 0.03
 ERROR_TIE = 1e-9
 # Vertex colours and the two backgrounds use the source's byte channel scale.
 RGB_MAX = 255.
+# Colour error can trade away the outline. The scene fit trains each copy's colours.
+COLOUR_WEIGHT = 0.0
 # Both windings let a rectangle be seen from either side.
 RECTANGLE_TRIS = np.array([[0, 1, 2], [0, 2, 3], [2, 1, 0], [3, 2, 0]])
 
@@ -47,8 +49,8 @@ class StandIn:
     kept: np.ndarray | None
 
 
-def regular(positions, rgb, tris, materials, budget, weight, options, lock):
-    p, c, t, kept = simplify_with_update(positions, rgb, tris, budget, weight, options, vertex_lock=lock)
+def regular(positions, rgb, tris, materials, budget, options, lock):
+    p, c, t, kept = simplify_with_update(positions, rgb, tris, budget, COLOUR_WEIGHT, options, vertex_lock=lock)
     return StandIn('regular', p, c, t, _label_after(tris, materials, kept, t), kept)
 
 
@@ -61,7 +63,7 @@ def _frame(points):
     return centre, axes, local.min(axis=0), local.max(axis=0)
 
 
-def plane(positions, rgb, tris, materials, budget, weight, options, lock):
+def plane(positions, rgb, tris, materials, budget, options, lock):
     if lock is not None and np.any(lock):
         return None
     parts = object_groups(positions, tris, np.arange(len(tris)))
@@ -111,7 +113,7 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
     if np.any(remaining):
         used, local = np.unique(tris[remaining], return_inverse=True)
         rest = regular(positions[used], rgb[used], local.reshape(-1, 3), materials[remaining],
-                       max(1, budget - len(groups) * len(RECTANGLE_TRIS)), weight, options, None)
+                       max(1, budget - len(groups) * len(RECTANGLE_TRIS)), options, None)
         out_t.append(rest.tris + sum(len(p) for p in out_p))
         out_p.append(rest.positions)
         out_c.append(rest.rgb)
@@ -158,10 +160,10 @@ def view_error(source, candidate):
 CANDIDATES = (regular, plane)
 
 
-def best_stand_in(positions, rgb, tris, materials, budget, weight, options, lock):
+def best_stand_in(positions, rgb, tris, materials, budget, options, lock):
     source = StandIn('source', positions, rgb, tris, materials, np.arange(len(positions)))
     candidates = [candidate for bake in CANDIDATES
-                  if (candidate := bake(positions, rgb, tris, materials, budget, weight, options, lock)) is not None]
+                  if (candidate := bake(positions, rgb, tris, materials, budget, options, lock)) is not None]
     errors = [view_error(source, candidate) for candidate in candidates] if len(candidates) > 1 else [None]
     chosen = 0
     for i in range(1, len(candidates)):
@@ -172,5 +174,5 @@ def best_stand_in(positions, rgb, tris, materials, budget, weight, options, lock
     result = candidates[chosen]
     error_text = 'unscored' if errors[chosen] is None else f'error {errors[chosen]:.6g}'
     log(f'  simplified {len(tris)} -> {len(result.tris)} triangles '
-        f'(budget {budget}, colour weight {weight:.3g}, {result.kind}, {error_text})')
+        f'(budget {budget}, colour weight {COLOUR_WEIGHT:.3g}, {result.kind}, {error_text})')
     return result, rows

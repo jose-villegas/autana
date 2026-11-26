@@ -55,7 +55,7 @@ class DerivedDetailTests(unittest.TestCase):
             return NS(positions=p, tris=t[:1]), []
         with patch('r3d.objects.stand_ins.best_stand_in', side_effect=stand), \
                 patch.object(detail, 'surface_error', side_effect=lambda *args: 1.00001 if len(asks) < 2 else 0):
-            simplify.stand_in_within(p, p, t, np.zeros(len(t)), 100, 1, 0, None, 1)
+            simplify.stand_in_within(p, p, t, np.zeros(len(t)), 100, 0, None, 1)
         self.assertGreaterEqual(asks[1], asks[0] * simplify.MIN_BUDGET_GROWTH)
 
     def test_carve_selection_preserves_the_rules(self):
@@ -295,7 +295,7 @@ class MeasuredBalanceTests(unittest.TestCase):
         allocation.ceiling = None if fitted else room + 1
         allocation.split = (allocation.ceiling, room, 1)
         asks = []
-        def stand(p, rgb, t, mat, budget, deviation, options, lock, error):
+        def stand(p, rgb, t, mat, budget, options, lock, error):
             asks.append(budget)
             count = budget + self.GROWTH_EXCESS if budget == counts[0] else budget
             return NS(positions=p, rgb=rgb, tris=t[:count], materials=mat[:count], kept=None,

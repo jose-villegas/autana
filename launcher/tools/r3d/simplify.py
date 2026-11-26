@@ -274,7 +274,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budg
 
 
 def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, single, locks,
-                 deviation, options, shade, shapes, budget, error):
+                 options, shade, shapes, budget, error):
     from scipy.spatial import cKDTree
     from .geometry import weld_map
     from .objects.instances import place
@@ -304,7 +304,7 @@ def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, singl
         placements.append((instance, indices))
         consumed.add(single[obj])
     stand_in, candidates, budget, moved = stand_in_within(
-        positions, rgb[first_indices], triangles, shape.materials, budget, deviation, options,
+        positions, rgb[first_indices], triangles, shape.materials, budget, options,
         union if np.any(union) else None, error)
     p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
     shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
@@ -341,7 +341,7 @@ def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, singl
     return emitted, consumed, shared, shapes, stands
 
 
-def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade,
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, options, shade,
                    shapes=None, derived=None, split=None, double_sided=(), probes=None):
     from .objects.instances import Instance, Shape, source_objects
     from .objects.carve import measured_balance, rule_groups
@@ -379,7 +379,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                     budget = max(selected[first].get('min_triangles', 1), rung.triangles)
                     error = object_error(info['distance'], derived.focal, rung.error_px)
                 result = _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, single, locks,
-                                      deviation, options, shade, None if shapes is None else [], budget, error)
+                                      options, shade, None if shapes is None else [], budget, error)
                 if result[3] is not None:
                     from .objects.budget import stored_count
                     result[2][0]['stored_triangles'] = sum(stored_count(s, double_sided) for s in result[3])
@@ -403,17 +403,15 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
 MIN_BUDGET_GROWTH = 1.25
 
 
-def stand_in_within(positions, rgb, tris, materials, budget, deviation, options, lock, error):
+def stand_in_within(positions, rgb, tris, materials, budget, options, lock, error):
     """best_stand_in() at `budget`, raised until the stand-in's measured surface move is within `error` (model
-    units; None bounds nothing) or it keeps every triangle: the carve keeps colour as well as shape, so at the
-    count a shape-only simplifier needs for `error` it can move further. Returns (stand_in, candidates, budget,
+    units; None bounds nothing) or it keeps every triangle. Returns (stand_in, candidates, budget,
     move). Surfaces move about as the square root of their triangles, so each try asks (move / error)^2 more."""
     from .objects.detail import surface_error
     from .objects.stand_ins import best_stand_in
 
     while True:
-        stand_in, candidates = best_stand_in(positions, rgb, tris, materials, budget,
-                                             colour_weight(positions, tris, budget, deviation), options, lock)
+        stand_in, candidates = best_stand_in(positions, rgb, tris, materials, budget, options, lock)
         moved = surface_error(positions, tris, stand_in.positions, stand_in.tris)
         if error is None or moved <= error or budget >= len(tris):
             return stand_in, candidates, budget, moved
@@ -473,7 +471,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                                locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
     log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
     emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
-                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes,
+                                       options, allocation.shade_shared or allocation.shade, allocation.shapes,
                                        allocation.detail, allocation.split, allocation.double_sided, probes)
     shared_objects = {obj for entry in shared for obj in entry['objects']}
     report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]

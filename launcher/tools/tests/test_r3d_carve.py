@@ -145,9 +145,9 @@ class CarveWithinTest(unittest.TestCase):
         options = REGULARIZE | PERMISSIVE
         error = detail.object_error(2.0, FOCAL)
         floor = len(detail.level(positions, tris, error))
-        _, _, kept, unbounded = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, None)
+        _, _, kept, unbounded = stand_in_within(positions, rgb, tris, materials, floor, options, None, None)
         self.assertEqual(kept, floor)
-        _, _, budget, moved = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, error)
+        _, _, budget, moved = stand_in_within(positions, rgb, tris, materials, floor, options, None, error)
         self.assertLessEqual(moved, error)
         self.assertGreaterEqual(budget, floor)
         if unbounded > error:
