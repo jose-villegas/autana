@@ -68,12 +68,12 @@ CSV_HEADER = ("scene,width,height,frame,ahead,holes_pct,pinholes_pct,fill,mean_d
 
 
 def camera_poses(scene_file, camera_name):
-    """(lens, near, poses) of the camera's path, one per display step."""
+    """(lens, poses) of the camera's path, one per display step."""
     scene = load_scene(scene_file)
     camera = next(obj.component for obj in scene.objects if obj.kind == "camera" and obj.name == camera_name)
-    _, _, lens, near, rows = sample_camera_rows(camera.path.animation, camera.path.node, DISPLAY_STEP_MS, *PANEL,
+    _, _, lens, _, rows = sample_camera_rows(camera.path.animation, camera.path.node, DISPLAY_STEP_MS, *PANEL,
                                                 camera.half_fov_short_tan, camera.near_z)
-    return lens, near, np.array(rows)
+    return lens, np.array(rows)
 
 
 def render_path(renderer, scene_key, camera_name, size, frames, out):
@@ -90,10 +90,10 @@ def filled(fill, colour, depth, written, previous_colour):
 
 def score(frame_path, lens, poses, frame, ahead):
     """Rows (holes %, fill, stats) for frame `frame` warped `ahead` steps."""
-    colour, depth = warp.read_dump(frame_path(frame))
+    colour, depth, depth_near = warp.read_dump(frame_path(frame))
     truth = Image.fromarray(rgb888_array_of_rgb565(warp.read_dump(frame_path(frame + ahead))[0]))
     pose = poses[frame + FRAME_POSE_LAG]
-    moved, moved_depth, written = warp.warp(colour, depth, lens, pose, poses[frame + ahead + FRAME_POSE_LAG])
+    moved, moved_depth, written = warp.warp(colour, depth, depth_near, lens, pose, poses[frame + ahead + FRAME_POSE_LAG])
     holes = (100.0 * float((~written).mean()), 100.0 * float(warp.pinholes(written).mean()))
     rows = [(holes, "repeat", render_compare.reference_measure(Image.fromarray(rgb888_array_of_rgb565(colour)), truth))]
     for fill in FILLS:
@@ -105,9 +105,9 @@ def score(frame_path, lens, poses, frame, ahead):
 def generated(frame_path, lens, poses, frame):
     """(true, generated, warped with holes in red, hole share) for frame
     `frame`, generated from the one before it."""
-    colour, depth = warp.read_dump(frame_path(frame - 1))
+    colour, depth, depth_near = warp.read_dump(frame_path(frame - 1))
     truth = rgb888_array_of_rgb565(warp.read_dump(frame_path(frame))[0])
-    moved, _, written = warp.warp(colour, depth, lens, poses[frame - 1 + FRAME_POSE_LAG],
+    moved, _, written = warp.warp(colour, depth, depth_near, lens, poses[frame - 1 + FRAME_POSE_LAG],
                                   poses[frame + FRAME_POSE_LAG])
     shown = rgb888_array_of_rgb565(warp.fill_previous(moved, written, colour))
     holes = np.where(written[..., None], rgb888_array_of_rgb565(moved), np.array(HOLE_RED, dtype=np.uint8))
@@ -164,8 +164,8 @@ def main():
     parser.add_argument("--work")
     args = parser.parse_args()
     width, height = map(int, args.size.split("x"))
-    lens_tan, near, poses = camera_poses(args.scene_file, args.camera)
-    lens = warp.Lens(*PANEL, lens_tan, near, width, height)
+    lens_tan, poses = camera_poses(args.scene_file, args.camera)
+    lens = warp.Lens(*PANEL, lens_tan, width, height)
     frames = len(poses) - FRAME_POSE_LAG
     work = pathlib.Path(args.work or tempfile.mkdtemp(prefix="framegen_"))
     work.mkdir(parents=True, exist_ok=True)

@@ -31,3 +31,7 @@ another frame and may miss. `sound onset` is explained in the
 
 An app's own console command is sent with the same word, without a prefix:
 [App-Commands.md](App-Commands.md).
+
+The development console also accepts `haptic <light|firm>` for the
+[haptic pulse latency check](../haptics/README.md). It replies with
+`HAPTIC <strength> audible_ms=<ms>` or an error.

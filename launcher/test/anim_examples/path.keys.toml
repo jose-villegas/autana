@@ -1,0 +1,20 @@
+animation = "path"
+
+[[tracks]]
+object = "prop"
+field = "position"
+interp = "cubic"
+offset = { position = [0, 2, 0] }
+keys = [{ t = 0, v = [0, 0, 0] }, { t = 1, v = [3, 0, 0] }, { t = 3, v = [6, 0, 0] }]
+
+[[tracks]]
+object = "prop"
+field = "scale"
+interp = "step"
+keys = [{ t = 0, v = [1, 1, 1] }, { t = 2, v = [2, 3, 4] }]
+
+[[tracks]]
+object = "camera"
+field = "half_fov_short_tan"
+interp = "linear"
+keys = [{ t = 0, v = 0.25 }, { t = 3, v = 0.75 }]

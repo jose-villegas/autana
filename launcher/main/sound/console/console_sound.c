@@ -109,7 +109,7 @@ stop_all(void) {
 }
 
 static bool
-onset_wait(onset_peak_t* peak, sound_amp_state_t amp) {
+onset_wait(onset_peak_t* peak) {
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     do {
         sound_stats_t stats;
@@ -117,7 +117,7 @@ onset_wait(onset_peak_t* peak, sound_amp_state_t amp) {
         if (!stats.control.ready) {
             return false;
         }
-        if (stats.amp == amp) {
+        if (stats.amp == SOUND_AMP_ON) {
             return true;
         }
         if (!onset_window(peak, ONSET_BLOCK_MS)) {
@@ -130,11 +130,8 @@ onset_wait(onset_peak_t* peak, sound_amp_state_t amp) {
 static bool
 onset_prepare(const console_sound_args_t* args, onset_peak_t* peak, sound_voice_t* probe) {
     stop_all();
-    if (!onset_wait(peak, SOUND_AMP_OFF)) {
+    if (args->event == CONSOLE_SOUND_AMP_ON && !audio_out_amp_hold(true)) {
         return false;
-    }
-    if (args->event == CONSOLE_SOUND_AMP_ON) {
-        return true;
     }
     if (args->event == CONSOLE_SOUND_STOP_EVENT || args->event == CONSOLE_SOUND_STEAL) {
         *probe = sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, args->gain_pct, SOUND_BUS_SYSTEM);
@@ -149,7 +146,7 @@ onset_prepare(const console_sound_args_t* args, onset_peak_t* peak, sound_voice_
             return false;
         }
     }
-    if (!onset_wait(peak, SOUND_AMP_ON) || !onset_window(peak, ONSET_MARGIN_MS)) {
+    if (!onset_wait(peak) || !onset_window(peak, ONSET_MARGIN_MS)) {
         return false;
     }
     return true;
@@ -164,7 +161,7 @@ onset_trigger(const console_sound_args_t* args, sound_voice_t probe) {
             }
             break;
         case CONSOLE_SOUND_STOP_EVENT: sound_stop(probe); break;
-        case CONSOLE_SOUND_AMP_ON:
+        case CONSOLE_SOUND_AMP_ON: return audio_out_amp_hold(false);
         case CONSOLE_SOUND_STEAL:
             if (!sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, 0, SOUND_BUS_SYSTEM).id) {
                 return false;
@@ -181,9 +178,6 @@ onset_measure(const console_sound_args_t* args, onset_peak_t* peak, float* pre_d
     if (!onset_prepare(args, peak, &probe)) {
         return false;
     }
-    if (args->event == CONSOLE_SOUND_AMP_OFF) {
-        stop_all();
-    }
     if (!onset_window(peak, ONSET_PRE_MS)) {
         return false;
     }
@@ -191,9 +185,8 @@ onset_measure(const console_sound_args_t* args, onset_peak_t* peak, float* pre_d
     if (!onset_trigger(args, probe)) {
         return false;
     }
-    const uint32_t window = args->event == CONSOLE_SOUND_AMP_OFF  ? SOUND_AMP_IDLE_MS + ONSET_MARGIN_MS
-                            : args->event == CONSOLE_SOUND_AMP_ON ? AUDIO_OUT_AMP_STARTUP_MS + ONSET_MARGIN_MS
-                                                                  : ONSET_SHORT_MS;
+    const uint32_t window =
+        args->event == CONSOLE_SOUND_AMP_ON ? AUDIO_OUT_AMP_STARTUP_MS + ONSET_MARGIN_MS : ONSET_SHORT_MS;
     return onset_window(peak, window);
 }
 
@@ -208,8 +201,9 @@ sound_onset(const console_sound_args_t* args, console_reply_fn reply) {
     float pre_db = 0;
     const bool measured = onset_window(&peak, AUDIO_LOOPBACK_SETTLE_MS) && onset_measure(args, &peak, &pre_db);
     stop_all();
+    const bool released = audio_out_amp_hold(false);
     const bool closed = sound_capture_close();
-    if (!measured || !closed) {
+    if (!measured || !released || !closed) {
         reply("SOUND_ERR onset capture");
         return;
     }
