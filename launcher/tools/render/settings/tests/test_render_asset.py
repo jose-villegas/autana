@@ -24,7 +24,7 @@ class RenderAssetTests(unittest.TestCase):
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
                           "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25}
                          | {key: value for key, value in render_asset.read(render_asset.DEFAULT).items()
-                            if key.startswith(("anim.", "texture.", "small_fill."))})
+                            if key.startswith(("anim.", "texture.", "small_fill.", "settle."))})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -37,7 +37,7 @@ class RenderAssetTests(unittest.TestCase):
                                                   + [(key, [int(value * (1 << render_asset.FRAC_BITS))
                                                             if render_asset.fields()[key][0] == "float" else value])
                                                      for key, value in render_asset.read(render_asset.DEFAULT).items()
-                                                     if key.startswith(("anim.", "texture.", "small_fill."))],
+                                                     if key.startswith(("anim.", "texture.", "small_fill.", "settle."))],
                                                  4))
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):

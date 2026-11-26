@@ -75,6 +75,7 @@ open_pair(bool partial) {
     TEST_ASSERT_NOT_NULL(pair);
     for (int k = 0; k < 2; k++) {
         pair->settings[k] = RENDER_SETTINGS_DEFAULT;
+        pair->settings[k].settle.frame_us = 0; /* Compare live redraws without refinement. */
         pair->settings[k].partial_redraw = k == 0 && partial;
         pair->context[k] = RENDER_CONTEXT_DEFAULT;
         render_context_set_scale(&pair->context[k], 100);
@@ -307,25 +308,27 @@ held_dynres_view(raster_rig_t* r) {
     return view;
 }
 
-/* Holds `view` to the top step, then draws one partial frame over a tight
- * budget, which hands the held camera back; returns the last change. */
-static box3f_t
-hold_over_budget(raster_rig_t* r, const render_view_t* view) {
+/* Holds the view to the top step, then draws a partial frame over budget
+ * so the policy owns the next frame. */
+static raster_rig_t*
+open_over_budget(bool generating, render_view_t* view) {
+    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
+    render_context_set_frame_generation(&pair->context[0], generating);
+    *view = held_dynres_view(r);
     box3f_t changed = slide_card(r, 6.0F);
     TEST_ASSERT_EQUAL_INT(W, dynres_frame(r, view, &changed, 1).width); /* to the top: not judged */
     changed = slide_card(r, 12.0F);
     TEST_ASSERT_LESS_THAN_INT(H, rows(dynres_frame(r, view, &changed, 1))); /* partial, over budget */
-    return changed;
+    return r;
 }
 
 /* A partial frame at the top that costs more than the budget hands the still
  * camera back to dynamic resolution: the next frame is the controller's. */
 static void
 test_dynres_still_view_over_budget_returns_to_the_controller(void) {
-    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
-    const render_view_t view = held_dynres_view(r);
-    box3f_t changed = hold_over_budget(r, &view);
-    changed = slide_card(r, 18.0F);
+    render_view_t view;
+    raster_rig_t* r = open_over_budget(false, &view);
+    box3f_t changed = slide_card(r, 18.0F);
     const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
     TEST_ASSERT_EQUAL_INT(W / 2, f.width);
     TEST_ASSERT_EQUAL_INT(H, rows(f));
@@ -433,13 +436,11 @@ test_generation_under_dynres_draws_a_held_view_partially_at_the_top(void) {
  * frame, which forgets the kept picture, does not end the hand-back. */
 static void
 test_generation_resumes_on_a_held_view_handed_back(void) {
-    raster_rig_t* r = open_dynres(DYNRES_TIGHT);
-    render_context_set_frame_generation(&pair->context[0], true);
-    const render_view_t view = held_dynres_view(r);
-    box3f_t changed = hold_over_budget(r, &view);
+    render_view_t view;
+    raster_rig_t* r = open_over_budget(true, &view);
     int generated = 0;
     for (int i = 0; i < GENERATING_HELD_FRAMES; i++) {
-        changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
+        const box3f_t changed = slide_card(r, (float)(i % 2 + 1) * 6.0F);
         const render_context_frame_t f = dynres_frame(r, &view, &changed, 1);
         generated += f.generated;
         if (!f.generated) { /* a generated frame reports the drawn one's size */
