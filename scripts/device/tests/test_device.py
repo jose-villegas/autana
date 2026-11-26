@@ -30,7 +30,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
 from console_protocol import TUNE_REPLY_ENDS, TUNE_VALUE_MAX
-from fake_serial import FakeConnection, FakeUsbBoard
+from fake_serial import FakeConnection, FakeUsbBoard, VanishingConnection
 import fake_flash  # noqa: E402
 import device_lock
 import device_hook
@@ -741,12 +741,6 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(reason, "timeout")
 
     def test_capture_keeps_what_it_read_when_the_port_goes_away(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, size):
-                if not self.chunks:
-                    raise OSError(22, "ClearCommError failed")
-                return super().read(size)
-
         connection = VanishingConnection([b":1:test_one:PASS\n"])
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "capture.log"
@@ -3374,10 +3368,6 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(args.seconds, 15.0)
 
     def test_capture_reconnects_after_a_lost_handle_and_records(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, unused_size):
-                raise OSError("USB device disappeared")
-
         store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=1.0, out=None)
@@ -3401,12 +3391,6 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(entry["reason"], "complete")
 
     def test_capture_keeps_data_when_a_later_reconnect_runs_out_of_time(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, unused_size):
-                if self.chunks:
-                    return super().read(unused_size)
-                raise OSError("USB device disappeared")
-
         store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=20.0, out=None)

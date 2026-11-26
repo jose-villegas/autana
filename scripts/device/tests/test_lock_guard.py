@@ -29,7 +29,7 @@ sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
 import build_lock  # noqa: E402  (on the path device sets up)
 import device_lock  # noqa: E402
-from fake_serial import FakeConnection, Replies
+from fake_serial import FakeConnection, Replies, VanishingConnection
 import fake_esp_idf  # noqa: E402
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
@@ -1013,13 +1013,7 @@ class LostLockTests(Store):
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
     def reopen_after_reset(self, reconnected):
-        class PortGone(FakeConnection):
-            def read(self, size):
-                if self.chunks:
-                    return super().read(size)
-                raise OSError("USB device disappeared")
-
-        connection = PortGone([b"boot line\n"])
+        connection = VanishingConnection([b"boot line\n"])
         with mock.patch.object(device, "open_when_free", return_value=connection), \
                 mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):

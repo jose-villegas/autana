@@ -47,6 +47,16 @@ class FakeConnection:
         return False
 
 
+class VanishingConnection(FakeConnection):
+    """A handle whose port goes away once its chunks are read, as a board
+    that resets or is unplugged mid-capture."""
+
+    def read(self, size):
+        if self.chunks:
+            return super().read(size)
+        raise OSError("USB device disappeared")
+
+
 class Replies(FakeConnection):
     """One reply, with a writable pending buffer for console subclasses."""
 
