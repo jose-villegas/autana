@@ -2,15 +2,15 @@
 
     python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py
 
-Every demo scene with a camera path is sampled every EVERY_MS at RENDER_SIZE, and each pixel's centre ray is traced
-into the source as the import keeps it (alpha-masked triangles and the whole thinned material left out, where the
-import keeps a seeded share of it) and into the bundles the scene draws (the rest at its finest level and its placed
-copies, back faces culled; masked card copies are not traced, so a scene with cards would need them added). A pixel sees through
+Every demo scene with a camera path is sampled every EVERY_MS at RENDER_SIZE, and each pixel's centre ray is traced into
+the source as the import keeps it (alpha-masked triangles and the whole thinned material left out, where the import
+keeps a seeded share of it) and into the bundles the scene draws (the rest at its finest level and its placed copies,
+back faces culled; masked card copies are not traced, so a scene with cards would need them added). A pixel sees through
 where the source hits and the bake hits nothing or lies beyond BEHIND times the source's distance; a region is what
 stays after an opening by OPENING, so silhouettes a pixel wide do not count. A scene fails when its regions' pixels,
-summed over the path, exceed its ceiling in MOST_SEE_THROUGH. Only baked renderers are traced: they are the ones a
-bake simplifies from a source. Needs the r3d environment (launcher/tools/r3d/requirements.txt), the locked bakes
-(bake.py fetch) and each scene's source mesh (Git LFS).
+summed over the path, exceed its ceiling in MOST_SEE_THROUGH. Only baked renderers are traced: they are the ones a bake
+simplifies from a source. Needs the r3d environment (launcher/tools/r3d/requirements.txt), the locked bakes (bake.py
+fetch) and each scene's source mesh (Git LFS).
 """
 import pathlib
 import sys
