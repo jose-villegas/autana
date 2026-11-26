@@ -1,6 +1,7 @@
 /* Plain-value UI verbs share the microui control and command builders. */
 #include "core/memory.h"
 #include "draw/draw.h"
+#include "haptics/haptics.h"
 #include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
 
@@ -391,7 +392,11 @@ button(recti_t r, const char* label, const image_t* icon, bool selected, bool ti
         tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme)
              : ui_icon_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme);
     UI_FACE_COST_END(backend_from, "ui.backend");
-    return tap_hit(id, r, hit, b.enabled);
+    const bool pressed = tap_hit(id, r, hit, b.enabled);
+    if (pressed) {
+        haptic_pulse(HAPTIC_FIRM);
+    }
+    return pressed;
 }
 
 bool

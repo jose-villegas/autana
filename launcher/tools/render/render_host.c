@@ -26,6 +26,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_color.h"
+#include "haptics/haptics.h"
 #include "render_video.h"
 #include "render_watch.h"
 #include "ui/layout/ui_transform.h"
@@ -43,6 +44,12 @@
 
 #define DEFAULT_DT_MS         16
 #define OUTPUT_DIRECTORY_MODE 0777
+
+sound_voice_t
+haptic_pulse(haptic_t strength) {
+    (void)strength;
+    return SOUND_VOICE_NULL;
+}
 
 static void
 tune_reply(const char* line) {

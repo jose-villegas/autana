@@ -11,6 +11,7 @@
 #include "sound/sound_engine.h"
 #include "suites.h"
 #include "testkit/cleanup.h"
+#include "ui/ui.h"
 #include "unity.h"
 
 static console_registry_t registry;
@@ -25,6 +26,7 @@ typedef struct {
     int16_t scratch[HAPTIC_TEST_FRAMES];
     int32_t accumulator[HAPTIC_TEST_FRAMES];
     sound_command_t last;
+    unsigned tone_starts;
     uint64_t now_ms;
     char reply[CONSOLE_LINE_MAX];
 } haptic_fixture_t;
@@ -69,6 +71,10 @@ haptic_collect(const char* line) {
 
 static sound_voice_t
 haptic_test_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
+    if (!haptic_rig) {
+        return SOUND_VOICE_NULL;
+    }
+    ++haptic_rig->tone_starts;
     const sound_play_opts_t opts = {.bus = bus, .gain_pct = gain_pct, .priority = SOUND_PRIORITY_MAX, .loop = true};
     const uint32_t generation = haptic_rig->control.app_generation;
     const sound_voice_t voice =
@@ -81,6 +87,9 @@ haptic_test_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bu
 
 static void
 haptic_test_stop(sound_voice_t voice) {
+    if (!haptic_rig) {
+        return;
+    }
     sound_command_t command;
     if (sound_control_voice_command(&haptic_rig->control, voice, SOUND_COMMAND_STOP, 0, &command)) {
         sound_mixer_apply(&haptic_rig->mixer, &command, haptic_rig->control.app_generation);
@@ -197,8 +206,35 @@ test_haptic_bus_isolation_and_music(void) {
     TEST_ASSERT_NOT_EQUAL(HAPTIC_TEST_MUSIC_SAMPLE, haptic_rig->out[HAPTIC_TEST_FRAMES - 1]);
 }
 
+static void
+test_button_press_starts_one_haptic_pulse(void) {
+    haptic_fixture();
+    ui_init();
+    ui_set_transform(affine2x_identity());
+    const recti_t button_rect = {40, 100, 240, 60};
+    const vec2i_t center = {button_rect.x + button_rect.w / 2, button_rect.y + button_rect.h / 2};
+    const input_t frames[] = {
+        {0},
+        {.pressed = true, .down = true, .point = center, .press = center},
+        {.released = true, .point = center, .press = center},
+        {0},
+    };
+    unsigned presses = 0;
+    for (size_t i = 0; i < sizeof frames / sizeof frames[0]; ++i) {
+        ui_begin(&frames[i]);
+        ui_screen();
+        presses += ui_button(button_rect, "Start");
+        ui_end_for_bands(UI_NO_BACKGROUND);
+        TEST_ASSERT_EQUAL_UINT(presses, haptic_rig->tone_starts);
+    }
+    TEST_ASSERT_EQUAL_UINT(1, presses);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_HAPTIC.id, haptic_rig->last.bus.id);
+    TEST_ASSERT_EQUAL_UINT8(HAPTIC_FIRM_GAIN_PCT, haptic_rig->last.gain_pct);
+}
+
 void
 run_haptics_suite(void) {
+    RUN_TEST(test_button_press_starts_one_haptic_pulse);
     RUN_TEST(test_haptic_console_latency_and_errors);
     RUN_TEST(test_haptic_strengths_and_restart);
     RUN_TEST(test_haptic_bus_isolation_and_music);
