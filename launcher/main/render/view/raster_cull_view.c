@@ -195,6 +195,13 @@ mark_set_up(raster_cull_t* s, const drawn_at_t* w, const uint16_t* kept, int cou
     }
 }
 
+static __attribute__((noinline)) void
+count_buffers(const raster_t* raster, uint16_t** culled, r3d_pipeline_vertex_t** vertices) {
+    const raster_buffers_t buffers = raster_carve(raster);
+    *culled = buffers.culled;
+    *vertices = buffers.cs;
+}
+
 /* After the camera's draw, which picked each instance's level, its drawn
  * clusters are listed, and its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
@@ -205,36 +212,37 @@ static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     list_drawn(s, raster);
     memset(s->fate, RASTER_FATE_CULLED, (size_t)s->clusters);
-    const raster_buffers_t b = raster_carve(raster);
+    uint16_t* culled;
+    r3d_pipeline_vertex_t* vertices;
+    count_buffers(raster, &culled, &vertices);
     const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_lit_mesh_t* mesh = instance->mesh;
         const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
         if (copy != NULL) {
-            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+            r3d_batch_copy_mesh(copy->batch, mesh, copy->copy, &s->count_mesh);
+            mesh = &s->count_mesh;
         }
-        const r3d_lit_mesh_t* mesh = &counted_mesh;
-        r3d_lens_t lens;
-        raster_lens(raster, &s->camera, mesh->position_scale, &lens);
-        raster_drawn_place(raster, i, &lens);
+        raster_lens(raster, &s->camera, mesh->position_scale, &s->count_lens);
+        raster_drawn_place(raster, i, &s->count_lens);
         const uint16_t* kept = &s->drawn[w.at + 1];
         int count = s->drawn[w.at];
         if (culls) {
-            kept = b.culled;
-            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, raster_lod_dithering(raster, instance),
-                                              b.culled, &s->walk, &s->frame.counts);
+            kept = culled;
+            count =
+                r3d_pipeline_cull_counted(mesh, &s->count_lens, instance->lod_coarse,
+                                          raster_lod_dithering(raster, instance), culled, &s->walk, &s->frame.counts);
         } else {
             keep_drawn(mesh, kept, count, &s->frame.counts);
         }
-        r3d_lod_morph_t morph;
-        raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
-        r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
+        raster_lod_morph(raster, &s->camera, instance, &s->count_lens, &s->count_morph);
+        r3d_pipeline_transform_morphed(mesh, &s->count_lens, &s->count_morph, kept, count, vertices, NULL, false);
         for (int k = 0; k < count; k++) {
-            count_vertices(&s->frame.counts, &morph, mesh, kept[k]);
+            count_vertices(&s->frame.counts, &s->count_morph, mesh, kept[k]);
         }
-        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        r3d_pipeline_count_triangles(mesh, &s->count_lens, kept, count, vertices, &s->frame.counts, s->set_up);
         mark_set_up(s, &w, kept, count);
         walk_next(s, &w);
     }

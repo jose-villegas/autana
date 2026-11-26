@@ -247,7 +247,7 @@ texture_wall(r3d_lit_mesh_t* mesh) {
     mesh->texturing = &f->texturing;
 }
 
-static raster_rig_t*
+static __attribute__((noinline)) raster_rig_t*
 fixture(int budget, bool levels, bool coarse_near) {
     static const uint8_t gradient[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 1U << CARD, W, H, 0);
@@ -304,12 +304,12 @@ frame(raster_rig_t* r, const box3f_t* changed, int count) {
     return render_context_frame(&f->c[0]);
 }
 
-static void
+static __attribute__((noinline)) void
 assert_picture(int oracle) {
     TEST_ASSERT_EQUAL_MEMORY(f->picture[oracle], f->picture[0], sizeof f->picture[0]);
 }
 
-static bool
+static __attribute__((noinline)) bool
 assert_band_depth(int first, int end, float live_near) {
     raster_t* oracle = &f->c[1].raster;
     *raster_carve(oracle).depth_near = live_near;
@@ -546,26 +546,33 @@ assert_partial_redraw_bands(bool levels) {
     TEST_ASSERT_GREATER_THAN_INT(0, refined_bands);
 }
 
+/* Not inlined: its frame stays off the chain of the test above settle_held. Slide the card for frame `i`
+ * and check that only the changed rows draw live, the same rows as the live reference. */
+static __attribute__((noinline)) void
+assert_a_slide_redraws_only_changed_rows(raster_rig_t* r, int i, bool levels) {
+    box3f_t changed = slide(r, i);
+    if (levels) {
+        changed.hi.y += CHANGE_ABOVE_CARD;
+    }
+    const render_context_frame_t out = frame(r, &changed, 1);
+    const int first = render_context_rows_first(&f->c[LIVE]);
+    const int end = render_context_rows_end(&f->c[LIVE]);
+    TEST_ASSERT_LESS_THAN_INT(H, end - first);
+    TEST_ASSERT_EQUAL_INT(first, out.rows_first);
+    TEST_ASSERT_EQUAL_INT(end, out.rows_end);
+    if (levels) {
+        assert_picture(LIVE);
+        TEST_ASSERT_EQUAL_MEMORY(raster_depth(&f->c[LIVE].raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
+    }
+    assert_partial_redraw_bands(levels);
+}
+
 static void
 test_changed_rows_stay_live_and_partial_redraw_survives_settling(void) {
     for (int levels = 0; levels <= 1; levels++) {
         raster_rig_t* r = settle_held(RENDER_SETTLE_FRAME_US_MAX, levels != 0, false);
         for (int i = 0; i < HOLD + RENDER_SETTLE_BANDS; i++) {
-            box3f_t changed = slide(r, i);
-            if (levels) {
-                changed.hi.y += CHANGE_ABOVE_CARD;
-            }
-            const render_context_frame_t out = frame(r, &changed, 1);
-            const render_context_frame_t live = render_context_frame(&f->c[LIVE]);
-            TEST_ASSERT_LESS_THAN_INT(H, live.rows_end - live.rows_first);
-            TEST_ASSERT_EQUAL_INT(live.rows_first, out.rows_first);
-            TEST_ASSERT_EQUAL_INT(live.rows_end, out.rows_end);
-            const raster_t* raster = &f->c[LIVE].raster;
-            if (levels) {
-                assert_picture(LIVE);
-                TEST_ASSERT_EQUAL_MEMORY(raster_depth(raster), raster_depth(&f->c[0].raster), sizeof f->picture[0]);
-            }
-            assert_partial_redraw_bands(levels != 0);
+            assert_a_slide_redraws_only_changed_rows(r, i, levels != 0);
         }
         cleanup();
     }

@@ -143,7 +143,8 @@ typedef struct {
 
 /* PLAIN is 1, SHADOWED is 2, OUTLINED is 9 (8 halo offsets + the ink); the
  * largest of the three sizes the buffer for all of them. */
-#define UI_TEXT_MAX_PASSES 9
+#define UI_TEXT_SHADOW_PASSES 2
+#define UI_TEXT_MAX_PASSES    9
 
 /* The passes making up one styled string, back to front. Returns how
  * many were written, or 0 if `max` cannot hold them all, the same
@@ -163,12 +164,12 @@ ui_text_passes(ui_text_style_t style, ui_text_pass_t* out, int max) {
             return 1;
 
         case UI_TEXT_SHADOWED:
-            if (max < 2) {
+            if (max < UI_TEXT_SHADOW_PASSES) {
                 return 0;
             }
             out[0] = (ui_text_pass_t){1, 1, false};
             out[1] = (ui_text_pass_t){0, 0, true};
-            return 2;
+            return UI_TEXT_SHADOW_PASSES;
 
         case UI_TEXT_OUTLINED: {
             if (max < UI_TEXT_MAX_PASSES) {

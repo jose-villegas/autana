@@ -735,10 +735,10 @@ test_the_dilution_split_favours_neither_side(void) {
 #define SEPARATED_W 4000
 #define SEPARATED_H 2
 
-/* cells is HEAP, not static file scope, see acid_water_dilute_fixture's
- * own comment above for why. */
-static void
-acid_water_separated_fixture(uint8_t* cells) {
+static uint8_t*
+acid_water_separated_fixture(void) {
+    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
+    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
     sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7U);
     sand_set_evaporates(&fx.separated_dilute_sim, 0);
     for (int x = 0; x < SEPARATED_W; x++) {
@@ -750,14 +750,13 @@ acid_water_separated_fixture(uint8_t* cells) {
             sand_set(&fx.separated_dilute_sim, x, 1, GLASS);
         }
     }
+    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    return cells;
 }
 
 static void
 test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
-    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
-    acid_water_separated_fixture(cells);
-    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    uint8_t* cells = acid_water_separated_fixture();
 
     int water_wins = 0;
     int water_wins_with_steam = 0;
@@ -784,10 +783,7 @@ test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
 
 static void
 test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
-    uint8_t* cells = malloc((size_t)SEPARATED_W * SEPARATED_H);
-    TEST_ASSERT_NOT_NULL_MESSAGE(cells, "acid/water separated grid must fit in what the framebuffer leaves");
-    acid_water_separated_fixture(cells);
-    sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
+    uint8_t* cells = acid_water_separated_fixture();
 
     int acid_wins = 0;
     int acid_wins_with_gas = 0;
@@ -1571,14 +1567,15 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cells, "lava shaft grid must fit in what "
                                         "the framebuffer leaves");
 
-    sand_t p;
-    build_lava_shaft(&p, cells);
-    sand_set_lava_cooloff(&p, 255);
+    sand_t* const p = malloc(sizeof *p);
+    TEST_ASSERT_NOT_NULL(p);
+    build_lava_shaft(p, cells);
+    sand_set_lava_cooloff(p, 255);
     for (int i = 0; i < 5; i++) {
-        sand_set(&p, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
-        sand_step(&p, 0, 1000, 0);
+        sand_set(p, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
+        sand_step(p, 0, 1000, 0);
     }
-    const int poured_depth = lava_shaft_crust_depth(&p);
+    const int poured_depth = lava_shaft_crust_depth(p);
     free(cells);
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, poured_depth,
@@ -1591,14 +1588,15 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cells_off, "lava shaft grid must fit in "
                                             "what the framebuffer leaves");
 
-    sand_t p_off;
-    build_lava_shaft(&p_off, cells_off);
-    sand_set_lava_cooloff(&p_off, 0);
+    sand_t* const p_off = malloc(sizeof *p_off);
+    TEST_ASSERT_NOT_NULL(p_off);
+    build_lava_shaft(p_off, cells_off);
+    sand_set_lava_cooloff(p_off, 0);
     for (int i = 0; i < 5; i++) {
-        sand_set(&p_off, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
-        sand_step(&p_off, 0, 1000, 0);
+        sand_set(p_off, LAVA_SHAFT_X, LAVA_SHAFT_TOP - 1, WATER);
+        sand_step(p_off, 0, 1000, 0);
     }
-    const int off_depth = lava_shaft_crust_depth(&p_off);
+    const int off_depth = lava_shaft_crust_depth(p_off);
     free(cells_off);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, off_depth,
@@ -1606,6 +1604,8 @@ test_a_water_pour_freezes_a_lava_pool_below_its_crust(void) {
                                   "still freeze the one cell water actually touches, and no "
                                   "further - the baseline quench neither of these two variants "
                                   "ever disabled");
+    free(p_off);
+    free(p);
 }
 
 static void

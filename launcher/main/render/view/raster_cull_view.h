@@ -19,6 +19,7 @@
 
 #include "collections/bits.h"
 #include "gfx/gfx.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -130,6 +131,9 @@ typedef struct {
     };
 
     r3d_pipeline_count_walk_t walk;
+    r3d_lit_mesh_t count_mesh;
+    r3d_lens_t count_lens;
+    r3d_lod_morph_t count_morph;
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
     uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
