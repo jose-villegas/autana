@@ -136,7 +136,7 @@ test_an_injected_lift_reaches_the_fsm_without_touching_the_point(void) {
     point.x = 71;
     point.y = 83;
     touch_calib_prepare_point(true, false, &point, true, &calib, 368, 448);
-    touch_fsm_update(&fsm, false, false, point, TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_update(&fsm, false, true, point, TOUCH_RELEASE_QUIET_US / 2);
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_TRUE(in.released);

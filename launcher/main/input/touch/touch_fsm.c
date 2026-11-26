@@ -10,6 +10,10 @@ touch_fsm_init(touch_fsm_t* fsm) {
 void
 touch_fsm_update(touch_fsm_t* fsm, bool have_point, bool lifted, vec2i_t point, int64_t now_us) {
     if (have_point) {
+        /* The frame needs the old touch's release before it can start a new gesture. */
+        if (fsm->released) {
+            return;
+        }
         if (!fsm->down) {
             /* First contact: latch a press and remember where it began, so a
              * gesture can measure how far the finger has travelled since. */

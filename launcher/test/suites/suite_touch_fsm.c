@@ -123,6 +123,35 @@ test_contact_after_a_lift_presses_again(void) {
 }
 
 static void
+test_contact_waits_for_the_latched_release(void) {
+    fixture();
+    const vec2i_t old_point = {100, 200};
+    const vec2i_t new_point = {50, 300};
+    input_t in;
+    touch_fsm_update(&fsm, true, false, old_point, MS(0));
+    touch_fsm_take(&fsm, &in);
+
+    touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(10));
+    touch_fsm_update(&fsm, true, false, new_point, MS(20));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_FALSE(in.down);
+    TEST_ASSERT_TRUE_MESSAGE(vec2i_equal(old_point, in.press), "release retains the old press position");
+    TEST_ASSERT_TRUE_MESSAGE(vec2i_equal(old_point, in.point), "release retains the old contact position");
+
+    touch_fsm_update(&fsm, true, false, new_point, MS(30));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.pressed);
+    TEST_ASSERT_TRUE(in.down);
+    TEST_ASSERT_FALSE(in.released);
+    TEST_ASSERT_TRUE(vec2i_equal(new_point, in.press));
+    TEST_ASSERT_TRUE(vec2i_equal(new_point, in.point));
+}
+
+static void
 test_lift_while_idle_produces_no_edge(void) {
     fixture();
     touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(0));
@@ -291,6 +320,7 @@ run_touch_fsm_suite(void) {
 
     RUN_TEST(test_lift_releases_on_the_same_sample);
     RUN_TEST(test_contact_after_a_lift_presses_again);
+    RUN_TEST(test_contact_waits_for_the_latched_release);
     RUN_TEST(test_lift_while_idle_produces_no_edge);
     RUN_TEST(test_contact_with_lift_flag_keeps_the_touch_down);
     RUN_TEST(test_release_is_reported_after_the_quiet_period);

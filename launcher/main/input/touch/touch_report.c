@@ -15,7 +15,7 @@ enum {
 
 void
 touch_report_decode(const uint8_t raw[TOUCH_REPORT_BYTES], touch_report_t* out) {
-    out->count = raw[REPORT_COUNT] & REPORT_NIBBLE_MASK;
+    out->count = raw[REPORT_COUNT];
     out->event = (touch_event_t)(raw[REPORT_XH] >> REPORT_EVENT_SHIFT);
     out->point.x = (int)((raw[REPORT_XH] & REPORT_NIBBLE_MASK) << REPORT_COORD_SHIFT) | raw[REPORT_XL];
     out->point.y = (int)((raw[REPORT_YH] & REPORT_NIBBLE_MASK) << REPORT_COORD_SHIFT) | raw[REPORT_YL];

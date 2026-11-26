@@ -15,7 +15,7 @@ test_report_decodes_all_events_and_masks_coordinate_high_bytes(void) {
         {{0xf3, 0xfa, 0xbc, 0xfd, 0xef}, TOUCH_EVENT_NONE},
     };
 
-    const uint8_t expected_count = 3;
+    const uint8_t expected_count = 0xf3;
     const vec2i_t expected_point = {0xabc, 0xdef};
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
@@ -58,6 +58,22 @@ test_only_up_with_zero_count_reports_a_lift(void) {
     }
 }
 
+static void
+test_up_with_only_high_count_bits_is_neither_a_point_nor_a_lift(void) {
+    static const uint8_t cases[][TOUCH_REPORT_BYTES] = {
+        {0x10, 0x40, 0x00, 0x00, 0x00},
+        {0xf0, 0x40, 0x00, 0x00, 0x00},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        touch_report_t report;
+        touch_report_decode(cases[i], &report);
+
+        TEST_ASSERT_FALSE(touch_report_has_point(&report));
+        TEST_ASSERT_FALSE(touch_report_lifted(&report));
+    }
+}
+
 static const uint8_t first_contact[TOUCH_REPORT_BYTES] = {0x01, 0x00, 0x12, 0x00, 0x34};
 static const uint8_t held_contact[TOUCH_REPORT_BYTES] = {0x01, 0x80, 0x23, 0x00, 0x45};
 static const uint8_t lift[TOUCH_REPORT_BYTES] = {0x00, 0x40, 0x00, 0x00, 0x00};
@@ -81,6 +97,7 @@ test_raw_reports_release_only_on_lift_or_after_quiet_window(void) {
         {{0x00, 0x40, 0x00, 0x00, 0x00}, true},
         {{0x00, 0x80, 0x00, 0x00, 0x00}, false},
         {{0x07, 0x40, 0x00, 0x00, 0x00}, false},
+        {{0x10, 0x40, 0x00, 0x00, 0x00}, false},
     };
 
     const uint8_t point_with_up[TOUCH_REPORT_BYTES] = {0x01, 0x40, 0x23, 0x00, 0x45};
@@ -153,6 +170,7 @@ run_touch_report_suite(void) {
     RUN_TEST(test_report_decodes_all_events_and_masks_coordinate_high_bytes);
     RUN_TEST(test_only_counts_from_one_to_five_report_a_point);
     RUN_TEST(test_only_up_with_zero_count_reports_a_lift);
+    RUN_TEST(test_up_with_only_high_count_bits_is_neither_a_point_nor_a_lift);
     RUN_TEST(test_raw_reports_release_only_on_lift_or_after_quiet_window);
     RUN_TEST(test_consecutive_lift_reports_produce_one_release_edge);
     RUN_TEST(test_lift_and_timed_release_keep_the_same_press_and_point);
