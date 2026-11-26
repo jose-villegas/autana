@@ -466,13 +466,15 @@ but chords curved borders and flattens curved pieces, so the piece behind stops
 covering the gap.
 
 The probe step runs for every renderer of a scene with a camera, lit or not. Its views are
-the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
-path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>.
 
 | Term | Meaning |
 |---|---|
-| Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
+| Hole | In one view, a connected region of sky flagged by either rule. Flag a sky region in full if it holds no pixel of the source's own sky. Also flag sky pixels beyond the outline allowance below. |
 | Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[141]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
+
+Flag sky more than [`REACH`](../../../launcher/tools/r3d/leaks.py) probe pixels from the source's sky.
+Simplification can shift an outline within that allowance, and a hole can extend beyond it while still joining the source's sky.
 
 A lock keeps triangles the rest of the mesh then goes without, so the rest is a
 little coarser. A round whose locks would leave the pass over its budget is tried again

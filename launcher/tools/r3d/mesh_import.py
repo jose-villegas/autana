@@ -216,19 +216,11 @@ def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
 
 
-def seal_camera(scene, renderer):
-    """Where a sealed import's probes stand (simplify's Allocation.camera): the scene camera's region and near
-    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
+def seal_camera(scene):
+    """The scene camera's region and near plane for seal probes, or None without a scene camera."""
     if scene is None or scene.camera is None:
         return None
-    camera = (scene.region, scene.camera.component.near_z)
-    views = getattr(renderer, "seal_views", None)
-    if views is None:
-        return camera
-    from r3d.poses import flight_camera, path_poses
-
-    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
-    return (*camera, (width, height, lens, poses))
+    return scene.region, scene.camera.component.near_z
 
 
 def thin_meshes(src, selected, thin, seed):
@@ -455,7 +447,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes,
                                                                          held=np.concatenate(all_held),
-                                                                         camera=seal_camera(scene, renderer) if steps.seal_seams else None),
+                                                                         camera=seal_camera(scene) if steps.seal_seams else None),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)

@@ -98,8 +98,7 @@ class Allocation:
     shade_shared: object = None
     report: object = None
     shapes: object = None
-    # With seal_seams, where the probes that look for sky through walls stand: (camera region or None, near plane),
-    # then optionally the camera path's views, as leaks.LeakProbes takes them.
+    # With seal_seams, the camera region and near plane as leaks.LeakProbes takes them.
     camera: object = None
     detail: object = None
     split: object = None
