@@ -408,7 +408,7 @@ outer_angle = 35.0   # degrees: no light outside
 A point or spot light falls off by inverse square to zero at `range`; a spot
 fades from `inner_angle` to `outer_angle`. The formula is in
 [Bake-Method.md](../offline/Bake-Method.md#point-and-spot-lights). The keys follow
-glTF's punctual lights<sup>[[146]](../../Citations.md#khr-lights-punctual)</sup>.
+glTF's punctual lights<sup>[[147]](../../Citations.md#khr-lights-punctual)</sup>.
 
 | Rule | Refused otherwise |
 |---|---|

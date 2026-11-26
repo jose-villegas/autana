@@ -4,11 +4,12 @@
 [partial redraw](Partial-Redraw.md) draws the live changes. A held view is
 never [generated](Frame-Generation.md).
 
-Look for the brick detail and the finer shading on the small triangles after the view settles.
+Look for the silhouette against the sky and the upper arch in Sponza,
+then the brick detail and small-triangle shading on the textured wall.
 
-![Live and settled views of the textured wall](../../images/render/settle.png)
+![Live and settled views of Sponza and the textured wall](../../images/render/settle.png)
 
-![Close-ups of live and settled texture and shading](../../images/render/settle.crops.png)
+![Close-ups of the changed silhouette, arches, textures and shading](../../images/render/settle.crops.png)
 
 | Live choice | Refined value |
 |---|---|
@@ -17,6 +18,12 @@ Look for the brick detail and the finer shading on the small triangles after the
 | `texture.affine_level` | 0 |
 | `texture.far_level` | 0: keep texturing |
 | `small_fill.ceiling` | `SMALL_FILL_CEILING_OFF` |
+| `lod.tolerance_px`, `lod.triangle_budget` | 0, the finest cut |
+| `lod.blend` | `RENDER_LOD_BLEND_SWITCH` |
+
+The finest cut is fixed for each mesh, so refined bands agree at their edges.
+Settle leaves the live LOD bits, pick round, budget steering and counts intact.
+Changed rows redraw at the live cut and reset the bands they touch.
 
 The raster is split into `RENDER_SETTLE_BANDS` horizontal bands. Band `b`
 covers rows `[b * height / BANDS, (b + 1) * height / BANDS)`.

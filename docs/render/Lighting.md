@@ -91,7 +91,7 @@ set, else 1. For point or spot light $j$ in direction $`\hat l_j`$, $`V_j`$ is
 | Term | Function in [`light.py`](../../launcher/tools/r3d/light.py) | Shadow it gives | Detail |
 |---|---|---|---|
 | sun $`c_s I_s`$, direction $`\omega_s`$ | `bake_directional()`: one shadow ray | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md) |
-| point or spot $`c_j I_j`$, falloff $`W_j`$ | `bake_local()`: one shadow ray no farther than the light; inverse square windowed at the range<sup>[[147]](../Citations.md#karis-2013)</sup>, times a spot's cone<sup>[[146]](../Citations.md#khr-lights-punctual)</sup> | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md#point-and-spot-lights) |
+| point or spot $`c_j I_j`$, falloff $`W_j`$ | `bake_local()`: one shadow ray no farther than the light; inverse square windowed at the range<sup>[[148]](../Citations.md#karis-2013)</sup>, times a spot's cone<sup>[[147]](../Citations.md#khr-lights-punctual)</sup> | hard, from a point source | [Bake-Method.md](offline/Bake-Method.md#point-and-spot-lights) |
 | sky $`c_k I_k`$ | `bake_sky()`: the share of $R$ fixed cosine-weighted rays that escape | soft, under overhangs | [Scene-Files.md](scene/Scene-Files.md#sky) |
 | ambient $`c_a I_a`$ | `bake_ambient()`, times $f$ | none, except through $f$ | [Scene-Files.md](scene/Scene-Files.md#ambient) |
 | occlusion $f$ | `local_occlusion()`, a distance-limited obscurance<sup>[[14]](../Citations.md#zhukov-1998)</sup> | darkens corners and wall feet | [Bake-Method.md](offline/Bake-Method.md#local-occlusion-implementation) |

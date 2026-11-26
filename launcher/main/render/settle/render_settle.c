@@ -112,7 +112,10 @@ render_settle_done(render_settle_t* s, int height, render_rows_t rows, int32_t c
     X(texture.affine_bend, 0.0F)                                                                                       \
     X(texture.affine_level, 0)                                                                                         \
     X(texture.far_level, 0)                                                                                            \
-    X(small_fill.ceiling, SMALL_FILL_CEILING_OFF)
+    X(small_fill.ceiling, SMALL_FILL_CEILING_OFF)                                                                      \
+    X(lod.tolerance_px, 0.0F)                                                                                          \
+    X(lod.triangle_budget, 0)                                                                                          \
+    X(lod.blend, RENDER_LOD_BLEND_SWITCH)
 
 #define SETTLE_SET_FIELD(field, value) quality.field = (value);
 

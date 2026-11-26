@@ -126,6 +126,21 @@ class GifFromAviTests(Folder):
         self.assertEqual(tuple(shown[0][2, 0]), colours[100])  # counterclockwise: top-left goes to bottom-left
         self.assertEqual(info["duration"], 200)
 
+    def test_crop_box_uses_the_rotated_frame(self):
+        colours = palette_colours()
+        picture = Image.new("RGB", (3, 2), colours[0])
+        picture.putpixel((0, 0), colours[100])
+        avi = self.folder / "clip.avi"
+        output = self.folder / "clip.gif"
+        avi.write_bytes(avi_bytes(3, 2, [picture], 100))
+
+        figures.main(["gif", str(avi), str(output), "--fps", "10", "--quarter", "1",
+                      "--crop-box", "0", "1", "1", "3"])
+
+        shown, _ = self.gif_frames(output)
+        self.assertEqual(shown[0].shape, (2, 1, 3))
+        self.assertEqual(tuple(shown[0][1, 0]), colours[100])
+
     def test_rate_replaces_the_avis_own(self):
         frames = [Image.new("RGB", (2, 2), palette_colours()[index]) for index in range(4)]
         avi = self.folder / "clip.avi"

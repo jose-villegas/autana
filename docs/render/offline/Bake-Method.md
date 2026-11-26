@@ -46,12 +46,12 @@ E = c\,I\,\max(0,\ \hat n\cdot\hat l)\,V\,
 | Term | Meaning |
 |---|---|
 | $V$ | 1 if the shadow ray reaches the light, else 0 |
-| the window | Karis's range window<sup>[[147]](../../Citations.md#karis-2013)</sup>: most of the range keeps its light, which reaches 0 smoothly at $r$ |
+| the window | Karis's range window<sup>[[148]](../../Citations.md#karis-2013)</sup>: most of the range keeps its light, which reaches 0 smoothly at $r$ |
 | $\varepsilon$ | the bake's `ray_offset`, a floor on the distance; Karis adds 1 to $d^2$ instead, which depends on the scene's unit |
 | $S$ | 1 for a point light; for a spot, the cone below |
 
 A spot with axis $`\hat a`$ and half-angles $`\theta_i < \theta_o`$ takes glTF's
-smooth cone edge<sup>[[146]](../../Citations.md#khr-lights-punctual)</sup>:
+smooth cone edge<sup>[[147]](../../Citations.md#khr-lights-punctual)</sup>:
 
 ```math
 S = \mathrm{clamp}\!\left(\frac{-\hat a\cdot\hat l - \cos\theta_o}{\cos\theta_i - \cos\theta_o}\right)^{2}

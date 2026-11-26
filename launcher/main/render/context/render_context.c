@@ -374,6 +374,13 @@ draw_second_view(render_context_t* c) {
     /* Its own views and clusters: none may steer the frame's core split, and
      * the hook reads the settings the frame drew with; only its own draw has
      * cull off, set in place, as a copy would cost the draw chain's stack. */
+    if (c->frame.settled_rows != 0) {
+        c->raster.split = NULL;
+        c->raster.picks_levels = false;
+        (void)raster_census(&c->raster, &c->frame_view);
+        c->raster.picks_levels = true;
+        c->raster.split = &c->split;
+    }
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t* second = &c->second;
     bool listed = false;
@@ -618,6 +625,7 @@ settle_aim(render_context_t* c, bool held, render_rows_t live) {
     c->settle_settings = render_settle_quality(&c->drawn_settings);
     r->settings = &c->settle_settings;
     r->picks_levels = false;
+    r->finest_levels = true;
     r->first_row = rows.first;
     r->end_row = rows.end;
     return true;
@@ -630,6 +638,7 @@ settle_finish(render_context_t* c, render_rows_t live, bool picks_levels, int32_
     raster_t* r = &c->raster;
     r->settings = &c->drawn_settings;
     r->picks_levels = picks_levels;
+    r->finest_levels = false;
     render_rows_t rows =
         raster_drew_every_row(r) ? (render_rows_t){0, r->height} : (render_rows_t){r->first_row, r->end_row};
     render_settle_done(&c->settle, r->height, rows, cost_us);
@@ -657,6 +666,7 @@ draw_fixed_and_settle(render_context_t* c, const render_view_t* view, bool held)
         c->frame.stats = raster_draw(r, view);
     }
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    r->pick_round += drawn;
     const render_rows_t live = !drawn                     ? (render_rows_t){0, 0}
                                : raster_drew_every_row(r) ? (render_rows_t){0, r->height}
                                                           : (render_rows_t){r->first_row, r->end_row};
@@ -733,9 +743,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         }
     } else {
         draw_timed(c, view);
+        r->pick_round++;
         c->priced = c->policy != RENDER_FIXED;
     }
-    r->pick_round++;
     c->frame.step = still ? c->ladder.top : current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (r->attachment_count != 0) {

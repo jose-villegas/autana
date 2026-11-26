@@ -169,7 +169,11 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
-| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and depth-tested contact discs. |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and BLOB contact discs. |
+| `stress-skinned-feet-blobs` | ![Constant discs under generic contact joints](../../../../../docs/images/overview/render-lab-stress-skinned-feet-blobs.png) | Same copies and low light as `stress-skinned-silhouette-blobs`, with FEET and warp off | Contact discovery and posed discs. |
+| `stress-skinned-blob-warped` | ![Warped radial ellipse](../../../../../docs/images/overview/render-lab-stress-skinned-blob-warped.png) | BLOB with the low contact light and warp on | Divide-free ellipse path. |
+| `stress-skinned-silhouette-warped` | ![Warped silhouette contacts](../../../../../docs/images/overview/render-lab-stress-skinned-silhouette-warped.png) | `stress-skinned-silhouette-blobs` with warp on | Warp cost against its unwarped twin. |
+| `stress-skinned-silhouette-blobs` | ![Top-down joint-proxy silhouette](../../../../../docs/images/overview/render-lab-stress-skinned-silhouette-blobs.png) | Same copies and pose tiers as `stress-skinned-sh-blobs`, with a low directional light | Mask refresh cost and redraw bounds. |
 | `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
@@ -284,18 +288,24 @@ measure the default settle hold plus `RENDER_SETTLE_BANDS` frames.
 
 The settle preset pauses its camera and samples the same pose throughout.
 Its `render.partial_redraw` setting enables kept rows even in the perf suite.
-The comparison shows its first live frame and its held picture after refinement.
+Both columns capture frame 38, with settle disabled in the Live column.
 
-![Live and settled textured planes, with amplified difference](../../../../../docs/images/render/settle.png)
+![Live and settled Sponza and textured planes, with amplified difference](../../../../../docs/images/render/settle.png)
 
-![Texture detail before and after settling](../../../../../docs/images/render/settle.crops.png)
+![Silhouette, arch and texture detail before and after settling](../../../../../docs/images/render/settle.crops.png)
 
 ```sh
 launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/settle
-/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 1 -o /tmp/settle/live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 \
+    --live-tune render.settle_frame_us=0 -o /tmp/settle/live.ppm
 /tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 -o /tmp/settle/settled.ppm
-python launcher/tools/render/render_compare.py --out /tmp/settle/compare.png \
-    --row 'Held textured view' /tmp/settle/live.ppm /tmp/settle/settled.ppm \
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
+    --tune render.partial_redraw=1 --tune render.settle_frame_us=0 --frames 38 -o /tmp/settle/sponza-live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
+    --tune render.partial_redraw=1 --tune render.settle_frame_us=1 --frames 38 -o /tmp/settle/sponza-settled.ppm
+python launcher/tools/render/render_compare.py --out docs/images/render/settle.png \
+    --row 'Held Sponza view' /tmp/settle/sponza-live.ppm /tmp/settle/sponza-settled.ppm \
+    --row 'Held textured wall' /tmp/settle/live.ppm /tmp/settle/settled.ppm \
     --label-a Live --label-b Settled --crops 2
 ```
 
@@ -395,8 +405,8 @@ first pair of columns, gallops down the atrium and rests between the last
 pair; its clip and rate come from its ground speed. A third-person camera
 starts a little round from its face, turns slowly toward its back as it runs,
 never reaching it, and comes back as it stops. With frame generation on, a
-generated frame shows the capybara where the last drawn frame put it. A
-contact blob under it darkens the floor, sized from its footprint.
+generated frame shows the capybara where the last drawn frame put it.
+The capybara uses BLOB contact coverage with warp off.
 
 ![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 
@@ -633,6 +643,13 @@ be checked to have measured the same thing.
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-herd.gif` | the biggest herd (`herd-8`) walking for 12 s, each clip at the pace of its ground speed, as the camera turns a fifth of the way round it from closer than its home view (`render_lab.orbit_zoom`) |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
+
+The [warp comparison](../../../../../docs/render/frame/Contact-Shadows.md#light-warp) pairs clips
+from the same run. Refresh the contact renders with `doc_images.sh OUT WORK --contacts-only`.
+The host harness accepts `--contact-shape blob|feet|silhouette` and `--contact-warp 0|1`.
+
+[contact-silhouette.png](../../../../../docs/images/render/contact-silhouette.png) and its crops compare BLOB and SILHOUETTE on
+capybara-sponza at the same pose, with warp off.
 
 Run the app shots from the repository root with Python, Pillow and numpy:
 

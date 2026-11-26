@@ -14,6 +14,7 @@ suite_stress_preset.c. The baked ring keeps and cuts clusters throughout
 its camera turn; cull-setup draws one small cube.
 """
 import csv
+import collections
 import math
 import pathlib
 import re
@@ -26,7 +27,10 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import host_render  # noqa: E402
+from test_render_views import read_bmp  # noqa: E402
 sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
+sys.path.insert(0, str(HERE.parents[5] / "launcher/tools/device"))
+import gfx_color  # noqa: E402
 
 from build.c_header import read_define  # noqa: E402
 from build.find_cc import host_cc  # noqa: E402
@@ -37,6 +41,8 @@ PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
 SWEEP_FRAMES = 8
+CONTACT_VIEW_DT_MS = 100
+CONTACT_VIEW_STEERING = ("0:fly 0 1 0 0 80 20", "1:fly 0 0 0 0 0 0")
 WATER_UNIFORM_PIXELS = 41700
 EXISTING_UNIFORM_PIXELS = 5300
 DENSE_FACTOR = 8  # a few-copies copy holds this many times a tiny-copies copy's clusters and triangles
@@ -121,6 +127,32 @@ class StressCorners(unittest.TestCase):
         """The last frame's counts of preset `key`, by name."""
         return self.counts(key, *options)[-1]
 
+    def test_skinned_contacts_darken_each_receiver(self):
+        for key in ("skinned-sh-blobs", "skinned-feet-blobs", "skinned-silhouette-blobs", "skinned-silhouette-warped"):
+            with self.subTest(preset=key):
+                image = self.out / (key + "-contacts.bmp")
+                run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES),
+                                      "--scene", "stress-" + key, "--camera", "still",
+                                      "--dt", str(CONTACT_VIEW_DT_MS),
+                                      *[arg for step in CONTACT_VIEW_STEERING for arg in ("--console", step)],
+                                      "-o", str(image)],
+                                     capture_output=True, text=True, timeout=120)
+                self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                width, height, pixels = read_bmp(image)
+                colours = collections.Counter(pixel for row in pixels for pixel in row if pixel != pixels[0][0])
+                ground = colours.most_common(1)[0][0]
+                half = gfx_color.expand(*(channel // (2 * step) for channel, step in zip(ground, gfx_color.STEP)))
+                receiver_rows = [y for y, line in enumerate(pixels) if ground in line]
+                top, bottom = receiver_rows[0], receiver_rows[-1] + 1
+                copies = preset_copies()[key]
+                columns = math.ceil(math.sqrt(copies))
+                rows = math.ceil(copies / columns)
+                for copy in range(copies):
+                    col, row = copy % columns, copy // columns
+                    region = [pixel for line in pixels[top + row * (bottom - top) // rows:top + (row + 1) * (bottom - top) // rows]
+                              for pixel in line[col * width // columns:(col + 1) * width // columns]]
+                    self.assertGreater(region.count(half), 0, f"{key} copy {copy}: no halved receiver pixel")
+
     def test_path_replay_moves_wings_holds_and_repeats(self):
         rows, _ = self.frames("few-butterflies", tag="path-replay", dt=MOTION_DT, frames=7, transforms=True,
                                    console=("0:pose 0", f"1:pose {MOTION_DT}", "3:pose play", f"5:pose {MOTION_DT}"))
@@ -190,7 +222,8 @@ class StressCorners(unittest.TestCase):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
                           "static-copies", "uniform-mid", "uniform-full", "card", "culled", "near",
                           "few-copies", "carved-near", "carved-far", "textured", "textured-far", "record", "foliage-near",
-                          "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs", "contact-blobs",
+                          "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs",
+                          "skinned-feet-blobs", "skinned-silhouette-blobs", "skinned-silhouette-warped", "skinned-blob-warped", "contact-blobs",
                           "butterflies", "few-butterflies", "cull-setup", "baked-tree", "small-grain", "small-dither",
                           "small-off", "stack-skip", "settle", "carved-blend"}, set(preset_copies()))
 
