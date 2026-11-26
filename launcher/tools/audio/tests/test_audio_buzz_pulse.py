@@ -2,14 +2,18 @@
 import importlib.util
 import io
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
-SPEC = importlib.util.spec_from_file_location("buzz", Path(__file__).resolve().parents[1] / "audio_buzz_sweep.py")
+TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS))
+from autana_runner import AutanaRunError
+
+SPEC = importlib.util.spec_from_file_location("buzz", TOOLS / "audio_buzz_sweep.py")
 buzz = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(buzz)
-from autana_runner import AutanaRunError
 
 
 class PulseSweepTests(unittest.TestCase):
@@ -21,10 +25,17 @@ class PulseSweepTests(unittest.TestCase):
             args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", hz, "--ms", window,
                                             "--volumes", volume, "--pulse", pulse,
                                             "--out", str(Path(directory) / "capture.txt")])
-            with mock.patch.object(buzz, "autana_run", side_effect=("{}", "", error)) as run:
+            previous_capture = b"previous capture\n"
+            args.out.write_bytes(previous_capture)
+            with mock.patch.object(buzz, "autana_run", side_effect=("{}", "", error, "")) as run:
                 with self.assertRaisesRegex(AutanaRunError, "TONE usage"):
                     buzz.capture(args)
-                run.assert_called_with(args.autana, *tone)
+                run.assert_any_call(args.autana, *tone)
+                with self.subTest("drain reset"):
+                    run.assert_called_with(args.autana, "tune", "reset", buzz.DRAIN_TUNABLE)
+                with self.subTest("capture preserved"):
+                    self.assertEqual(args.out.read_bytes(), previous_capture)
+                self.assertFalse(args.out.with_suffix(args.out.suffix + ".partial").exists())
 
     def test_pulse_points(self):
         args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "202", "--volumes", "30,60",

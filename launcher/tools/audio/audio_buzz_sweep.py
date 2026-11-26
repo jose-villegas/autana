@@ -117,19 +117,27 @@ def capture(args):
         if not args.pulse or any(not 0 < pulse <= args.ms for pulse in args.pulse):
             raise ValueError(f"pulse length must be 1..{args.ms} ms")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(f"# autana --json replies on {args.board}, {date.today()}, surface={args.surface}, "
-                     "one command per line: <command>\t<reply>\n")
-        record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
-        tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
-        record_line(output, " ".join(tune), json.dumps(autana_run(args.autana, *tune).strip()))
-        shakes = {}
-        sweep(args, output, args.hz, shakes)
-        if args.peaks:
-            sweep(args, output, fine_frequencies(dict(shakes), args.peaks), shakes)
-        reset = ("tune", "reset", DRAIN_TUNABLE)
-        record_line(output, " ".join(reset), json.dumps(autana_run(args.autana, *reset).strip()))
-        record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+    partial = args.out.with_suffix(args.out.suffix + ".partial")
+    try:
+        with partial.open("w", encoding="utf-8", newline="\n") as output:
+            output.write(f"# autana --json replies on {args.board}, {date.today()}, surface={args.surface}, "
+                         "one command per line: <command>\t<reply>\n")
+            try:
+                record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+                tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
+                record_line(output, " ".join(tune), json.dumps(autana_run(args.autana, *tune).strip()))
+                shakes = {}
+                sweep(args, output, args.hz, shakes)
+                if args.peaks:
+                    sweep(args, output, fine_frequencies(dict(shakes), args.peaks), shakes)
+            finally:
+                reset = ("tune", "reset", DRAIN_TUNABLE)
+                record_line(output, " ".join(reset), json.dumps(autana_run(args.autana, *reset).strip()))
+            record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+        partial.replace(args.out)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 def main():
