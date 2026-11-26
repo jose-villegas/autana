@@ -26,7 +26,9 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
-from r3d.geometry import closed_shells, compact, corner_normals, face_normals, vertex_normals, weld_keeping  # noqa: E402
+from r3d.geometry import (  # noqa: E402
+    closed_shells, compact, corner_normals, edge_uses, face_normals, grouped_indices, vertex_normals, weld_keeping,
+)
 from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, far_skin_region, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
@@ -62,6 +64,11 @@ from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
+# A nearly right-angle edge separates the sides of a narrow hem from the skins.
+SKIN_EDGE_COS = 0.03
+# A skin accounts for a substantial share even when the two sides differ in area.
+MIN_SKIN_AREA_SHARE = 1 / 3
+
 
 def vertex_spacing(vpos, vtris):
     """Mean length of the edges meeting at each vertex, for the texture's level of detail."""
@@ -78,13 +85,39 @@ def albedo_at(src, points, spacing, material):
                          src.colors)
 
 
-def far_skins(p, tris, shell, towards):
-    """Which of the triangles `shell` marks, of closed shells such as cloth built as two skins, face away from
-    `towards`: the far skin. The near skin moves onto the shell's midsurface (midsurface.collapse()), one sheet
-    drawn from both sides, so no simplification can push one skin through the other. A triangle with no area
-    faces nowhere and is never far."""
+def far_skins(p, tris, piece, towards):
+    """(far, near) triangle masks for the closed shells in `piece` (-1 elsewhere).
+
+    Across each smooth welded edge, both faces belong to the same skin. A shell with two dominant components
+    takes the one facing `towards` more strongly as near, leaving smaller components as hem. On a shell with
+    no dominant pair, only the far mask is set, by each component's facing."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    _, welded = weld_keeping(p, tris)
     normals, area = face_normals(p, tris)
-    return shell & (area > 0) & (np.einsum("ij,ij->i", normals, towards - p[tris].mean(axis=1)) < 0)
+    facing = np.einsum("ij,ij->i", normals, towards - p[tris].mean(axis=1))
+    far, near = np.zeros(len(tris), dtype=bool), np.zeros(len(tris), dtype=bool)
+    for shell, rows in grouped_indices(piece).items():
+        if shell < 0:
+            continue
+        _, slot, uses = edge_uses(welded[rows])
+        shared = np.flatnonzero(uses[slot] == 2)
+        pair = (shared[np.argsort(slot[shared], kind="stable")] % len(rows)).reshape(-1, 2)
+        a, b = pair.T
+        smooth = np.einsum("ij,ij->i", normals[rows[a]], normals[rows[b]]) > SKIN_EDGE_COS
+        graph = coo_matrix((np.ones(smooth.sum()), (a[smooth], b[smooth])), shape=(len(rows),) * 2)
+        _, component = connected_components(graph, directed=False)
+        size = np.bincount(component, weights=area[rows])
+        score = np.bincount(component, weights=area[rows] * facing[rows])
+        main = np.flatnonzero(size > MIN_SKIN_AREA_SHARE * size.sum())
+        if len(main) == 2:
+            front, back = main[np.argsort(score[main] / size[main])[::-1]]
+            near[rows] = component == front
+            far[rows] = component == back
+        else:
+            far[rows] = score[component] < 0
+    return far, near
 
 
 def back_albedo_at(src, points, normals, front, spacing):
@@ -300,8 +333,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         shell = np.isin(piece, piece[listed & (piece >= 0)])
     if shell.any():
         with recorder.step("midsurface", len(tri_v)) as step:
-            far = far_skins(src.p, tri_v, shell, np.mean(region, axis=0))
-            sheet = midsurface.collapse(src.p, tri_v, far, np.where(shell, piece, -1), RayQuery)
+            fabric_piece = np.where(shell, piece, -1)
+            far, near = far_skins(src.p, tri_v, fabric_piece, np.mean(region, axis=0))
+            sheet = midsurface.collapse(src.p, tri_v, far, fabric_piece, RayQuery, near=near)
             far_rows = np.flatnonzero(sheet.far)
             rim = int((~sheet.drawn & ~sheet.far).sum())
             shells = np.unique(piece[shell])

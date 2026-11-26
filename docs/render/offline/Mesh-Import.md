@@ -81,15 +81,20 @@ normal alone. Cards keep one texture on both sides; only their light differs.
 
 Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import collapses it to
 one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[152]](../../Citations.md#rezayat-1996)</sup><sup>[[153]](../../Citations.md#ye-2026-gmidsurf)</sup>.
-Each face of the skin facing the region's centre casts a ray along its inward normal, as the shape diameter
-function measures thickness<sup>[[154]](../../Citations.md#shapira-2008)</sup>, and pairs with its own shell's far
-skin where that faces back within `REACH` times the shell's median thickness. Unpaired faces that reach the far
-skin through each other are the rim joining the skins and go, with the far skin; an unpaired patch inside the
-near skin stays. Each vertex of the sheet moves halfway along its own inward ray, or by half the median
-thickness where that ray does not pair, as at the sheet's edge.
+
+Faces joined by smooth welded edges share a skin label. Of the two dominant components, the one facing the
+camera region's centre more strongly by area is the near skin. Smaller components form the hem.
+
+Inward rays pair the skins and measure thickness<sup>[[154]](../../Citations.md#shapira-2008)</sup>.
+Pairs face back within `REACH` times the median thickness. The whole near skin stays, including faces whose rays miss.
+
+When a shell lacks two dominant components, each component faces the region as a unit. Ray hits identify
+the sheet, including unpaired patches enclosed by it. A shell without a thickness keeps both skins.
+
+Each sheet vertex moves halfway along its inward ray, or by half the median thickness where the ray misses.
 Where a move turns a triangle over, its corners take the mean move around them, as Laplacian smoothing
-does<sup>[[5]](../../Citations.md#sorkine-2005)</sup>, for up to `UNTANGLE_ROUNDS` rounds; a shell still turned
-keeps both skins.
+does<sup>[[5]](../../Citations.md#sorkine-2005)</sup>. If needed, the corners of an identified near skin shorten
+their moves. A shell with a triangle still turned over keeps both skins.
 The far skin stays the source of its sheet's back colours, read where a vertex's ray meets it, or at its nearest
 point where the ray misses; a point farther from every sheet than half that shell's thickness reads its front.
 Simplification keeps the sheet's border on its border. The sheet casts the light; open sheets stay whole.

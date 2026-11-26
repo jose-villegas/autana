@@ -11,6 +11,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
+    from r3d.geometry import closed_shells, edge_uses, weld_keeping
+    from r3d.mesh_import import far_skins
     from r3d.procedural.wave_sheet import BACK, sheet
     from r3d.ray_query import RayQuery
     from r3d.source import midsurface
@@ -21,6 +23,15 @@ from tests.r3d_env import needs_llvm  # noqa: E402
 
 SLAB_CELLS = 6
 SLAB_THICKNESS = 0.1
+# Allow half a percent for sampling and local thickness variation at the eroded border.
+MIN_PLEAT_COVERAGE = 0.995
+PLEAT_CELLS = 48
+PLEAT_AMPLITUDE = 0.24
+# Close to the bend radius so a missing strip at a fold occupies measurable interior area.
+PLEAT_THICKNESS = 0.024
+PLEAT_FREQUENCY = (2.0, 0.0)
+PLEAT_REGION = (0.0, 0.0, 0.32)
+SILHOUETTE_SAMPLES = 1024
 # A second slab beside the first, farther than its reach, so no ray may pair across.
 BESIDE = (2.0, 0.0, 0.0)
 
@@ -49,9 +60,63 @@ def far_skin(collapsed, tris, piece):
                               points[collapsed.tri_v[sheet_rows]], piece[sheet_rows], collapsed.thickness[sheet_rows])
 
 
+def front_silhouette(source, sheet, thickness, samples=SILHOUETTE_SAMPLES):
+    """The eroded source mask and drawn mask in the same orthographic xy view with square pixels.
+
+    Each mesh is (points, triangles). Rays measure the union of projected triangles, including overlaps.
+    Erosion by half the shell thickness in model units excludes the intended inset of the sheet's edge.
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    source_points, source_tris = source
+    corners = source_points[source_tris]
+    lo, hi = corners.min(axis=(0, 1)), corners.max(axis=(0, 1))
+    span = hi - lo
+    pitch = span[:2].max() / samples
+    x, y = np.meshgrid(*(start + (np.arange(-1, int(np.ceil(size / pitch)) + 1) + 0.5) * pitch
+                         for start, size in zip(lo[:2], span[:2])))
+    depth = max(hi[2], sheet[0][sheet[1], 2].max()) + pitch
+    origins = np.column_stack([x.ravel(), y.ravel(), np.full(x.size, depth)])
+    rays = np.broadcast_to([0.0, 0.0, -1.0], origins.shape)
+    source_hit, drawn_hit = (RayQuery(*mesh).first_hits(origins, rays)[0].reshape(x.shape)
+                             for mesh in (source, sheet))
+    interior = distance_transform_edt(source_hit, sampling=pitch) > thickness / 2
+    return interior, drawn_hit
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 @needs_llvm
 class MidsurfaceTests(unittest.TestCase):
+    def test_a_pleated_slab_collapses_without_slits(self):
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.csgraph import connected_components
+
+        cloth = sheet(PLEAT_CELLS, layers=2, thickness=PLEAT_THICKNESS, shape="sine",
+                      amplitude=PLEAT_AMPLITUDE, frequency=PLEAT_FREQUENCY)
+        points, tris = cloth.positions, cloth.tris
+        piece = closed_shells(points, tris)
+        self.assertTrue((piece == piece[0]).all() and piece[0] >= 0)
+        far, near = far_skins(points, tris, piece, np.array(PLEAT_REGION))
+        collapsed = midsurface.collapse(points, tris, far, piece, RayQuery, near=near)
+        drawn = collapsed.tri_v[collapsed.drawn]
+        self.assertTrue(collapsed.sheet.any(), "the slab did not collapse")
+
+        thickness = np.median(collapsed.thickness[collapsed.sheet])
+        interior, drawn_hit = front_silhouette((points, tris), (collapsed.points, drawn), thickness)
+        with self.subTest("eroded front silhouette coverage"):
+            self.assertTrue(interior.any())
+            self.assertGreaterEqual(drawn_hit[interior].mean(), MIN_PLEAT_COVERAGE)
+
+        _, welded = weld_keeping(collapsed.points, drawn)
+        _, slot, uses = edge_uses(welded)
+        owner = np.tile(np.arange(len(drawn)), 3)
+        graph = coo_matrix((np.ones(len(slot)), (owner, len(drawn) + slot)),
+                           shape=(len(drawn) + len(uses),) * 2)
+        with self.subTest("connected shell"):
+            self.assertEqual(connected_components(graph, directed=False, return_labels=False), 1)
+        with self.subTest("manifold edges"):
+            self.assertEqual(np.count_nonzero(uses > 2), 0)
+
     def test_a_closed_slab_collapses_to_one_sheet_halfway_between_its_skins(self):
         points, tris, far = slab()
         collapsed = midsurface.collapse(points, tris, far, np.zeros(len(tris), dtype=int), RayQuery)

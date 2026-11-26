@@ -1,11 +1,7 @@
-"""Midsurface abstraction for cloth built as two skins: one sheet halfway between them, drawn from both sides.
+"""Midsurface abstraction (Rezayat 1996) for cloth built as two skins: one sheet halfway between them.
 
-Each face of the near skin casts one ray along its inward normal onto its own shell's far skin, as midsurface
-abstraction pairs the opposite faces of a thin wall (Rezayat 1996) and the shape diameter function measures a
-part's thickness with inward rays (Shapira et al. 2008). A face whose ray finds the far skin facing back within
-reach stays and its vertices move halfway across; a face whose ray misses or grazes is the rim, where the skins
-meet, and goes, while an unpaired patch inside the near skin stays on the sheet. A shell whose collapse would turn
-a triangle over stays as its two skins. The far skin leaves the drawing but stays the source of what the sheet shows from behind (back_albedo())."""
+Inward thickness rays (Shapira et al. 2008) pair nearby opposite faces. The near skin moves halfway across,
+while the far skin supplies the sheet's back colours (back_albedo())."""
 from typing import NamedTuple
 
 import numpy as np
@@ -102,40 +98,46 @@ def turned(old, new, rows):
     return np.einsum("ij,ij->i", normal_old, normal_new) < 0
 
 
-def untangled(p, tri_v, origin, shift, moved_tris, rows):
+def untangled(p, tri_v, origin, shift, moved_tris, rows, *, shorten=None):
     """(points, rows still turned over): `p` with each moved point (row len(p) + k of `moved_tris`, the triangles
     `tri_v` moved) at origin[k] + shift[k]. Where a move turns one of `rows` over, its corners take the mean move
     of the triangles of `rows` around them, as Laplacian smoothing does (Sorkine 2005), for up to UNTANGLE_ROUNDS
-    rounds: normals that part faster than the cloth is thick, as across a sliver on a tight curve, turn it over."""
+    rounds. On rows marked by `shorten`, shortening the remaining moves can keep tight folds from turning over."""
     shift = np.array(shift, dtype=np.float64, copy=True)
     old = p[tri_v]
     corners = moved_tris[rows] - len(p)
     count = np.zeros(len(shift))
     np.add.at(count, corners.reshape(-1), 1)
-    for done in range(UNTANGLE_ROUNDS + 1):
+    for done in range(2 * UNTANGLE_ROUNDS + 1):
         points = np.concatenate([p, origin + shift])
         flipped = rows[turned(old, points[moved_tris], rows)]
-        if not len(flipped) or done == UNTANGLE_ROUNDS:
+        if not len(flipped) or done == 2 * UNTANGLE_ROUNDS:
             break
-        stuck = np.unique(moved_tris[flipped] - len(p))
-        total = np.zeros_like(shift)
-        np.add.at(total, corners.reshape(-1), np.repeat(shift[corners].mean(axis=1), 3, axis=0))
-        shift[stuck] = total[stuck] / count[stuck, None]
+        if done < UNTANGLE_ROUNDS:
+            stuck = np.unique(moved_tris[flipped] - len(p))
+            total = np.zeros_like(shift)
+            np.add.at(total, corners.reshape(-1), np.repeat(shift[corners].mean(axis=1), 3, axis=0))
+            shift[stuck] = total[stuck] / count[stuck, None]
+        else:
+            retry = flipped[shorten[flipped]] if shorten is not None else []
+            if not len(retry):
+                break
+            shift[np.unique(moved_tris[retry] - len(p))] /= 2
     return points, flipped
 
 
-def collapse(p, tri_v, far, piece, far_query):
+def collapse(p, tri_v, far, piece, far_query, *, near=None):
     """The Midsurface of the shells `piece` marks (closed_shells(), -1 elsewhere) whose far skins `far` marks.
     far_query(p, tris) is a ray intersector over those triangles (ray_query.RayQuery).
 
-    A near face pairs when the ray from its centre along its inward normal meets its shell's far skin facing back
-    within reach; unpaired faces joined to the far skin through each other are the hem or rim and go, and those
-    inside the near skin (enclosed()) stay on the sheet. Each vertex of the sheet moves halfway along its own
-    inward ray where that pairs, else by half its shell's median thickness, as a vertex on the sheet's border,
-    whose ray grazes the far skin's edge, does. A triangle the move turned over has its corners' moves smoothed
-    with their neighbours' (UNTANGLE_ROUNDS); a shell with a triangle still turned over keeps both skins as they
-    were."""
-    near_rows = np.flatnonzero((piece >= 0) & ~far)
+    A shell with an identified `near` skin keeps that entire skin once inward rays find its thickness. Other
+    shells use inward hits and enclosed() to identify the sheet. Each sheet vertex moves halfway along its
+    inward ray where that pairs, else by half its shell's median thickness. A shell without a thickness or
+    with a triangle still turned over after untangling keeps both skins."""
+    near = np.zeros(len(tri_v), dtype=bool) if near is None else near
+    classified = (piece >= 0) & np.isin(piece, piece[near])
+    candidates = near | ((piece >= 0) & ~classified & ~far)
+    near_rows = np.flatnonzero(candidates)
     far_rows = np.flatnonzero(far)
     query = far_query(p, tri_v[far_rows]) if len(far_rows) else None
     far_normals = face_normals(p, tri_v[far_rows])[0] if len(far_rows) else np.zeros((1, 3))
@@ -147,8 +149,9 @@ def collapse(p, tri_v, far, piece, far_query):
     first, welded = weld_map(p)
     sheet = np.zeros(len(tri_v), dtype=bool)
     sheet[near_rows[face_paired]] = True
-    dropped = (piece >= 0) & ~far & ~sheet
-    sheet |= enclosed(tri_v, welded, dropped, far) & np.isin(piece, list(median))
+    measured = np.isin(piece, list(median))
+    dropped = candidates & ~classified & ~sheet
+    sheet |= (near | enclosed(tri_v, welded, dropped, far)) & measured
     sheet_rows = np.flatnonzero(sheet)
     normals = vertex_normals(p, tri_v[sheet_rows], welded, len(first))
     cast = np.unique(welded[tri_v[sheet_rows]])
@@ -162,10 +165,10 @@ def collapse(p, tri_v, far, piece, far_query):
     moved[cast] = len(p) + np.arange(len(cast))
     moved_tris = moved[welded[tri_v]]
     shift = -normals[cast] * (np.where(paired, distance, fallback) / 2)[:, None]
-    points, flipped = untangled(p, tri_v, origin, shift, moved_tris, sheet_rows)
-    # A far-facing triangle whose corners all moved lies on the near skin: it moves with them.
-    sheet |= far & np.all(moved_tris >= 0, axis=1)
-    whole = np.isin(piece, piece[flipped]) & (piece >= 0)
+    points, flipped = untangled(p, tri_v, origin, shift, moved_tris, sheet_rows, shorten=classified)
+    # The ray-based fallback can put a near face in the far mask even when all its corners move together.
+    sheet |= far & ~classified & np.all(moved_tris >= 0, axis=1)
+    whole = (piece >= 0) & (~measured | np.isin(piece, piece[flipped]))
     sheet &= ~whole
     out = np.where(sheet[:, None], moved_tris, tri_v)
     far_left = far & ~sheet & ~whole

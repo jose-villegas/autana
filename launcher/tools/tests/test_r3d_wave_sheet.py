@@ -204,15 +204,15 @@ class WaveSheetTests(unittest.TestCase):
         # Above, below, and off to one side: the viewer stands where a camera region over cloth would.
         for shape in ("sine", "zigzag", "sawtooth"):
             cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **dict(CLOTH, shape=shape))
-            skins, every = cloth.layer != wave_sheet.HEM, np.ones(len(cloth.tris), dtype=bool)
+            skins, piece = cloth.layer != wave_sheet.HEM, np.zeros(len(cloth.tris), dtype=int)
             for towards, far_layer in (((0.0, 0.0, 200.0), wave_sheet.BACK), ((0.0, 0.0, -200.0), wave_sheet.FRONT),
                                        ((60.0, -40.0, 200.0), wave_sheet.BACK)):
-                far = far_skins(cloth.positions, cloth.tris, every, np.array(towards))
+                far, _near = far_skins(cloth.positions, cloth.tris, piece, np.array(towards))
                 with self.subTest(shape=shape, towards=towards):
                     self.assertTrue(np.array_equal(far[skins], cloth.layer[skins] == far_layer))
         # A triangle with no area faces nowhere: it is never taken for the far skin.
         flat = np.concatenate([cloth.tris, [[0, 0, 1]]])
-        far = far_skins(cloth.positions, flat, np.ones(len(flat), dtype=bool), np.array((0.0, 0.0, 200.0)))
+        far, _near = far_skins(cloth.positions, flat, np.zeros(len(flat), dtype=int), np.array((0.0, 0.0, 200.0)))
         self.assertFalse(far[-1])
 
     @needs_llvm
