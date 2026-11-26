@@ -3,13 +3,9 @@
 #include <string.h>
 #include "anim/anim_skeleton_format.h"
 
-static const anim_field_t FIELDS[] = {
-    ANIM_FIELD(transformf_t, position, ANIM_VALUE_VEC3),
-    ANIM_FIELD(transformf_t, rotation, ANIM_VALUE_QUAT),
-    ANIM_FIELD(transformf_t, scale, ANIM_VALUE_VEC3),
-};
+static const anim_field_t FIELDS[] = {ANIM_POSE_TRANSFORM_FIELD_LIST};
 const anim_component_fields_t ANIM_POSE_TRANSFORM_FIELDS = {ANIM_COMPONENT_TRANSFORM, FIELDS,
-                                                            sizeof FIELDS / sizeof FIELDS[0]};
+                                                            ANIM_POSE_TRANSFORM_FIELD_COUNT};
 
 void
 anim_pose_rest(const anim_skeleton_t* skeleton, anim_pose_t* out) {

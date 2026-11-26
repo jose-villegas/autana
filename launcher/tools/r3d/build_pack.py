@@ -122,7 +122,7 @@ def add_entry(entries, key, source, root):
 
 
 def scene_entries(path, scene):
-    """{entry id: its source} of a scene's pack: its entry, its meshes and every camera's clip."""
+    """{entry id: its source} of a scene's pack: its entry, meshes and animation clips."""
     entries = {}
     add_entry(entries, scene_name.scene_id(path), path, path)
     for item in scene.renderers:
@@ -131,6 +131,8 @@ def scene_entries(path, scene):
         clip = camera.component.path
         if clip:
             add_entry(entries, clip.clip, clip.animation, path)
+    if scene.timeline:
+        add_entry(entries, scene.timeline.clip, scene.timeline.animation, path)
     return entries
 
 
@@ -293,14 +295,20 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     result = {}
     for name, sources in sorted(packs.items()):
         camera_nodes = {}
+        timelines = set()
         for source in sources.values():
             if source.name.endswith(SCENE):
-                for obj in load_scene(source).objects:
+                scene = load_scene(source)
+                if scene.timeline:
+                    timelines.add(scene.timeline.animation)
+                for obj in scene.objects:
                     path = obj.component.path if obj.kind == "camera" else None
                     if path:
                         previous = camera_nodes.setdefault(path.animation, path.node)
                         if previous != path.node:
                             raise SettingsError(f"{source}: camera clip {path.clip!r} selects different nodes")
+        for animation in timelines.intersection(camera_nodes):
+            raise SettingsError(f"{animation}: a timeline clip cannot also select a camera path node")
         texture_packs = {found.start.tree.resolve(): fetched[found.tree.resolve()].read_bytes()
                          for found in wanted.get(name, []) if found.kind == "texture"}
         bundle_rows, bundle_copies, provenance = [], {}, []

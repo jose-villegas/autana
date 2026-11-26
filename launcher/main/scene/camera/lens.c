@@ -1,5 +1,6 @@
 #include "scene/camera/lens.h"
 
+#include <math.h>
 #include <stddef.h>
 
 render_view_t
@@ -13,12 +14,14 @@ lens_view(const lens_t* lens, const transformf_t* pose, viewport_t viewport) {
     return view;
 }
 
-static const anim_field_t LENS_FIELD_LIST[] = {
-    ANIM_FIELD(lens_t, half_fov_short_tan, ANIM_VALUE_FLOAT),
-    ANIM_FIELD(lens_t, near_z, ANIM_VALUE_FLOAT),
-};
+static const anim_field_t LENS_FIELD_LIST[] = {LENS_ANIM_FIELDS};
 const anim_component_fields_t LENS_FIELDS = {
     ANIM_COMPONENT_CAMERA,
     LENS_FIELD_LIST,
-    sizeof LENS_FIELD_LIST / sizeof LENS_FIELD_LIST[0],
+    LENS_FIELD_COUNT,
 };
+
+bool
+lens_value_fits(float value) {
+    return isfinite(value) && value > 0.0F;
+}

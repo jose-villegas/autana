@@ -370,6 +370,69 @@ stay equal (within the scale tolerance) at every key and every cubic tangent.
 Child worlds compose as exact TRS only under an even parent scale; pack builds
 refuse clips that break this rule.
 
+### Timeline
+
+The scene root owns one clip on one clock. Set `clip` to an `.anim.toml`
+path relative to the scene file. The clip travels in the scene's pack and
+addresses transforms and camera lenses by object name.
+
+```toml
+[timeline]
+clip = "demo.anim.toml"
+wrap = "loop"
+```
+
+The default wrap is `"clamp"`, which holds the clip's final frame.
+`"loop"` wraps to the first frame at the duration. A property animator
+and the timeline must write separate fields. Load fails naming
+`object.field` when both claim that field.
+
+### Constraint and hinge
+
+An object can have one position constraint, one aim constraint and one hinge.
+`scene_load()` reports `constraint` or `hinge` as unsupported when it finds these rows.
+
+```toml
+[objects.position_constraint]
+weight = 1.0
+translation_offset = [0, 60, 180]
+binding_mode = "lock_to_target_with_world_up"
+sources = [{ target = "follow_target" }, { target = "next_target", weight = 0.0 }]
+
+[objects.aim_constraint]
+aim_vector = [0, 0, -1]
+up_vector = [0, 1, 0]
+world_up_type = "object_rotation_up"
+world_up_vector = [0, 1, 0]
+world_up_object = "up_target"
+rotation_offset = [0, 0, 0]
+sources = [{ target = "look_target" }]
+
+[objects.hinge]
+axis = [0, 0, 1]
+min = -1.2
+max = 1.2
+angle = 0.0
+```
+
+| Component | Field | Meaning and default |
+|---|---|---|
+| Both constraints | `weight` | Constraint influence, 0..1. Defaults to 1. <sup>[[147]](../../Citations.md#unity-position-constraint)</sup> <sup>[[148]](../../Citations.md#unity-position-constraint-api)</sup> <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> |
+| Both constraints | `sources` | Ordered list of 1 through `SCENE_CONSTRAINT_SOURCES_MAX` sources. Unity averages their contributions by weight. <sup>[[151]](../../Citations.md#unity-constraints)</sup> <sup>[[148]](../../Citations.md#unity-position-constraint-api)</sup> |
+| Source | `target` | Required name of a scene object. <sup>[[147]](../../Citations.md#unity-position-constraint)</sup> <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[151]](../../Citations.md#unity-constraints)</sup> |
+| Source | `weight` | Source influence, 0..1. Defaults to 1. <sup>[[151]](../../Citations.md#unity-constraints)</sup> <sup>[[148]](../../Citations.md#unity-position-constraint-api)</sup> |
+| Position | `translation_offset` | Offset from the blended position. Defaults to `[0, 0, 0]`. <sup>[[147]](../../Citations.md#unity-position-constraint)</sup> <sup>[[148]](../../Citations.md#unity-position-constraint-api)</sup> |
+| Position | `binding_mode` | Frame of the offset. Defaults to `world_space`. `lock_to_target` uses the target frame and `lock_to_target_with_world_up` uses its yaw around world up. <sup>[[144]](../../Citations.md#unity-cinemachine-binding)</sup> |
+| Aim | `aim_vector` | Nonzero local direction toward the target. Defaults to authored `[0, 0, -1]`, the camera's forward axis. The pack mirrors it to engine +Z. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> |
+| Aim | `up_vector` | Nonzero local up direction. Defaults to `[0, 1, 0]`. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> |
+| Aim | `world_up_type` | Up reference. Defaults to `scene_up`. Other choices are `object_up`, `object_rotation_up`, `vector` and `none`. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[150]](../../Citations.md#unity-aim-world-up-type)</sup> |
+| Aim | `world_up_vector` | Up reference vector. Defaults to `[0, 1, 0]`. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[150]](../../Citations.md#unity-aim-world-up-type)</sup> |
+| Aim | `world_up_object` | Name of a scene object. Required for `object_up` and `object_rotation_up` and forbidden for the other types. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> <sup>[[150]](../../Citations.md#unity-aim-world-up-type)</sup> |
+| Aim | `rotation_offset` | Euler degrees in the same order as `rotation`. Defaults to `[0, 0, 0]`. <sup>[[149]](../../Citations.md#unity-aim-constraint)</sup> |
+
+A hinge takes a unit axis and ordered bounds in radians.
+Its starting angle defaults to zero.
+
 ### Light options
 
 | Option | Keys | What it does | Default | Option link |

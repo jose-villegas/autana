@@ -60,6 +60,7 @@
 #include "test_alloc.h"
 #include "test_anim_tracks.h"
 #include "test_pack.h"
+#include "test_scene_timeline.h"
 #include "testkit/cleanup.h"
 
 #ifndef DEVICE_BUILD
@@ -706,6 +707,39 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
     make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, -RIG_TRAVEL);
     make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_TRAVEL);
     make_quad_entry(test_pack_add(pack, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), 255, 0, 0, 2);
+}
+
+uint8_t*
+scene_test_timeline_entry(test_pack_t* pack, uint8_t* bytes, size_t capacity, const uint16_t* counts,
+                          const size_t* sizes, bool property) {
+    const scene_spec_t spec = {.id = SCENE_TEST_TIMELINE_ID,
+                               .skinned = !property,
+                               .entity_count = 2,
+                               .renderer_count = !property,
+                               .camera_count = 1,
+                               .entities = {{"red", IDENTITY}, {"camera", CAMERA_AT(0)}},
+                               .cameras = {{1, CLEAR_RGB, property ? "flight" : ""}}};
+    const skin_fixture_options_t options = {.default_clip = 0};
+    uint32_t end = scene_entry_size(&spec);
+    for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
+        end += (uint32_t)(counts[part] * sizes[part]);
+    }
+    *pack = test_pack_begin(bytes, capacity, RIG_ENTRIES + 5);
+    make_rig_entries(pack, &options);
+    make_quad_entry(test_pack_add(pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES), 255, 0, 0, 1);
+    make_clip_entry(test_pack_add(pack, "flight", ANIM_TRACKS_ASSET, FLIGHT_BYTES), ANIM_VALUE_VEC3, 2);
+    uint8_t* entry = test_pack_add(pack, spec.id, SCENE_ASSET, end);
+    make_scene_entry_with_skin(entry, &spec, &options);
+    uint32_t offset = scene_entry_size(&spec);
+    for (int part = SCENE_ASSET_TIMELINE; part < SCENE_ASSET_PART_COUNT; part++) {
+        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + part * sizeof(uint16_t), counts[part]);
+        test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + part * sizeof(uint32_t), offset);
+        offset += (uint32_t)(counts[part] * sizes[part]);
+    }
+    const uint32_t static_bytes = scene_entry_size(&spec);
+    uint8_t* still = test_pack_add(pack, SCENE_TEST_STATIC_ID, SCENE_ASSET, static_bytes);
+    make_scene_entry_with_skin(still, &spec, &options);
+    return entry;
 }
 
 /* The pack of every quad, scene and the clip, with the CRC set. */
@@ -1529,8 +1563,7 @@ enum {
     PAIR_CAMERA = PAIR_RENDERERS + 2 * sizeof(scene_asset_renderer_t),
     PAIR_PARENTS = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t),
     PAIR_LAST_ROW_END = PAIR_PARENTS + 3 * sizeof(uint16_t),
-    PAIR_BYTES = PAIR_PARENTS + 4 * sizeof(uint16_t), /* three rows, padded to 4 bytes */
-    PAIR_HEADER_PAD = SCENE_ASSET_AT_COUNTS + SCENE_ASSET_PART_COUNT * sizeof(uint16_t)
+    PAIR_BYTES = PAIR_PARENTS + 4 * sizeof(uint16_t) /* three rows, padded to 4 bytes */
 };
 
 /* One edit that breaks the pair's entry: `width` bytes of `value` at `at`,
@@ -1560,7 +1593,6 @@ static const breakage_t BREAKAGES[] = {
     {"a near plane that is not a number", PAIR_CAMERA + 8, 4, 0x7FC00000U, false, ASSET_ERR_FORMAT},
     {"an infinite field of view", PAIR_CAMERA + 4, 4, 0x7F800000U, false, ASSET_ERR_FORMAT},
     {"a clear colour past 0xFFFFFF", PAIR_CAMERA + 12, 4, 0x1000000U, false, ASSET_ERR_FORMAT},
-    {"the header's padding in use", PAIR_HEADER_PAD, 2, 1, false, ASSET_ERR_FORMAT},
     {"an entity its own parent", PAIR_PARENTS + 2, 2, 1, false, ASSET_ERR_FORMAT},
     {"a parent listed after its child", PAIR_PARENTS + 2, 2, 2, false, ASSET_ERR_FORMAT},
     {"a parent past the entities", PAIR_PARENTS + 4, 2, 3, false, ASSET_ERR_FORMAT},

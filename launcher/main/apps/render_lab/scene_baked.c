@@ -52,6 +52,7 @@ record_failure(const scene_failure_t* why) {
         case SCENE_ERR_MEMORY: shown = "no memory for '%s'"; break;
         case SCENE_ERR_FULL: shown = "too many scenes for '%s'"; break;
         case SCENE_ERR_ASSET: shown = missing ? "no asset '%s': flash it" : "bad asset '%s'"; break;
+        case SCENE_ERR_UNSUPPORTED: shown = "unsupported '%s'"; break;
         case SCENE_ERR_UNKNOWN:
         case SCENE_OK: shown = "no scene '%s'"; break;
     }

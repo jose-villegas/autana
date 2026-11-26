@@ -7,6 +7,8 @@
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "collections/bits.h"
+#include "core/memory.h"
 #include "scene/scene_asset.h"
 #include "scene/scene_internal.h"
 
@@ -17,8 +19,8 @@ enum {
 };
 
 _Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
-                   && offsetof(scene_asset_name_t, hash) == SCENE_ASSET_NAME_AT_HASH
-                   && offsetof(scene_asset_name_t, name) == SCENE_ASSET_NAME_AT_TEXT,
+                   && SCNE_FIELD_AT(scene_asset_name_t, hash, NAME_AT_HASH)
+                   && SCNE_FIELD_AT(scene_asset_name_t, name, NAME_AT_TEXT),
                "SCNE names row layout");
 _Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
@@ -84,8 +86,8 @@ parents_pad_zero(asset_view_t entry, const scene_asset_t* scene) {
 }
 
 static bool
-roots(const scene_asset_t* scene, uint16_t entity) {
-    return scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
+root_row_fits(const scene_asset_t* scene, uint16_t entity, uint16_t pad) {
+    return pad == 0 && entity < scene->entity_count && scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
 }
 
 /* A parent comes before its child, so one forward pass sees every parent first. */
@@ -104,23 +106,22 @@ renderer_fits(const scene_asset_t* scene, const void* row) {
 static bool
 camera_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_camera_t* c = row;
-    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0 && isfinite(c->half_fov_short_tan)
-           && c->half_fov_short_tan > 0.0F && isfinite(c->near_z) && c->near_z > 0.0F && c->clear_rgb <= 0xFFFFFFU;
+    return root_row_fits(scene, c->entity, c->pad) && lens_value_fits(c->half_fov_short_tan)
+           && lens_value_fits(c->near_z) && c->clear_rgb <= 0xFFFFFFU;
 }
 
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
-           && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
-           && nonnegative(light->intensity);
+    return root_row_fits(scene, light->entity, light->pad) && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL
+           && scene_light_color_fits(light->color) && nonnegative(light->intensity);
 }
 
 static bool
 skin_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_skinned_renderer_t* skin = row;
-    return skin->entity < scene->entity_count && roots(scene, skin->entity) && skin->pad == 0 && text_fits(skin->mesh)
-           && text_fits(skin->skin) && text_fits(skin->skeleton);
+    return root_row_fits(scene, skin->entity, skin->pad) && text_fits(skin->mesh) && text_fits(skin->skin)
+           && text_fits(skin->skeleton);
 }
 
 static bool
@@ -129,6 +130,75 @@ animator_fits(const scene_asset_t* scene, const void* row) {
     return a->entity < scene->entity_count && a->pad == 0 && (a->wrap == ANIM_CLAMP || a->wrap == ANIM_LOOP)
            && (uint64_t)a->first_clip + a->clip_count <= scene->clip_count
            && (a->default_clip == SCENE_ASSET_DEFAULT_CLIP_NONE || a->default_clip < a->clip_count);
+}
+
+static bool
+timeline_fits(const scene_asset_timeline_t* timeline) {
+    static const uint8_t ZERO[sizeof timeline->pad] = {0};
+    return text_fits(timeline->clip) && (timeline->wrap == ANIM_CLAMP || timeline->wrap == ANIM_LOOP)
+           && memcmp(timeline->pad, ZERO, sizeof ZERO) == 0;
+}
+
+static bool
+vector_finite(vec3f_t value) {
+    return isfinite(value.x) && isfinite(value.y) && isfinite(value.z);
+}
+
+static bool
+target_fits(const scene_asset_t* scene, name_hash_t target) {
+    for (int i = 0; i < scene->entity_count; i++) {
+        if (scene->names[i].hash == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+source_range_fits(const scene_asset_t* scene, uint16_t first, uint8_t count) {
+    return count > 0 && count <= SCENE_CONSTRAINT_SOURCES_MAX && first + count <= scene->source_count;
+}
+
+static bool
+constraint_weight_fits(float weight) {
+    return weight >= 0.0F && weight <= 1.0F;
+}
+
+static bool
+position_constraint_fits(const scene_asset_t* scene, const scene_asset_position_constraint_t* position) {
+    return position->entity < scene->entity_count && position->pad == 0
+           && position->binding_mode <= SCENE_ASSET_BIND_LOCK_TO_TARGET_WITH_WORLD_UP
+           && source_range_fits(scene, position->source_first, position->source_count)
+           && constraint_weight_fits(position->weight) && vector_finite(position->translation_offset);
+}
+
+static bool
+direction_fits(vec3f_t direction) {
+    return vector_finite(direction) && (direction.x != 0.0F || direction.y != 0.0F || direction.z != 0.0F);
+}
+
+static bool
+aim_constraint_fits(const scene_asset_t* scene, const scene_asset_aim_constraint_t* aim) {
+    const bool object_up = aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_UP
+                           || aim->world_up_type == SCENE_ASSET_WORLD_UP_OBJECT_ROTATION_UP;
+    const quatf_t rotation = aim->rotation_offset;
+    return aim->entity < scene->entity_count && aim->world_up_type <= SCENE_ASSET_WORLD_UP_NONE
+           && (object_up ? aim->world_up_object < scene->entity_count
+                         : aim->world_up_object == SCENE_ASSET_WORLD_UP_OBJECT_NONE)
+           && source_range_fits(scene, aim->source_first, aim->source_count) && constraint_weight_fits(aim->weight)
+           && direction_fits(aim->aim_vector) && direction_fits(aim->up_vector) && vector_finite(aim->world_up_vector)
+           && isfinite(rotation.x) && isfinite(rotation.y) && isfinite(rotation.z) && isfinite(rotation.w);
+}
+
+static bool
+constraint_source_fits(const scene_asset_t* scene, const scene_asset_constraint_source_t* source) {
+    return constraint_weight_fits(source->weight) && target_fits(scene, source->target);
+}
+
+static bool
+hinge_fits(const scene_asset_t* scene, const scene_asset_hinge_t* h) {
+    return h->entity < scene->entity_count && h->pad == 0 && isfinite(h->min) && isfinite(h->max) && isfinite(h->angle)
+           && h->min <= h->max && fabsf(vec3f_dot(h->axis, h->axis) - 1.0F) <= SCENE_ASSET_HINGE_AXIS_TOLERANCE;
 }
 
 static bool
@@ -167,11 +237,6 @@ batches_cover(const scene_asset_t* scene) {
         if (b->first_copy != copies || b->first_chunk != chunks) {
             return false;
         }
-        for (int j = 0; j < i; j++) {
-            if (scene->batches[j].renderer == b->renderer) {
-                return false;
-            }
-        }
         copies += b->copy_count;
         chunks += (uint32_t)r3d_batch_chunks(b->copy_count);
     }
@@ -199,7 +264,13 @@ static const part_layout_t LAYOUT[SCENE_ASSET_PART_COUNT] = {
     PART_LAYOUT(batches, batch_count),
     PART_LAYOUT(chunks, chunk_count),
     PART_LAYOUT(places, copy_count),
-    {sizeof(r3d_copy_turn_t), offsetof(scene_asset_t, turns), offsetof(scene_asset_t, copy_count)}};
+    {sizeof(r3d_copy_turn_t), offsetof(scene_asset_t, turns), offsetof(scene_asset_t, copy_count)},
+    PART_LAYOUT(timeline, timeline_count),
+    PART_LAYOUT(position_constraints, position_constraint_count),
+    PART_LAYOUT(aim_constraints, aim_constraint_count),
+    PART_LAYOUT(sources, source_count),
+    PART_LAYOUT(hinges, hinge_count),
+};
 
 static bool
 row_fits(const scene_asset_t* scene, int part, const void* row) {
@@ -218,21 +289,41 @@ row_fits(const scene_asset_t* scene, int part, const void* row) {
         case SCENE_ASSET_CHUNKS: return chunk_fits(row);
         case SCENE_ASSET_PLACES: return true;
         case SCENE_ASSET_TURNS: return turn_fits(row);
+        case SCENE_ASSET_TIMELINE: return timeline_fits(row);
+        case SCENE_ASSET_POSITION_CONSTRAINTS: return position_constraint_fits(scene, row);
+        case SCENE_ASSET_AIM_CONSTRAINTS: return aim_constraint_fits(scene, row);
+        case SCENE_ASSET_CONSTRAINT_SOURCES: return constraint_source_fits(scene, row);
+        case SCENE_ASSET_HINGES: return hinge_fits(scene, row);
         default: return false;
     }
 }
 
-static bool
-entities_unique(const uint8_t* rows, size_t stride, int count) {
-    for (int i = 0; i < count; i++) {
-        const uint16_t entity = asset_read_u16(rows + (i * stride));
-        for (int j = 0; j < i; j++) {
-            if (entity == asset_read_u16(rows + (j * stride))) {
-                return false;
-            }
-        }
+/* Row validation has already bounded each index. */
+static asset_status_t
+indices_unique(const uint8_t* rows, size_t stride, int count, uint16_t limit) {
+    if (count < 2) {
+        return ASSET_OK;
     }
-    return true;
+    if (count > limit) {
+        return ASSET_ERR_FORMAT;
+    }
+    const size_t bytes = BITS8_BYTES(limit);
+    uint8_t* seen = memory_alloc(bytes, MEMORY_APP);
+    if (seen == NULL) {
+        return ASSET_ERR_FULL;
+    }
+    memset(seen, 0, bytes);
+    asset_status_t status = ASSET_OK;
+    for (int i = 0; i < count; i++) {
+        const uint16_t index = asset_read_u16(rows + (i * stride));
+        if (bits8_get(seen, index)) {
+            status = ASSET_ERR_FORMAT;
+            break;
+        }
+        bits8_set(seen, index);
+    }
+    memory_free(seen);
+    return status;
 }
 
 static asset_status_t
@@ -245,13 +336,18 @@ check_rows(const scene_asset_t* scene) {
         }
         const uint8_t* rows;
         memcpy(&rows, (const uint8_t*)scene + layout->view, sizeof rows);
-        if ((part == SCENE_ASSET_LIGHTS || part == SCENE_ASSET_SKINS || part == SCENE_ASSET_ANIMATORS)
-            && !entities_unique(rows, layout->stride, count)) {
-            return ASSET_ERR_FORMAT;
-        }
         for (int i = 0; i < count; i++) {
             if (!row_fits(scene, part, rows + (i * layout->stride))) {
                 return ASSET_ERR_FORMAT;
+            }
+        }
+        if (part == SCENE_ASSET_LIGHTS || part == SCENE_ASSET_SKINS || part == SCENE_ASSET_ANIMATORS
+            || part == SCENE_ASSET_POSITION_CONSTRAINTS || part == SCENE_ASSET_AIM_CONSTRAINTS
+            || part == SCENE_ASSET_HINGES || part == SCENE_ASSET_BATCHES) {
+            const uint16_t limit = part == SCENE_ASSET_BATCHES ? scene->renderer_count : scene->entity_count;
+            const asset_status_t status = indices_unique(rows, layout->stride, count, limit);
+            if (status != ASSET_OK) {
+                return status;
             }
         }
     }
@@ -261,7 +357,7 @@ check_rows(const scene_asset_t* scene) {
 asset_status_t
 scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     *out = (scene_asset_t){0};
-    /* A v1 entry may be shorter than the v2 header; report its version before its bounds. */
+    /* Report a version mismatch even when the entry is shorter than this header. */
     if (entry.size >= sizeof(uint16_t) && asset_read_u16(entry.data) != SCENE_ASSET_VERSION) {
         return ASSET_ERR_VERSION;
     }
@@ -273,19 +369,39 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     const uint16_t entities = count(entry, SCENE_ASSET_NAMES);
     if (count(entry, SCENE_ASSET_TRANSFORMS) != entities || count(entry, SCENE_ASSET_PARENTS) != entities
         || count(entry, SCENE_ASSET_TURNS) != count(entry, SCENE_ASSET_PLACES) || entities == SCENE_ROW_NONE
-        || count(entry, SCENE_ASSET_SETTINGS) != 1 || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
+        || count(entry, SCENE_ASSET_SETTINGS) != 1 || count(entry, SCENE_ASSET_TIMELINE) > 1
+        || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
         return ASSET_ERR_FORMAT;
     }
     scene_asset_t scene = {0};
+
+    struct {
+        uint32_t start;
+        uint64_t end;
+    } ranges[SCENE_ASSET_PART_COUNT];
+
+    int occupied = 0;
     for (int part = 0; part < SCENE_ASSET_PART_COUNT; part++) {
         const part_layout_t* layout = &LAYOUT[part];
         const void* rows = section(entry, part, layout->stride);
         if (rows == NULL) {
             return ASSET_ERR_BOUNDS;
         }
+        const uint16_t rows_count = count(entry, part);
+        if (rows_count != 0) {
+            const uint32_t start = (uint32_t)((const uint8_t*)rows - entry.data);
+            const uint64_t bytes = (uint64_t)rows_count * layout->stride;
+            const uint64_t end = start + ((bytes + ENTRY_ALIGNMENT - 1U) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT);
+            for (int i = 0; i < occupied; i++) {
+                if (start < ranges[i].end && ranges[i].start < end) {
+                    return ASSET_ERR_FORMAT;
+                }
+            }
+            ranges[occupied].start = start;
+            ranges[occupied++].end = end;
+        }
         memcpy((uint8_t*)&scene + layout->view, &rows, sizeof rows);
         if (layout->count != SIZE_MAX) {
-            const uint16_t rows_count = count(entry, part);
             memcpy((uint8_t*)&scene + layout->count, &rows_count, sizeof rows_count);
         }
     }

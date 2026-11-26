@@ -127,6 +127,29 @@ typedef struct {
     anim_bound_t* fields;
 } scene_animator_clip_t;
 
+/* Separate from property animators so the scene root has one shared clock. */
+typedef struct {
+    anim_tracks_t tracks;
+    anim_playhead_t clock;
+    uint32_t applied_ms;
+    bool dirty;
+    anim_bound_t fields[];
+} scene_timeline_t;
+
+/* Temporary component references let the binder address scene columns directly. */
+typedef struct {
+    anim_target_t* targets;
+    void* block; /* Owns targets and their component references. */
+    int count;
+} scene_anim_targets_t;
+
+typedef uint16_t scene_field_mask_t;
+
+typedef struct {
+    const scene_asset_t* asset;
+    scene_field_mask_t* writes;
+} scene_claims_t;
+
 enum { SCENE_ANIM_TIER_NEAR, SCENE_ANIM_TIER_MID, SCENE_ANIM_TIER_FAR };
 
 typedef struct {
@@ -225,12 +248,15 @@ struct scene {
     const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
-    uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
+    scene_field_mask_t* writes;
+    uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
     scene_animator_t* animators;
+    scene_timeline_t* timeline;
+    size_t block_bytes;
     scene_skinned_renderer_t* skinned_renderers;
     r3d_batch_t* batches;     /* one per SCNE batch, its renderer's */
     r3d_copy_chunk_t* chunks; /* every batch's chunks, internal RAM: what the cull reads first */
@@ -338,6 +364,18 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
+scene_anim_targets_t scene_anim_targets(const scene_asset_t* asset, const scene_t* scene);
+bool scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t field);
+scene_failure_t scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets,
+                                           const anim_tracks_t* tracks, const char* clip, int self,
+                                           scene_field_mask_t* owned);
+void scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count,
+                                  const anim_playhead_t* playhead, const anim_clip_t* clip);
+asset_status_t scene_animator_read_clip(const asset_pack_t* pack, const char* id, uint8_t root, anim_tracks_t* out);
+bool scene_animator_set_clips(scene_t* scene, scene_row_t row, const char* skeleton_id, const char* const* ids,
+                              int count, bool replace, scene_failure_t* why);
+scene_failure_t scene_timeline_bind(scene_t* scene);
+void scene_timeline_step(scene_t* scene, uint32_t dt_ms);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);

@@ -1,6 +1,8 @@
 /* Scene animation owns component bindings and buffers; entity and cluster jobs synchronize before bounds refit. */
 #include <assert.h>
+#include <limits.h>
 #include <stdalign.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks_format.h"
@@ -12,6 +14,46 @@
 #include "render/record/frame_record.h"
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
+
+enum { SCENE_COMPONENT_TRANSFORM, SCENE_COMPONENT_LENS, SCENE_COMPONENT_COUNT };
+
+static const anim_component_fields_t* const SCENE_COMPONENTS[SCENE_COMPONENT_COUNT] = {
+    [SCENE_COMPONENT_TRANSFORM] = &ANIM_POSE_TRANSFORM_FIELDS,
+    [SCENE_COMPONENT_LENS] = &LENS_FIELDS,
+};
+
+_Static_assert(ANIM_POSE_TRANSFORM_FIELD_COUNT + LENS_FIELD_COUNT <= sizeof(scene_field_mask_t) * CHAR_BIT,
+               "scene animation fields fit in the claim mask");
+
+scene_anim_targets_t
+scene_anim_targets(const scene_asset_t* asset, const scene_t* scene) {
+    const int entities = asset->entity_count;
+    size_t end = 0;
+    const size_t targets = mem_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
+    const size_t components = mem_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * SCENE_COMPONENT_COUNT,
+                                        alignof(anim_component_ref_t));
+    uint8_t* block = memory_alloc(end, MEMORY_APP);
+    scene_anim_targets_t out = {.block = block, .count = entities};
+    if (block == NULL) {
+        return out;
+    }
+    out.targets = (anim_target_t*)(void*)(block + targets);
+    anim_component_ref_t* refs = (anim_component_ref_t*)(void*)(block + components);
+    for (int e = 0; e < entities; e++) {
+        anim_component_ref_t* fields = refs + (e * SCENE_COMPONENT_COUNT);
+        fields[SCENE_COMPONENT_TRANSFORM] =
+            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_TRANSFORM], scene ? &scene->locals[e] : NULL};
+        out.targets[e] = (anim_target_t){asset->names[e].hash, fields, SCENE_COMPONENT_TRANSFORM + 1,
+                                         scene ? &scene->flags[e] : NULL, SCENE_FLAG_CHANGED};
+    }
+    for (int c = 0; c < asset->camera_count; c++) {
+        const int e = asset->cameras[c].entity;
+        refs[e * SCENE_COMPONENT_COUNT + SCENE_COMPONENT_LENS] =
+            (anim_component_ref_t){SCENE_COMPONENTS[SCENE_COMPONENT_LENS], scene ? &scene->cameras[c].lens : NULL};
+        out.targets[e].component_count = SCENE_COMPONENT_LENS + 1;
+    }
+    return out;
+}
 
 /* The pose interval of tier `tier` under `s`. */
 static int
@@ -124,6 +166,68 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
     }
 }
 
+bool
+scene_field_claim(scene_claims_t* claims, scene_row_t entity, scene_field_mask_t field) {
+    assert(entity < claims->asset->entity_count);
+    if (claims->writes[entity] & field) {
+        return false;
+    }
+    claims->writes[entity] |= field;
+    return true;
+}
+
+static bool
+lens_keys_fit(const anim_track_t* curve) {
+    for (int key = 0; key < curve->count; key++) {
+        float value[ANIM_WIDTH_MAX];
+        anim_track_sample(curve, curve->times[key], value);
+        if (!lens_value_fits(value[0])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+scene_failure_t
+scene_animation_claim_clip(scene_claims_t* claims, const scene_anim_targets_t* targets, const anim_tracks_t* tracks,
+                           const char* clip, int self, scene_field_mask_t* owned) {
+    for (int i = 0; i < tracks->count; i++) {
+        anim_binding_t binding;
+        (void)anim_tracks_binding_at(tracks, i, &binding);
+        anim_binding_location_t location;
+        if (anim_bind_locate(&binding, targets->targets, targets->count, self, &location) != ANIM_BIND_OK) {
+            return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, clip);
+        }
+        int field = location.field;
+        for (int c = 0; c < location.component; c++) {
+            field += SCENE_COMPONENTS[c]->field_count;
+        }
+        const scene_field_mask_t bit = 1U << field;
+        const scene_row_t entity = location.target;
+        if ((binding.component == ANIM_COMPONENT_CAMERA && !lens_keys_fit(&binding.curve))
+            || ((owned == NULL || !(owned[entity] & bit)) && !scene_field_claim(claims, entity, bit))) {
+            scene_failure_t failure = {SCENE_ERR_ASSET, ASSET_ERR_FORMAT, ""};
+            (void)snprintf(failure.what, sizeof failure.what, "%s.%s", claims->asset->names[entity].name,
+                           binding.field);
+            return failure;
+        }
+        if (owned != NULL) {
+            owned[entity] |= bit;
+        }
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, clip);
+}
+
+void
+scene_animation_apply_fields(scene_t* scene, const anim_bound_t* fields, int count, const anim_playhead_t* playhead,
+                             const anim_clip_t* clip) {
+    anim_apply(fields, count, anim_playhead_sample_seconds(playhead, clip));
+    for (int i = 0; i < count; i++) {
+        const ptrdiff_t entity = fields[i].dirty - scene->flags;
+        scene->locals[entity].cached = false;
+    }
+}
+
 static void
 apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     if (!advance_animator(a, dt_ms)) {
@@ -131,11 +235,7 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
-    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead));
-    for (int i = 0; i < clip->tracks.count; i++) {
-        const ptrdiff_t entity = clip->fields[i].dirty - scene->flags;
-        scene->locals[entity].cached = false;
-    }
+    scene_animation_apply_fields(scene, clip->fields, clip->tracks.count, &slot->playhead, &clip->tracks.clip);
 }
 
 static const r3d_skin_light_kernel_t LIGHT_KERNELS[] = {
@@ -300,6 +400,7 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
 void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
+    scene_timeline_step(scene, dt_ms);
     scene_animation_repose(scene, dt_ms);
     scene->animation_frame++;
     /* Only a draw between steps can supply the next step's visible size. */

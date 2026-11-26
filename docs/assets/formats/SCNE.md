@@ -1,20 +1,20 @@
-# SCNE v6 scene
+# SCNE v7 scene
 
-One scene: its entities, their transforms and parents, the components on them, and the copies a renderer draws from one table ([Batches](#batches)) ([Scene-Files.md](../../render/scene/Scene-Files.md) is the authored file, [Scene-Manager.md](../../render/scene/Scene-Manager.md) the runtime). Layout defines: [`scene/scene_format.h`](../../../launcher/main/scene/scene_format.h); row structs in [`scene/scene_internal.h`](../../../launcher/main/scene/scene_internal.h).
+One scene: its entities, their transforms and parents, the components on them, and the copies a renderer draws from one table ([Batches](#batches)) ([Scene-Files.md](../../render/scene/Scene-Files.md) is the authored file, [Scene-Manager.md](../../render/scene/Scene-Manager.md) the runtime). Layout defines: [`scene/scene_format.h`](../../../launcher/main/scene/scene_format.h); row structs in [`scene/scene_asset.h`](../../../launcher/main/scene/scene_asset.h).
 
 `build_pack.py` bakes `NAME.scene.toml` into entry `NAME` of its own pack `NAME`, beside every mesh, skin, skeleton and clip it names; a scene and its clip cannot share a stem ([Building-Packs.md](../Building-Packs.md#packs)). `scene_load()` opens it and each entry it names, and fails naming whichever is missing or malformed.
 
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(8) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(2) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(8) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(5) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(6) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(7) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(8) { fill: #c7aaee !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(4) rect:nth-of-type(5) { fill: #f4a885 !important; } g:nth-of-type(4) rect:nth-of-type(6) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(5) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(6) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(7) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(1) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(2) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(3) { fill: #f4a885 !important; } g:nth-of-type(8) rect:nth-of-type(4) { fill: #f4a885 !important; } g:nth-of-type(9) rect:nth-of-type(1) { fill: #f4a885 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 16
     bitWidth: 64
 ---
 packet-beta
-title Header, 88 bytes at 0, one cell a byte
-0-1: "version = 6"
+title Header, 116 bytes at 0, one cell a byte
+0-1: "version = 7"
 2-3: "names"
 4-5: "transforms"
 6-7: "renderers"
@@ -29,21 +29,30 @@ title Header, 88 bytes at 0, one cell a byte
 24-25: "chunks"
 26-27: "places"
 28-29: "turns"
-30-31: "0"
-32-35: "names_off"
-36-39: "transforms_off"
-40-43: "renderers_off"
-44-47: "cameras_off"
-48-51: "lights_off"
-52-55: "skins_off"
-56-59: "animators_off"
-60-63: "clips_off"
-64-67: "settings_off"
-68-71: "parents_off"
-72-75: "batches_off"
-76-79: "chunks_off"
-80-83: "places_off"
-84-87: "turns_off"
+30-31: "timeline"
+32-33: "pos count"
+34-35: "aim count"
+36-37: "sources"
+38-39: "hinges"
+40-43: "names_off"
+44-47: "transforms_off"
+48-51: "renderers_off"
+52-55: "cameras_off"
+56-59: "lights_off"
+60-63: "skins_off"
+64-67: "animators_off"
+68-71: "clips_off"
+72-75: "settings_off"
+76-79: "parents_off"
+80-83: "batches_off"
+84-87: "chunks_off"
+88-91: "places_off"
+92-95: "turns_off"
+96-99: "timeline_off"
+100-103: "position_off"
+104-107: "aim_off"
+108-111: "sources_off"
+112-115: "hinges_off"
 ```
 
 ```mermaid
@@ -257,9 +266,97 @@ title Content: turn, 8 bytes a copy from turns_off
 6-7: "largest"
 ```
 
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 16
+    bitWidth: 54
+---
+packet-beta
+title Content: timeline, 36 bytes from timeline_off, at most one
+0-31: "char clip[32], NUL padded"
+32: "wrap"
+33-35: "0"
+```
+
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 12
+    bitWidth: 80
+---
+packet-beta
+title Position constraint, 24 bytes from position_off
+0-1: "entity"
+2: "bind mode"
+3: "src count"
+4-5: "source_first"
+6-7: "0"
+8-11: "f32 weight"
+12-23: "f32 translation_offset[3]"
+```
+
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(5) { fill: #c7aaee !important; } g:nth-of-type(2) rect:nth-of-type(6) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(7) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(5) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 16
+    bitWidth: 60
+---
+packet-beta
+title Aim constraint, 64 bytes from aim_off
+0-1: "entity"
+2: "up type"
+3: "src count"
+4-5: "source_first"
+6-7: "world_up_object"
+8-11: "f32 weight"
+12-23: "f32 aim_vector[3]"
+24-35: "f32 up_vector[3]"
+36-47: "f32 world_up_vector[3]"
+48-63: "f32 rotation_offset[4]"
+```
+
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 8
+    bitWidth: 80
+---
+packet-beta
+title Constraint source, 8 bytes from sources_off
+0-3: "u32 target (name_hash)"
+4-7: "f32 weight"
+```
+
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 16
+    bitWidth: 54
+---
+packet-beta
+title Content: hinges, 28 bytes each from hinges_off
+0-1: "entity"
+2-3: "0"
+4-15: "f32 axis[3]"
+16-19: "f32 min"
+20-23: "f32 max"
+24-27: "f32 angle"
+```
+
 | Part | At | Size |
 |---|---|---|
-| Header | 0 | 88 bytes: fourteen u16 counts from `SCENE_ASSET_AT_COUNTS`, then fourteen u32 offsets from `SCENE_ASSET_AT_OFFSETS`, both in `scene_asset_part_t` order |
+| Header | 0 | 116 bytes. A u16 count and a u32 offset per part, in `scene_asset_part_t` order |
 | Name registry | `names_off` | 36 bytes an entity |
 | Content: transforms | `transforms_off` | 48 bytes an entity; the count equals the names' |
 | Content: renderers | `renderers_off` | 36 bytes each |
@@ -274,25 +371,37 @@ title Content: turn, 8 bytes a copy from turns_off
 | Content: chunks | `chunks_off` | 16 bytes each, each batch's chunks in turn |
 | Content: places | `places_off` | 8 bytes a copy, each batch's copies in turn |
 | Content: turns | `turns_off` | 8 bytes a copy, in the places' order; the count equals the places' |
+| Content: timeline | `timeline_off` | 36 bytes, at most one row |
+| Content: position constraints | `position_off` | 24 bytes each |
+| Content: aim constraints | `aim_off` | 64 bytes each |
+| Constraint sources | `sources_off` | 8 bytes each, shared by both kinds |
+| Content: hinges | `hinges_off` | 28 bytes each |
 
 | Rule | Detail |
 |---|---|
-| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (88), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1), `SCENE_ASSET_NAME_SIZE` (36), `_NAME_AT_HASH` (0), `_NAME_AT_TEXT` (4) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
-| Layout | every part offset is a multiple of 4, at least 88, and the part ends inside the entry; the writer lays parts out in header order, each padded to 4 bytes |
-| Counts | each at most 65535, entities at most 65534; names equals transforms and parents; turns equals places; settings is exactly 1 |
+| Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (116), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_ASSET_PARENT_ROOT` (0xFFFF), `SCENE_ASSET_COLOUR_SET_OWN` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1), `SCENE_ASSET_NAME_SIZE` (36), `_NAME_AT_HASH` (0), `_NAME_AT_TEXT` (4) in `scene_format.h`; row structs in `scene_asset.h`, checked against the sizes above by `_Static_assert` |
+| Layout | every part offset is a multiple of 4, at least 116. Parts end inside the entry and occupy disjoint ranges; the writer lays parts out in header order, each padded to 4 bytes |
+| Counts | each at most 65535, entities at most 65534; names equals transforms and parents; turns equals places; settings is exactly 1; timeline is at most 1 |
 | Names | letters, digits and `_`, starting with a letter or `_`, at most 31 bytes; `name_hash` is `name_hash(name)` ([hash package](../../../launcher/packages/hash/README.md)) and never `NAME_HASH_NONE`, and finds compare it alone. The bake refuses a name that hashes to `NAME_HASH_NONE` and two names in one scene that share a hash, naming both |
 | Transforms | in the parent's frame; scale positive. `scene_load()` refuses a shear or a reflection (determinant −1) and names its entity |
 | Parents | `parent` is `SCENE_ASSET_PARENT_ROOT` or below its own entity, so one forward pass meets every parent before its children. A camera, light or skinned renderer is a root. An entity with children has a uniform scale, the same on every axis, and `scene_load()` refuses one that does not, naming it; `scene_asset.encode()` folds a parent's uneven scale into its children, refusing a parent that draws or a turned child the fold would shear. A mesh bundle's copies of one shape are one batch, on a child of the renderer that carries them ([MCOP](MCOP.md)). Transform and enabled state carry to descendants ([Scene-Manager.md](../../render/scene/Scene-Manager.md#hierarchy)) |
-| Entities | the scene's objects in file order; every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
+| Entities | the scene's objects in file order; every `entity` is below the names' count; at most one light, one skinned renderer, one animator, one position constraint, one aim constraint and one hinge per entity |
 | Colour sets | own colours (`SCENE_ASSET_COLOUR_SET_OWN`) need no LCOL, checked at pack time, and authored scenes write own colours; [Selection and ownership](LCOL.md) |
 | Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL |
 | Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` (0xRRGGBB) at most `0xFFFFFF`. A camera `path` becomes an animator on its entity with one clip, default index zero and loop wrap; its `node` selects the tracks at bake time, and they bind to that entity through `ANIM_TARGET_SELF` |
 | Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0. The light shines along `SCENE_LIGHT_AXIS` (+Y) turned by its entity's rotation; at run time it lights skinned renderers only, baked renderers carry their light. Sky and camera regions are bake inputs and are not stored |
 | Animator | `first_clip + clip_count` within the clip count; `default_clip` is below `clip_count` or `SCENE_ASSET_DEFAULT_CLIP_NONE` (no playback); `wrap` is an `ANIM_CLAMP` or `ANIM_LOOP` code from [`anim/anim_track.h`](../../../launcher/main/anim/anim_track.h) |
+| Timeline | The clip names a TRCK in the same pack with root `ANIM_ROOT_SCENE`. Wrap is `ANIM_CLAMP` or `ANIM_LOOP`. |
+| Constraints | Floats are finite and weights are in 0..1. Each `source_count` is 1 through `SCENE_CONSTRAINT_SOURCES_MAX` and `source_first + source_count` is at most the source table count. |
+| Position constraint | `binding_mode` is `world_space` (0), `lock_to_target` (1) or `lock_to_target_with_world_up` (2). Padding is zero. |
+| Aim constraint | `world_up_type` is `scene_up` (0), `object_up` (1), `object_rotation_up` (2), `vector` (3) or `none` (4). `world_up_object` is an entity row for types 1 and 2 and `SCENE_ASSET_WORLD_UP_OBJECT_NONE` (0xFFFF) otherwise. Aim and up vectors are nonzero. The tool bakes Euler degrees to an x, y, z, w quaternion. |
+| Constraint source | `target` is the hash of a named scene entity. `weight` is finite and in 0..1. |
+| Hinges | Floats are finite and angles are in radians with `min <= max`. The axis has unit length within the squared-length tolerance `SCENE_ASSET_HINGE_AXIS_TOLERANCE`. |
+| Unsupported rows | `scene_load()` rejects a scene with a position or aim constraint as unsupported and names `constraint`. It names `hinge` for a hinge. |
 | Settings | ambient colour in 0..1; `ambient_intensity` and `tonemap_white` finite and at least 0; absent ambient has zero intensity. Applied before lights attach; `tonemap_white` 0 is `SCENE_TONEMAP_WHITE_NONE`, the identity tone map |
 | Batches | see [Batches](#batches) |
 | Order | header, then parts in header order; every `0` above and every gap is zero |
-| Errors | `ASSET_ERR_VERSION` for another version, v1 included, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
+| Errors | `ASSET_ERR_VERSION` for any other version, reported before its bounds; `ASSET_ERR_BOUNDS` for a part off its alignment or outside the entry; `ASSET_ERR_FORMAT` for the rest |
 
 ## Batches
 

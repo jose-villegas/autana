@@ -9,10 +9,10 @@ import math
 import pathlib
 import struct
 import sys
-from array import array
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from build.c_header import read_define
+from r3d.float32 import f32
 from r3d.scene_rows import SceneError
 
 OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/batch/r3d_batch.h"
@@ -29,11 +29,6 @@ QUATERNION = 4
 MORTON_BITS = 10
 # How far a copy's 3x3 may be from a rotation and still be one, as a share of 1.
 RIGID_TOLERANCE = 1e-4
-
-
-def f32(value):
-    """`value` rounded to the nearest float32."""
-    return array("f", [value])[0]
 
 
 def f32_up(value):

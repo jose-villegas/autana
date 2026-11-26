@@ -23,14 +23,15 @@ typedef enum {
     SCENE_ERR_FULL,    /* the world has no run of entity slots long enough */
     SCENE_ERR_MEMORY,  /* the scene's block could not be allocated */
     SCENE_ERR_ASSET, /* no pack, or its entry, a mesh, its clip or an entity's placement did not open: `asset` says why */
+    SCENE_ERR_UNSUPPORTED, /* the entry uses a component the runtime cannot instantiate */
 } scene_status_t;
 
 /* Why a load failed: its status, the pack's status when an entry failed,
- * and the id of the scene, mesh or clip, or the entity name, it was about. */
+ * and the id, table, entity or entity field it was about. */
 typedef struct {
     scene_status_t status;
     asset_status_t asset;
-    char what[ASSET_NAME_MAX];
+    char what[2 * ASSET_NAME_MAX];
 } scene_failure_t;
 
 /* Loads the scene `id` from the asset pack it names, or for scene_load_from()

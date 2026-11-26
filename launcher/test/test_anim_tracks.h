@@ -10,8 +10,8 @@
 enum {
     TEST_TRACKS_HEADER_SIZE = ANIM_TRACKS_HEADER_SIZE,
     TEST_TRACK_ROW_SIZE = ANIM_TRACKS_ROW_SIZE,
-    TEST_TRACK_STRING_SLOT = 64,
-    TEST_TRACK_FIELD_OFFSET = 48,
+    TEST_TRACK_STRING_SLOT = 2 * ASSET_NAME_MAX,
+    TEST_TRACK_FIELD_OFFSET = ASSET_NAME_MAX,
 };
 
 typedef struct {
@@ -40,6 +40,8 @@ test_track_row(uint8_t* entry, int index, const test_track_t* track) {
     const uint32_t strings = TEST_TRACKS_HEADER_SIZE + (count * TEST_TRACK_ROW_SIZE);
     const uint16_t path = index * TEST_TRACK_STRING_SLOT;
     const uint16_t field = path + TEST_TRACK_FIELD_OFFSET;
+    TEST_ASSERT_TRUE_MESSAGE(strlen(track->path) < TEST_TRACK_FIELD_OFFSET, track->path);
+    TEST_ASSERT_TRUE_MESSAGE(strlen(track->field) < TEST_TRACK_STRING_SLOT - TEST_TRACK_FIELD_OFFSET, track->field);
     strcpy((char*)entry + strings + path, track->path);
     strcpy((char*)entry + strings + field, track->field);
     test_pack_put16(row + ANIM_TRACKS_ROW_PATH, path);

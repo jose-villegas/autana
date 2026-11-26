@@ -85,13 +85,36 @@ lit block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `entity_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([SCNE.md](../../assets/formats/SCNE.md)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
+([SCNE.md](../../assets/formats/SCNE.md)).
 Authored lights attach at load, and `light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
 the asset pack. Animator rows create animators; a camera path is an animator
 on the camera's entity whose tracks bind to that entity through
 `ANIM_TARGET_SELF`. Binding resolves every clip before playback.
+
+## Timeline
+
+An authored timeline loads paused at time zero. Playback applies fields when
+the millisecond changes. A seek applies immediately, including while paused.
+Seeks and loop wraps mark a cut when the timeline drives the active camera.
+
+[`scene/timeline/timeline.h`](../../../launcher/main/scene/timeline/timeline.h) declares `timeline_play()`, `timeline_pause()`, `timeline_playing()`, `timeline_seek()`, `timeline_time_ms()` and `timeline_duration_ms()`.
+
+<!-- generated: scene-timeline-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Start playback and seek to the midpoint before pausing on that frame. */
+#include "scene/timeline/timeline.h"
+
+static uint32_t
+preview_timeline(entity_t scene) {
+    timeline_play(scene);
+    timeline_seek(scene, timeline_duration_ms(scene) / 2);
+    timeline_pause(scene);
+    return timeline_time_ms(scene);
+}
+```
+<!-- /generated: scene-timeline-example -->
 
 ## Hierarchy
 

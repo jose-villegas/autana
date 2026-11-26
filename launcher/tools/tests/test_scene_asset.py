@@ -65,6 +65,131 @@ class SceneFiles(unittest.TestCase):
         return scene_asset.bake(self.scene(objects, head))
 
 
+class SceneTimelineTests(SceneFiles):
+    def test_timeline_clip_travels_in_the_scene_pack(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
+        path = self.scene(renderer("a.import.toml") + lens(), head)
+        pack = parse_pack(build_pack.pack_bytes([path])["hall"])
+        self.assertEqual(pack["fly"][0], tracks_asset.TYPE)
+        self.assertEqual(scene_asset.decode(pack["hall"][1])["timeline"],
+                         [dict(clip="fly", wrap=scene_asset.WRAPS["clamp"])])
+
+    def test_timeline_constraint_and_hinge_round_trip(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\nwrap = "loop"\n'
+        camera = lens() + """[objects.position_constraint]
+binding_mode = "lock_to_target_with_world_up"
+translation_offset = [0, 60, 180]
+weight = 0.5
+sources = [{ target = "camera" }, { target = "camera", weight = 0 }]
+[objects.aim_constraint]
+world_up_type = "object_rotation_up"
+world_up_object = "camera"
+rotation_offset = [0, 90, 0]
+sources = [{ target = "camera", weight = 0.25 }]
+[objects.hinge]
+axis = [1, 0, 0]
+min = -1.25
+max = 1.25
+angle = 0.25
+"""
+        entry = self.entry(renderer("a.import.toml") + camera, head)
+        decoded = scene_asset.decode(entry)
+        self.assertEqual(decoded["timeline"], [dict(clip="fly", wrap=scene_asset.WRAPS["loop"])])
+        self.assertEqual(decoded["position_constraints"], [dict(entity=1,
+            binding_mode=scene_asset.BINDS["lock_to_target_with_world_up"],
+            source_count=2, source_first=0, translation_offset=(0, 60, 180), weight=0.5)])
+        self.assertEqual(decoded["sources"], [dict(target=name_hash("camera"), weight=weight)
+                                             for weight in (1, 0, 0.25)])
+        aim, = decoded["aim_constraints"]
+        self.assertEqual(aim["world_up_object"], 1)
+        self.assertEqual(aim["world_up_type"], scene_asset.WORLD_UP["object_rotation_up"])
+        self.assertEqual(aim["source_first"], 2)
+        self.assertEqual(aim["aim_vector"], (0, 0, -1))
+        self.assertEqual(aim["up_vector"], (0, 1, 0))
+        self.assertEqual(aim["world_up_vector"], (0, 1, 0))
+        self.assertEqual(aim["weight"], 1)
+        self.assertAlmostEqual(aim["rotation_offset"][1], math.sqrt(0.5))
+        self.assertAlmostEqual(aim["rotation_offset"][3], math.sqrt(0.5))
+        packed = scene_asset.decode(to_engine(scene_asset.TYPE, entry))
+        self.assertEqual(packed["position_constraints"][0]["translation_offset"], (0, 60, -180))
+        self.assertEqual(packed["aim_constraints"][0]["aim_vector"], (0, 0, 1))
+        self.assertEqual(packed["aim_constraints"][0]["rotation_offset"][1], -aim["rotation_offset"][1])
+        self.assertEqual(packed["hinges"], [decoded["hinges"][0] | {"axis": (-1, 0, 0)}])
+
+    def test_decoder_refuses_bad_motion_rows(self):
+        head = '[timeline]\nclip = "clips/fly.anim.toml"\n'
+        camera = lens() + ('[objects.position_constraint]\nsources = [{target = "camera"}]\n'
+                           '[objects.aim_constraint]\nsources = [{target = "camera"}]\n'
+                           '[objects.hinge]\naxis = [0, 1, 0]\nmin = 0\nmax = 0\n')
+        entry = self.entry(renderer("a.import.toml") + camera, head)
+        timeline, position, aim, hinge = (scene_asset.PARTS.index(part) for part in
+                                          ("timeline", "position_constraints", "aim_constraints", "hinges"))
+        offsets = 1 + len(scene_asset.PARTS)
+        header = HEADER.unpack_from(entry)
+        timeline_start = header[offsets + timeline]
+        hinge_start = header[offsets + hinge]
+        timeline_pad = timeline_start + scene_asset.TIMELINE.size - scene_asset.TIMELINE_PAD_BYTES
+        for at, value, message in ((timeline_pad, 1, "padding"),
+                                   (timeline_start + NAME_BYTES, 255, "wrap")):
+            with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
+                broken = bytearray(entry)
+                broken[at] = value
+                scene_asset.decode(broken)
+        for part in (timeline, position, aim, hinge):
+            with self.subTest(part=part), self.assertRaisesRegex(SceneError, "at most one|duplicate"):
+                start = header[offsets + part]
+                stride = scene_asset.ROWS[part].size
+                updated = list(header)
+                updated[1 + part] = 2
+                updated[offsets + part] = len(entry)
+                broken = bytearray(entry + entry[start:start + stride] * 2)
+                HEADER.pack_into(broken, 0, *updated)
+                scene_asset.decode(broken)
+        with self.assertRaisesRegex(SceneError, "unit axis"):
+            broken = bytearray(entry)
+            scene_asset.HINGE.pack_into(broken, hinge_start, 1, 0, 0, 0, 0, 0, 0, 0)
+            scene_asset.decode(broken)
+        with self.assertRaisesRegex(SceneError, "shorter than a header"):
+            scene_asset.decode(entry[:HEADER.size - 1])
+
+    def test_invalid_timeline_settings(self):
+        for body, message in (("", "timeline.clip"), ('clip = 3', "timeline.clip"),
+                              ('clip = "fly.glb"', "timeline.clip"),
+                              ('clip = "absent.anim.toml"', "absent.anim.toml"),
+                              ('clip = "clips/fly.anim.toml"\nwrap = "restart"', "timeline.wrap")):
+            with self.subTest(body=body), self.assertRaisesRegex(SceneError, message):
+                self.entry(renderer("a.import.toml") + lens(), "[timeline]\n" + body + "\n")
+
+    def test_invalid_object_settings(self):
+        settings = {
+            "position_constraint": {
+                'sources = []': "sources",
+                'sources = [{ target = "" }]': "target",
+                'sources = [{ target = "missing" }]': "target",
+                'sources = [{ target = "camera", weight = 2 }]': "weight",
+                'sources = [{ target = "camera" }]\nbinding_mode = "surface"': "binding_mode",
+                'sources = [{ target = "camera" }]\ntranslation_offset = [0, nan, 0]': "translation_offset",
+                'sources = [{ target = "camera" }]\nweight = -0.5': "weight",
+            },
+            "aim_constraint": {
+                'sources = [{ target = "camera" }]\naim_vector = [0, 0, 0]': "aim_vector",
+                'sources = [{ target = "camera" }]\nup_vector = [0, 0, 0]': "up_vector",
+                'sources = [{ target = "camera" }]\nworld_up_type = "object_up"': "world_up_object",
+                'sources = [{ target = "camera" }]\nworld_up_object = "camera"': "world_up_object",
+            },
+            "hinge": {
+                'axis = [0, 0, 2]\nmin = 0\nmax = 1': "axis",
+                'axis = [0, 0, 1]\nmin = 2\nmax = 1': "min",
+                'axis = [0, 0, 1]\nmin = 0\nmax = 1\nangle = inf': "angle",
+                'axis = [0, 0, 1]\nmin = 0': "max",
+            },
+        }
+        for table, cases in settings.items():
+            for body, message in cases.items():
+                with self.subTest(table=table, body=body), self.assertRaisesRegex(SceneError, message):
+                    self.entry(renderer("a.import.toml") + lens() + f"[objects.{table}]\n{body}\n")
+
+
 class SceneEntryTests(SceneFiles):
     def test_header_size_mismatch_raises_scene_error(self):
         owner_size = HEADER.size + 1
@@ -305,6 +430,23 @@ def authored_entry():
 
 
 class SceneEntryRefusalTests(unittest.TestCase):
+    def test_overlapping_sections_are_refused(self):
+        entry = authored_entry()
+        count = len(scene_asset.PARTS)
+        offsets = 1 + count
+        settings = scene_asset.PARTS.index("settings")
+        transforms = scene_asset.PARTS.index("transforms")
+        header = list(HEADER.unpack_from(entry))
+        header[offsets + settings] = header[offsets + transforms]
+        HEADER.pack_into(entry, 0, *header)
+        with self.assertRaisesRegex(SceneError, "overlap"):
+            scene_asset.decode(entry)
+
+    def test_hinge_axis_matches_float32_tolerance(self):
+        axis = (0.9999856352806091, 0.011344963684678078, 0)
+        with self.assertRaisesRegex(SceneError, "unit axis"):
+            scene_asset.decode_hinge((0, *axis, 0, 0, 0))
+
     def test_authored_rows_round_trip(self):
         decoded = scene_asset.decode(authored_entry())
         self.assertEqual(decoded["clips"], ["idle", "walk"])
@@ -379,10 +521,6 @@ class SceneEntryRefusalTests(unittest.TestCase):
             struct.pack_into("<H", entry, parents + row * scene_asset.PARENT.size, parent)
             with self.subTest(row=row, parent=parent), self.assertRaisesRegex(SceneError, message):
                 scene_asset.decode(entry)
-        entry = bytearray(original)
-        entry[2 * (1 + len(scene_asset.PARTS))] = 1
-        with self.assertRaisesRegex(SceneError, "header's padding"):
-            scene_asset.decode(entry)
         skin = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("skinned_renderers")]
         for field, name in enumerate(("mesh", "skin", "skeleton")):
             for raw in (b"x" * NAME_BYTES, bytes(NAME_BYTES)):

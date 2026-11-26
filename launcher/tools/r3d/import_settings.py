@@ -33,6 +33,14 @@ SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_co
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
+BINDING_MODES = ("world_space", "lock_to_target", "lock_to_target_with_world_up")
+WORLD_UP_TYPES = ("scene_up", "object_up", "object_rotation_up", "vector", "none")
+WORLD_UP_OBJECT_TYPES = frozenset(("object_up", "object_rotation_up"))
+CONSTRAINT_SOURCES_MAX = read_define(SCENE_OWNER.with_name("scene_format.h"), "SCENE_CONSTRAINT_SOURCES_MAX")
+SCENE_FORWARD = (0.0, 0.0, -1.0)
+SCENE_UP = (0.0, 1.0, 0.0)
+ZERO_VECTOR = (0.0, 0.0, 0.0)
+FULL_WEIGHT = 1.0
 
 LIGHT_MODES = ("realtime", "baked")
 LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
@@ -627,14 +635,84 @@ def load_camera_path(path, base, where):
     """The clip a camera flies, named as a .anim.toml relative to the scene
     file (its id is the stem), and the node in it that is the camera."""
     check_keys(path, ("animation", "node"), where)
-    animation = (base / text(path["animation"], f"{where}.animation")).resolve()
+    clip = load_scene_clip(path["animation"], base, f"{where}.animation")
+    clip.node = identifier(path["node"], f"{where}.node")
+    return clip
+
+
+def load_scene_clip(value, base, where):
+    animation = (base / text(value, where)).resolve()
     if not animation.name.endswith(clip_name.SUFFIX) or not animation.is_file():
-        raise SettingsError(f"{where}.animation {path['animation']!r} is not an {clip_name.SUFFIX} file")
-    node = identifier(path["node"], f"{where}.node")
+        raise SettingsError(f"{where} {value!r} is not an {clip_name.SUFFIX} file")
     clip = clip_name.clip_id(animation)
     if len(clip.encode("utf-8")) >= NAME_BYTES:
-        raise SettingsError(f"{where}.animation: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
-    return SimpleNamespace(animation=animation, clip=clip, node=node)
+        raise SettingsError(f"{where}: clip id {clip!r} exceeds the pack's {NAME_BYTES - 1}-byte limit")
+    return SimpleNamespace(animation=animation, clip=clip)
+
+
+def load_timeline(table, base):
+    where = "scene.timeline"
+    check_keys(table, ("clip",), where, optional=("wrap",))
+    clip = load_scene_clip(table["clip"], base, f"{where}.clip")
+    clip.wrap = table.get("wrap", "clamp")
+    if clip.wrap not in ANIM_WRAPS:
+        raise SettingsError(f"{where}.wrap must be clamp or loop")
+    return clip
+
+
+def constraint_weight(value, where):
+    weight = number(value, where)
+    if not 0 <= weight <= FULL_WEIGHT:
+        raise SettingsError(f"{where} must be in 0..1")
+    return weight
+
+
+def load_constraint(table, where, readers, defaults):
+    check_keys(table, ("sources",), where, optional=(*readers, "weight"))
+    sources = table["sources"]
+    if not isinstance(sources, list) or not 1 <= len(sources) <= CONSTRAINT_SOURCES_MAX:
+        raise SettingsError(f"{where}.sources must have 1..{CONSTRAINT_SOURCES_MAX} entries")
+    parsed = []
+    for index, source in enumerate(sources):
+        spot = f"{where}.sources[{index}]"
+        check_keys(source, ("target",), spot, optional=("weight",))
+        parsed.append(SimpleNamespace(target=text(source["target"], f"{spot}.target"),
+                                      weight=constraint_weight(source.get("weight", FULL_WEIGHT), f"{spot}.weight")))
+    values = {key: reader(table[key], f"{where}.{key}") for key, reader in readers.items() if key in table}
+    return SimpleNamespace(**(defaults | values), sources=parsed,
+                           weight=constraint_weight(table.get("weight", FULL_WEIGHT), f"{where}.weight"))
+
+
+def load_position_constraint(table, where):
+    constraint = load_constraint(table, where, dict(binding_mode=text, translation_offset=vector),
+                                 dict(binding_mode=BINDING_MODES[0], translation_offset=ZERO_VECTOR))
+    if constraint.binding_mode not in BINDING_MODES:
+        raise SettingsError(f"{where}.binding_mode must be one of {', '.join(BINDING_MODES)}")
+    return constraint
+
+
+def load_aim_constraint(table, where):
+    readers = dict(aim_vector=vector, up_vector=vector, world_up_type=text, world_up_vector=vector,
+                   world_up_object=text, rotation_offset=vector)
+    defaults = dict(aim_vector=SCENE_FORWARD, up_vector=SCENE_UP, world_up_type=WORLD_UP_TYPES[0],
+                    world_up_vector=SCENE_UP, world_up_object=None, rotation_offset=ZERO_VECTOR)
+    constraint = load_constraint(table, where, readers, defaults)
+    if constraint.world_up_type not in WORLD_UP_TYPES:
+        raise SettingsError(f"{where}.world_up_type must be one of {', '.join(WORLD_UP_TYPES)}")
+    object_up = constraint.world_up_type in WORLD_UP_OBJECT_TYPES
+    if object_up != (constraint.world_up_object is not None):
+        raise SettingsError(f"{where}.world_up_object is required for object_up and object_rotation_up only")
+    for key in ("aim_vector", "up_vector"):
+        if not any(getattr(constraint, key)):
+            raise SettingsError(f"{where}.{key} must be nonzero")
+    return constraint
+
+
+def load_hinge(table, where):
+    check_keys(table, ("axis", "min", "max"), where, optional=("angle",))
+    values = {key: number(table[key], f"{where}.{key}") for key in ("min", "max")}
+    return SimpleNamespace(axis=vector(table["axis"], f"{where}.axis"), **values,
+                           angle=number(table.get("angle", 0.0), f"{where}.angle"))
 
 
 def load_renderer(component, base, where):
@@ -707,7 +785,8 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 
 def load_object(value, base, where):
-    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator", *COMPONENTS))
+    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator",
+                                                       "position_constraint", "aim_constraint", "hinge", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
@@ -735,6 +814,11 @@ def load_object(value, base, where):
         obj.component = load_light(value[kind], obj.rotation, spot)
     else:
         obj.component = load_camera(value[kind], base, spot)
+    obj.position_constraint = (load_position_constraint(value["position_constraint"], f"{where}.position_constraint")
+                               if "position_constraint" in value else None)
+    obj.aim_constraint = (load_aim_constraint(value["aim_constraint"], f"{where}.aim_constraint")
+                          if "aim_constraint" in value else None)
+    obj.hinge = load_hinge(value["hinge"], f"{where}.hinge") if "hinge" in value else None
     obj.animator = None
     if "animator" in value:
         if kind != "skinned_renderer":
@@ -816,7 +900,7 @@ def load_scene(path):
     with open(path, "rb") as source:
         values = tomllib.load(source)
     check_keys(values, ("objects",), "scene",
-               optional=("tonemap_white", "sky", "ambient", "indirect", "bake"))
+               optional=("tonemap_white", "sky", "ambient", "indirect", "bake", "timeline"))
     objects = values["objects"]
     if not isinstance(objects, list) or not objects:
         raise SettingsError("scene.objects must be a non-empty array of tables")
@@ -863,6 +947,7 @@ def load_scene(path):
         jobs.append(make_job(component.settings, component, item, asset_name, asset_path, effective))
     scene = SimpleNamespace(
         path=path, objects=objects, renderers=jobs, bake=bake,
+        timeline=load_timeline(values["timeline"], path.parent) if "timeline" in values else None,
         camera=cameras[0] if cameras else None, region=region, lights=lights,
         tonemap_white=number(values["tonemap_white"], "scene.tonemap_white") if "tonemap_white" in values else None,
         indirect=load_indirect_look(values.get("indirect", {})))
