@@ -324,6 +324,19 @@ class ClusterTest(unittest.TestCase):
         changed = with_pixels(self.base, blob(5, 5) + blob(60, 40), DRAWN)
         self.assertEqual(len(self.clusters(changed)), 2)
 
+    def test_a_cluster_whose_crop_overlaps_a_stronger_one_gives_way_to_the_next(self):
+        # Two blobs apart, their margins overlapping; a third, weakest, far off.
+        changed = with_pixels(self.base, blob(10, 10, 5) + blob(20, 10) + blob(60, 40, 2), DRAWN)
+        found = self.clusters(changed, count=2, margin=4, grow=0)
+        self.assertEqual([(c.x0, c.y0) for c in found], [(6, 6), (56, 36)])
+
+    def test_the_crop_hook_decides_what_overlaps(self):
+        # Rects apart, but each crop takes the whole row band, so the weaker one goes.
+        changed = with_pixels(self.base, blob(10, 10, 5) + blob(60, 10), DRAWN)
+        whole_width = lambda c: (0, c.y0, 80, c.y1)  # noqa: E731
+        self.assertEqual(len(self.clusters(changed, margin=0, grow=0)), 2)
+        self.assertEqual(len(self.clusters(changed, margin=0, grow=0, crop=whole_width)), 1)
+
     def test_adjacent_pixels_are_one_cluster(self):
         changed = with_pixels(self.base, blob(20, 20) + blob(25, 20), DRAWN)
         found = self.clusters(changed, margin=0)
@@ -666,12 +679,17 @@ class ReferenceModeArgumentsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_reference_frame_rate_is_30_40_60_or_80(self):
+        # A directory is a side the script renders in place, so an accepted rate
+        # stops at the missing script there instead of checking out a revision.
+        side = Path(self.enterContext(tempfile.TemporaryDirectory()))
         base = ["--script", "s.sh", "--reference", "x", "--poses", "p", "--render", "p", "--frames 2"]
-        refused = self.run_sh(*base, "--fps", "50", "HEAD")
+        refused = self.run_sh(*base, "--fps", "50", str(side))
         self.assertEqual(refused.returncode, 2)
         self.assertIn("30, 40, 60 or 80", refused.stderr)
         for fps in ("30", "40", "60", "80"):
-            self.assertNotIn("30, 40, 60 or 80", self.run_sh(*base, "--fps", fps, "HEAD").stderr)
+            accepted = self.run_sh(*base, "--fps", fps, str(side))
+            self.assertNotIn("30, 40, 60 or 80", accepted.stderr)
+            self.assertIn("has no s.sh", accepted.stderr)
 
 
 if __name__ == "__main__":

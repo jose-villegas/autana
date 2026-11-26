@@ -238,6 +238,17 @@ normal angle:
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
 ```
 
+A vertex normal is the area-weighted sum of its faces' normals. A two-sided
+sheet built from pairs of opposite triangles would sum to zero, which has no
+direction. So each pair counts once, wound to agree with its neighbours
+across shared edges, starting from the one-sided triangles.
+
+A sum shorter than `NORMAL_FLOOR` of the mean triangle cross product is divided by that
+floor instead of its length, and an interpolated pixel normal shorter than
+`NORMAL_FLOOR` likewise: both bound the gradient where a normal has no
+direction. The fit logs how many pairs it counted, how many could not agree
+with every neighbour, and how many positions sit under the floor.
+
 ### What is reported
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude the surface,

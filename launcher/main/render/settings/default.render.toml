@@ -26,9 +26,13 @@ hysteresis_px = 4.0
 divide_px = 16
 affine_bend = 1.0
 affine_level = 1
-far_level = 3
+far_level = 4
 
 [small_fill]
 ceiling = 4
 gate = 0
 style = 0
+
+[settle]
+frame_us = 4000
+hold_frames = 6

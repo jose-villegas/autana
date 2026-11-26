@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
-from anim_probe import write_camera_clip  # noqa: E402
+from anim_probe import build_sampler_once, write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
@@ -30,6 +30,12 @@ except ImportError:
     np = None
 
 from tests.r3d_env import needs_llvm  # noqa: E402
+
+
+def setUpModule():
+    # Every fit key samples its camera clip.
+    build_sampler_once()
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'

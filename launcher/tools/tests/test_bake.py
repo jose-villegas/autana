@@ -35,6 +35,13 @@ from r3d import build_pack  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from test_r3d_import import (FIT, HEAD, PATH, SIMPLIFY, VARIANT, VARIANT_OUTPUT, camera, renderer, sun_object,  # noqa: E402
                              write_import, write_scene)
+from anim_probe import build_sampler_once  # noqa: E402
+
+
+def setUpModule():
+    # Every fit and reference key samples its camera clip.
+    build_sampler_once()
+
 
 TOOL_KEYS = {stage: stage * 8 for stage in bake.STAGES}
 START_SHA256 = "5" * 64

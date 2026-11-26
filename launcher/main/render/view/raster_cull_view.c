@@ -362,8 +362,8 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
     }
 }
 
-/* A cluster owning a covered triangle is drawn; then the fates are counted. */
-static void
+/* Keep coverage's raster buffers off the stack while count_frame() transforms vertices. */
+static __attribute__((noinline)) void
 tally(raster_cull_t* s, const raster_t* raster) {
     mark_covered(s, raster);
     drawn_at_t w = {0};
@@ -456,11 +456,11 @@ world_bounds(const raster_t* raster) {
     return bounds;
 }
 
-/* From `observer` when given, else from cullview.from's pose, written to
- * `pose`; the lens is the camera's either way. */
-static render_view_t
-spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_t* observer, transformf_t* pose) {
+/* Keep the spectator's view temporary off the stack during count_frame(). */
+static __attribute__((noinline)) void
+spectator_view(raster_cull_t* s, const raster_t* raster, const transformf_t* observer) {
     const render_view_t* camera = &s->camera;
+    transformf_t* pose = &s->spectator_pose;
     const box3f_t bounds = world_bounds(raster);
     const vec3f_t centre = box3f_centre(bounds);
     const vec3f_t half = box3f_half_extent(bounds);
@@ -478,9 +478,8 @@ spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
         *pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
-    render_view_t view = render_view_make(pose, tan_half, near_z, camera->viewport);
-    view.present = camera->present;
-    return view;
+    s->spectator = render_view_make(pose, tan_half, near_z, camera->viewport);
+    s->spectator.present = camera->present;
 }
 
 /* The census list of each instance: its culled drawn clusters, or its kept
@@ -510,7 +509,7 @@ static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_ta
 
 /* The culled clusters' picture painted and kept with its depth, for the
  * kept clusters' to be layered on. */
-static void
+static __attribute__((noinline)) void
 keep_under(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
@@ -546,7 +545,7 @@ raster_cull_second_view(void* state, const raster_t* raster, const transformf_t*
             if (!s->spectated) {
                 return false;
             }
-            s->spectator = spectator_view(s, raster, observer, &s->spectator_pose);
+            spectator_view(s, raster, observer);
             s->spectating = true;
             s->pass = RASTER_CULL_PASS_CULLED;
             list_clusters(s, raster, true);

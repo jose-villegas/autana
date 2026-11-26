@@ -190,6 +190,66 @@ class DifferentiablePieceTests(unittest.TestCase):
         expected = torch.tensor([0.0, -1.0, 1.0]) / 2**0.5
         self.assertTrue(torch.allclose(normals, expected.expand(5, 3), atol=1e-6))
 
+    def normal_gradient(self, points, tris, two_sided=True):
+        """vertex_normals of `points` (one vertex per point, sheets found by normal_signs unless not `two_sided`),
+        the largest gradient of their dot product with a fixed direction, and the bound NORMAL_FLOOR sets on it:
+        the triangle count times the longest edge over the floor."""
+        from r3d.appearance_simplify import NORMAL_FLOOR, normal_signs, vertex_normals
+
+        sign = torch.as_tensor(normal_signs(np.asarray(tris), np.arange(len(points))).sign,
+                               dtype=torch.float64) if two_sided else None
+        points = torch.tensor(points, dtype=torch.float64, requires_grad=True)
+        tris = torch.tensor(tris)
+        normals = vertex_normals(points, tris, torch.arange(len(points)), sign)
+        (normals * torch.tensor([0.3, 0.2, 0.9], dtype=torch.float64)).sum().backward()
+        corners = points.detach()[tris]
+        edges = (corners - corners.roll(1, dims=1)).norm(dim=-1)
+        cross = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1).norm(dim=1)
+        bound = len(tris) * float(edges.max()) / (NORMAL_FLOOR * float(cross[cross > 0].mean()))
+        return normals.detach(), float(points.grad.abs().max()), bound
+
+    def sheet(self, size, seed):
+        """A flat size x size grid in z = 0 of quads, each triangle drawn twice in opposite winding, the
+        triangles and which member of each pair comes first shuffled: (points, tris)."""
+        rng = np.random.default_rng(seed)
+        points = [[x, y, 0.0] for y in range(size + 1) for x in range(size + 1)]
+        corner = lambda x, y: y * (size + 1) + x
+        tris = []
+        for y in range(size):
+            for x in range(size):
+                for tri in ([corner(x, y), corner(x + 1, y), corner(x, y + 1)],
+                            [corner(x + 1, y), corner(x + 1, y + 1), corner(x, y + 1)]):
+                    tris += [tri, tri[::-1]] if rng.random() < 0.5 else [tri[::-1], tri]
+        return points, [tris[i] for i in rng.permutation(len(tris))]
+
+    def test_a_two_sided_sheet_has_one_normal_whatever_its_triangle_order(self):
+        # Opposite pairs cancel unless each counts once, and a kept member that keeps its own winding points
+        # half the sheet's vertices the other way.
+        for seed in range(4):
+            points, tris = self.sheet(3, seed)
+            normals, gradient, bound = self.normal_gradient(points, tris)
+            np.testing.assert_allclose(normals.numpy() * float(normals[0, 2]), [[0.0, 0.0, 1.0]] * len(points),
+                                       atol=1e-12, err_msg=f"seed {seed}")
+            self.assertLess(gradient, bound)
+
+    def test_a_sheet_continuing_a_one_sided_surface_takes_its_winding(self):
+        points, tris = self.sheet(3, 1)
+        # One-sided triangles beyond the sheet's x = 3 edge, wound to face +z, sharing that edge's points.
+        points = points + [[4.0, y, 0.0] for y in range(4)]
+        edge = [3, 7, 11, 15]
+        tris = tris + [[edge[y], 16 + y, edge[y + 1]] for y in range(3)] + [[16 + y, 17 + y, edge[y + 1]] for y in range(3)]
+        normals, _gradient, _bound = self.normal_gradient(points, tris)
+        np.testing.assert_allclose(normals.numpy(), [[0.0, 0.0, 1.0]] * len(points), atol=1e-12)
+
+    def test_a_vertex_of_zero_area_faces_has_a_bounded_gradient(self):
+        # A triangle collapsed to a line, its apex moved off it by a millionth of an edge, beside an ordinary one.
+        # Without the floor the gradient is about 0.3 over that millionth, a hundred times the bound; a larger
+        # offset would bring it under the bound and stop the test telling the two apart.
+        points = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1e-6, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0]]
+        normals, gradient, bound = self.normal_gradient(points, [[0, 1, 2], [3, 4, 5]], two_sided=False)
+        self.assertTrue(torch.isfinite(normals).all())
+        self.assertLess(gradient, bound)
+
 
 if __name__ == "__main__":
     unittest.main()
