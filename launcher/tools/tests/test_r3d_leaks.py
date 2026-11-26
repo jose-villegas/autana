@@ -48,6 +48,8 @@ CARVED_SHEET_BUDGET = 6
 # A backdrop far behind the wall, past BEHIND times any view's distance to it: what a hole shows instead of sky.
 BACKDROP_X = -4000.0
 BACKDROP_HALF = 5000.0
+# How far the wall moves back while staying within BEHIND times its distance from the nearest probe (x 60 on).
+WALL_MOVED_BACK = 10.0
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -275,9 +277,9 @@ class LeakProbeTests(unittest.TestCase):
         holes = probes.holes(pos, np.delete(tris, inside, axis=0))
         self.assertGreater(len(holes), 0)
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
-        # The wall moved back by less than BEHIND times its distance stays where the view meets it.
+        # The wall moved back by less than BEHIND times its distance from the nearest probe stays where views meet it.
         moved = pos.copy()
-        moved[:len(self.pos), 0] -= 0.25 * np.linalg.norm(np.array(PATH_EYE))
+        moved[:len(self.pos), 0] -= WALL_MOVED_BACK
         self.assertEqual(probes.holes(moved, tris), [])
 
     def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
