@@ -4,6 +4,7 @@ that lock a vertex per hole: an arch covered by a separate sheet behind it stays
 import pathlib
 import sys
 import unittest
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest import mock
 
@@ -71,6 +72,19 @@ def arch():
     return pos, tris
 
 
+@contextmanager
+def opening_camera():
+    # An outline shrinking past REACH counts as a hole. Keep the outer silhouette out of this fixture's view
+    # by framing the sheet's bounding rectangle head-on.
+    half_height = OPENING_RADIUS / 2
+    eye_x = OPENING_RADIUS
+    pose = (eye_x, half_height, 0, -1, 0, 0)
+    height = PATH_VIEW[1]
+    lens = half_height / (eye_x + SHEET_BEHIND)
+    with mock.patch.object(leaks.probes, "region_poses", return_value=([], None)):
+        yield (*CAMERA, (2 * height, height, lens, [pose]))
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PinTests(unittest.TestCase):
     def setUp(self):
@@ -102,6 +116,55 @@ class PinTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ViewHoleTests(unittest.TestCase):
+    def test_joined_sky_is_a_hole_only_past_the_reach(self):
+        first_hole = leaks.REACH + 1
+        source_sky = np.zeros((first_hole + 2, first_hole + 2), dtype=bool)
+        source_sky[0, 0] = True
+        sky = source_sky.copy()
+        np.fill_diagonal(sky, True)
+        expected = np.zeros_like(sky)
+        np.fill_diagonal(expected[first_hole:, first_hole:], True)
+
+        holes = leaks.view_holes(sky, source_sky)
+        self.assertEqual(len(holes), 1)
+        np.testing.assert_array_equal(holes[0], expected)
+
+    def test_outline_movement_at_or_below_the_reach_is_allowed(self):
+        source_sky = np.zeros((leaks.REACH + 1, 2), dtype=bool)
+        source_sky[0] = True
+        sky = source_sky.copy()
+        sky[1:, 0] = True
+
+        for reach in (leaks.REACH, leaks.REACH + 1):
+            with self.subTest(reach=reach):
+                self.assertEqual(leaks.view_holes(sky, source_sky, reach=reach), [])
+
+    def test_outline_shrinking_inward_past_the_reach_leaves_a_hole(self):
+        first_hole = leaks.REACH + 1
+        source_sky = np.zeros((first_hole + 2, 2), dtype=bool)
+        source_sky[0] = True
+        sky = source_sky.copy()
+        sky[:first_hole + 1] = True
+        expected = np.zeros_like(sky)
+        expected[first_hole] = True
+
+        holes = leaks.view_holes(sky, source_sky)
+        self.assertEqual(len(holes), 1)
+        np.testing.assert_array_equal(holes[0], expected)
+
+    def test_enclosed_pixel_is_a_hole_at_any_reach(self):
+        source_sky = np.zeros((3, 3), dtype=bool)
+        source_sky[0, 0] = True
+        expected = np.zeros_like(source_sky)
+        expected[-1, -1] = True
+        sky = source_sky | expected
+
+        for reach in (0, leaks.REACH):
+            with self.subTest(reach=reach):
+                holes = leaks.view_holes(sky, source_sky, reach=reach)
+                self.assertEqual(len(holes), 1)
+                np.testing.assert_array_equal(holes[0], expected)
+
     def test_sky_enclosed_by_wall_is_a_hole_and_sky_that_reaches_the_sources_sky_is_not(self):
         source_sky = np.zeros((6, 8), dtype=bool)
         source_sky[0] = True  # the source's own sky along the top
@@ -147,19 +210,21 @@ class LeakProbeTests(unittest.TestCase):
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
     def test_the_sheet_behind_an_opening_keeps_it_covered_at_the_same_budget(self):
-        p, t = self.simplified(Allocation())
-        self.assertGreater(len(self.probes.holes(p, t)), 0, "the fixture does not leak without the probes")
-        p, t = self.simplified(Allocation(camera=CAMERA))
-        self.assertEqual(self.probes.holes(p, t), [])
-        self.assertLessEqual(len(t), BUDGET)
+        with opening_camera() as camera:
+            probes = leaks.LeakProbes(self.pos, self.tris, *camera)
+            p, t = self.simplified(Allocation())
+            self.assertGreater(len(probes.holes(p, t)), 0, "the fixture does not leak without the probes")
+            p, t = self.simplified(Allocation(camera=camera))
+            self.assertEqual(probes.holes(p, t), [])
+            self.assertLessEqual(len(t), BUDGET)
 
-    def one_pass(self, budget, rows=None):
+    def one_pass(self, budget, rows=None, *, camera=CAMERA):
         """(result triangles, the pass's leak record) of the fixture's triangles `rows`, all of them without any,
         as one probed pass."""
         record = {}
         pos, rgb, tris, labels = self.joined
         rows = np.arange(len(tris)) if rows is None else rows
-        probes = leaks.LeakProbes(pos, tris, *CAMERA)
+        probes = leaks.LeakProbes(pos, tris, *camera)
         _, _, t, _ = simplify_module._run_pass(pos, rgb, tris[rows], labels[rows], budget, 1.0, REGULARIZE_LIGHT | PERMISSIVE,
                                                leaks=(probes, rows), record=record)
         return t, record
@@ -175,7 +240,8 @@ class LeakProbeTests(unittest.TestCase):
             self.assertGreater(self.one_pass(SHEET_ALONE_BUDGET, sheet)[1]["leak_holes"], record["leak_holes"])
 
     def test_a_sealed_pass_records_its_rounds_and_locks(self):
-        t, record = self.one_pass(BUDGET)
+        with opening_camera() as camera:
+            _, record = self.one_pass(BUDGET, camera=camera)
         self.assertEqual(record["leak_holes"], 0)
         self.assertGreater(record["leak_rounds"], 0)
         self.assertGreater(record["leak_locks"], 0)
