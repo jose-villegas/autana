@@ -23,6 +23,7 @@ try:
 except ImportError:
     np = None
 
+from tests.fit_stubs import stub_seal  # noqa: E402
 from tests.r3d_env import needs_llvm  # noqa: E402
 
 
@@ -52,11 +53,13 @@ class ClosureTests(unittest.TestCase):
                 component=SimpleNamespace(background=0))), start_mesh=mesh,
                 load_views=(views, self.SIZE), pose_views=(views, self.SIZE),
                 optimise=(mesh.points, mesh.rgb, [1.0]), delta_e_total=(10.0, 4),
+                seal_camera=None,
                 stretch_report={
                     "small": dict(stretch=0, area_growth=0, moved=0),
                     "rest": dict(stretch=0, area_growth=0, moved=0),
                     "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
             stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
+        stack.enter_context(mock.patch.object(appearance_simplify, "seal", stub_seal(mock.Mock())))
 
     def test_main_checks_the_pruned_fit_before_writing(self):
         mesh = self.two_triangles()

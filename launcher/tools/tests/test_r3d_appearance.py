@@ -25,6 +25,7 @@ try:
 except ImportError:
     np = None
 
+from tests.fit_stubs import stub_seal  # noqa: E402
 from tests.r3d_env import needs_llvm  # noqa: E402
 
 try:
@@ -702,14 +703,6 @@ class AppearanceMeshTests(unittest.TestCase):
                     edges[key] = edges.get(key, 0) + 1
             border = sum(1 for n in edges.values() if n == 1)
             self.assertEqual(border, 4 * 4, "a moved seam vertex opened a crack")
-
-
-def stub_seal(seal):
-    """`seal`, a Mock standing in for r3d.fit.seal, made to change nothing: snap_back and the split return the
-    mesh they are given."""
-    seal.snap_back.side_effect = lambda start, fitted, copies, probes: (fitted, 0)
-    seal.split_t_junctions.side_effect = lambda mesh: (mesh, 0)
-    return seal
 
 
 def fit_scene():
