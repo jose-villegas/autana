@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 45 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 121 | 26 | 0 |
+| [render](#render) | 123 | 26 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -285,6 +285,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/pipeline-frame-stages.sub-stages.png"><img src="../images/render/pipeline-frame-stages.sub-stages.png" width="160" alt=""></a> | Inside cull, transform and draw | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.tiles.png"><img src="../images/render/pipeline-frame-stages.tiles.png" width="160" alt=""></a> | Frame stages with the tiles view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/probe-fates.png"><img src="../images/render/probe-fates.png" width="160" alt=""></a> | Probe fates and their counts per scene | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | [probe_figures.py](../../launcher/demo/probe_figures.py) |
+| <a href="../images/render/settle.crops.png"><img src="../images/render/settle.crops.png" width="160" alt=""></a> | Close-ups of live and settled texture and shading | [render/frame/Settle](../render/frame/Settle.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/render/settle.png"><img src="../images/render/settle.png" width="160" alt=""></a> | Live and settled views of the textured wall | [render/frame/Settle](../render/frame/Settle.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/render/skin-influences.png"><img src="../images/render/skin-influences.png" width="160" alt=""></a> | The engine's skin at four and at two influences on the clip frame where they differ most, seen from below, whole and zoomed on the vertex that moves most; rings mark the moved vertices, red lines run from their four-influence to their two-influence positions | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
 | <a href="../images/render/skin-limb.png"><img src="../images/render/skin-limb.png" width="160" alt=""></a> | Weight bytes along a two-joint limb, the limb bent 90 degrees by linear blend and by one joint per vertex, with one hinge vertex carried by each joint and their weighted mix, and the hinge's thickness against the bend angle | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
 | <a href="../images/render/skin-skeleton.gif"><img src="figure-thumbnails/render/skin-skeleton.gif" width="160" alt=""></a> | A skinned mesh's joints as dots and each joint's link to its parent, in the bind pose and over one clip | [render/animation/Skeleton-and-Skin](../render/animation/Skeleton-and-Skin.md) | not declared yet |
