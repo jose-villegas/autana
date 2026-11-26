@@ -8,6 +8,11 @@ class FakeConnection:
         self.chunks = list(chunks)
         self.writes = []
 
+    @property
+    def in_waiting(self):
+        """What a read would return now, as pyserial counts it."""
+        return len(self.chunks[0]) if self.chunks else 0
+
     def read(self, unused_size):
         return self.chunks.pop(0) if self.chunks else b""
 
@@ -36,6 +41,10 @@ class Replies(FakeConnection):
     def __init__(self, data):
         super().__init__()
         self.data = data
+
+    @property
+    def in_waiting(self):
+        return len(self.data)
 
     def read(self, unused_size):
         data, self.data = self.data, b""

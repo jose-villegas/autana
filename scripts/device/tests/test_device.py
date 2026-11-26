@@ -268,6 +268,32 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(arrived, list(sent))
         self.assertIn(reply, out.getvalue())
 
+    @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
+                         "needs a pseudo-terminal and pyserial")
+    def test_a_read_returns_what_the_board_sent_without_waiting_out_the_timeout(self):
+        """A board sending less than a full buffer is read as it arrives: asking
+        for STREAM_READ_BYTES instead held every chunk for the whole timeout."""
+        line = b"FRAMEREC 1\n"
+        with port_guard.fake_port() as (board, name), \
+                mock.patch.object(device, "locked_port", return_value=name):
+            connection = device.open_serial()
+            try:
+                os.write(board, line)
+                self.wait_for_waiting(connection, len(line))
+                began = time.monotonic()
+                data = device.read_ready(connection)
+                took = time.monotonic() - began
+            finally:
+                connection.close()
+        self.assertEqual(data, line)
+        self.assertLess(took, connection.timeout / 2)
+
+    @staticmethod
+    def wait_for_waiting(connection, count):
+        deadline = time.monotonic() + STREAM_WAIT_SECONDS
+        while connection.in_waiting < count and time.monotonic() < deadline:
+            time.sleep(0.01)
+
     def test_a_line_that_is_not_ascii_is_refused_and_the_lock_released(self):
         store = mock_store()
         connection = FakeConnection()

@@ -1917,6 +1917,15 @@ def send(args, store, board):
 
 
 STREAM_READ_BYTES = 4096
+
+
+def read_ready(connection):
+    """What the port holds now, up to STREAM_READ_BYTES, or the first byte to
+    arrive within the read timeout. Asking for a full buffer instead waits
+    out the whole timeout whenever the board sends less, so a stream slower
+    than STREAM_READ_BYTES per timeout comes in bursts a timeout apart."""
+    return connection.read(min(max(connection.in_waiting, 1), STREAM_READ_BYTES))
+
 # How often a stream waiting on its next line looks for a lost lock or a
 # reader that failed, so neither leaves it holding the board.
 STREAM_CHECK_SECONDS = 0.25
@@ -1929,7 +1938,7 @@ def echo_board(connection, stop, out, failed):
     pending = bytearray()
     try:
         while not stop.is_set():
-            pending.extend(connection.read(STREAM_READ_BYTES))
+            pending.extend(read_ready(connection))
             end = pending.rfind(b"\n") + 1
             if end:
                 out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
@@ -2078,7 +2087,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
             if rx_bytes is not None and hasattr(connection, "set_buffer_size"):
                 connection.set_buffer_size(rx_size=rx_bytes)
             while not stop.is_set() and not ended.is_set():
-                chunk = connection.read(STREAM_READ_BYTES)
+                chunk = read_ready(connection)
                 while True:
                     try:
                         deliver(packets.feed(chunk))
