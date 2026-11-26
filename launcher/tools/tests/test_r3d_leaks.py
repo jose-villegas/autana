@@ -45,9 +45,9 @@ SMALL_BATCH = 50000
 POSITION_SCALE = 8
 # The half disc carved out as a mesh of its own, at too few triangles to stay round.
 CARVED_SHEET_BUDGET = 6
-# A backdrop far behind the wall, past BEHIND times any view's distance to it: what a hole shows instead of sky.
+# A backdrop far behind the wall and wide enough to fill every view through it: what a hole shows instead of sky.
 BACKDROP_X = -4000.0
-BACKDROP_HALF = 5000.0
+BACKDROP_HALF = 100000.0
 # How far the wall moves back while staying within BEHIND times its distance from the nearest probe (x 60 on).
 WALL_MOVED_BACK = 10.0
 # Where the camera can be, in front of the wall, and its near plane.
