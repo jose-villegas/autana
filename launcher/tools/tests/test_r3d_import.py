@@ -104,6 +104,13 @@ def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
             + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
+def lamp_object(kind, rotation="[0.0, 0.0, 0.0]"):
+    """A baked point or spot light at [1, 2, 3] with a range of 4; a spot's cone is 20 to 30 degrees."""
+    cone = 'inner_angle = 20.0\nouter_angle = 30.0\n' if kind == "spot" else ''
+    return (f'[[objects]]\nname = "{kind}"\nposition = [1.0, 2.0, 3.0]\nrotation = {rotation}\n[objects.light]\n'
+            f'type = "{kind}"\nmode = "baked"\ncolor = [1.0, 0.5, 0.25]\nintensity = 2.0\nrange = 4.0\n' + cone)
+
+
 def camera(path=False, region=True, name="camera", clip="fly.anim.toml"):
     """A camera object named `name`; with `path`, flying the clip `clip` (a .anim.toml beside the scene)."""
     track = f'path = {{ animation = "{clip}", node = "camera" }}\n' if path else ''
@@ -596,9 +603,31 @@ class SceneTests(unittest.TestCase):
         self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("intensity = 1.0\n", "intensity = 1.0\ntypo = 1\n"))
         self.lit_rejects("typo", head=HEAD + "[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\ntypo = 1\n")
 
-    def test_a_reserved_light_type_is_rejected(self):
-        point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
-        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
+    def test_a_point_light_sits_at_its_object_and_a_spot_shines_down_its_rotation(self):
+        lights = load_scene(self.lit(objects=lamp_object("point") + lamp_object("spot", "[90.0, 0.0, 0.0]"))).lights
+        point, spot = lights[1], lights[2]
+        self.assertEqual((point["type"], point["position"], point["range"]), ("point", [1.0, 2.0, 3.0], 4.0))
+        self.assertEqual((spot["inner_angle"], spot["outer_angle"]), (20.0, 30.0))
+        np.testing.assert_allclose(spot["axis"], [0.0, 0.0, -1.0], atol=1e-12)
+        straight = load_scene(self.lit(objects=lamp_object("spot"))).lights[1]["axis"]
+        np.testing.assert_allclose(straight, [0.0, -1.0, 0.0], atol=1e-12)
+
+    def test_a_point_or_spot_light_outside_its_rules_is_rejected(self):
+        for kind, change, pattern in (
+                ("point", ('mode = "baked"\n', ''), "baked only"),
+                ("spot", ('mode = "baked"\n', 'mode = "realtime"\n'), "baked only"),
+                ("point", ("range = 4.0", "range = 0.0"), "range must be positive"),
+                ("spot", ("inner_angle = 20.0", "inner_angle = 30.0"), "inner_angle < outer_angle"),
+                ("spot", ("outer_angle = 30.0", "outer_angle = 91.0"), "outer_angle <= 90"),
+                ("spot", ("outer_angle = 30.0\n", ""), "outer_angle is required"),
+                ("point", ("range = 4.0\n", "range = 4.0\ninner_angle = 1.0\n"), "not a known setting"),
+                ("point", ('name = "point"\n', 'name = "point"\nparent = "mesh"\n'), "no parent")):
+            with self.subTest(kind=kind, pattern=pattern):
+                self.lit_rejects(pattern, objects=lamp_object(kind).replace(*change))
+
+    def test_point_and_spot_lights_need_a_baked_renderer(self):
+        self.rejects("point and spot lights are read by no placed mesh", self.plain_import,
+                     renderer() + lamp_object("point"), TONEMAP + AMBIENT)
 
     def test_sky_and_ambient_are_not_light_objects(self):
         sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'

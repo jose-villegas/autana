@@ -13,7 +13,7 @@ import numpy as np
 
 from . import log
 from .geometry import distinct_corners, hit_barycentrics, nearest_triangles, triangle_areas, triangle_search
-from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED
+from .import_settings import LIGHT_FIELDS, LIGHT_MODE_BAKED, LOCAL_LIGHTS
 from .obj import alpha_tested
 from .ray_query import VARIANT, is_jit, rows, vectors
 
@@ -493,6 +493,49 @@ def bake_directional(light, ctx):
     return dr.maximum(dr.dot(ctx.normals, sun), 0.0) * lit * colour(mi, light)
 
 
+def light_rays(light, origin, floor):
+    """The light from one point toward each NumPy origin: the unit direction toward it (one for a directional light,
+    else one per origin), the distance a blocker must be nearer than (None: any), and the falloff before the cosine.
+
+    A directional light is a point source at infinity and does not fall off. A point or spot light falls off by
+    inverse square, windowed to zero at its range (Karis 2013), with the distance floored at `floor` so a surface
+    touching the light stays finite; a spot is also cut to its cone, with the smooth edge of KHR_lights_punctual."""
+    if light["type"] == "directional":
+        toward = np.array(light["direction"], dtype=np.float64)
+        toward /= np.linalg.norm(toward)
+        return toward, None, 1.0
+    offset = np.asarray(light["position"], dtype=np.float64) - origin
+    distance = np.linalg.norm(offset, axis=1)
+    toward = offset / np.maximum(distance, np.finfo(np.float64).tiny)[:, None]
+    window = np.clip(1.0 - (distance / light["range"]) ** 4, 0.0, 1.0) ** 2
+    falloff = window / np.maximum(distance, floor) ** 2
+    if light["type"] == "spot":
+        axis = np.asarray(light["axis"], dtype=np.float64)
+        axis /= np.linalg.norm(axis)
+        inner, outer = (math.cos(math.radians(light[name])) for name in ("inner_angle", "outer_angle"))
+        falloff = falloff * np.clip((-(toward @ axis) - outer) / (inner - outer), 0.0, 1.0) ** 2
+    return toward, distance, falloff
+
+
+def bake_local(light, ctx):
+    """A point or spot light: one shadow ray toward it, no farther than the light, and the cosine of the angle to the
+    normal times the light's falloff. Points the light cannot reach trace no ray."""
+    import drjit as dr
+
+    mi = ctx.mi
+    toward, reach, falloff = light_rays(light, rows(ctx.origin, ctx.count), ctx.ray_offset)
+    toward, reach, falloff = vectors(mi.Vector3f, toward), mi.Float(reach), mi.Float(falloff)
+    weight = dr.maximum(dr.dot(ctx.normals, toward), 0.0) * falloff
+    dr.eval(toward, reach, weight)
+
+    def clear(point, _k, _chunk):
+        ray = mi.Ray3f(dr.gather(type(ctx.origin), ctx.origin, point), dr.gather(type(toward), toward, point))
+        ray.maxt = dr.gather(mi.Float, reach, point)
+        return dr.select(ctx.query.device_blocked(ray, dr.gather(mi.Float, weight, point) > 0), 0.0, 1.0)
+
+    return weight * summed_rays(mi, mi.Float, ctx.count, 1, clear) * colour(mi, light)
+
+
 def bake_sky(light, ctx):
     """The share of the light's `rays` cosine-weighted directions, in each point's frame, that reach the sky."""
     import drjit as dr
@@ -514,7 +557,8 @@ def colour(mi, light):
 
 # The one table of what a scene light is: its fields, declared in
 # import_settings.py, and what it adds to a point's radiance.
-BAKERS = {"directional": bake_directional, "sky": bake_sky, "ambient": bake_ambient}
+BAKERS = {"directional": bake_directional, **dict.fromkeys(LOCAL_LIGHTS, bake_local), "sky": bake_sky,
+          "ambient": bake_ambient}
 LIGHTS = {kind: (LIGHT_FIELDS[kind], bake) for kind, bake in BAKERS.items()}
 assert set(LIGHTS) == set(LIGHT_FIELDS)
 
@@ -570,10 +614,11 @@ def baked_lights(lights):
     return [light for light in lights if light["mode"] == LIGHT_MODE_BAKED]
 
 
-def face_towards_light(normals, double_sided, lights):
-    """The orientation a double-sided surface is first lit on: the side the directional lights, summed, shine on. One
-    orientation for every light, so their order cannot matter. It also keeps the copies of a vertex at one position
-    facing alike when their bounce is gathered together; `light` then tries the other side too."""
+def face_towards_light(mi, points, normals, double_sided, lights, floor):
+    """The orientation a double-sided surface is first lit on: the side the lights, summed, shine on, each weighted by
+    its intensity and its falloff at the point. One orientation for every light, so their order cannot matter. It also
+    keeps the copies of a vertex at one position facing alike when their bounce is gathered together; `light` then
+    tries the other side too."""
     import drjit as dr
 
     toward = np.zeros(3)
@@ -581,7 +626,12 @@ def face_towards_light(normals, double_sided, lights):
         if light["type"] == "directional":
             direction = np.array(light["direction"], dtype=np.float64)
             toward += light["intensity"] * direction / np.linalg.norm(direction)
-    flip = double_sided & (dr.dot(normals, type(normals)(*toward.tolist())) < 0)
+    lean = dr.dot(normals, type(normals)(*toward.tolist()))
+    for light in lights:
+        if light["type"] in LOCAL_LIGHTS:
+            direction, _, falloff = light_rays(light, rows(points, dr.width(points)), floor)
+            lean = lean + light["intensity"] * mi.Float(falloff) * dr.dot(normals, vectors(mi.Vector3f, direction))
+    flip = double_sided & (lean < 0)
     return dr.select(flip, -normals, normals)
 
 
@@ -590,20 +640,20 @@ def device_light(points, normals, double_sided, query, lights, ray_offset, bounc
     """Radiance from the scene lights at each point (Dr.Jit points, unit normals and double-sided flags), in the
     unit of irradiance over pi.
 
-    The sun and sky come from shadow rays against `query`. Every hemisphere term (sky, local occlusion, bounce)
+    The sun, point, spot and sky lights come from shadow rays against `query`. Every hemisphere term (sky, local occlusion, bounce)
     casts one direction set in each point's `frame`: `fixed_frame` traces the same directions at every
     point, `turned_frame` turns them per point. `bounce` is a PathLight whose bounced light is added; `bounce_groups` (NumPy) gives
     points that share one position the same bounce, gathered once on their mean normal, since bounced light changes
     slowly where direct light does not. `ao` is the scene's local occlusion setting: it scales the ambient light,
     and the bounced light when `ao.indirect`. A double-sided point has no side it is meant to be seen from: it is lit
     on both sides and keeps the brighter, so a card in the sun takes its sunlit side and a curtain in shade takes
-    its open side, not the back that faces the wall. Point and spot lights are reserved and not baked yet.
+    its open side, not the back that faces the wall.
     """
     import drjit as dr
 
     mi = query.mi
     lights = baked_lights(lights)
-    n = face_towards_light(normals, double_sided, lights)
+    n = face_towards_light(mi, points, normals, double_sided, lights, ray_offset)
     occlusion = None if ao is None else device_occlusion(query, points, normals, double_sided, ao, ray_offset, frame)
     radiance = lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_groups, ao, bounce_intensity,
                         0, frame)
@@ -641,7 +691,7 @@ def lit_side(query, points, n, lights, ray_offset, occlusion, bounce, bounce_gro
 
     mi = query.mi
     ctx = SimpleNamespace(mi=mi, query=query, points=points, normals=n, origin=points + n * ray_offset,
-                          occlusion=occlusion, count=dr.width(points), frame=frame)
+                          occlusion=occlusion, count=dr.width(points), frame=frame, ray_offset=ray_offset)
     radiance = dr.zeros(mi.Color3f, ctx.count)
     for scene_light in lights:
         radiance = radiance + LIGHTS[scene_light["type"]][1](scene_light, ctx)

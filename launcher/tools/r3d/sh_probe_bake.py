@@ -6,7 +6,8 @@ import time
 import numpy as np
 
 from r3d.geometry import face_normals
-from r3d.light import AlphaTest, baked_lights
+from r3d.import_settings import PUNCTUAL_LIGHTS
+from r3d.light import AlphaTest, baked_lights, light_rays
 from r3d.mesh_source import load_source
 from r3d.mitsuba_reference import integrator
 from r3d.path_bake import PathLight, SEED
@@ -29,18 +30,31 @@ def project(directions, radiance):
     return (4 * math.pi / len(directions)) * np.einsum('nk,...nc->...kc', basis(directions), radiance)
 
 
-def sun_term(query, points, lights):
-    out = np.zeros((len(points), COEFFICIENTS, CHANNELS))
+def light_visible(intersector, origin, toward, reach, traced):
+    """Which NumPy origins see the light: the `traced` ones (indices) whose shadow ray toward it, no farther than
+    `reach`, is clear. Every other origin is unlit and traces no ray."""
+    rays = np.ascontiguousarray(np.broadcast_to(toward, origin.shape)[traced])
+    seen = np.zeros(len(origin), dtype=bool)
+    seen[traced] = ~intersector.blocked(origin[traced], rays, None if reach is None else reach[traced])
+    return seen
+
+
+def direct_term(query, points, lights, floor):
+    """The directional, point and spot lights straight to each probe, which no gathered path can hit: one shadow ray
+    per probe per light, no farther than the light, and none where the light's falloff is zero. Returns the
+    coefficients and the rays traced."""
+    out, traced = np.zeros((len(points), COEFFICIENTS, CHANNELS)), 0
     for light in baked_lights(lights):
-        if light['type'] != 'directional':
+        if light['type'] not in PUNCTUAL_LIGHTS:
             continue
-        direction = np.asarray(light['direction'], dtype=float)
-        direction /= np.linalg.norm(direction)
-        visible = ~query.blocked(points, np.broadcast_to(direction, points.shape).copy())
+        toward, reach, falloff = light_rays(light, points, floor)
+        reached = np.flatnonzero(np.broadcast_to(np.asarray(falloff) > 0, len(points)))
+        visible = light_visible(query, points, toward, reach, reached)
+        traced += len(reached)
         colour = np.asarray(light['color']) * light['intensity']
-        weights = basis(direction[None]).reshape(1, COEFFICIENTS, 1)
-        out += math.pi * visible[:, None, None] * weights * colour
-    return out
+        weights = basis(toward[None] if toward.ndim == 1 else toward).reshape(-1, COEFFICIENTS, 1)
+        out += math.pi * (visible * falloff)[:, None, None] * weights * colour
+    return out, traced
 
 
 def dilate(values, inside):
@@ -103,15 +117,15 @@ def bake(job, scene):
                        for sample in range(requested.spp)) / requested.spp
         coefficients[indices] = project(
             directions, radiance.reshape(len(indices), requested.directions, CHANNELS))
-    coefficients[outside] += sun_term(query, moved[outside], lights)
+    direct, direct_rays = direct_term(query, moved[outside], lights, job.bake.ray_offset)
+    coefficients[outside] += direct
     # ProbeViews enumerates z fastest; SHPR's x-fastest order is the transposed cell lattice.
     shape = tuple(dims) + (COEFFICIENTS, CHANNELS)
     inside = (state == 'inside').reshape(tuple(dims))
     filled = dilate(coefficients.reshape(shape), inside)
     data = encode(origin, step, dims, filled.transpose(2, 1, 0, 3, 4).copy(), inside.transpose(2, 1, 0))
-    sun_rays = sum(light['type'] == 'directional' for light in lights)
     paths = int(outside.sum()) * requested.directions * requested.spp
     print(f'SH probes: {len(points)} probes, {np.count_nonzero(~outside)} inside, '
-          f'{paths} primary paths, {int(outside.sum()) * sun_rays} sun rays, '
+          f'{paths} primary paths, {direct_rays} direct rays, '
           f'{len(data)} bytes, {time.perf_counter() - started:.3f} s', flush=True)
     return data
