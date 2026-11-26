@@ -1,5 +1,6 @@
-"""Checks the probes that look for sky through a simplified mesh's walls (r3d/leaks.py) and the simplify passes
-that lock a vertex per hole: an arch covered by a separate sheet behind it stays covered at the same budget."""
+"""Checks the probes that look for views past a surface a simplified mesh's source closes (r3d/leaks.py) and the
+simplify passes that lock a vertex per hole: an arch covered by a separate sheet behind it stays covered at the same
+budget."""
 
 import pathlib
 import sys
@@ -44,6 +45,9 @@ SMALL_BATCH = 50000
 POSITION_SCALE = 8
 # The half disc carved out as a mesh of its own, at too few triangles to stay round.
 CARVED_SHEET_BUDGET = 6
+# A backdrop far behind the wall, past BEHIND times any view's distance to it: what a hole shows instead of sky.
+BACKDROP_X = -4000.0
+BACKDROP_HALF = 5000.0
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -69,6 +73,19 @@ def arch():
     backward = np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])[:, 0] < 0
     tris[backward] = tris[backward][:, ::-1]
     return pos, tris
+
+
+def with_backdrop(pos, tris):
+    """`pos`, `tris` and a quad at x = BACKDROP_X facing +x, wider than any view of the wall."""
+    h = BACKDROP_HALF
+    quad = np.array([(BACKDROP_X, -h, -h), (BACKDROP_X, h, -h), (BACKDROP_X, h, h), (BACKDROP_X, -h, h)])
+    return np.concatenate([pos, quad]), np.concatenate([tris, np.array([(0, 1, 2), (0, 2, 3)]) + len(pos)])
+
+
+def path_pose_at(target):
+    """A path pose from PATH_EYE looking at `target`."""
+    eye = np.array(PATH_EYE)
+    return np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -111,6 +128,17 @@ class ViewHoleTests(unittest.TestCase):
         holes = leaks.view_holes(sky, source_sky)
         self.assertEqual(len(holes), 1)
         self.assertEqual(sorted(zip(*np.nonzero(holes[0]))), [(4, 1), (4, 2)])
+
+    def test_any_sky_the_source_covers_is_open_and_a_view_past_it_only_where_an_opening_square_fits(self):
+        past = np.zeros((9, 9), dtype=bool)
+        sky = past.copy()
+        past[1, 1] = sky[1, 1] = True  # one pixel of sky
+        past[4, 0:9] = True  # a band one pixel tall: a silhouette moved
+        past[6:9, 0:3] = True  # a square a region holds whole
+        open_mask = leaks.open_pixels(sky, past)
+        self.assertTrue(open_mask[1, 1])
+        self.assertFalse(open_mask[4].any())
+        self.assertTrue(open_mask[6:9, 0:3].all())
 
     def test_pixels_touching_at_a_corner_are_one_hole_and_apart_are_two(self):
         none = np.zeros((5, 5), dtype=bool)
@@ -229,19 +257,33 @@ class LeakProbeTests(unittest.TestCase):
         np.testing.assert_array_equal(first[0], second[0])
         np.testing.assert_array_equal(first[1], second[1])
 
-    def test_an_unsealed_import_builds_no_probes_even_with_a_camera(self):
+    def test_an_import_without_a_camera_builds_no_probes_and_an_unsealed_one_with_a_camera_does(self):
         rgb = np.full((len(self.pos), 3), 128.0)
         with mock.patch.object(leaks, "LeakProbes", side_effect=AssertionError("probes built")):
-            simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
-                     position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
             self.simplified(Allocation())
+        with mock.patch.object(leaks, "LeakProbes", side_effect=AssertionError("probes built")):
+            with self.assertRaisesRegex(AssertionError, "probes built"):
+                simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
+                         position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
+
+    def test_a_missing_triangle_that_shows_a_surface_far_behind_is_a_hole_and_one_close_behind_is_not(self):
+        pos, tris = with_backdrop(self.pos, self.tris)
+        inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
+        path = (*PATH_VIEW, [path_pose_at(self.pos[self.tris[inside]].mean(axis=0))])
+        probes = leaks.LeakProbes(pos, tris, *CAMERA, path=path)
+        self.assertEqual(probes.holes(pos, tris), [])
+        holes = probes.holes(pos, np.delete(tris, inside, axis=0))
+        self.assertGreater(len(holes), 0)
+        self.assertTrue(all(set(seen) == {inside} for seen in holes))
+        # The wall moved back by less than BEHIND times its distance stays where the view meets it.
+        moved = pos.copy()
+        moved[:len(self.pos), 0] -= 0.25 * np.linalg.norm(np.array(PATH_EYE))
+        self.assertEqual(probes.holes(moved, tris), [])
 
     def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
         holed = self.pos, np.delete(self.tris, inside, axis=0)
-        target = self.pos[self.tris[inside]].mean(axis=0)
-        eye = np.array(PATH_EYE)
-        pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
+        pose = path_pose_at(self.pos[self.tris[inside]].mean(axis=0))
         whole_batches = len(self.probes.holes(*holed))
         with mock.patch.object(leaks, "LAUNCH", SMALL_BATCH):
             without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
