@@ -2,6 +2,7 @@
 
 import math
 import pathlib
+import struct
 
 from build.c_header import read_define
 from r3d.mesh_asset import checked_struct
@@ -49,23 +50,32 @@ def encode(origin, spacing, dims, coefficients, inside=None):
     return HEADER.pack(VERSION, SH_PROBES_FLAG_INSIDE_MASK, *origin, *spacing, scale, *dims) + quantized.tobytes() + mask
 
 
-def decode(data):
-    import numpy as np
+RECORD = struct.Struct(f'<{COEFFICIENTS * CHANNELS}h')
 
+
+def layout(data):
+    """Checked header fields and where the inside mask starts: (version, flags, origin, spacing, scale, dims, mask_at).
+    The standard library only."""
     if len(data) < HEADER.size:
         raise ValueError('truncated SHPR header')
     version, flags, *fields = HEADER.unpack_from(data)
-    origin, spacing, dims, scale = fields[:3], fields[3:6], fields[7:10], fields[6]
+    origin, spacing, scale, dims = tuple(fields[:3]), tuple(fields[3:6]), fields[6], tuple(fields[7:10])
     count = math.prod(dims)
-    mask_at = HEADER.size + count * COEFFICIENTS * CHANNELS * np.dtype('<i2').itemsize
+    mask_at = HEADER.size + count * RECORD.size
     mask_size = (count + MASK_BITS_PER_BYTE - 1) // MASK_BITS_PER_BYTE if flags & SH_PROBES_FLAG_INSIDE_MASK else 0
     if version != VERSION or flags & ~SH_PROBES_FLAG_INSIDE_MASK or not all(dims) or len(data) != mask_at + mask_size:
         raise ValueError('invalid SHPR version, flags, dimensions or length')
-    if not np.isfinite([*origin, *spacing, scale]).all() or min(*spacing, scale) <= 0:
+    if not all(map(math.isfinite, (*origin, *spacing, scale))) or min(*spacing, scale) <= 0:
         raise ValueError('invalid SHPR origin, spacing or scale')
+    return version, flags, origin, spacing, scale, dims, mask_at
+
+
+def decode(data):
+    import numpy as np
+
+    _, flags, origin, spacing, scale, dims, mask_at = layout(data)
+    count = math.prod(dims)
     coefficients = np.frombuffer(data, dtype='<i2', count=count * COEFFICIENTS * CHANNELS, offset=HEADER.size).reshape(-1, COEFFICIENTS, CHANNELS) * scale
     inside = (np.unpackbits(np.frombuffer(data, dtype=np.uint8, offset=mask_at), bitorder='little')[:count].astype(bool)
-              if mask_size else np.zeros(count, dtype=bool))
+              if flags & SH_PROBES_FLAG_INSIDE_MASK else np.zeros(count, dtype=bool))
     return origin, spacing, dims, scale, coefficients, inside
-
-
