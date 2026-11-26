@@ -9,13 +9,16 @@
 #include "core/checkpoint.h"
 #include "render_host.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "console/console_tune.h"
 #include "core/tune.h"
+#include "display/display.h"
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
@@ -32,12 +35,14 @@
 #include "scene/scene_shell.h"
 
 #if defined(_WIN32)
+#include <direct.h>
 #include <fcntl.h>
 #include <io.h>
 #include "image/pixel/rgb565.h"
 #endif
 
-#define DEFAULT_DT_MS 16
+#define DEFAULT_DT_MS         16
+#define OUTPUT_DIRECTORY_MODE 0777
 
 static void
 tune_reply(const char* line) {
@@ -107,14 +112,16 @@ render_host_set_tunable_text(const char* assignment) {
     return render_host_set_tunable(name, value);
 }
 
-/* The output canvas for `quarter`/`panel`, decided before gfx_init(): both
- * GFX_WIDTH and GFX_HEIGHT are compile-time, so a --video run can be sized
- * and refused, if it must be, before anything is drawn. */
-static void
-output_size(int quarter, bool panel, int* out_w, int* out_h) {
+affine2x_t
+render_host_picture_transform(int quarter, bool panel, int width, int height, int* out_w, int* out_h) {
     const bool upright = quarter % 2 == 0;
-    *out_w = (panel || upright) ? GFX_WIDTH : GFX_HEIGHT;
-    *out_h = (panel || upright) ? GFX_HEIGHT : GFX_WIDTH;
+    *out_w = (panel || upright) ? width : height;
+    *out_h = (panel || upright) ? height : width;
+    affine2x_t inverse = affine2x_identity();
+    if (!panel) {
+        (void)affine2x_invert(ui_transform_quarter_turn(quarter, width, height), &inverse);
+    }
+    return inverse;
 }
 
 /* Fills `buf` (screenshot_bmp_row_stride(out_w) * out_h bytes) with one
@@ -122,11 +129,7 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
  * chunk both carry unchanged, so the BMP write and every --video frame
  * share this instead of each walking the framebuffer on its own. */
 static void
-convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
-    affine2x_t inverse = affine2x_identity();
-    if (!panel) {
-        (void)affine2x_invert(t, &inverse);
-    }
+convert_frame(affine2x_t inverse, int out_w, int out_h, int32_t stride, uint8_t* buf) {
     gfx_color_t pixels[GFX_WIDTH];
     for (int py = 0; py < GFX_HEIGHT; py++) {
         gfx_read_panel_row(py, pixels);
@@ -239,6 +242,16 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+__attribute__((weak)) bool
+scene_render_with_setup(uint32_t dt_ms, int quarter, int width, int height, bool (*before_draw)(void)) {
+    (void)dt_ms;
+    (void)quarter;
+    (void)width;
+    (void)height;
+    (void)before_draw;
+    return false;
+}
+
 /* Render settings where a provider did not link the renderer: none to set.
  * render_host_settings.c's own definition replaces this. */
 __attribute__((weak)) bool
@@ -258,6 +271,14 @@ __attribute__((weak)) bool
 render_host_camera_pose(float position[3], float rotation[4]) {
     (void)position;
     (void)rotation;
+    return false;
+}
+
+__attribute__((weak)) bool
+render_host_camera_input(const camera_pose_t* pose, float lens, float near_z) {
+    (void)pose;
+    (void)lens;
+    (void)near_z;
     return false;
 }
 
@@ -310,22 +331,34 @@ refuse(int* exit_code, const char* argv0) {
     return false;
 }
 
+__attribute__((weak)) bool
+render_host_write_ids(const char* directory, FILE* entries, int frame, int quarter) {
+    (void)directory;
+    (void)entries;
+    (void)frame;
+    (void)quarter;
+    return false;
+}
+
 /* --poses rows, one per drawn frame: the frame, its ms, the active camera's
  * world position and rotation quaternion. A --video writes them to
  * VIDEO.poses.csv, and refuses --poses. */
-#define POSES_HEADER "frame,ms,px,py,pz,qx,qy,qz,qw"
-#define POSES_SUFFIX ".poses.csv"
+#define POSES_HEADER       "frame,ms,px,py,pz,qx,qy,qz,qw"
+#define POSES_SUFFIX       ".poses.csv"
+#define ID_POSES_SUFFIX    "/capture" POSES_SUFFIX
+#define ID_ENTRIES_SUFFIX  "/entries.json"
+#define POSE_PROBLEM_BYTES 160
 
 /* One open run owns the frame history, readback buffers and output streams. */
 static struct {
+    camera_poses_t camera_poses;
     const frame_provider_t* provider;
     bool panel, crop, video_ok, failed;
-    const char *out_path, *video_path, *record_path, *poses_path;
-    char* video_poses_path;
-    FILE *record, *poses;
+    const char *out_path, *video_path, *record_path, *poses_path, *ids_path, *camera_poses_path;
+    char* owned_poses_path;
+    FILE *record, *poses, *ids;
     uint32_t record_keyframe_every;
     int out_w, out_h;
-    affine2x_t t;
     int32_t stride;
     uint8_t* frame_buf;
     render_video_t video;
@@ -342,8 +375,8 @@ drop_poses(void) {
         (void)fclose(host.poses);
         host.poses = NULL;
     }
-    free(host.video_poses_path);
-    host.video_poses_path = NULL;
+    free(host.owned_poses_path);
+    host.owned_poses_path = NULL;
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -425,6 +458,7 @@ release(void) {
     scene_unload_all();
     gfx_deinit();
     app_arena_exit();
+    camera_poses_free(&host.camera_poses);
 }
 
 static bool
@@ -463,8 +497,34 @@ record_stop(void) {
     return closed && counts.dropped == 0;
 }
 
-bool
-render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
+static bool
+render_host_output_dir(const char* directory) {
+#if defined(_WIN32)
+    const int made = _mkdir(directory);
+#else
+    const int made = mkdir(directory, OUTPUT_DIRECTORY_MODE);
+#endif
+    if (made == 0 || errno == EEXIST) {
+        return true;
+    }
+    fprintf(stderr, "%s: cannot create %s\n", host.provider->name, directory);
+    return false;
+}
+
+static char*
+render_host_output_path(const char* base, const char* suffix) {
+    const size_t size = strlen(base) + strlen(suffix) + 1;
+    char* path = malloc(size);
+    if (path != NULL) {
+        (void)snprintf(path, size, "%s%s", base, suffix);
+    } else {
+        fprintf(stderr, "out of memory\n");
+    }
+    return path;
+}
+
+static bool
+open_host(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
     memset(&host, 0, sizeof host);
     *exit_code = 1;
     host.provider = provider;
@@ -499,6 +559,10 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
             host.video_path = argv[++i];
+        } else if (strcmp(a, "--camera-poses") == 0 && has_value) {
+            host.camera_poses_path = argv[++i];
+        } else if (strcmp(a, "--ids") == 0 && has_value) {
+            host.ids_path = argv[++i];
         } else if (strcmp(a, "--poses") == 0 && has_value) {
             host.poses_path = argv[++i];
         } else if (strcmp(a, "--record-keyframe-every") == 0 && has_value) {
@@ -524,18 +588,37 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return refuse(exit_code, argv[0]);
     }
 
+    if (host.camera_poses_path != NULL) {
+        char problem[POSE_PROBLEM_BYTES];
+        if (!camera_poses_load(host.camera_poses_path, &host.camera_poses, problem, sizeof problem)) {
+            fprintf(stderr, "%s: %s: %s\n", host.provider->name, host.camera_poses_path, problem);
+            return false;
+        }
+        if (frames_set && host.frame.count != host.camera_poses.count) {
+            fprintf(stderr, "%s: --frames differs from pose count\n", host.provider->name);
+            return false;
+        }
+        host.frame.count = host.camera_poses.count;
+        frames_set = true;
+    }
+
     if (!frames_set && provider->frame_count != NULL) {
         host.frame.count = provider->frame_count();
     }
 
-    output_size(host.frame.quarter, host.panel, &host.out_w, &host.out_h);
+    host.canvas_from_panel =
+        render_host_picture_transform(host.frame.quarter, false, GFX_WIDTH, GFX_HEIGHT, &host.out_w, &host.out_h);
+    if (host.panel) {
+        host.out_w = GFX_WIDTH;
+        host.out_h = GFX_HEIGHT;
+    }
 
+    if (host.poses_path != NULL && (host.video_path != NULL || host.ids_path != NULL)) {
+        fprintf(stderr, "%s: %s writes its own pose log; drop --poses\n", host.provider->name,
+                host.ids_path != NULL ? "--ids" : "--video");
+        return false;
+    }
     if (host.video_path != NULL) {
-        if (host.poses_path != NULL) {
-            fprintf(stderr, "%s: --video writes its poses beside it, to VIDEO" POSES_SUFFIX "; drop --poses\n",
-                    host.provider->name);
-            return false;
-        }
         if (host.frame.dt_ms == 0) {
             fprintf(stderr, "%s: --video needs a nonzero --dt\n", host.provider->name);
             return false;
@@ -544,7 +627,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         if (host.frame.count > fits) {
             const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
             fprintf(stderr,
-                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
+                    "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 4 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
                     host.provider->name, host.frame.count, host.out_w, host.out_h, (long long)(total / (1024 * 1024)),
                     host.frame.dt_ms, (long long)fits);
@@ -579,6 +662,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         release();
         return false;
     }
+    /* On stderr, as stdout may carry the image: what a caller covering the
+     * whole camera path reads, 0 for a scene without one. */
+    if (host.provider->path_ms != NULL) {
+        fprintf(stderr, "RENDER path_ms=%u\n", (unsigned)host.provider->path_ms());
+    }
     if (settings_set && !render_host_apply_settings(&settings)) {
         fprintf(stderr, "%s: --set render.FIELD needs the renderer linked (autana::render_host)\n",
                 host.provider->name);
@@ -594,7 +682,6 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         release();
         return false;
     }
-    host.t = ui_transform_quarter_turn(host.frame.quarter, GFX_WIDTH, GFX_HEIGHT);
     host.stride = screenshot_bmp_row_stride(host.out_w);
 
     host.frame_buf = malloc((size_t)host.stride * host.out_h);
@@ -612,29 +699,23 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
 
-    /* A video's frames are scored against references traced at known poses
-     * (render_compare.py), so a video always leaves its poses beside it. */
-    if (host.video_path != NULL) {
-        host.video_poses_path = malloc(strlen(host.video_path) + sizeof POSES_SUFFIX);
-        if (host.video_poses_path != NULL) {
-            sprintf(host.video_poses_path, "%s" POSES_SUFFIX, host.video_path);
-        } else {
-            fprintf(stderr, "out of memory\n");
-        }
-        host.poses_path = host.video_poses_path;
+    const char* pose_base = host.ids_path != NULL ? host.ids_path : host.video_path;
+    if (pose_base != NULL) {
+        const char* suffix = host.ids_path != NULL ? ID_POSES_SUFFIX : POSES_SUFFIX;
+        host.owned_poses_path = render_host_output_path(pose_base, suffix);
+        host.poses_path = host.owned_poses_path;
     }
-    if (host.video_path != NULL || host.poses_path != NULL) {
-        host.poses =
-            host.poses_path != NULL ? render_rows_open(host.poses_path, POSES_HEADER, host.provider->name) : NULL;
-        if (host.poses == NULL) {
-            drop_poses();
-            if (host.video_path != NULL) {
-                (void)render_video_close(&host.video);
-            }
-            free(host.frame_buf);
-            release();
-            return false;
+    if ((host.ids_path != NULL && !render_host_output_dir(host.ids_path))
+        || (pose_base != NULL && host.poses_path == NULL)
+        || (host.poses_path != NULL
+            && (host.poses = render_rows_open(host.poses_path, POSES_HEADER, host.provider->name)) == NULL)) {
+        drop_poses();
+        if (host.video_path != NULL) {
+            (void)render_video_close(&host.video);
         }
+        free(host.frame_buf);
+        release();
+        return false;
     }
 
     /* stdout is free to watch only when the image goes to a file. */
@@ -661,12 +742,17 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
 
-    /* The drawn box in output coordinates, and the map that turns a
-     * --panel output's box back into the canvas a provider lays out in. */
-    host.canvas_from_panel = affine2x_identity();
-    (void)affine2x_invert(host.t, &host.canvas_from_panel);
     host.video_ok = true;
     return true;
+}
+
+bool
+render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
+    const bool opened = open_host(provider, argc, argv, exit_code);
+    if (!opened) {
+        camera_poses_free(&host.camera_poses);
+    }
+    return opened;
 }
 
 const provider_frame_t*
@@ -679,23 +765,53 @@ render_host_frame(void) {
 static void
 write_pose(void) {
     float p[3], q[4];
-    if (host.poses == NULL || !render_host_camera_pose(p, q)) {
-        return;
+    if (host.poses != NULL && render_host_camera_pose(p, q)) {
+        fprintf(host.poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", host.frame.index,
+                (unsigned)host.frame.elapsed_ms, (double)p[0], (double)p[1], (double)p[2], (double)q[0], (double)q[1],
+                (double)q[2], (double)q[3]);
     }
-    fprintf(host.poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", host.frame.index, (unsigned)host.frame.elapsed_ms,
-            (double)p[0], (double)p[1], (double)p[2], (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
+}
+
+static bool
+apply_frame_camera_pose(void) {
+    const camera_pose_t* pose = &host.camera_poses.poses[host.frame.index];
+    return render_host_camera_input(pose, host.camera_poses.lens, host.camera_poses.near_z);
 }
 
 void
 render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.dt_ms = dt_ms;
     host.frame.input = *input;
+    const bool posed = host.camera_poses.count > 0;
+    if (posed && host.frame.index >= host.camera_poses.count) {
+        host.failed = true;
+        return;
+    }
     render_watch_frame_begin();
+    if (posed && !scene_render_with_setup(dt_ms, host.frame.quarter, GFX_WIDTH, GFX_HEIGHT, apply_frame_camera_pose)) {
+        render_watch_frame_end();
+        fprintf(stderr, "%s: --camera-poses requires an active scene camera\n", host.provider->name);
+        host.failed = true;
+        return;
+    }
     scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
     host.provider->draw(&host.frame);
     render_watch_frame_end();
 
-    convert_frame(host.t, host.panel, host.out_w, host.out_h, host.stride, host.frame_buf);
+    if (posed && host.provider->render_context != NULL) {
+        const raster_t* raster = &host.provider->render_context()->raster;
+        const bool sideways = host.frame.quarter % 2 != 0;
+        const int width = sideways ? raster->height : raster->width;
+        const int height = sideways ? raster->width : raster->height;
+        if (width != host.camera_poses.width || height != host.camera_poses.height) {
+            fprintf(stderr, "%s: pose size %dx%d differs from render size %dx%d\n", host.provider->name,
+                    host.camera_poses.width, host.camera_poses.height, width, height);
+            host.failed = true;
+            return;
+        }
+    }
+    convert_frame(host.panel ? affine2x_identity() : host.canvas_from_panel, host.out_w, host.out_h, host.stride,
+                  host.frame_buf);
     if (host.crop) {
         host.drawn = drawn_box(host.frame_buf, host.stride, host.out_w, host.out_h);
         host.frame.drawn = host.panel ? ui_transform_rect(host.canvas_from_panel, host.drawn) : host.drawn;
@@ -710,6 +826,19 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
             host.video_ok = false;
         } else {
             host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        }
+    }
+    if (host.ids_path != NULL && !host.failed) {
+        if (host.ids == NULL) {
+            char* path = render_host_output_path(host.ids_path, ID_ENTRIES_SUFFIX);
+            if (path != NULL) {
+                host.ids = fopen(path, "w");
+                free(path);
+            }
+        }
+        if (host.ids == NULL || !render_host_write_ids(host.ids_path, host.ids, host.frame.index, host.frame.quarter)) {
+            fprintf(stderr, "%s: --ids requires an id attachment and writable output\n", host.provider->name);
+            host.failed = true;
         }
     }
     write_pose();
@@ -743,18 +872,23 @@ render_host_close(void) {
 
     const frame_watch_verdict_t verdict = render_watch_finish();
     free(host.console_path);
+    if (host.ids != NULL) {
+        const bool written = fputs("]}\n", host.ids) >= 0;
+        host.failed |= fclose(host.ids) != 0 || !written;
+        host.ids = NULL;
+    }
     const bool posed = host.poses == NULL || fclose(host.poses) == 0;
     if (!posed) {
         fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.poses_path);
     }
-    free(host.video_poses_path);
+    free(host.owned_poses_path);
     if (host.video_path != NULL) {
         host.video_ok = render_video_close(&host.video) && host.video_ok;
         if (!host.video_ok) {
             fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.video_path);
         }
     }
-    if (!posed || (host.video_path != NULL && !host.video_ok)) {
+    if (host.failed || !posed || (host.video_path != NULL && !host.video_ok)) {
         free(host.frame_buf);
         return false;
     }
@@ -805,7 +939,7 @@ main(int argc, char** argv) {
         return exit_code;
     }
     input_t input = {0};
-    for (int i = 0; i < host.frame.count; i++) {
+    for (int i = 0; i < host.frame.count && !host.failed; i++) {
         apply_input(host.provider, i, &input);
         render_host_step(host.frame.dt_ms, &input);
     }

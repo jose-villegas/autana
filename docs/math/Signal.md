@@ -96,6 +96,7 @@ $`(1 - \alpha(a))(1 - \alpha(b)) = 1 - \alpha(a + b)`$.
 |---|---|
 | `smooth_alpha(dt, tau)` | Share of the gap closed toward a target; `expm1f` preserves small-step precision |
 | `smooth_decay(dt, half_life)` | Share left of a quantity halving every half-life |
+| `smooth_step_i64(average, sample, divisor)` | Integer average moved `1/divisor` of the way to a sample, truncated toward zero; `SMOOTH_RTT_DIVISOR` (8) is TCP's smoothed round-trip gain<sup>[[134]](../Citations.md#rfc6298)</sup> |
 
 ```math
 \alpha = 1 - e^{-\Delta t/\tau}

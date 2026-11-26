@@ -44,8 +44,10 @@ def load_glb_source(settings):
 
 
 def with_triangles(src, tri_v, tri_t, tri_m, **attributes):
-    """`src` with other triangles and optional replacement vertex, UV or material arrays."""
-    return SimpleNamespace(**(vars(src) | dict(tri_v=tri_v, tri_t=tri_t, tri_m=tri_m) | attributes))
+    """`src` with other triangles and optional replacement vertex, UV or material arrays; `src`'s SurfaceTable is
+    not carried over, so the copy does not keep `src` alive."""
+    kept = {key: value for key, value in vars(src).items() if key != "_surface_table"}
+    return SimpleNamespace(**(kept | dict(tri_v=tri_v, tri_t=tri_t, tri_m=tri_m) | attributes))
 
 
 def camera_filter(source, *, alpha=True):
@@ -56,8 +58,9 @@ def camera_filter(source, *, alpha=True):
     hidden = hidden if hidden is not None and hidden.any() else None
     if alpha is None and hidden is None:
         return None
-    return lambda hits, where: ((True if hidden is None else ~hidden[hits]) &
-                               (True if alpha is None else alpha(hits, where)))
+    from r3d.light import AlphaTest
+
+    return AlphaTest(source, None if alpha is None else alpha.keep_alpha, hidden)
 
 
 PATH_LIGHTS = {}

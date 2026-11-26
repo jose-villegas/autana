@@ -16,7 +16,7 @@ indirect test_a_null_share_splits_evenly_and_steers_nothing>job_run_steered test
 indirect raster.c:job_range_run : cull_slice
 indirect scene_animation.c:job_range_run : scene_animation.c:animate_slice scene_animation.c:skin_slice
 indirect raster_upscale_picture>job_run_steered : raster.c:upscale_slice
-indirect draw_slice : clear_color raster_attachment_clear_u16 raster_cull_view.c:clear raster_overdraw.c:clear
+indirect draw_slice : clear_color raster_attachment_clear_zero raster_cull_view.c:clear raster_overdraw.c:clear
 indirect raster_show : raster_meshlets.c:show depth_show tiles_show raster_cull_view.c:show raster_overdraw.c:show raster_copies.c:show
 indirect raster_show_map : raster_meshlets.c:pixel_color raster_overdraw.c:pixel_color raster_copies.c:pixel_color
 indirect render_context_set_debug_view render_context_debug_view_widest : raster_depth_view raster_depth_tiles_view raster_meshlets_view raster_cull_view raster_boxes_view raster_overdraw_view raster_copies_view

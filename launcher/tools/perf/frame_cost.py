@@ -7,6 +7,7 @@ import statistics
 
 from build.c_header import read_define
 from capture import quarter_row
+from device_report import read_capture_text
 
 LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
 
@@ -49,7 +50,7 @@ def frame_cost_windows(path, text=None):
     if text is None:
         if path is None or not pathlib.Path(path).exists():
             return None
-        text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+        text = read_capture_text(path)
     windows = [[(quarter_row(name, line), str(values[0])) for name, values in window["brackets"].items()]
                for line in text.splitlines() if (window := frame_cost_window(line)) is not None]
     if not windows or not all(windows):
@@ -104,7 +105,7 @@ def frame_laps_means(path):
     """{core: {lap: (mean ms, mean laps' own ms)}} per frame over every lap
     window, a lap missing from a window counting as 0, so a core's laps keep
     adding up."""
-    text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(path)
     windows = [window for line in text.splitlines() if (window := frame_laps_window(line)) is not None]
     if not windows:
         raise ValueError(f"{path}: no lap windows")
@@ -114,7 +115,7 @@ def frame_laps_means(path):
 def frame_laps_takes(path):
     """{row with its quarter: frame_laps_means' shape} over a capture's frame
     profile takes, each row and quarter averaged apart."""
-    text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(path)
     rows = {}
     for line in text.splitlines():
         if (take := frame_laps_take(line)) is not None:

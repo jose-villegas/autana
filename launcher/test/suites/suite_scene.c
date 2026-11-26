@@ -8044,6 +8044,22 @@ test_textures_draw_the_quad_other_than_plain(void) {
     TEST_ASSERT_EQUAL_INT(0, pixels_differing_from(fx.held));
 }
 
+/* A renderer whose pack mesh has an LUVS sibling has textures before any is
+ * opened and after; one without, and an entity with no renderer, have none. */
+static void
+test_has_textures_reads_the_pack_mesh(void) {
+    fixture();
+    make_textured_pack(TEXTURE_PATTERN);
+    const entity_t scene = show("test_pair");
+    const entity_t red = entity_find(scene, name_hash("red"));
+    const entity_t green = entity_find(scene, name_hash("green"));
+    TEST_ASSERT_TRUE(renderer_has_textures(red));
+    TEST_ASSERT_FALSE(renderer_has_textures(green));
+    TEST_ASSERT_FALSE(renderer_has_textures(ENTITY_NONE));
+    TEST_ASSERT_TRUE(renderer_set_textured(red, true, NULL));
+    TEST_ASSERT_TRUE(renderer_has_textures(red));
+}
+
 /* Another mesh does not draw or keep the textures opened for the one it
  * replaced: with other counts the LUVS no longer fits and asking again is
  * refused, still drawing plain. */
@@ -8317,6 +8333,7 @@ run_scene_suite(void) {
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_textures_draw_the_quad_other_than_plain);
+    RUN_TEST(test_has_textures_reads_the_pack_mesh);
     RUN_TEST(test_a_mesh_of_other_counts_is_not_drawn_with_the_old_meshs_textures);
     RUN_TEST(test_a_mesh_of_the_same_counts_opens_its_textures_again_after_the_swap);
     RUN_TEST(test_a_mesh_with_face_colours_draws_textured_triangles_plain);

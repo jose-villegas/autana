@@ -26,6 +26,7 @@ typedef struct checkpoint checkpoint_t;
 #include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
+#include "render/render_context_frame.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/settings/render_settings.h"
@@ -43,26 +44,6 @@ typedef struct checkpoint checkpoint_t;
  * its cost again: the view or the drawn size may have changed. */
 #define FRAMEGEN_RETRY_DRAWN                 30
 
-/* The last frame: its step (-1 at the fixed scale), the size it drew at,
- * what culling kept and what its draw (with any census) and upscale cost.
- * A generated frame keeps the drawn one's size, step and stats; its
- * draw_us is the warp's. */
-typedef struct {
-    int step;
-    int width, height;
-    raster_stats_t stats;
-    int32_t draw_us, upscale_us;
-    int32_t settle_us;
-    int settled_rows;
-    int32_t predicted_us;
-    int32_t unscaled_us; /* under dynamic resolution, the learned cost outside draw and upscale */
-    bool generated;      /* warped from the last drawn frame, not drawn */
-    bool unchanged;      /* partial redraw: nothing changed, nothing drawn or composed */
-    /* The destination rows [rows_first, rows_end) the last compose rewrote,
-     * at the view's destination size. */
-    int rows_first, rows_end;
-} render_context_frame_t;
-
 typedef struct {
     const char* name;
     size_t state_bytes;
@@ -79,7 +60,7 @@ typedef struct {
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   8 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -124,6 +105,7 @@ typedef struct {
     framegen_target_t framegen;
     render_settle_t settle;
     render_settings_t settle_settings;
+    int settle_live_rows;     /* a settling frame's live rows, the share of its compose a held frame is judged on */
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
     bool fixed_drawn;         /* the last drawn frame took the fixed path: no policy, or a held camera's */
     bool still_judged;        /* this frame is a held camera's over a kept picture of its size: its cost is judged */
@@ -164,6 +146,10 @@ bool render_context_observer_pose(const render_context_t* context, transformf_t*
 
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
+
+/* Hands the frame just drawn or generated to frame_record, `dt_ms` after the
+ * last; a release build records nothing. */
+void render_context_record_frame(const render_context_t* context, uint32_t dt_ms);
 
 /* Drops the scratch block and returns every setting but `take` to its default. */
 void render_context_release(render_context_t* context);

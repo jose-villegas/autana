@@ -204,7 +204,9 @@ def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, ba
 
 
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
-              graph=None, declared=None, test_roots=None):
+              graph=None, declared=None, test_roots=None, uncompiled=lambda _name: False):
+    """uncompiled(name) says a name missing from the graph is defined in a source
+    this build left out, as a scoped build does: its entries are skipped."""
     roots, own_edges = read_spec(spec_path)
     test_roots = test_roots or {}
     roots.extend((test, "test") for test in test_roots)
@@ -214,6 +216,7 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     bad = set(bad)
     pointer_callers = set(pointer_callers)
     calls = {caller: set(callees) for caller, callees in calls.items()}
+    skipped = 0
 
     titles_by_name = defaultdict(list)
     for title in frame:
@@ -224,7 +227,12 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     for caller, callee in declared + list(runner_edges):
         callers = resolve(caller, titles_by_name[caller.rsplit(":", 1)[-1]])
         callees = resolve(callee, titles_by_name[callee.rsplit(":", 1)[-1]])
-        if not callers or (callee != "-" and not callees):
+        # A left-out caller never runs; a left-out callee is never reached
+        # from a caller that is there. Any other missing name fails.
+        if (not callers and uncompiled(caller)) or (
+                callers and callee != "-" and not callees and uncompiled(callee)):
+            skipped += 1
+        elif not callers or (callee != "-" and not callees):
             problems.append("declared edge %s > %s names a function that is "
                             "not in the graph" % (caller, callee))
         for c in callers:
@@ -233,6 +241,15 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
 
     for wrapper in resolve("vPortTaskWrapper", frame):
         calls.setdefault(wrapper, set()).update(resolve("main_task", frame))
+
+    kept = [(root, kind) for root, kind in roots
+            if root in test_roots or resolve(root, titles_by_name[root.rsplit(":", 1)[-1]])
+            or not uncompiled(root)]
+    skipped += len(roots) - len(kept)
+    roots = kept
+    if skipped:
+        print("stack_chain_gate: %s: %d entries name functions this build does not compile"
+              % (name, skipped))
 
     root_titles = {}
     for root, _kind in roots:
@@ -286,13 +303,46 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     return problems
 
 
+def definition_re(names):
+    """A definition of one of names: a line from column 0 with the name, its
+    parameters and the opening brace. An indented call, as in if (name(x)) {,
+    does not match."""
+    return re.compile(r"(?m)^(?:[A-Za-z_][^;{}()=\n]*[\s*])?(?:%s)\s*\([^;{}]*\)\s*\{"
+                      % "|".join(re.escape(name) for name in names))
+
+
+def uncompiled_definitions(db_path):
+    """A test of whether a function is defined in a first-party source the build
+    did not compile; a misspelt name is defined nowhere and still fails."""
+    with open(db_path, "r", encoding="utf-8") as fh:
+        compiled = {os.path.normcase(os.path.realpath(e["file"])) for e in json.load(fh)}
+    sources = [path for top in (MAIN_DIR, os.path.join(LAUNCHER, "test"),
+                                os.path.join(LAUNCHER, "packages"))
+               for path in Path(top).rglob("*.c")
+               if os.path.normcase(os.path.realpath(path)) not in compiled]
+    texts = {}
+
+    def uncompiled(name):
+        qualifier, _, function = name.rpartition(":")
+        definition = definition_re([function])
+        for path in sources:
+            if qualifier and not path.as_posix().endswith(qualifier):
+                continue
+            if path not in texts:
+                texts[path] = path.read_text(encoding="utf-8", errors="replace")
+            if definition.search(texts[path]):
+                return True
+        return False
+
+    return uncompiled
+
+
 def app_jobs(db_path, app_dir=None, functions=(), source_files=()):
     with open(db_path, "r", encoding="utf-8") as fh:
         entries = json.load(fh)
     marker = (app_dir or MAIN_DIR).replace("\\", "/").rstrip("/") + "/"
     jobs = []
-    definition = re.compile(r"\b(?:%s)\s*\([^;{}]*\)\s*\{" %
-                            "|".join(re.escape(f) for f in functions)) if functions else None
+    definition = definition_re(functions) if functions else None
     for entry in entries:
         source = entry["file"].replace("\\", "/")
         if source_files:
@@ -306,7 +356,7 @@ def app_jobs(db_path, app_dir=None, functions=(), source_files=()):
                     continue
         elif marker not in source:
             continue
-        jobs.append((entry, entry["directory"], source, graph_file(entry)))
+        jobs.append((compile_flags(entry), entry["directory"], source, graph_file(entry)))
     return jobs
 
 
@@ -319,7 +369,7 @@ def runner_registrations(jobs):
     """Expand the device's registrations using each suite's own compiler flags."""
     roots = {}
     edges = []
-    for entry, cwd, source, _graph in jobs:
+    for argv, cwd, source, _graph in jobs:
         with open(source, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
         edges.extend(("UnityDefaultTestRun", target) for target in
@@ -328,7 +378,7 @@ def runner_registrations(jobs):
         suites = re.findall(r"(?m)^\s*SUITE_REGISTER(_ON_REQUEST)?\s*\(\s*(\w+)\s*\)", text)
         if not suites:
             continue
-        expanded = subprocess.run([*compile_flags(entry), "-E", "-P", source], cwd=cwd,
+        expanded = subprocess.run([*argv, "-E", "-P", source], cwd=cwd,
                                   capture_output=True, text=True)
         if expanded.returncode:
             raise SpecError(f"{source}: cannot expand suite registrations: {expanded.stderr}")
@@ -372,8 +422,7 @@ def main(argv):
     selected = {job[2] for job in shared_jobs}
     shared_jobs += [job for job in app_jobs(db, functions={"main_task", "UnityDefaultTestRun", "vPortTaskWrapper"})
                     if job[2] not in selected]
-    entry, cwd = shared_jobs[0][:2]
-    cmd = compile_flags(entry)
+    cmd, cwd = shared_jobs[0][:2]
     probe = subprocess.run(cmd + ["-S", "-x", "c", "-", "-o", "-"], cwd=cwd,
                            input='#include "xtensa_context.h"\nchar stack_chain_context[XT_STK_FRMSZ + ((XT_CP_SIZE + 15) & ~15)];\n',
                            capture_output=True, text=True)
@@ -406,13 +455,14 @@ def main(argv):
     test_roots, runner_edges = runner_registrations(all_jobs)
     if not test_roots:
         raise SpecError("no registered tests in the diagnostics build")
+    uncompiled = uncompiled_definitions(db)
     status = 0
     for spec in specs:
         name = os.path.basename(os.path.dirname(spec))
         try:
             problems = check_app(name, spec, ci_paths, stack_bytes,
                                  stack_reserve(), context, runner_edges, graph, declared,
-                                 test_roots if Path(spec).parent == Path(TIMING).parent else ())
+                                 test_roots if Path(spec).parent == Path(TIMING).parent else (), uncompiled)
         except SpecError as exc:
             problems = [str(exc)]
         for problem in problems:

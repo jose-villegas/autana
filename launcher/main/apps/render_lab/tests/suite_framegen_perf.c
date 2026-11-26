@@ -75,8 +75,8 @@ typedef struct {
 } framegen_scenario_t;
 
 static const framegen_scenario_t scenarios[] = {
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA},
-    {&scene_sponza[SCENE_BAKED_FITTED_FULL], SPONZA_SCENE, NULL},
+    {&scene_bistro, BISTRO_SCENE, BISTRO_CAMERA},
+    {&scene_sponza, SPONZA_SCENE, NULL},
     /* A skinned capybara running through Sponza, its camera its own path's. */
     {&scene_capybara_sponza, SPONZA_SCENE, NULL},
 };

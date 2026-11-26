@@ -19,7 +19,8 @@ Python's double, so they hold to a tolerance. The scene is invented here, so
 nothing depends on one an app ships.
 
 It also holds what the tests that run track_host share: whether it can be
-built here, and a camera clip written beside its .glb.
+built here, one build for a whole test file, and a camera clip written beside
+its .glb.
 """
 
 import argparse
@@ -28,12 +29,15 @@ import pathlib
 import shutil
 import struct
 import sys
+import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 
 from anim import track_host, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from r3d.batch.copy_batches import f32  # noqa: E402
 from gltf import gltf_read, gltf_write  # noqa: E402
 
 NODES = ("camera", "arm", "hand")
@@ -122,6 +126,23 @@ def has_compiler():
     return True
 
 
+def build_sampler_once():
+    """Builds track_host and has track_host.program() return that build until the calling test file ends,
+    while track_host.SOURCES is what it was built from; a test that points SOURCES elsewhere builds anew.
+
+    program() asks the compiler for the program's headers on every call to see whether to rebuild, which
+    costs more than the sample it serves. Call it from setUpModule. Without a compiler it does nothing."""
+    build, sources = track_host.program, track_host.SOURCES
+    try:
+        built = build()
+    except (track_host.TrackHostError, OSError):
+        return
+    patcher = mock.patch.object(track_host, "program",
+                                side_effect=lambda: built if track_host.SOURCES == sources else build())
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 def write_camera_clip(directory, name="fly", reach=1.0, degrees=0.0, props=(), node="camera"):
     """NAME.anim.toml and NAME.glb beside it: node `node` moving from x 0 to
     `reach` over a second while turning `degrees` about +y from facing glTF's
@@ -144,10 +165,6 @@ def probe_entry():
     return tracks_asset.encode(*tracks_asset.clip_tracks(document, binary, document["animations"][0]))
 
 
-def single(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
-
-
 def sample_times(track, duration_ms):
     """(seconds, exact) to sample a track at: its keys, either side of its
     ends, and the clip's clock every EVERY_MS ms, looping."""
@@ -156,9 +173,9 @@ def sample_times(track, duration_ms):
     out = [(t, copies or not track["quaternion"] or t in (times[0], times[-1])) for t in times]
     out += [(times[0] - 0.25, True), (times[-1] + 0.25, True)]
     for t_ms in range(0, UNTIL_MS, EVERY_MS):
-        seconds = single((t_ms % duration_ms) * 0.001)
+        seconds = f32((t_ms % duration_ms) * 0.001)
         out.append((seconds, copies or seconds <= times[0] or seconds >= times[-1]))
-    return [(single(seconds), exact and not track["quaternion"]) for seconds, exact in out]
+    return [(f32(seconds), exact and not track["quaternion"]) for seconds, exact in out]
 
 
 def reference_entry(entry):

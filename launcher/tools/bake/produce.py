@@ -1,19 +1,22 @@
 """Making a bake (bake.py bake): runs its stage's tool into the cache and records which bytes the
 key got. Needs the tool's environment: the r3d requirements for a mesh or a reference set, and for a fit
-also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). Before it runs, every requirement pin the key
-counts must match what is installed, so a key never names bytes made with other packages.
+also a CUDA GPU with requirements-gpu.txt (r3d/gpu_python.sh). A reference set traces on the CUDA GPU where
+Mitsuba loads a scene there, else on the CPU (reference_render.reference_variant); a reference bake fails off
+CUDA (REFERENCE_VARIANT). Before it runs, every
+requirement pin the key counts must match what is installed, so a key never names bytes made with other packages.
+A bake made on the GPU, a fit or a reference set traced there, names the GPU in its row.
 
 A fit's start is a mesh bake of its own and its reference set a reference bake; the fit reads the bytes its key
 names, from the lock or this cache, so any GPU host fits from the same inputs. A reference bake renders its set
-once per reference key into the cache's reference/ folder, where the doc stages read the held-out references
-too, and packs what the fit reads. A run made `again` renders each set once more, in a folder of its own; a set
-nothing has read for REFERENCE_KEEP_DAYS is deleted.
+once per reference key and machine (reference_folder) into the cache's reference/ folder, where the doc stages
+read the held-out references too, and packs what the fit reads. Each pose of a set is traced once per pose key into reference-poses/ (PoseStore),
+so a set whose key changed traces only the poses whose own inputs changed. A run made `again` renders each set once
+more, in a folder of its own and tracing every pose; a set or pose nothing has read for REFERENCE_KEEP_DAYS is
+deleted.
 """
 
-import contextlib
 import copy
 import importlib.metadata
-import inspect
 import json
 import os
 import pathlib
@@ -28,12 +31,7 @@ from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
-# How a poses file (reference_set.poses_text) starts each pose's line.
-POSE_LINE = "pose "
-# A reference shard's record: the CPU vendor that traced it, and each set it rendered a share of, by folder, with
-# its pose count. A joined set keeps it, so its row names the vendor that traced it, not the one that packed it.
-SHARD_MANIFEST = "shard.json"
-PLAN_MANIFEST = "plan.json"
+REFERENCE_POSES = "reference-poses"
 DONE = "done"
 PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
@@ -64,23 +62,24 @@ def made(key, cache):
     return row if file.is_file() and keys.file_sha256(file) == row["sha256"] else None
 
 
-def maker(kind):
-    """Where a bake of `kind` is made, as its row names it: the host, and what its bytes differ by."""
+def maker(on_gpu=False):
+    """Where a bake is made, as its row names it: the host, and what its bytes differ by; `on_gpu` for one made on
+    the GPU."""
     fields = {"host": f"{platform.system()} {platform.machine()}"}
     if keys.cpu_vendor() is not None:
-        fields["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
-    if kind == "fit" and (gpu := keys.gpu_name()) is not None:
-        fields["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
+        fields["cpu_vendor"] = keys.cpu_vendor()  # a rerun adopts a mesh only from a matching CPU vendor
+    if on_gpu and (gpu := keys.gpu_name()) is not None:
+        fields["gpu"] = gpu  # a GPU bake's bytes differ between GPU models: its lock row names the one
     return fields
 
 
-def record(bake, path, cache, run=None, traced_on=None):
-    """Puts the file `path` made for `bake` in the cache and indexes it by key; `traced_on` names the CPU vendor
-    that traced it when another host did."""
+def record(bake, path, cache, run=None, on_gpu=False):
+    """Puts the file `path` made for `bake` in the cache and indexes it by key; `on_gpu` when it was made on the
+    GPU."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
-           **maker(bake.kind), **({"cpu_vendor": traced_on} if traced_on else {})}
+           **maker(on_gpu)}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -191,11 +190,11 @@ def read_references(folder):
 
 
 def prune_references(cache, now=None):
-    """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake runs it before
-    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done; one that
-    cannot be moved (a file held open) is left for a later bake."""
+    """Deletes each reference set or traced pose, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake
+    runs it before it reads any. Each is renamed aside first, so a delete cut short never leaves one that looks done;
+    one that cannot be moved (a file held open) is left for a later bake."""
     now = time.time() if now is None else now
-    for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
+    for folder in sorted(path for kind in (REFERENCES, REFERENCE_POSES) for path in (pathlib.Path(cache) / kind).glob("*")):
         pruned = folder if folder.name.endswith(PRUNED) else folder.with_name(folder.name + PRUNED)
         try:
             if now - folder.stat().st_mtime <= REFERENCE_KEEP_DAYS * DAY_S:
@@ -208,135 +207,58 @@ def prune_references(cache, now=None):
             continue  # gone already, or held open
 
 
-def reference_set(key, job, scene, cache, fresh=None):
+# The one variant a reference set is baked on (r3d/README.md, "Reference on the GPU"); its row names the GPU.
+REFERENCE_VARIANT = "cuda_ad_rgb"
+
+
+def trace_machine():
+    """What a reference trace's bytes differ by besides its inputs: the Mitsuba variant it traces on, the GPU and its
+    driver. A set's folder and each PoseStore key name it, so nothing traced on another machine, variant or driver
+    is ever taken for this one's."""
+    from r3d.reference_render import reference_variant
+
+    return [reference_variant(), keys.gpu_name(), keys.gpu_driver()]
+
+
+def reference_folder(cache, key):
+    """Where this cache keeps the reference set of `key` traced on this machine (trace_machine)."""
+    return pathlib.Path(cache) / REFERENCES / keys.digest([key, *trace_machine()])
+
+
+class PoseStore:
+    """Traced poses in this cache's reference-poses/, one keyed_folder per pose: a digest of the pose as
+    reference_set.poses_text writes it (its size, lens and pose line), `key` (bake.py's "reference_pose" stage key:
+    everything else its render reads) and trace_machine(). reference_render.render_sets traces only the poses it
+    lacks."""
+
+    def __init__(self, cache, key):
+        self.root = pathlib.Path(cache) / REFERENCE_POSES
+        self.key = keys.digest([key, *trace_machine()])
+
+    def folder(self, width, height, lens, near, pose):
+        from r3d.reference_set import poses_text
+
+        return self.root / keys.digest(["reference pose", self.key, poses_text(width, height, lens, near, [pose])])
+
+
+def reference_set(key, job, scene, cache, fresh=None, pose_key=None):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
     given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
-    reading. The log says whether it was rendered or reused."""
+    reading. Given `pose_key` and no `fresh`, its poses come from this cache's PoseStore; without one (a doc stage's
+    or objects report's set, keyed apart from a bake's) every pose is traced. The log says whether it was rendered
+    or reused. Each pose traced is progress for the stage's guard: a set traces for hours, and one still tracing is
+    never taken for hung."""
+    from process_tree import progressed
     from r3d.reference_set import prepare_references, reference_inputs
 
-    folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
+    folder = pathlib.Path(fresh) / key if fresh else reference_folder(cache, key)
     reused = (folder / DONE).is_file()
-    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial))
+    store = PoseStore(cache, pose_key) if pose_key and not fresh else None
+
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial, store, progressed))
     read_references(folder)
     print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder
-
-
-def shard_poses(text, shard, count):
-    """A poses file's text cut to shard `shard` of `count`: its header and every count-th pose from `shard`, as
-    lines, so no pose is formatted again."""
-    lines = text.splitlines(keepends=True)
-    poses = [line for line in lines if line.startswith(POSE_LINE)]
-    return "".join(line for line in lines if not line.startswith(POSE_LINE)) + "".join(poses[shard::count])
-
-
-def shard_renderer(render_sets, shard, count, rendered_sets):
-    """render_sets for shard `shard` of `count`: each set's poses shard, shard + count, ... rendered by `render_sets`
-    and saved under their own indices, and each set's folder name and pose count put in `rendered_sets`. A pose's
-    files depend on that pose alone, so shards join into the very files one render makes."""
-    def render(inputs, sets, samples=4):
-        for poses, out in sets:
-            text = pathlib.Path(poses).read_text()
-            rendered_sets[pathlib.Path(out).name] = sum(line.startswith(POSE_LINE) for line in text.splitlines())
-        # Beside the outputs, so a rendered file is renamed into place, never copied across filesystems.
-        beside = pathlib.Path(sets[0][1]).parent
-        beside.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=beside) as work:
-            cut = [(pathlib.Path(work) / f"{number}.txt", pathlib.Path(work) / str(number)) for number in range(len(sets))]
-            for (poses, _), (subset, _) in zip(sets, cut):
-                subset.write_text(shard_poses(pathlib.Path(poses).read_text(), shard, count))
-            # A set with fewer poses than shards leaves some shards none; the renderer takes no empty set.
-            kept = [(subset, rendered) for subset, rendered in cut
-                    if any(line.startswith(POSE_LINE) for line in subset.read_text().splitlines())]
-            render_sets(inputs, kept, samples)
-            for (_, out), (_, rendered) in zip(sets, cut):
-                pathlib.Path(out).mkdir(parents=True, exist_ok=True)
-                for path in (pathlib.Path(rendered).iterdir() if pathlib.Path(rendered).is_dir() else ()):
-                    index, rest = path.name.split(".", 1)
-                    os.replace(path, pathlib.Path(out) / f"{shard + int(index) * count:04d}.{rest}")
-    return render
-
-
-def reference_rays(bake, out=None):
-    """The primary rays `bake`'s reference set traces: every pose's width x height x samples², read from the poses
-    files the reference stage writes, with its renderer swapped for one that counts and traces nothing.
-    Given `out`, keeps those files and the render calls there as a plan for reference_shard."""
-    from r3d import reference_render
-    from r3d.poses import parse_pose_rows
-    from r3d.reference_set import prepare_references, reference_inputs
-
-    rays, calls = 0, []
-    # The samples render_sets traces at when prepare_references names none.
-    default = inspect.signature(reference_render.render_sets).parameters["samples"].default
-
-    def count(inputs, sets, samples=default):
-        nonlocal rays
-        calls.append({"sets": [(pathlib.Path(poses).name, pathlib.Path(folder).name) for poses, folder in sets],
-                      "samples": samples})
-        for poses, _ in sets:
-            width, height, _lens, _near, posed = parse_pose_rows(pathlib.Path(poses).read_text())
-            rays += len(posed) * width * height * samples * samples
-
-    render_sets, reference_render.render_sets = reference_render.render_sets, count
-    try:
-        with contextlib.nullcontext(out) if out is not None else tempfile.TemporaryDirectory() as work:
-            work = pathlib.Path(work)
-            prepare_references(reference_inputs(bake.job, bake.scene), work)
-            if out is not None:
-                (work / PLAN_MANIFEST).write_text(json.dumps(calls, sort_keys=True))
-    finally:
-        reference_render.render_sets = render_sets
-    return rays
-
-
-def reference_shard(bake, out, shard, count, plan):
-    """Shard `shard` of `count` of `bake`'s reference set into `out`, copying the plan's files byte for byte and
-    rendering only its poses. Selection runs only in the plan job."""
-    from r3d import reference_render
-    from r3d.reference_set import reference_inputs
-
-    folder = pathlib.Path(plan) / bake.output
-    if not (folder / PLAN_MANIFEST).is_file():
-        raise keys.BakeMissing(f"{bake.output}: reference plan lacks this set: {folder}")
-    calls = json.loads((folder / PLAN_MANIFEST).read_text())
-    out = pathlib.Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    for path in folder.iterdir():
-        if path.is_file() and path.name != PLAN_MANIFEST:
-            shutil.copyfile(path, out / path.name)
-    rendered_sets = {}
-    render = shard_renderer(reference_render.render_sets, shard, count, rendered_sets)
-    inputs = reference_inputs(bake.job, bake.scene)
-    for call in calls:
-        render(inputs, [(out / poses, out / target) for poses, target in call["sets"]], call["samples"])
-    manifest = {"cpu_vendor": keys.cpu_vendor(), "sets": rendered_sets}
-    (out / SHARD_MANIFEST).write_text(json.dumps(manifest, sort_keys=True))
-
-
-def join_reference_shards(bake, cache, shards):
-    """`bake`'s reference set in this cache, joined from the folders `shards` (reference_shard). Files the shards share
-    must match, and each set must hold every pose of its poses file exactly once."""
-    def join(partial):
-        for shard in map(pathlib.Path, shards):
-            for path in sorted(item for item in shard.rglob("*") if item.is_file() and item.name != SHARD_MANIFEST):
-                target = partial / path.relative_to(shard)
-                if target.is_file():
-                    if target.read_bytes() != path.read_bytes():
-                        raise keys.BakeMissing(f"{bake.output}: shards disagree on {path.relative_to(shard)}")
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
-        manifests = {(pathlib.Path(shard) / SHARD_MANIFEST).read_text() for shard in shards}
-        if len(manifests) != 1:
-            raise keys.BakeMissing(f"{bake.output}: shards disagree on {SHARD_MANIFEST}")
-        manifest = manifests.pop()
-        (partial / SHARD_MANIFEST).write_text(manifest)
-        for folder, wanted in json.loads(manifest)["sets"].items():
-            found = {path.name.split(".", 1)[0] for path in (partial / folder).iterdir()} if (partial / folder).is_dir() else set()
-            if found != {f"{index:04d}" for index in range(wanted)}:
-                raise keys.BakeMissing(f"{bake.output}: the shards hold {len(found)} of {folder}'s {wanted} poses")
-
-    return keyed_folder(pathlib.Path(cache) / REFERENCES / bake.key, join)
 
 
 def input_file(bake, cache, lock, dependency=None):
@@ -353,14 +275,17 @@ def input_file(bake, cache, lock, dependency=None):
 
 
 def produce_reference(bake, cache, fresh_references):
+    from r3d.reference_render import reference_variant
     from r3d.reference_set import pack_references, reference_inputs
 
-    folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references)
-    joined = folder / SHARD_MANIFEST
+    if reference_variant() != REFERENCE_VARIANT:
+        raise keys.SettingsError(f"{bake.output}: a reference set is baked on Mitsuba's {REFERENCE_VARIANT} only, and "
+                                 f"this machine traces on {reference_variant()} (r3d/README.md, \"Reference on the GPU\")")
+    folder = reference_set(bake.key, bake.job, bake.scene, cache, fresh_references, bake.stages.get("reference_pose"))
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         target.write_bytes(pack_references(folder, reference_inputs(bake.job, bake.scene).sets()))
-        return record(bake, target, cache, traced_on=json.loads(joined.read_text())["cpu_vendor"] if joined.is_file() else None)
+        return record(bake, target, cache, on_gpu=True)
 
 
 def produce_fit(bake, cache, lock):
@@ -374,7 +299,7 @@ def produce_fit(bake, cache, lock):
         unpack_references(references.read_bytes(), inputs)
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
-        return record(bake, target, cache)
+        return record(bake, target, cache, on_gpu=True)
 
 
 def produce_sound(bake, cache):
@@ -443,12 +368,12 @@ def export(row, cache, out):
 
 def adopt(rows, cache):
     """Indexes in this cache each row a run made on a host like this one (maker), its file already there, so a
-    rerun takes it as made here; returns those rows. A row without a `gpu` is taken as no fit's: a fit runs only
-    where nvidia-smi names the GPU."""
+    rerun takes it as made here; returns those rows. A row with a `gpu` was made on the GPU and is taken only where
+    nvidia-smi names the same one; a row without one was made on the CPU."""
     adopted = []
     for row in rows:
         made_on = {name: row[name] for name in ("host", "cpu_vendor", "gpu") if name in row}
-        if made_on == maker("fit" if "gpu" in row else None):
+        if made_on == maker(on_gpu="gpu" in row):
             write_atomically(index_path(row["key"], cache), json.dumps(row, sort_keys=True) + "\n")
             adopted.append(row)
     return adopted

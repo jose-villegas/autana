@@ -7,6 +7,7 @@ with their exact commands so the developer can prepare the machine.
 """
 import argparse
 from functools import partial
+import itertools
 import json
 import os
 from pathlib import Path
@@ -46,11 +47,6 @@ OUT_OF_SCOPE = (
      ('workflow' in item or '.github/workflows/' in item['uses'])),
     ('reads the pull request', lambda item: 'github.event.pull_request' in
      str(item.get('if', '')) + str(item.get('env', {}))),
-    # Its values exist only once another job has run; locally the job that joins its parts does the whole.
-    ('computed matrix', lambda item: 'fromJSON(needs.' in str(item.get('strategy', {}).get('matrix', ''))),
-    # A job that reports other jobs' results has none to read locally, where each of them runs itself.
-    ('reports other jobs', lambda item: 'steps' in item and any('run' in step for step in item['steps']) and all(
-        'needs.' in str(step.get('env', {})) for step in item['steps'] if 'run' in step)),
     ('CI wiring', lambda item: bool(item.get('outputs')) and all(
         'GITHUB_OUTPUT' in step['run'] or 'job_inputs.py affected' in step['run']
         for step in item.get('steps', []) if 'run' in step)),
@@ -148,9 +144,14 @@ def pr_jobs(root):
                     'github.ref': 'refs/pull/local/merge'})
             except (ValueError, KeyError, IndexError):
                 included = True
-            if included:
-                yield dict(job, key=f'{workflow["stem"]}:{name}', workflow=workflow,
-                           env={**workflow.get('env', {}), **job.get('env', {})})
+            if not included:
+                continue
+            # A matrix job runs once per combination, here as on a runner.
+            matrix = job.get('strategy', {}).get('matrix', {})
+            for values in itertools.product(*matrix.values()):
+                yield dict(job, key=f'{workflow["stem"]}:{name}' + ''.join(f'-{value}' for value in values),
+                           workflow=workflow, env={**workflow.get('env', {}), **job.get('env', {})},
+                           matrix={f'matrix.{axis}': value for axis, value in zip(matrix, values)})
 
 
 def expand(text, ctx):
@@ -342,7 +343,8 @@ def rows(root, ctx=None):
             yield dict(kind='skip', tier='host', job=job['key'], label=job.get('name', job['key']),
                        dir='.', command='', reason=excluded)
             continue
-        validation = dict(ctx)
+        cell = dict(ctx, **job.get('matrix', {}))
+        validation = dict(cell)
         for step in composite_steps(job.get('steps', []), root):
             if step.get('id'):
                 validation[f'steps.{step["id"]}.outcome'] = 'success'
@@ -363,8 +365,8 @@ def rows(root, ctx=None):
                     continue
             except (ValueError, KeyError, IndexError) as error:
                 row.update(kind='warn', reason=str(error))
-            row['command'] = expand(row['command'], ctx)
-            row['env'] = {key: expand(value, ctx) for key, value in row['env'].items()}
+            row['command'] = expand(row['command'], cell)
+            row['env'] = {key: expand(value, cell) for key, value in row['env'].items()}
             pending = row['command'] + str(row['env'])
             # Step outputs are resolved after their producer runs in the same job.
             pending = pending.replace('${{ runner.temp }}', '')

@@ -10,7 +10,8 @@
 | [scene_viewer.sh](scene_viewer.sh) | The headless renderer for bakes, figures and tests. Builds and renders a scene file, selecting renderers with `--object NAME`; `--framegen 0|1` enables frame generation (off by default); `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; to look at a scene, use [Loupe](https://github.com/jose-villegas/loupe). |
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
-| [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and its smooth and flat fitted renderers. |
+| [markdown_fences.py](markdown_fences.py) | Finds a Markdown text's fenced code blocks as CommonMark does, for every tool that skips or reads code in documents. |
+| [doc_import_examples.py](doc_import_examples.py) | Renders the albedo example of a supplied scene's fitted renderer beside its committed render. |
 | [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings, or in one study look (`--look`), for isolated bake studies. |
 | [showcase.py](showcase.py) | Prints a scene's showcase, its first renderer: the one pictures of the whole scene draw. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |

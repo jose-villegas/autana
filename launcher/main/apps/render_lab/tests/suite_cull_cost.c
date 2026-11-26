@@ -151,7 +151,7 @@ measure_family(const scene_baked_t* family) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), why.what);
     const handle_t load = asset_store_load(family->scene);
     const asset_pack_t* pack = asset_store_loaded(load);
-    const char* bake = family->bakes[SCENE_BAKED_FITTED_FULL];
+    const char* bake = family->bake;
     const entity_t entity = entity_find(scene, name_hash(bake));
     TEST_ASSERT_FALSE_MESSAGE(handle_is_none(entity), bake);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(pack, renderer_mesh_id(entity), &work->mesh));

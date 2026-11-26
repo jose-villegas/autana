@@ -115,7 +115,7 @@ class RenderViews(unittest.TestCase):
         return run, target
 
     def test_default_size_and_explicit_disabled_tunables_match(self):
-        for scene in ("sponza-fitted-full", "capybara"):
+        for scene in ("sponza", "capybara"):
             for quarter in (0, 1):
                 images = []
                 for extra in ((), ("--size", "184x224"),
@@ -127,7 +127,7 @@ class RenderViews(unittest.TestCase):
                 self.assertEqual(images[0], images[2])
 
     def test_height_only_present_repeats_panel_rows_in_both_quarters(self):
-        for scene in ("sponza-fitted-full", "capybara"):
+        for scene in ("sponza", "capybara"):
             for quarter in (0, 1):
                 for present in (2, 1):
                     run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", "--panel",
@@ -200,6 +200,24 @@ class RenderViews(unittest.TestCase):
         run, _ = self.render("--scene", "sponza", "--view", "octree")
         self.assertNotEqual(0, run.returncode)
         self.assertIn("--view is shaded, depth, tiles, meshlets", run.stderr)
+
+    def test_an_unknown_scene_is_refused_with_the_keys(self):
+        run, path = self.render("--scene", "no-such-scene")
+        self.assertNotEqual(0, run.returncode)
+        self.assertIn("no scene no-such-scene; --scene is one of", run.stderr)
+        self.assertIn(" sponza", run.stderr)
+        self.assertFalse(path.exists())
+
+    def test_a_run_prints_its_scene_path_length_once(self):
+        lengths = {}
+        for scene in ("sponza", "water"):
+            run, _ = self.render("--scene", scene)
+            self.assertEqual(0, run.returncode, run.stderr[-2000:])
+            lines = [line for line in run.stderr.splitlines() if line.startswith("RENDER path_ms=")]
+            self.assertEqual(1, len(lines), run.stderr[-2000:])
+            lengths[scene] = int(lines[0].split("=", 1)[1])
+        self.assertGreater(lengths["sponza"], 0)
+        self.assertEqual(0, lengths["water"])
 
     def test_a_picture_that_cannot_be_written_fails_the_run(self):
         missing = self.out / "no-such-folder" / "view.bmp"

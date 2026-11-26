@@ -1,0 +1,11 @@
+{
+  "version": "9.0.2-61-gd59078794d",
+  "linux": {
+    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n9.0.2-61-gd59078794d-linux64-gpl-9.0.tar.xz",
+    "sha256": "010499a8a9855e477b1a0ebfa9602832526ec80eb306b58213a2b6cda7149607"
+  },
+  "windows": {
+    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-21-12-37/ffmpeg-n9.0.2-61-gd59078794d-win64-gpl-9.0.zip",
+    "sha256": "af402c660610929e7bb795013372aef22da756f10b3c0c785aa62fabd328e237"
+  }
+}

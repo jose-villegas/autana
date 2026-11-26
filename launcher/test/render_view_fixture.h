@@ -9,7 +9,8 @@ typedef struct {
     float half_fov_short_tan, near_z;
 } fixture_camera_t;
 
-static __attribute__((noinline)) render_view_t
+/* The temporary pose belongs to the fixture's frame so large suites can share it. */
+static __attribute__((noinline, unused)) render_view_t
 render_view_fixture_at(const fixture_camera_t* camera, viewport_t viewport) {
     const transformf_t pose = transformf_looking(camera->eye, camera->forward, vec3f_unit_y());
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);

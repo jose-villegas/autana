@@ -12,9 +12,9 @@
 #include "suites.h"
 #include "testkit/cleanup.h"
 #include "timing.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_internal.h"
 #include "ui_probe.h"
 #include "unity.h"
 

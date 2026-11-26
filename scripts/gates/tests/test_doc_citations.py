@@ -50,6 +50,17 @@ class OptionLinkTest(unittest.TestCase):
 
 
 class DocCitationTest(unittest.TestCase):
+    def test_a_tilde_shell_fence_is_not_checked_and_a_list_items_fence_is(self):
+        guide = "~~~sh\n`missing_function()`\n~~~\n- item\n\n  ```c\n  `LIVE_MISSING`\n  ```\n"
+        with gate_tree.temporary_tree([("docs/Guide.md", guide)]) as root:
+            lines = [(number, line) for _, number, line in check_doc_citations.cited_lines(root)]
+        self.assertEqual(lines, [(4, "- item"), (5, ""), (7, "  `LIVE_MISSING`")])
+
+    def test_mermaid_and_sentences_follow_tilde_fences(self):
+        text = "~~~mermaid\nA-->B\n~~~\n~~~\nNot prose.\n~~~\nProse.\n"
+        self.assertEqual(list(check_doc_constants.mermaid_lines(text)), [(2, "A-->B")])
+        self.assertEqual(list(check_doc_constants.sentences(None, text)), [(7, "Prose.")])
+
     def sections(self, heading, citation, source="docs/Guide.md"):
         with gate_tree.temporary_tree([("docs/Target.md", heading), (source, citation)]) as root:
             return check_doc_citations.unresolved_sections(root)

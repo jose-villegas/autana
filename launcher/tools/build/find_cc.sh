@@ -20,9 +20,12 @@
 # whatever is on PATH. The last candidate is where winget puts MinGW on
 # Windows, which is not on PATH for a shell opened before it was installed.
 
+# The names a C compiler goes by on PATH, in the order find_cc tries them.
+FIND_CC_NAMES="cc gcc clang"
+
 find_cc() {
     if [ -n "${CC:-}" ]; then echo "$CC"; return 0; fi
-    for c in cc gcc clang; do
+    for c in $FIND_CC_NAMES; do
         if command -v "$c" >/dev/null 2>&1; then echo "$c"; return 0; fi
     done
     winlibs="${LOCALAPPDATA:-}/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe"

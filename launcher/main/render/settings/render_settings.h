@@ -26,12 +26,14 @@ typedef enum {
 /* The longest lod.blend_px a pack may set: past it a group would blend
  * across most of the band where it stays coarse. */
 #define RENDER_LOD_BLEND_PX_MAX 4.0F
+/* The most frames lod.pick_every may spread the pick over. */
+#define RENDER_LOD_PICK_EVERY_MAX 8
 
 typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
-    int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int pick_every; /* advanced [1, RENDER_LOD_PICK_EVERY_MAX]: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
     int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
     int blend; /* basic [0, RENDER_LOD_BLEND_COUNT): 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced (0.0, RENDER_LOD_BLEND_PX_MAX]: the error past a switch over which a blend fades out; longer is softer, moves more */
@@ -54,6 +56,9 @@ typedef struct {
 #define RENDER_TEXTURE_DIVIDE_PX_MAX 32
 /* The largest texture.affine_bend a pack may set, in texels. */
 #define RENDER_TEXTURE_BEND_MAX      15.0F
+/* Steps per texel in which the span target and the tune override hold
+ * texture.affine_bend, rounded. */
+#define RENDER_TEXTURE_BEND_STEPS    16
 /* The last mip level a texture has: the largest level setting a pack may name. */
 #define RENDER_TEXTURE_LEVEL_MAX     7
 
@@ -90,7 +95,7 @@ typedef struct {
 #define SMALL_FILL_PRESETS(X) X(SMOOTH) X(FAST) X(FAST_DITHER) X(FAST_GRAIN)
 
 /* settle: redrawing quiet rows with the texture shortcuts and small fill off (docs/render/frame/Settle.md). */
-#define RENDER_SETTLE_FRAME_US_MAX 100000 /* a tenth of a second: past any frame */
+#define RENDER_SETTLE_FRAME_US_MAX 32000 /* past any frame, and within a pack row */
 #define RENDER_SETTLE_HOLD_MIN     1
 #define RENDER_SETTLE_HOLD_MAX     255 /* a band's count of quiet frames fits a byte */
 
