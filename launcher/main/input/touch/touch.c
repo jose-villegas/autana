@@ -203,7 +203,7 @@ poll_controller(bool* have_point, bool* lifted, vec2i_t* point) {
     if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(panel->config.int_gpio_num) == 0)) {
         uint8_t raw[TOUCH_REPORT_BYTES];
         const int64_t start_us = timing_now_us();
-        /* Raw I/O skips esp_lcd_touch mirror/swap/process. This board sets none. Apply any such settings here. */
+        /* Raw I/O skips esp_lcd_touch mirror/swap/process; the board's touch config sets none. */
         const esp_err_t read = esp_lcd_panel_io_rx_param(panel->io, TOUCH_REPORT_REG, raw, TOUCH_REPORT_BYTES);
         count_read(timing_now_us() - start_us, read == ESP_OK);
         if (read == ESP_OK) {
