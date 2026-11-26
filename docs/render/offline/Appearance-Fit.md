@@ -41,7 +41,8 @@ otherwise expose.
 
 The importer bisects one shared world-space error, capped at 5% of each piece's bounds diagonal,
 until both the drawn and stored [triangle limits](Mesh-Import.md#shared-shape-error) fit.
-Meshoptimizer<sup>[[11]](../../Citations.md#meshoptimizer)</sup> uses Garland and Heckbert's quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>.
+The importer uses Garland and Heckbert's quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+with Hoppe's appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
 The fit adjusts the rest's positions and colours while drawing frozen copies. It keeps the start's
 triangles and checks the fitted bundle against the stored ceiling.
