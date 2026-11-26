@@ -31,7 +31,7 @@ For pulse lengths crossed with volumes at selected frequencies, run inside
 one board lock:
 
 ```sh
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --hz 202 --volumes 30,60 --pulse 30,60,100,200 --ms 400 --loud 0 --peaks 0 --out pulse-capture.txt
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up" --hz 202 --volumes 30,60 --pulse 30,60,100,200 --ms 400 --loud 0 --peaks 0 --out pulse-capture.txt
 ```
 
 Each command retains its full JSON reply, including the silence-window mean
@@ -329,6 +329,6 @@ Board flat on a desk, untouched, in a quiet room, on a screen that reads no
 motion (the launcher home's ridge reacts to shaking):
 
 ```sh
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id>
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up"
 python launcher/tools/audio/audio_doc_tables.py --write
 ```

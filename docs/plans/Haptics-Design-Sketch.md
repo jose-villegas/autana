@@ -71,7 +71,7 @@ Only A308 is measured. A narrow sweep on 20E8 and 2124 decides whether
 `HAPTIC_HZ` is one constant:
 
 ```sh
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --hz 150,160,170,180,190,200,210,220,230,240,250 --volumes 10,30,60 --loud 0
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up" --hz 150,160,170,180,190,200,210,220,230,240,250 --volumes 10,30,60 --loud 0
 ```
 
 No hand test: the IMU reading stands in for feel. The reference is A308's

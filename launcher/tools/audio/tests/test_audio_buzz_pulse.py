@@ -12,7 +12,7 @@ SPEC.loader.exec_module(buzz)
 
 class PulseSweepTests(unittest.TestCase):
     def test_pulse_points(self):
-        args = buzz.parser().parse_args(["--board", "test", "--hz", "202", "--volumes", "30,60",
+        args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "202", "--volumes", "30,60",
                                         "--pulse", "30,60,100,200", "--runs", "1", "--loud", "0"])
         self.assertEqual(list(buzz.points(args, args.hz)),
                          [(202, volume, pulse) for volume in (30, 60) for pulse in (30, 60, 100, 200)])
@@ -23,7 +23,7 @@ class PulseSweepTests(unittest.TestCase):
         self.assertIn('"gx_mg": -12.5, "gy_mg": 25, "gz_mg": 999', output.getvalue())
 
     def test_gap_fields_and_failure_capture(self):
-        args = buzz.parser().parse_args(["--board", "test", "--hz", "202", "--volumes", "30",
+        args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "202", "--volumes", "30",
                                         "--pulse", "30", "--runs", "1", "--loud", "0"])
         for shake in (1, None):
             reply = {"shake_rms_mg": shake, "imu_gaps": 2,
@@ -41,10 +41,10 @@ class PulseSweepTests(unittest.TestCase):
 
     def test_pulse_safety(self):
         for pulse in ("0", "501", "401"):
-            args = buzz.parser().parse_args(["--board", "test", "--pulse", pulse])
+            args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--pulse", pulse])
             with mock.patch.object(buzz, "autana_run") as run, self.assertRaises(ValueError):
                 buzz.capture(args)
             run.assert_not_called()
-        args = buzz.parser().parse_args(["--board", "test", "--hz", "20", "--volumes", "100", "--pulse", "30"])
+        args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "20", "--volumes", "100", "--pulse", "30"])
         with self.assertRaises(ValueError):
             buzz.sweep(args, io.StringIO(), args.hz, {})
