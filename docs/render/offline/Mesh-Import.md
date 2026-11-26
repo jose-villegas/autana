@@ -83,10 +83,13 @@ Cloth is often a closed shell, two skins joined at the hem. Given a camera regio
 one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[149]](../../Citations.md#rezayat-1996)</sup><sup>[[150]](../../Citations.md#ye-2026-gmidsurf)</sup>.
 Each face of the skin facing the region's centre casts a ray along its inward normal, as the shape diameter
 function measures thickness<sup>[[151]](../../Citations.md#shapira-2008)</sup>, and pairs with its own shell's far
-skin where that faces back within `REACH` times the shell's median thickness. Faces that do not pair are the rim
-joining the skins and go, with the far skin. Each vertex of a paired face moves halfway along its own inward ray,
-or by half the median thickness where that ray grazes the far skin's edge.
-A shell whose collapse would open a hole inside the sheet or turn a triangle over keeps both skins.
+skin where that faces back within `REACH` times the shell's median thickness. Unpaired faces that reach the far
+skin through each other are the rim joining the skins and go, with the far skin; an unpaired patch inside the
+near skin stays. Each vertex of the sheet moves halfway along its own inward ray, or by half the median
+thickness where that ray does not pair, as at the sheet's edge.
+Where a move turns a triangle over, its corners take the mean move around them, as Laplacian smoothing
+does<sup>[[5]](../../Citations.md#sorkine-2005)</sup>, for up to `UNTANGLE_ROUNDS` rounds; a shell still turned
+keeps both skins.
 The far skin stays the source of its sheet's back colours, read where a vertex's ray meets it, or at its nearest
 point where the ray misses; a point farther from every sheet than half that shell's thickness reads its front.
 Simplification keeps the sheet's border on its border. The sheet casts the light; open sheets stay whole.

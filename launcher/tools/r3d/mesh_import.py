@@ -304,9 +304,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             sheet = midsurface.collapse(src.p, tri_v, far, np.where(shell, piece, -1), RayQuery)
             far_rows = np.flatnonzero(sheet.far)
             rim = int((~sheet.drawn & ~sheet.far).sum())
-            log(f"midsurface: {int(shell.sum())} triangles of the closed shells of "
+            shells = np.unique(piece[shell])
+            kept = len(np.setdiff1d(shells, piece[sheet.sheet]))
+            log(f"midsurface: {int(shell.sum())} triangles of the {len(shells)} closed shells of "
                 f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}: {len(far_rows)} far skin and {rim} rim "
-                f"dropped, the rest moved halfway to the far skin")
+                f"dropped, the rest moved halfway to the far skin; {kept} shells keep both skins")
             src.p = sheet.points
             # A glTF source colours its points: the moved ones take their source point's colour.
             src.colors = None if src.colors is None else src.colors[sheet.source]

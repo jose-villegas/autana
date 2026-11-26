@@ -77,18 +77,34 @@ class MidsurfaceTests(unittest.TestCase):
         self.assertTrue(collapsed.drawn.all())
         np.testing.assert_array_equal(collapsed.tri_v, tris)
 
-    def test_a_shell_whose_collapse_would_hole_the_sheet_keeps_both_skins(self):
+    def test_an_unpaired_patch_inside_the_near_skin_stays_on_the_sheet_moved_by_the_shell_s_thickness(self):
         points, tris, far = slab()
-        # Push the bottom skin's middle point far down: the faces above it meet the far skin past the reach, turned
-        # away, and would leave a hole inside the sheet; the shell stays as it was instead.
+        # Push the bottom skin's middle point far down: the faces above it meet the far skin past the reach, but
+        # they lie inside the top skin, joined to the far skin through no other unpaired face; they stay on the
+        # sheet, and their points move by half the slab's thickness, as their neighbours' do.
         bottom = np.unique(tris[far])
         centre = bottom[np.argmin(np.linalg.norm(points[bottom, :2] - 0.5, axis=1))]
         moved = points.copy()
         moved[np.all(np.isclose(points, points[centre]), axis=1), 2] -= 10 * SLAB_THICKNESS
         collapsed = midsurface.collapse(moved, tris, far, np.zeros(len(tris), dtype=int), RayQuery)
-        self.assertTrue(collapsed.drawn.all())
-        self.assertFalse(collapsed.far.any() or collapsed.sheet.any())
-        np.testing.assert_array_equal(collapsed.tri_v, tris)
+        self.assertEqual(int(collapsed.sheet.sum()), 2 * SLAB_CELLS ** 2)
+        self.assertEqual(int(collapsed.drawn.sum()), 2 * SLAB_CELLS ** 2)
+        np.testing.assert_allclose(collapsed.points[collapsed.tri_v[collapsed.sheet]][..., 2], 0.0, atol=1e-6)
+
+    def test_moves_that_turn_a_triangle_over_are_smoothed_with_their_neighbours_until_none_is(self):
+        # A unit square of two triangles whose corner (1, 1) moves past the opposite corner: the triangle there turns
+        # over, and the corners take the mean move around them until neither is.
+        p = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+        tri_v = np.array([[0, 1, 2], [0, 2, 3]])
+        shift = np.zeros((4, 3))
+        shift[2] = [-3.0, -3.0, 0.0]
+        rows = np.arange(len(tri_v))
+        moved_tris = tri_v + len(p)
+        self.assertTrue(midsurface.turned(p[tri_v], (p + shift)[tri_v], rows).any())
+        points, flipped = midsurface.untangled(p, tri_v, p, shift, moved_tris, rows)
+        self.assertEqual(len(flipped), 0)
+        self.assertFalse(midsurface.turned(p[tri_v], points[moved_tris], rows).any())
+        np.testing.assert_array_equal(points[:len(p)], p)
 
     def test_each_shell_pairs_with_its_own_far_skin_alone(self):
         points, tris, far, piece = two_slabs()

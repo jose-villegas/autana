@@ -4,8 +4,8 @@ Each face of the near skin casts one ray along its inward normal onto its own sh
 abstraction pairs the opposite faces of a thin wall (Rezayat 1996) and the shape diameter function measures a
 part's thickness with inward rays (Shapira et al. 2008). A face whose ray finds the far skin facing back within
 reach stays and its vertices move halfway across; a face whose ray misses or grazes is the rim, where the skins
-meet, and goes. A shell whose collapse would open a hole inside the sheet or turn a triangle over stays as its two
-skins. The far skin leaves the drawing but stays the source of what the sheet shows from behind (back_albedo())."""
+meet, and goes, while an unpaired patch inside the near skin stays on the sheet. A shell whose collapse would turn
+a triangle over stays as its two skins. The far skin leaves the drawing but stays the source of what the sheet shows from behind (back_albedo())."""
 from typing import NamedTuple
 
 import numpy as np
@@ -70,28 +70,58 @@ def within_reach(paired, distance, piece):
     return paired, median
 
 
-def torn_shells(old, new, tris, welded, piece, sheet, dropped, far):
-    """The shells whose collapse tears them: a `sheet` triangle turned over (`old` and `new` corner positions of
-    `tris`), or near faces `dropped` that touch no far triangle `far` through other dropped faces, so they open a
-    hole inside the sheet where the rim would join the far skin."""
-    normal_old = np.cross(old[:, 1] - old[:, 0], old[:, 2] - old[:, 0])
-    normal_new = np.cross(new[:, 1] - new[:, 0], new[:, 2] - new[:, 0])
-    turned = sheet & (np.einsum("ij,ij->i", normal_old, normal_new) < 0)
-    torn = set(piece[turned].tolist())
-    loose = np.flatnonzero(dropped | far)
-    if np.any(dropped):
-        from scipy.sparse import coo_matrix
-        from scipy.sparse.csgraph import connected_components
+# Rounds of smoothing the moves around turned triangles before their shell keeps both skins instead.
+UNTANGLE_ROUNDS = 16
 
-        _edges, slot, uses = edge_uses(welded[tris[loose]])
-        owner = np.tile(np.arange(len(loose)), 3)
-        graph = coo_matrix((np.ones(len(slot)), (owner, len(loose) + slot)), shape=(len(loose) + len(uses),) * 2)
-        _count, label = connected_components(graph, directed=False)
-        label = label[:len(loose)]
-        reaches_far = np.zeros(label.max() + 1, dtype=bool)
-        reaches_far[label[far[loose]]] = True
-        torn |= set(piece[loose[dropped[loose] & ~reaches_far[label]]].tolist())
-    return np.array(sorted(torn), dtype=np.int64)
+
+def enclosed(tris, welded, dropped, far):
+    """Which `dropped` near faces touch no `far` triangle through other dropped faces (shared welded edges): not
+    the rim, which joins the far skin, but a patch inside the near skin whose rays found no pair."""
+    loose = np.flatnonzero(dropped | far)
+    inside = np.zeros(len(tris), dtype=bool)
+    if not np.any(dropped):
+        return inside
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    _edges, slot, uses = edge_uses(welded[tris[loose]])
+    owner = np.tile(np.arange(len(loose)), 3)
+    graph = coo_matrix((np.ones(len(slot)), (owner, len(loose) + slot)), shape=(len(loose) + len(uses),) * 2)
+    _count, label = connected_components(graph, directed=False)
+    label = label[:len(loose)]
+    reaches_far = np.zeros(label.max() + 1, dtype=bool)
+    reaches_far[label[far[loose]]] = True
+    inside[loose[dropped[loose] & ~reaches_far[label]]] = True
+    return inside
+
+
+def turned(old, new, rows):
+    """Which of `rows` (triangle rows, corner positions `old` and `new`) the move turned over."""
+    normal_old = np.cross(old[rows, 1] - old[rows, 0], old[rows, 2] - old[rows, 0])
+    normal_new = np.cross(new[rows, 1] - new[rows, 0], new[rows, 2] - new[rows, 0])
+    return np.einsum("ij,ij->i", normal_old, normal_new) < 0
+
+
+def untangled(p, tri_v, origin, shift, moved_tris, rows):
+    """(points, rows still turned over): `p` with each moved point (row len(p) + k of `moved_tris`, the triangles
+    `tri_v` moved) at origin[k] + shift[k]. Where a move turns one of `rows` over, its corners take the mean move
+    of the triangles of `rows` around them, as Laplacian smoothing does (Sorkine 2005), for up to UNTANGLE_ROUNDS
+    rounds: normals that part faster than the cloth is thick, as across a sliver on a tight curve, turn it over."""
+    shift = np.array(shift, dtype=np.float64, copy=True)
+    old = p[tri_v]
+    corners = moved_tris[rows] - len(p)
+    count = np.zeros(len(shift))
+    np.add.at(count, corners.reshape(-1), 1)
+    for done in range(UNTANGLE_ROUNDS + 1):
+        points = np.concatenate([p, origin + shift])
+        flipped = rows[turned(old, points[moved_tris], rows)]
+        if not len(flipped) or done == UNTANGLE_ROUNDS:
+            break
+        stuck = np.unique(moved_tris[flipped] - len(p))
+        total = np.zeros_like(shift)
+        np.add.at(total, corners.reshape(-1), np.repeat(shift[corners].mean(axis=1), 3, axis=0))
+        shift[stuck] = total[stuck] / count[stuck, None]
+    return points, flipped
 
 
 def collapse(p, tri_v, far, piece, far_query):
@@ -99,10 +129,12 @@ def collapse(p, tri_v, far, piece, far_query):
     far_query(p, tris) is a ray intersector over those triangles (ray_query.RayQuery).
 
     A near face pairs when the ray from its centre along its inward normal meets its shell's far skin facing back
-    within reach; the faces that do not, the hem or rim joining the skins, go. Each vertex of a paired face moves
-    halfway along its own inward ray where that pairs too, else by half its shell's median thickness, as a vertex
-    on the sheet's border, whose ray grazes the far skin's edge, does. A shell torn by this (torn_shells()) keeps
-    both skins as they were."""
+    within reach; unpaired faces joined to the far skin through each other are the hem or rim and go, and those
+    inside the near skin (enclosed()) stay on the sheet. Each vertex of the sheet moves halfway along its own
+    inward ray where that pairs, else by half its shell's median thickness, as a vertex on the sheet's border,
+    whose ray grazes the far skin's edge, does. A triangle the move turned over has its corners' moves smoothed
+    with their neighbours' (UNTANGLE_ROUNDS); a shell with a triangle still turned over keeps both skins as they
+    were."""
     near_rows = np.flatnonzero((piece >= 0) & ~far)
     far_rows = np.flatnonzero(far)
     query = far_query(p, tri_v[far_rows]) if len(far_rows) else None
@@ -112,8 +144,12 @@ def collapse(p, tri_v, far, piece, far_query):
     face_paired, face_distance = inward_hits(query, far_normals, far_piece, p[tri_v[near_rows]].mean(axis=1), face_n,
                                              piece[near_rows])
     face_paired, median = within_reach(face_paired, face_distance, piece[near_rows])
-    sheet_rows = near_rows[face_paired]
     first, welded = weld_map(p)
+    sheet = np.zeros(len(tri_v), dtype=bool)
+    sheet[near_rows[face_paired]] = True
+    dropped = (piece >= 0) & ~far & ~sheet
+    sheet |= enclosed(tri_v, welded, dropped, far) & np.isin(piece, list(median))
+    sheet_rows = np.flatnonzero(sheet)
     normals = vertex_normals(p, tri_v[sheet_rows], welded, len(first))
     cast = np.unique(welded[tri_v[sheet_rows]])
     vertex_piece = np.full(len(first), -1)
@@ -121,20 +157,17 @@ def collapse(p, tri_v, far, piece, far_query):
     origin = p[first[cast]]
     paired, distance = inward_hits(query, far_normals, far_piece, origin, normals[cast], vertex_piece[cast])
     paired, _median = within_reach(paired, distance, vertex_piece[cast])
-    half = np.where(paired, distance, [median.get(shell, 0.0) for shell in vertex_piece[cast]]) / 2
+    fallback = np.array([median.get(shell, 0.0) for shell in vertex_piece[cast]])
     moved = np.full(len(first), -1)
     moved[cast] = len(p) + np.arange(len(cast))
-    points = np.concatenate([p, origin - normals[cast] * half[:, None]])
     moved_tris = moved[welded[tri_v]]
+    shift = -normals[cast] * (np.where(paired, distance, fallback) / 2)[:, None]
+    points, flipped = untangled(p, tri_v, origin, shift, moved_tris, sheet_rows)
     # A far-facing triangle whose corners all moved lies on the near skin: it moves with them.
-    sheet = np.zeros(len(tri_v), dtype=bool)
-    sheet[sheet_rows] = True
     sheet |= far & np.all(moved_tris >= 0, axis=1)
-    out = np.where(sheet[:, None], moved_tris, tri_v)
-    whole = np.isin(piece, torn_shells(p[tri_v], points[out], tri_v, welded, piece, sheet,
-                                       (piece >= 0) & ~far & ~sheet, far & ~sheet))
+    whole = np.isin(piece, piece[flipped]) & (piece >= 0)
     sheet &= ~whole
-    out[whole] = tri_v[whole]
+    out = np.where(sheet[:, None], moved_tris, tri_v)
     far_left = far & ~sheet & ~whole
     thickness = np.array([median.get(shell, 0.0) for shell in piece.tolist()])
     thickness[whole] = 0.0
@@ -166,6 +199,8 @@ def back_albedo(points, normals, front, far, albedo_at_hit):
     for shell in np.unique(owner[~hit & (owner >= 0)]):
         missed = np.flatnonzero(~hit & (owner == shell))
         mine = np.flatnonzero(far.piece == shell)
+        if not len(mine):
+            continue
         nearest, bary, apart = nearest_triangles(points[missed], triangle_search(far.corners[mine]))
         near = apart <= reach[missed]
         at[missed[near]] = (far.corners[mine[nearest[near]]] * bary[near][..., None]).sum(axis=1)
