@@ -167,8 +167,13 @@ ten times a float's cost.
 |---|---|---|
 | Firmware: `main` and each package | `-Werror=double-promotion -Werror=float-conversion` | a float widened to double, or a double constant in float maths, does not compile |
 | `diag` objects | `launcher/tools/build/check_no_soft_double.py` | fails a function that calls a soft-double routine unless it also logs or formats |
+| Release ELF | `launcher/tools/build/check_hot_calls.py` | fails unannotated C-runtime calls in code-layout pins, active baseline functions and first-party IRAM attribute functions |
 | Host tests, render, camera-path sampler | `-ffp-contract=off` | a pinned pixel or sampled pose never depends on a fused multiply-add |
 | QEMU | `MATH_FPU_RECIP=n`, `MATH_FPU_FUSED_MADD=n` | QEMU lacks the reciprocal seeds and rounds the fused product |
+
+For a deliberate runtime call, write `Library call: <reason>` in a comment
+on its source line or in the comment block directly above. The gate rejects
+empty reasons, stale notes and calls without a source line.
 
 - Code that needs a double on purpose casts it explicitly, in the function
   that logs it. A `%f` argument is a double by the language, hence the logging

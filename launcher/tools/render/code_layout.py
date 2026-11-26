@@ -158,12 +158,13 @@ def skip_pools(found, decode_from=None, jump_pools=True):
     start = found[0][0]
     end = found[-1][0] + found[-1][1]
     pools = set()
+    synced_ends = set()
     while True:
         literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
         pending = sorted(address for address in literals
                          if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
         if not pending:
-            repaired = _skip_jump_pools(found, decode_from) if jump_pools else found
+            repaired = _skip_jump_pools(found, decode_from, synced_ends) if jump_pools else found
             if repaired == found:
                 return _resync(found, decode_from) if decode_from else found
             found = repaired
@@ -176,7 +177,7 @@ def skip_pools(found, decode_from=None, jump_pools=True):
             found = prefix + [ins for ins in suffix if ins[0] < end]
 
 
-def _skip_jump_pools(found, decode_from):
+def _skip_jump_pools(found, decode_from, synced_ends):
     """A skipped span with no incoming branch is a pool. An entry past its
     start marks code decoded out of step after a pool or alignment bytes."""
     spans = []
@@ -196,6 +197,15 @@ def _skip_jump_pools(found, decode_from):
         )
 
     starts = {ins[0] for ins in found}
+    # An unaligned jump destination can hide a backedge into the skipped span.
+    if decode_from and spans:
+        end = found[-1][0] + found[-1][1]
+        for _, target in spans:
+            if target < end and target not in starts and target not in synced_ends:
+                synced_ends.add(target)
+                repaired = _decode_again(found, target, target, decode_from)
+                if repaired != found:
+                    return repaired
     kept = list(found)
     for span in spans:
         entered = entries(span)

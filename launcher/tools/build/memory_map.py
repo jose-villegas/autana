@@ -121,6 +121,7 @@ class Input:
     size: int
     literal: bool = False
     output: str = ".iram0.text"
+    address: int | None = None
 
 
 def preceding_comment(lines, index):
@@ -597,18 +598,19 @@ def map_inputs(text, elf_symbols):
             continue
         if input_section.startswith((".text.", ".literal.")):
             symbol = input_section.split(".", 2)[2]
-            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal."), output))
+            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal."), output, address))
         else:
-            members = [(name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
+            members = [(start, name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
                        for name, count in [elf_symbols[start]] if count and not name.startswith("$")]
-            if members and len({clone_base(name) for name, _ in members}) == 1:
-                iram_names[(archive, obj, input_section)] = members[0][0]
+            if members and len({clone_base(name) for _, name, _ in members}) == 1:
+                iram_names[(archive, obj, input_section)] = members[0][1]
             if len(members) == 1:
-                inputs.append(Input(archive, obj, members[0][0], size, output=output))
+                start, name, _ = members[0]
+                inputs.append(Input(archive, obj, name, size, output=output, address=start))
             elif members:
-                total = sum(count for _, count in members)
-                for number, (name, count) in enumerate(members):
-                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0), output=output))
+                total = sum(count for _, _, count in members)
+                for number, (start, name, count) in enumerate(members):
+                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0), output=output, address=start))
             else:
                 inputs.append(Input(archive, obj, input_section, size, output=output))
     for archive, obj, key, size, output in literals:

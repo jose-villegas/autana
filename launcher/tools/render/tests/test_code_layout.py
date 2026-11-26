@@ -142,6 +142,23 @@ class PoolTests(unittest.TestCase):
         again = [(0x42000007, 3, "add.n", "a2, a2, a3")]
         self.assertEqual(code_layout.skip_pools(found, lambda start: again), found[:2] + again + found[-1:])
 
+    def test_jump_target_can_reveal_the_backedge_into_the_skipped_code(self):
+        entry = (0x1000, 3, "j", "100a <f+0xa>")
+        body = (0x1003, 3, "call8", "2000 <callee>")
+        skip = (0x1006, 3, "j", "100f <f+0xf>")
+        pool = (0x1009, 3, "nop", "")
+        back = (0x100A, 3, "j", "1003 <f+0x3>")
+        end = (0x100F, 2, "retw.n", "")
+        starts = set()
+
+        def again(start):
+            self.assertNotIn(start, starts)
+            starts.add(start)
+            return {0x1003: [body, skip, pool, end], 0x100A: [back, end]}[start]
+
+        self.assertEqual(code_layout.skip_pools([entry, body, skip, pool, end], again),
+                         [entry, body, skip, back, end])
+
     def misdecoded_pool(self, start, branch, jump, pool, end):
         return [
             (start, 3, *branch),

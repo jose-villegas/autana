@@ -5,6 +5,11 @@ import re
 FUNCTION = re.compile(r"^([0-9a-f]+) <([^>]+)>:\s*$")
 
 
+def symbol_base(name):
+    """The symbol named by an objdump reference, without its address offset."""
+    return re.sub(r"[+-]0x[0-9a-f]+$", "", name)
+
+
 def function_addresses(text):
     """{function: address} for every function header in `objdump -d` text."""
     found = {}
@@ -29,5 +34,5 @@ def parse_calls(text, call):
             continue
         m = call.search(line)
         if m and current is not None:
-            current.add(re.sub(r"[+-]0x[0-9a-f]+$", "", m.group(1)))
+            current.add(symbol_base(m.group(1)))
     return calls
