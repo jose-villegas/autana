@@ -116,12 +116,12 @@ cull_off(void) {
     return off;
 }
 
-#define SHIPPED_FAR_LEVEL 3 /* the first mip level the default draws untextured */
+#define SHIPPED_FAR_LEVEL 4 /* the first mip level the default draws untextured */
 
-/* The shipped default draws mip level 3 on in one colour a triangle, not 0 (off): a
+/* The shipped default draws mip level SHIPPED_FAR_LEVEL on in one colour a triangle, not 0 (off): a
  * texture's far levels read no texels unless a pack or knob says otherwise. */
 static void
-test_the_default_far_level_is_three(void) {
+test_the_default_far_level_is_four(void) {
     TEST_ASSERT_EQUAL_INT(SHIPPED_FAR_LEVEL, RENDER_SETTINGS_DEFAULT.texture.far_level);
 }
 
@@ -148,7 +148,8 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                            .hysteresis_px = (RENDER_SETTINGS_DEFAULT.anim.hysteresis_px)},
                                   .texture = RENDER_SETTINGS_DEFAULT.texture,
                                   /* Small fill keeps the smooth picture exact, as the camera's default did. */
-                                  .small_fill = SMALL_FILL_SMOOTH};
+                                  .small_fill = SMALL_FILL_SMOOTH,
+                                  .settle = RENDER_SETTINGS_DEFAULT.settle};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -395,7 +396,9 @@ test_a_packs_render_entry_reads_every_field(void) {
                                     RENDER_TEXTURE_LEVEL_MAX,
                                     SMALL_FILL_CEILING_MAX,
                                     SMALL_FILL_GATE_MAX,
-                                    SMALL_FILL_DITHER};
+                                    SMALL_FILL_DITHER,
+                                    RENDER_SETTINGS_DEFAULT.settle.frame_us,
+                                    RENDER_SETTLE_HOLD_MIN};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -416,18 +419,21 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, read.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_MAX, read.small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_DITHER, read.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTINGS_DEFAULT.settle.frame_us, read.settle.frame_us);
+    TEST_ASSERT_EQUAL_INT(RENDER_SETTLE_HOLD_MIN, read.settle.hold_frames);
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style). */
+ * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style), then settle (frame_us, hold_frames). */
 enum {
+    SETTLE_ROWS = 2,
     SMALL_FILL_ROWS = 3,
     TEXTURE_ROWS = 4,
     ANIM_ROWS = 5,
-    PICK_EVERY_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 4,
-    BLEND_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
+    PICK_EVERY_ROW = FIELDS - SETTLE_ROWS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 4,
+    BLEND_ROW = FIELDS - SETTLE_ROWS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS - 2,
     BLEND_PX_ROW,
-    MID_PX_ROW = FIELDS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
+    MID_PX_ROW = FIELDS - SETTLE_ROWS - SMALL_FILL_ROWS - TEXTURE_ROWS - ANIM_ROWS,
     FAR_PX_ROW,
     MID_EVERY_ROW,
     FAR_EVERY_ROW,
@@ -439,6 +445,8 @@ enum {
     CEILING_ROW,
     GATE_ROW,
     STYLE_ROW,
+    SETTLE_FRAME_ROW,
+    SETTLE_HOLD_ROW,
 };
 
 /* Rows of zeros but for the intervals whose least is one: lod.pick_every and
@@ -449,6 +457,7 @@ zero_rows(int16_t values[FIELDS]) {
     values[PICK_EVERY_ROW] = 1;
     values[MID_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
     values[FAR_EVERY_ROW] = RENDER_ANIM_EVERY_MIN;
+    values[SETTLE_HOLD_ROW] = RENDER_SETTLE_HOLD_MIN;
 }
 
 static void
@@ -619,7 +628,8 @@ test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
     int16_t values[FIELDS];
     zero_rows(values);
     values[BLEND_PX_ROW] = STEP;
-    const render_settings_t off = {.lod = {.pick_every = 1, .blend_px = 1.0F},
+    const render_settings_t off = {.settle.hold_frames = RENDER_SETTLE_HOLD_MIN,
+                                   .lod = {.pick_every = 1, .blend_px = 1.0F},
                                    .anim = {.mid_every = RENDER_ANIM_EVERY_MIN, .far_every = RENDER_ANIM_EVERY_MIN}};
     void* raw = NULL;
     asset_pack_t opened;
@@ -635,7 +645,7 @@ void
 suite_render_settings(void) {
     RUN_TEST(test_anim_pixel_ranges_refuse_negative_and_above_max);
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
-    RUN_TEST(test_the_default_far_level_is_three);
+    RUN_TEST(test_the_default_far_level_is_four);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);

@@ -277,6 +277,7 @@ test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row(void) {
     render_context_set_scale(c, 100);
     render_settings_t settings = RENDER_SETTINGS_DEFAULT;
     settings.partial_redraw = true;
+    settings.settle.frame_us = 0; /* Compare live draws and warps without refinement. */
     render_context_set_settings(c, &settings);
     render_context_set_changed(c, NULL, 0);
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &drawn, 0));
