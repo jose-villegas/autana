@@ -173,7 +173,7 @@ draw(const provider_frame_t* frame) {
     in.boot.pressed = frame->index < page;
     app_list()->frame(frame->dt_ms, &in);
     if (tapped && ui_clipped_text() != 0) {
-        fprintf(stderr, "ERROR: random-tap clipped HUD text in frame %d\n", frame->index);
+        (void)fprintf(stderr, "ERROR: random-tap clipped HUD text in frame %d\n", frame->index);
         exit(EXIT_FAILURE);
     }
 }
