@@ -105,6 +105,41 @@ class SplitTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+class HalveTowardTests(unittest.TestCase):
+    def test_halve_toward_untangles_a_numpy_sliver(self):
+        from r3d.geometry import halve_toward
+
+        height = 0.02
+        start = np.array([[-1.0, 0, 0], [1.0, 0, 0], [0.0, height, 0]])
+        triangles = np.array([[0, 1, 2]])
+        movable = np.array([False, False, True])
+        previous = np.zeros_like(start)
+        step = previous.copy()
+        tip = triangles[0, -1]
+        step[tip, 1] = -1.5 * height
+
+        def turned(move):
+            return np.flatnonzero(z_normals(start + move, triangles) <= 0)
+
+        def corners(rows):
+            indices = np.unique(triangles[rows])
+            return indices[movable[indices]]
+
+        expected = step / 2
+        self.assertEqual(len(halve_toward(step, previous, turned, corners, rounds=1)), 0)
+        np.testing.assert_array_equal(step, expected)
+
+        proposed = expected * 2
+        step[:] = proposed
+        np.testing.assert_array_equal(halve_toward(step, previous, turned, corners, rounds=0), [0])
+        np.testing.assert_array_equal(step, proposed)
+
+        movable[tip] = False
+        np.testing.assert_array_equal(halve_toward(step, previous, turned, corners, rounds=1), [0])
+        np.testing.assert_array_equal(step, proposed)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class NearestTrianglesTests(unittest.TestCase):
     def test_nearest_is_the_closest_triangle(self):
         # Slivers next to coarse triangles: the centroid of a long thin triangle sits far from most of its area.

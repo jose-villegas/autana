@@ -28,6 +28,24 @@ def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 
 
+def halve_toward(candidate, previous, turned, corners, rounds):
+    """Halve NumPy or torch moves in place toward an independent previous step.
+
+    turned(candidate) returns turned row indices, and corners(rows) returns their unique movable indices.
+    Return the rows still turned after the halving budget or when no movable corners remain.
+    """
+    rows = turned(candidate)
+    for _ in range(rounds):
+        if not len(rows):
+            break
+        indices = corners(rows)
+        if not len(indices):
+            break
+        candidate[indices] = (candidate[indices] + previous[indices]) / 2
+        rows = turned(candidate)
+    return rows
+
+
 def hit_barycentrics(p, tri_v, hits, locations):
     """Barycentric weights of ray hits at `locations` on their triangles `hits`, from unsigned area ratios."""
     faces = tri_v[hits]
