@@ -8,7 +8,7 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 import pathlib
 from types import SimpleNamespace
 
-from r3d import mesh_bundle, mesh_asset, log
+from r3d import lcol_asset, mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets
 from r3d.fit.copies import drawn_copies, hidden_materials
 
@@ -21,8 +21,8 @@ DEPTH_WEIGHT = 30.0
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
         start=None):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
-    None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
-    and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
+    None) and write the renderer's mesh to `target`. A carved start bundle fits its rest and its copies' colours,
+    and passes the copy-coverage gate over the held-out poses. Copies keep their geometry and placement. The
     variant's ceiling caps the fitted bundle. A probe fit's start is its budget, so it prunes only what no view
     shows; any other fit prunes its rest to the ceiling less the copy prototypes, or to the recipe's budget when
     the variant has no ceiling; `budget` overrides both."""
@@ -72,7 +72,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
-    if drawn_copies(bundle_entries, copies):
+    drawn = drawn_copies(bundle_entries, copies)
+    if drawn:
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
         command += ["--copies", str(bundle), "--copy-poses", str(inputs / sets.held_out[0][0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
@@ -83,8 +84,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
-    fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
-    entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
+    fitted = {(name, kind): data for name, kind, data in fitted_entries}
+    replaced = {(job.asset_name, mesh_asset.TYPE),
+                *((lcol_asset.name_for_mesh(row["mesh"]), lcol_asset.TYPE) for row in drawn)}
+    entries = [(name, kind, fitted[name, kind] if (name, kind) in replaced else data)
+               for name, kind, data in bundle_entries]
     check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
     target.write_bytes(mesh_bundle.encode(entries, copies))
     log(f"wrote {target}")

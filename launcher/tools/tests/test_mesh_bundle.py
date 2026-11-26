@@ -258,7 +258,7 @@ class MeshBundleTests(unittest.TestCase):
                 run_fit(directory, lambda args: asked.append('--lod' in args) or keep_start(args), lod=lod)
                 self.assertEqual(asked, [False])
 
-    def test_fit_changes_only_the_rest_of_a_start_bundle(self):
+    def test_fit_replaces_the_rest_and_copy_colours(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             fixture_job = bundle_fixture(directory)[3]
@@ -273,10 +273,16 @@ class MeshBundleTests(unittest.TestCase):
                 blob[mesh_asset.read_mesh_header(blob).colors_at] ^= 1
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
-                (out / raw.name).write_bytes(mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob)], copied))
+                entries, _ = mesh_bundle.decode(start_path(work, fixture_job).read_bytes())
+                colours = [(name, kind, data[:lcol_asset.HEADER.size] + bytes(len(data) - lcol_asset.HEADER.size))
+                           for name, kind, data in entries if kind == lcol_asset.TYPE]
+                (out / raw.name).write_bytes(
+                    mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob), *colours], copied))
             data, job, target = run_fit(directory, fit_main)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
+            for name in [name for name, (kind, _) in before.items() if kind == lcol_asset.TYPE]:
+                self.assertNotEqual(before.pop(name), after.pop(name))
             self.assertEqual(before, after)
 
 
@@ -289,7 +295,11 @@ def keep_start(args):
     raw = pathlib.Path(args[args.index('--start') + 1])
     out = pathlib.Path(args[args.index('--out') + 1])
     out.mkdir()
-    (out / raw.name).write_bytes(raw.read_bytes())
+    entries, rows = mesh_bundle.decode(raw.read_bytes())
+    if '--copies' in args:
+        copies, _ = mesh_bundle.decode(pathlib.Path(args[args.index('--copies') + 1]).read_bytes())
+        entries.extend(entry for entry in copies if entry[1] == lcol_asset.TYPE)
+    (out / raw.name).write_bytes(mesh_bundle.encode(entries, rows))
 
 
 def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
@@ -391,6 +401,78 @@ class FitCopiesTests(unittest.TestCase):
         self.assertEqual((len(mesh.rgb), len(mesh.tris)), (len(copies), len(copies)))
         face = rgb888(panel_colour(np.full((1, 3), 80)))[0]
         np.testing.assert_array_equal(np.rint(mesh.rgb * 255), np.tile(face, (len(copies), 1)))
+
+    def test_placements_share_parameters_only_with_their_own_mesh_and_set(self):
+        from r3d.fit.copies import place_copies
+
+        with tempfile.TemporaryDirectory() as folder:
+            for flat in (False, True):
+                with self.subTest(flat=flat):
+                    data, *_ = bundle_fixture(folder, flat=flat)
+                    entries, (first, second, mirrored) = mesh_bundle.decode(data)
+                    shared = {**second, "colour_set": first["colour_set"]}
+                    placed, colours = place_copies(entries, [first, shared, second, mirrored], flat)
+                    first_ids, shared_ids, second_ids, mirrored_ids = np.split(colours.placed, 4)
+                    np.testing.assert_array_equal(first_ids, shared_ids)
+                    self.assertFalse(set(first_ids) & set(second_ids))
+                    self.assertFalse(set(first_ids) & set(mirrored_ids))
+                    trained = colours.rgb.copy()
+                    trained[first_ids] = 0.25
+                    trained[second_ids] = 0.75
+                    np.testing.assert_array_equal(colours.rgb[colours.placed], placed.rgb)
+                    np.testing.assert_array_equal(trained[shared_ids], trained[first_ids])
+                    self.assertTrue(np.all(trained[second_ids] != trained[first_ids]))
+
+    def test_copy_colours_round_trip_across_levels(self):
+        from r3d.fit.copies import place_copies, write_colours
+        from r3d.lit_mesh import panel_colour
+        from r3d.lod.bake_levels import bake_lit_mesh
+        from test_r3d_lod_bake import wavy_grid
+
+        for flat in (False, True):
+            with self.subTest(flat=flat), tempfile.TemporaryDirectory() as folder:
+                points, rgb, triangles, double = wavy_grid()
+                mesh = bake_lit_mesh(points, None if flat else rgb, triangles, double, lod=True,
+                                     face_rgb=rgb[triangles[:, 0]] if flat else None)
+                encoding = lcol_asset.RGB565 if flat else lcol_asset.RGB888
+                positions = mesh.pos[mesh.tris].sum(axis=1) if flat else mesh.pos
+                level0 = np.zeros(len(positions), dtype=bool)
+                for (vb, vc, tb, tc, *_), (own, _) in zip(mesh.clusters, mesh.lod):
+                    if own == mesh_asset.LOD_NONE:
+                        base, count = (tb, tc) if flat else (vb, vc)
+                        level0[base:base + count] = True
+                self.assertTrue((~level0).any())
+                original = bytes(len(positions) * lcol_asset.STRIDES[encoding])
+                mesh.rgb = mesh.face_colors = None
+                data, *_ = bundle_fixture(folder)
+                _, (row, *_) = mesh_bundle.decode(data)
+                row = {**row, "mesh": "prototype", "colour_set": 0}
+                key = lcol_asset.name_for_mesh(row["mesh"])
+                geometry = bundle_entries(row["mesh"], mesh)
+                entries = [*geometry, (key, lcol_asset.TYPE,
+                                       lcol_asset.encode(encoding, len(positions), [original, original]))]
+                _, colours = place_copies(entries, [row], flat)
+                fine_positions = positions[level0]
+                _, position_key = np.unique(fine_positions, axis=0, return_inverse=True)
+                rgb = np.broadcast_to((position_key.reshape(-1) % 256)[:, None], colours.rgb.shape)
+                replacements = write_colours(entries, colours.sets, rgb / 255)
+                loaded, rows = mesh_bundle.decode(mesh_bundle.encode([*geometry, *replacements], [row]))
+                self.assertEqual(rows, [row])
+                self.assertEqual([entry for entry in loaded if entry[0] != key], sorted(geometry))
+                got_encoding, count, sets = lcol_asset.decode(next(blob for name, _, blob in loaded if name == key))
+                self.assertEqual((got_encoding, count, list(map(len, sets))),
+                                 (encoding, len(positions), [len(original)] * 2))
+                self.assertEqual(sets[1], original)
+                distance = ((positions[~level0, None] - fine_positions[None]) ** 2).sum(-1)
+                nearest = distance == distance.min(axis=1, keepdims=True)
+                actual = np.frombuffer(sets[0], "<u2" if flat else "u1")
+                if flat:
+                    np.testing.assert_array_equal(actual[level0], panel_colour(rgb))
+                    self.assertTrue((nearest & (actual[~level0, None] == panel_colour(rgb)[None])).any(axis=1).all())
+                else:
+                    actual = actual.reshape(-1, 3)
+                    np.testing.assert_array_equal(actual[level0], rgb)
+                    self.assertTrue((nearest & (actual[~level0, None] == rgb[None]).all(axis=-1)).any(axis=1).all())
 
     def test_copy_levels_draw_the_finest_clusters_as_stored(self):
         from r3d.fit.copies import placed_copies

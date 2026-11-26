@@ -37,7 +37,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import (STORED_CHANNEL_MAX, check_hidden_copies, hidden_copy_pixels, hidden_materials,  # noqa: E402
+                            joined, place_copies, write_colours)
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
@@ -922,8 +923,8 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0, geometry_views=None):
-    """Fit fixed triangles; return positions, colours and colour-only error history.
+             depth_weight=0.0, geometry_views=None, copy_colours=None):
+    """Return fitted rest positions and colours, colour error history, and trained copy colours or None.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
     averaged per triangle for the envelope; normals and predicted cost add their
@@ -931,10 +932,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Both learning rates decay tenfold over the run.
     Seam holds pin border points that start near another part to its moving
     triangles by default; `seam_margin=0` turns them off.
-    `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
+    `copies` is drawn after the mesh with fixed positions. `copy_colours` ties its placed colours to stored rows.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
     as a copy. `geometry_views` supplies independent probe buffers for these two terms alone."""
     import torch
+    from r3d.appearance_gather import gather
 
     points0, rgb0, tris, double, _scale, vertex_point, flat, _hidden = mesh
     torch.manual_seed(seed)
@@ -968,13 +970,20 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         points = start + step_scale * delta
         return hold_seams(points, holds, start) if holds is not None else points
 
-    copy_points, copy_colours = (None, None) if copies is None else (
-        torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))
+    colour_params = [colours]
+    trained = None
+    if copies is not None:
+        copy_points = torch.as_tensor(copies.points, dtype=torch.float32, device=device)
+        initial = copies.rgb if copy_colours is None else copy_colours.rgb
+        trained = torch.tensor(initial, dtype=torch.float32, device=device, requires_grad=True)
+        placed = None if copy_colours is None else torch.as_tensor(copy_colours.placed, device=device)
+        colour_params.append(trained)
 
     def with_copies(points, colours):
         if copies is None:
             return points, colours
-        return torch.cat([points, copy_points]), torch.cat([colours, copy_colours])
+        drawn_colours = trained if placed is None else gather(trained, placed)
+        return torch.cat([points, copy_points]), torch.cat([colours, drawn_colours])
 
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
@@ -1024,7 +1033,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         signs = renderer_for(0).normal_signs
         log(f"normals: {signs.pairs} two-sided pairs counted once, {signs.unsettled} unsettled, "
             f"{normals_floored()} positions under the floor")
-    adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
+    adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": colour_params, "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
     finite = torch.ones((), dtype=torch.bool, device=device)
@@ -1088,14 +1097,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         adam.step()
         schedule.step()
         with torch.no_grad():
-            colours.clamp_(0.0, 1.0)
+            for param in colour_params:
+                param.clamp_(0.0, 1.0)
             # A point moves step_scale * delta, so a cap of MOVE_REACH shortest edges bounds its row of delta.
             length = delta.norm(dim=1, keepdim=True)
             delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
-            if not (finite & torch.isfinite(delta).all() & torch.isfinite(colours).all()).item():
+            parameters_finite = torch.stack([torch.isfinite(param).all() for param in [delta, *colour_params]]).all()
+            if not (finite & parameters_finite).item():
                 raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
@@ -1103,8 +1114,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 f"{time.time() - started:.1f} s")
     if normal_weight:
         log(f"normals: {normals_floored()} positions under the floor after the fit")
-    points = held_positions()
-    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
+    points = held_positions().detach().cpu().numpy().astype(np.float64)
+    rgb = colours.detach().cpu().numpy().astype(np.float64)
+    copy_rgb = None if trained is None else trained.detach().cpu().numpy().astype(np.float64)
+    return points, rgb, history.cpu().tolist(), copy_rgb
 
 
 def write_mesh(out_dir, name, mesh):
@@ -1164,7 +1177,7 @@ def main(argv=None):
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
     parser.add_argument("--hidden-materials", nargs="*",
                         help="source materials hidden by cards in the full bundle; defaults to the start's cards")
-    parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
+    parser.add_argument("--copies", help="a carved start bundle: fit its copies' colours alongside the rest")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
     parser.add_argument("--front-weight", type=float, default=0.0,
                         help="with --copies, weight of the term pushing the rest behind the copies the source shows")
@@ -1204,9 +1217,10 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
-    if copies is not None:
-        log(f"copies: {len(copies.tris)} triangles drawn with the start")
+    copies = copy_colours = None
+    if args.copies is not None:
+        copy_entries, copy_rows = mesh_bundle.decode(pathlib.Path(args.copies).read_bytes())
+        copies, copy_colours = place_copies(copy_entries, copy_rows, mesh.flat)
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -1242,14 +1256,20 @@ def main(argv=None):
                                                  job.settings.fit.probes.spacing)
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
-        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
-                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
-                                        scale=args.scale, normal_weight=args.normal_weight, source=source,
-                                        surface_weight=args.surface_weight, surface_margin=args.surface_margin,
-                                        seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight, **geometry)
+        points, rgb, history, trained = optimise(
+            fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour, args.laplacian,
+            clear=clear, cost=cost, cost_weight=args.cost_weight, scale=args.scale, normal_weight=args.normal_weight,
+            source=source, surface_weight=args.surface_weight, surface_margin=args.surface_margin,
+            seam_margin=args.seam_margin, copies=copies, carved=carved, front_weight=args.front_weight,
+            depth_weight=args.depth_weight, copy_colours=copy_colours, **geometry)
         fitted = fitted._replace(points=points, rgb=rgb)
-        drawn = joined(fitted, copies)
+        fitted_copies = copies
+        if trained is not None:
+            fitted_copies = copies._replace(rgb=trained[copy_colours.placed])
+            change = float(np.abs(trained - copy_colours.rgb).mean() * STORED_CHANNEL_MAX)
+            log(f"copy colours trained: {len(copy_colours.sets)} (mesh, set) pairs, "
+                f"mean absolute change {change:.2f} in 0-{STORED_CHANNEL_MAX} RGB units")
+        drawn = joined(fitted, fitted_copies)
         rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
                 for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
         shown = np.sum(rows, axis=0)
@@ -1261,7 +1281,7 @@ def main(argv=None):
                                              for held_views, held_size in held_out) for candidate in (fit_start, pruned))
             log(check_closure(start_holes, fitted_holes, pixels))
         if held_out:
-            log(held_out_line(joined(pruned, copies), held_out, clear))
+            log(held_out_line(joined(pruned, fitted_copies), held_out, clear))
         if unpictured:
             log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
@@ -1271,6 +1291,11 @@ def main(argv=None):
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
         count = write_mesh(out, name, fitted)
+        if trained is not None:
+            product = out / start.name
+            entries, rows = mesh_bundle.decode(product.read_bytes())
+            replacements = write_colours(copy_entries, copy_colours.sets, trained)
+            product.write_bytes(mesh_bundle.encode([*entries, *replacements], rows))
         report = stretch_report(fit_start, fitted, kept)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")

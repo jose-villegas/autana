@@ -1,19 +1,20 @@
-"""The copies of a carved start bundle in the fit: drawn as constants beside the rest, so the rest is fitted
-against the same picture the board draws, and the copy-coverage gate on what the fit made of the rest.
+"""Place and recolour a carved bundle's unmasked copies, and gate how much the fitted rest hides them.
 
-A copy mesh is local and colourless; each copy row places it under its own transform with its own colour
-set (mesh_import.write_shape). The fit draws every placed copy but masked ones (drawn_copies), frozen: copies
-are never moved, recoloured or pruned.
+Copies keep their geometry and transforms. Placements of the same mesh and LCOL set share colours.
 """
 
 import pathlib
+from typing import NamedTuple
 
 import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
 from r3d.texture import texture_asset, uv_transfer
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import finest, read_bundle_mesh, rgb888
+from r3d.lit_mesh import finest, panel_colour, read_bundle_mesh, rgb888
+
+# Colours are fitted in unit sRGB and written in byte units before any RGB565 packing.
+STORED_CHANNEL_MAX = np.iinfo(np.uint8).max
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -49,27 +50,43 @@ def hidden_materials(entries, rows):
     return {row["match"]["material"] for row in masked_copies(entries, rows)}
 
 
+class CopyColours(NamedTuple):
+    """Finest stored RGB rows, the indices used by placed geometry and the slice for each (mesh, set)."""
+    rgb: np.ndarray
+    placed: np.ndarray
+    sets: dict[tuple[str, int], slice]
+
+
 def placed_copies(bundle, flat):
-    """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
-    mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
-    vertex, or per triangle when `flat`. None when the bundle has no copies. No weld by value, so a copy's
-    vertices and triangles are the ones a mesh without levels holds."""
+    """The unmasked copies in a bundle as a FitMesh, or None."""
+    entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+    return place_copies(entries, rows, flat)[0]
+
+
+def _finest_rows(mesh):
+    """Stored vertex and face indices of the finest clusters, with one sidedness flag per face."""
+    shown = [cluster for cluster, level0 in zip(mesh.clusters, finest(mesh)) if level0]
+    vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
+    faces = np.concatenate([np.arange(tbase, tbase + tcount) for _, _, tbase, tcount, *_ in shown])
+    sided = np.concatenate([np.full(tcount, int(is_double), dtype=np.int64)
+                            for _, _, _, tcount, _, _, is_double in shown])
+    return vertices, faces, sided
+
+
+def place_copies(entries, rows, flat):
+    """Place the finest clusters under their row transforms and return their tied colour parameters."""
     from r3d.appearance_simplify import FitMesh
 
-    entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
     rows = drawn_copies(entries, rows)
     if not rows:
-        return None
+        return None, None
     data = {name: blob for name, _kind, blob in entries}
-    points, rgb, tris, double, vertex_point = [], [], [], [], []
-    point_count = vertex_count = 0
+    points, tris, double, vertex_point = [], [], [], []
+    rgb, placed, slices = [], [], {}
+    point_count = vertex_count = colour_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
         mesh = read_bundle_mesh(entries, name)
-        shown = [c for c, level0 in zip(mesh.clusters, finest(mesh)) if level0]
-        vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
-        faces = np.concatenate([np.arange(tbase, tbase + tcount) for _, _, tbase, tcount, *_ in shown])
-        sided = np.concatenate([np.full(tcount, int(is_double), dtype=np.int64)
-                                for _, _, _, tcount, _, _, is_double in shown])
+        vertices, faces, sided = _finest_rows(mesh)
         renumber = np.full(len(mesh.pos), -1, dtype=np.int64)
         renumber[vertices] = np.arange(len(vertices))
         local, welded = np.unique(mesh.pos[vertices], axis=0, return_inverse=True)
@@ -79,17 +96,56 @@ def placed_copies(bundle, flat):
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
                              f"and its rest is not")
         for row in (row for row in rows if row["mesh"] == name):
-            colours = sets[row["colour_set"]]
-            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat                 else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
+            key = name, row["colour_set"]
+            if key not in slices:
+                payload = sets[row["colour_set"]]
+                channels = lcol_asset.STRIDES[lcol_asset.RGB888]
+                colours = (rgb888(np.frombuffer(payload, "<u2")[faces]) if flat
+                           else np.frombuffer(payload, "u1").reshape(-1, channels)[vertices])
+                slices[key] = slice(colour_count, colour_count + len(colours))
+                colour_count += len(colours)
+                rgb.append(colours / STORED_CHANNEL_MAX)
+            span = slices[key]
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
-            rgb.append(colours / 255.0)
+            placed.append(np.arange(span.start, span.stop))
             tris.append(renumber[mesh.tris[faces]] + vertex_count)
             double.append(sided)
             vertex_point.append(welded + point_count)
             point_count += len(local)
             vertex_count += len(welded)
-    return FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
-                   np.concatenate(vertex_point), flat)
+    colours = CopyColours(np.concatenate(rgb), np.concatenate(placed), slices)
+    return (FitMesh(np.concatenate(points), colours.rgb[colours.placed], np.concatenate(tris),
+                    np.concatenate(double), 1, np.concatenate(vertex_point), flat), colours)
+
+
+def write_colours(entries, slices, trained):
+    """Return the changed LCOL entries, with coarse rows taking their nearest finest row's colour."""
+    from scipy.spatial import cKDTree
+
+    data = {name: blob for name, _kind, blob in entries}
+    replacements = []
+    for mesh_name in dict.fromkeys(mesh for mesh, _ in slices):
+        key = lcol_asset.name_for_mesh(mesh_name)
+        encoding, count, sets = lcol_asset.decode(data[key])
+        mesh = read_bundle_mesh(entries, mesh_name)
+        vertices, faces, _ = _finest_rows(mesh)
+        flat = encoding == lcol_asset.RGB565
+        fine = faces if flat else vertices
+        coarse = np.setdiff1d(np.arange(count), fine)
+        source = np.empty(count, dtype=np.int64)
+        source[fine] = np.arange(len(fine))
+        if len(coarse):
+            # Three times the face centroid keeps the nearest search in exact quantised coordinates.
+            positions = mesh.pos[mesh.tris].sum(axis=1) if flat else mesh.pos
+            source[coarse] = cKDTree(positions[fine]).query(positions[coarse])[1]
+        for i in range(len(sets)):
+            span = slices.get((mesh_name, i))
+            if span is not None:
+                rgb = np.clip(np.rint(trained[span] * STORED_CHANNEL_MAX), 0, STORED_CHANNEL_MAX)
+                stored = panel_colour(rgb) if flat else rgb.astype("u1")
+                sets[i] = stored[source].tobytes()
+        replacements.append((key, lcol_asset.TYPE, lcol_asset.encode(encoding, count, sets)))
+    return replacements
 
 def joined(rest, copies):
     """The rest and the copies as one mesh to raster, the rest's triangles first."""

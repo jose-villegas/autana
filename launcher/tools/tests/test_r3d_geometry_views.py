@@ -69,13 +69,15 @@ class WiringTests(unittest.TestCase):
         for shaping in (None, SimpleNamespace(spacing=2.0)):
             job = SimpleNamespace(settings=SimpleNamespace(meshes=[], fit=SimpleNamespace(probes=shaping)))
             with self.subTest(probes=shaping), mock.patch.multiple(appearance_simplify,
-                    load_scene=mock.DEFAULT, start_mesh=mock.DEFAULT, placed_copies=mock.DEFAULT,
+                    load_scene=mock.DEFAULT, start_mesh=mock.DEFAULT, place_copies=mock.DEFAULT,
                     load_views=mock.DEFAULT, match_meshes=mock.DEFAULT, optimise=mock.DEFAULT) as patches, \
+                    mock.patch.object(appearance_simplify.pathlib.Path, "read_bytes", return_value=b""), \
+                    mock.patch.object(appearance_simplify.mesh_bundle, "decode", return_value=([], [])), \
                     mock.patch("r3d.reference_render.source_for", return_value=(source, job)), \
                     mock.patch.object(geometry_views, "select", return_value=selected) as select:
                 patches["load_scene"].return_value = SimpleNamespace(camera=SimpleNamespace(component=camera))
                 patches["start_mesh"].return_value = mesh
-                patches["placed_copies"].return_value = mesh
+                patches["place_copies"].return_value = (mesh, None)
                 patches["load_views"].return_value = ([], (8, 8))
                 patches["match_meshes"].return_value = [0]
                 patches["optimise"].side_effect = RuntimeError("fit boundary")
