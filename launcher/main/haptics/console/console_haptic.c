@@ -8,7 +8,7 @@
 
 #define HAPTIC_REPLY_BYTES 80
 
-static const char* const strength_names[HAPTIC_COUNT] = {
+static const char* const strength_names[] = {
     [HAPTIC_LIGHT] = "light",
     [HAPTIC_FIRM] = "firm",
 };
