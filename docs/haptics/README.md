@@ -18,7 +18,7 @@ if (ui_button(ui, "Start")) {
 | Rule | Behavior |
 |---|---|
 | Strength | `HAPTIC_LIGHT` uses `HAPTIC_LIGHT_GAIN_PCT` (30%); `HAPTIC_FIRM` uses `HAPTIC_FIRM_GAIN_PCT` (60%) |
-| Length | `HAPTIC_FIRM_MS` (100 ms) is the shortest pulse whose median shake reaches 90% of the 400 ms tone's in every run. `HAPTIC_LIGHT_MS` uses the same duration at lower gain. |
+| Length | `HAPTIC_FIRM_MS` (100 ms) is the shortest pulse whose median shake reaches 90% of the 400 ms tone's in every [pulse-length measurement](../audio/Low-Frequency-Buzz.md). `HAPTIC_LIGHT_MS` uses the same duration at lower gain. |
 | Frequency | `HAPTIC_HZ` (202 Hz), the measured case resonance |
 | Overlap | a new pulse stops the previous pulse and restarts its duration |
 | Bus | `SOUND_BUS_HAPTIC`, independent of the SYSTEM UI volume; its gain resets on app exit |
