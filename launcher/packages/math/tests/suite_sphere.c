@@ -1,11 +1,14 @@
 #include "ball_cases.h"
 #include "math/geometry/spheref.h"
+#include "math/geometry/spheres.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 DEFINE_BALL_CONTAINMENT_TEST(spheref, vec3f, float)
+DEFINE_BALL_CONTAINMENT_TEST(spheres, vec3s, int16_t)
 
 static const float SPHERE_TOLERANCE = 0.00001F;
 static const spheref_t SPHERE_UNIT = {{0, 0, 0}, 1};
@@ -147,6 +150,26 @@ test_spheres_ticks(void) {
 }
 
 static void
+test_spheres_contains_ball_extremes(void) {
+    /* Opposite corners require wide differences and squared distance. */
+    TEST_ASSERT_FALSE(spheres_contains_ball((spheres_t){{INT16_MIN, INT16_MIN, INT16_MIN}, INT16_MAX},
+                                            (spheres_t){{INT16_MAX, INT16_MAX, INT16_MAX}, 0}, 0));
+
+    /* A point at full radius touches even from the lowest tick. */
+    TEST_ASSERT_TRUE(spheres_contains_ball((spheres_t){{INT16_MIN, 0, 0}, INT16_MAX}, (spheres_t){{-1, 0, 0}, 0}, 0));
+
+    /* The most negative room excludes even concentric balls. */
+    TEST_ASSERT_FALSE(spheres_contains_ball((spheres_t){{0, 0, 0}, 0}, (spheres_t){{0, 0, 0}, INT16_MAX}, INT16_MAX));
+
+    /* The minimum margin leaves more room than an int16 can hold. */
+    TEST_ASSERT_TRUE(
+        spheres_contains_ball((spheres_t){{0, 0, 0}, INT16_MAX}, (spheres_t){{INT16_MAX, 0, 0}, INT16_MAX}, INT16_MIN));
+
+    /* Coincident point balls touch with zero room. */
+    TEST_ASSERT_TRUE(spheres_contains_ball((spheres_t){{0, 0, 0}, 0}, (spheres_t){{0, 0, 0}, 0}, 0));
+}
+
+static void
 test_sphere_contains_ball_depth(void) {
     const spheref_t outer = {{2, -3, 4}, 10};
     const spheref_t touching = {{2, -3, 9}, 5};
@@ -160,6 +183,8 @@ void
 suite_sphere(void) {
     RUN_TEST(test_spheres_ticks);
     RUN_TEST(test_spheref_contains_ball);
+    RUN_TEST(test_spheres_contains_ball);
+    RUN_TEST(test_spheres_contains_ball_extremes);
     RUN_TEST(test_sphere_contains_ball_depth);
     RUN_TEST(test_sphere_closest_point);
     RUN_TEST(test_sphere_long_segment_misses);
