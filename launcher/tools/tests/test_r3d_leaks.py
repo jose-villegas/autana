@@ -278,11 +278,17 @@ class LeakProbeTests(unittest.TestCase):
         self.assertGreater(len(holes), 0)
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
-    def test_a_wall_moved_back_within_behind_shows_no_hole(self):
-        # Without the backdrop, the outline it moves shows the source's own sky; the face stays within BEHIND.
-        moved = self.pos.copy()
-        moved[:, 0] -= WALL_MOVED_BACK
-        self.assertEqual(self.probes.holes(moved, self.tris), [])
+    def test_a_wall_moved_back_within_behind_shows_no_hole_and_one_moved_further_shows_one(self):
+        # A plain wall facing the camera, and the backdrop behind it.
+        h = WALL_HALF_WIDTH
+        wall = np.array([(0.0, -h, -h), (0.0, h, -h), (0.0, h, h), (0.0, -h, h)])
+        pos, tris = with_backdrop(wall, np.array([(0, 1, 2), (0, 2, 3)]))
+        probes = leaks.LeakProbes(pos, tris, *CAMERA)
+        moved = pos.copy()
+        moved[:len(wall), 0] -= WALL_MOVED_BACK
+        self.assertEqual(probes.holes(moved, tris), [])
+        moved[:len(wall), 0] = BACKDROP_X / 2
+        self.assertGreater(len(probes.holes(moved, tris)), 0)
 
     def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
