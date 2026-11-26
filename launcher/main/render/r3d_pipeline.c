@@ -1017,6 +1017,21 @@ fill_back(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], i
     fill_side(mesh, v, t, face, c, target, mode, weight, screen);
 }
 
+/* fill_back() for the read-only plain draws, in six arguments: their
+ * fill's mode is fixed, so the call from the draws' IRAM passes all in
+ * registers. */
+static __attribute__((noinline)) void
+fill_back_reading(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], int t, uint32_t face,
+                  const r3d_lit_cluster_t* c, const r3d_span_target_t* target) {
+    fill_side(mesh, v, t, face, c, target, 0U, 0, 0U);
+}
+
+static __attribute__((noinline)) void
+fill_back_skipping(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], int t, uint32_t face,
+                   const r3d_lit_cluster_t* c, const r3d_span_target_t* target) {
+    fill_side(mesh, v, t, face, c, target, DRAW_SKIPPING, 0, 0U);
+}
+
 /* Triangle `t` of cluster `c`, wholly in front of the near plane: seen from
  * behind, a double-sided one shows its back colours when the mesh has them,
  * picked here once a triangle by the winding, the side a fragment shader
@@ -1043,7 +1058,13 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     /* Past facing_away(), a triangle seen from behind is double-sided, and
      * a mesh has back colours (back_count) only for such clusters. */
     if (area2 >= 0 && mesh->back_count != 0) {
-        fill_back(mesh, v, t, face, c, target, mode, weight, screen);
+        if (weight != 0 || screen != 0 || (mode & DRAW_WRITES) != 0) {
+            fill_back(mesh, v, t, face, c, target, mode, weight, screen);
+        } else if ((mode & DRAW_SKIPPING) != 0) {
+            fill_back_skipping(mesh, v, t, face, c, target);
+        } else {
+            fill_back_reading(mesh, v, t, face, c, target);
+        }
         return;
     }
     fill_side(mesh, v, t, face, NULL, target, mode, weight, screen);
