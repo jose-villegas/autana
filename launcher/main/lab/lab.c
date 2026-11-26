@@ -498,6 +498,7 @@ fail_load(const char* tag, char* failure, size_t size, entity_t root, const char
     scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
     (void)scene_failure(root, &why);
     scene_release(root);
+    ESP_LOGE(tag, "scene '%s': status %d, asset %s", why.what, (int)why.status, asset_status_text(why.asset));
     const bool missing = why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK;
     char what[LAB_STATUS_LEN];
     if (snprintf(what, sizeof what, missing ? "no %s pack: flash it" : "%s did not load", label) < 0) {
