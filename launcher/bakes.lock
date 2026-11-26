@@ -120,6 +120,16 @@ run = 45672498817
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted_full.fit.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "3874586794f0ee7cc98ef465e995b89484e47b20c37c31c2abd978181da9ff57"
+sha256 = "f451a2f1b9df9085a28804da337f61d0fbb4d4d4e94691d839f57c09dca1b35f"
+size = 582936
+run = 45720636883
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+
+[[bake]]
 output = "sponza.atrium_fitted_full.reference.tar.xz"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "4dfe73ac96b93ef1675b1d026874bd3abf693332351acdb5cfd02b32471d4c6c"
