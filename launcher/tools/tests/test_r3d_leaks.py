@@ -268,7 +268,7 @@ class LeakProbeTests(unittest.TestCase):
                 simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
                          position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
 
-    def test_a_missing_triangle_that_shows_a_surface_far_behind_is_a_hole_and_one_close_behind_is_not(self):
+    def test_a_missing_triangle_that_shows_a_surface_far_behind_is_a_hole(self):
         pos, tris = with_backdrop(self.pos, self.tris)
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
         path = (*PATH_VIEW, [path_pose_at(self.pos[self.tris[inside]].mean(axis=0))])
@@ -277,10 +277,12 @@ class LeakProbeTests(unittest.TestCase):
         holes = probes.holes(pos, np.delete(tris, inside, axis=0))
         self.assertGreater(len(holes), 0)
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
-        # The wall moved back by less than BEHIND times its distance from the nearest probe stays where views meet it.
-        moved = pos.copy()
-        moved[:len(self.pos), 0] -= WALL_MOVED_BACK
-        self.assertEqual(probes.holes(moved, tris), [])
+
+    def test_a_wall_moved_back_within_behind_shows_no_hole(self):
+        # Without the backdrop, the outline it moves shows the source's own sky; the face stays within BEHIND.
+        moved = self.pos.copy()
+        moved[:, 0] -= WALL_MOVED_BACK
+        self.assertEqual(self.probes.holes(moved, self.tris), [])
 
     def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
