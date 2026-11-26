@@ -8,8 +8,8 @@ vertex, a flat one a colour per triangle.
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
         [--object NAME --surface-weight W --surface-margin E --seam-margin E]
 
---start is a baked smooth or flat mesh, usually the simplifier's output at the
-triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
+--start is a baked smooth or flat rest mesh. The importer allocates its triangles
+under shared shape error. Each --poses file (tools/anim/track_host.py) pairs with
 the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its

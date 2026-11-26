@@ -5,13 +5,12 @@
     python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work DIR fit
     python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME --cost-weights 0,1 --out DIR
 
-A scene renderer with a `fit` table is not baked by mesh_import.py.
+A fitted renderer uses mesh_import.py to bake its CPU start.
 `prepare`, in the r3d environment, bakes its start (the import's geometry
-steps at the variant's `triangles`, lit by the scene's bake, flat when the
-renderer's shading is), samples the
-scene camera's path for training,
-held-out and coverage poses, and renders the training references with their
-normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
+steps under the variant's drawn and stored limits, lit by the scene's bake,
+with the renderer's shading mode), samples the camera path for training,
+held-out and coverage poses, and renders the training references and normals
+into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 fits the start with the recipe's settings and writes the renderer's mesh
 into DIR (r3d/fit/stage.py). bake/bake.py bakes the start as a mesh
 of its own and the references once per ReferenceInputs into the bake cache,

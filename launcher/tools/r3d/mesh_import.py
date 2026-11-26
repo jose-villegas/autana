@@ -54,7 +54,8 @@ from r3d.texture import texture_asset, uv_transfer
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
-from r3d.simplify import Allocation, check_budgets, densify, simplify  # noqa: E402
+from r3d.objects import allocate  # noqa: E402
+from r3d.simplify import Allocation, densify, simplify  # noqa: E402
 from r3d.thin import pieces, thin, thin_keep
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -330,7 +331,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     drawn = mesh_report.get('scene_total', len(tris) + card_triangles)
     stored = mesh_report.get('stored_total', len(tris) + card_triangles)
     mesh_report.update(scene_total=drawn, output_triangles=drawn, stored_total=stored)
-    check_budgets(drawn, stored, renderer.variant.triangles, ceiling)
+    allocate.check(drawn, stored, renderer.variant.triangles, ceiling)
     return SimpleNamespace(src=src, intersector=occluder, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
@@ -383,6 +384,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     out_dir = pathlib.Path(out_dir)
     recorder = NULL_RECORDER if recorder is None else recorder
     geometry = bake_geometry(job, scene, recorder, carve=True) if geometry is None else geometry
+    if getattr(renderer, "fit", None) and not len(geometry.tris):
+        raise SettingsError(f"fitted variant {renderer.variant.name!r} has no rest mesh")
     face_rgb = None
     if renderer.face_samples and len(geometry.tris):
         with recorder.step("face colours", len(geometry.tris)):

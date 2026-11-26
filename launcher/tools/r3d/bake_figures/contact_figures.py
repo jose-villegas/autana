@@ -34,7 +34,7 @@ PILLAR_RINGS = ((0.0, 1.3), (0.12, 1.3), (0.25, 1.1), (0.4, 1.0), (0.8, 1.0), (1
 # The floor: a square plate of FLOOR_CELLS by FLOOR_CELLS quads, FLOOR_HALF either side of the pillar's axis.
 FLOOR_CELLS = 10
 FLOOR_HALF = 2.0
-# Budgets: the pillar's as a carved mesh, the rest's (the floor) as the variant's.
+# The same drawn limit applies to each seam policy.
 DRAWN_TRIANGLES = 200
 SOURCE_COLOUR = 100
 COLOUR_DEVIATION = 1

@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 from r3d import mesh_bundle, mesh_asset, log
 from r3d.reference_set import fit_sets
+from r3d.import_settings import SettingsError
+from r3d.objects import allocate
 from r3d.fit.copies import drawn_copies, hidden_materials
 
 # The G-buffer front term pushes the rest behind copies; depth holds it to the source surface. Probe fits also
@@ -23,10 +25,8 @@ def fit(scene_path, scene, job, work, cost_weight=0.0, smoke=False, target=None,
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
-    fit keeps its start geometry count under the variant's stored ceiling."""
-    from r3d.appearance_simplify import main as fit_main
+    fit keeps the start's triangle count under the variant's drawn and stored limits."""
     from r3d.objects.budget import bundle_count
-    from r3d.simplify import check_ceiling
 
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
@@ -34,7 +34,10 @@ def fit(scene_path, scene, job, work, cost_weight=0.0, smoke=False, target=None,
     start = inputs / f"{variant.name}.bundle" if start is None else pathlib.Path(start)
     bundle = start
     bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
-    bundle_entries = mesh_bundle.rename_rest(bundle_entries, copies, job.asset_name)
+    try:
+        bundle_entries = mesh_bundle.rename_rest(bundle_entries, copies, job.asset_name)
+    except mesh_bundle.PackError as error:
+        raise SettingsError(f"fitted variant {variant.name!r}: {error}") from error
     rest = next(data for name, kind, data in bundle_entries if name == job.asset_name)
     shapes = [row["mesh"] for row in copies]
     ceiling = getattr(variant, "ceiling", None)
@@ -65,13 +68,17 @@ def fit(scene_path, scene, job, work, cost_weight=0.0, smoke=False, target=None,
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),
                     "--cost-weight", str(cost_weight)]
+    from r3d.appearance_simplify import main as fit_main
+
     fit_main(command)
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
     fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
     entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
-    check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
+    counts = {name: bundle_count(entries, [name]) for name in {*shapes, job.asset_name}}
+    drawn = counts[job.asset_name] + sum(counts[name] for name in shapes)
+    allocate.check(drawn, sum(counts.values()), getattr(variant, "triangles", None), ceiling)
     target.write_bytes(mesh_bundle.encode(entries, copies))
     log(f"wrote {target}")
     return target
