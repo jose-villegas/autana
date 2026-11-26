@@ -5623,6 +5623,10 @@ test_feet_follow_pose_without_height_fade(void) {
     free(blobs);
 }
 
+/* A corner on the bounds' own edge may land a rounding step outside it: the device
+ * rounds the corner and the bounds through different operation orders. */
+#define CONTACT_CORNER_SLACK 1e-5F
+
 static void
 assert_contact_warp(scene_t* scene, scene_renderer_t* r, vec3f_t light, bool warp) {
     contact_blob_t blob;
@@ -5637,8 +5641,8 @@ assert_contact_warp(scene_t* scene, scene_renderer_t* r, vec3f_t light, bool war
     for (size_t i = 0; i < sizeof signs / sizeof signs[0]; i++) {
         const vec3f_t p =
             vec3f_add(blob.centre, vec3f_add(vec3f_scale(blob.u, signs[i][0]), vec3f_scale(blob.v, signs[i][1])));
-        TEST_ASSERT_TRUE(p.x >= bounds.lo.x && p.x <= bounds.hi.x);
-        TEST_ASSERT_TRUE(p.z >= bounds.lo.z && p.z <= bounds.hi.z);
+        TEST_ASSERT_TRUE(p.x >= bounds.lo.x - CONTACT_CORNER_SLACK && p.x <= bounds.hi.x + CONTACT_CORNER_SLACK);
+        TEST_ASSERT_TRUE(p.z >= bounds.lo.z - CONTACT_CORNER_SLACK && p.z <= bounds.hi.z + CONTACT_CORNER_SLACK);
     }
 }
 
