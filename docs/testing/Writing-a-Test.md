@@ -21,6 +21,9 @@ A controller lift releases immediately. Set `TOUCH_RELEASE_QUIET_US` to `0`
 to check the fallback for a missing lift flag. Both dropout tests below should
 fail.
 
+The quiet window lets contact resume after a failed or garbled read or a
+data-ready interrupt yields a no-contact sample without a lift flag.
+
 ## What to test first
 
 Bias toward bugs and boundary cases that affect what the user sees.

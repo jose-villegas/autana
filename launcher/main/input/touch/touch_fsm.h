@@ -17,8 +17,8 @@
 
 #include "input/input.h"
 
-/* A lift flag without a contact releases immediately. Without a flag, the
- * quiet window filters brief gaps in contact. */
+/* A failed or garbled read, or an interrupt that only signals data readiness,
+ * can leave no contact and no lift flag. The quiet window lets contact resume. */
 #define TOUCH_RELEASE_QUIET_US (60 * 1000)
 
 typedef struct {

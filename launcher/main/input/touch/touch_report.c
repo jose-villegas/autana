@@ -28,5 +28,5 @@ touch_report_has_point(const touch_report_t* report) {
 
 bool
 touch_report_lifted(const touch_report_t* report) {
-    return report->event == TOUCH_EVENT_UP && !touch_report_has_point(report);
+    return report->count == 0 && report->event == TOUCH_EVENT_UP;
 }

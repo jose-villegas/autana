@@ -6,6 +6,7 @@
 
 #include "math/linear/vec2i.h"
 
+/* The board guarantees this report layout at TOUCH_REPORT_REG. */
 #define TOUCH_REPORT_REG   0x02
 #define TOUCH_REPORT_BYTES 5
 
