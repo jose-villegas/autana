@@ -438,6 +438,15 @@ sound_voice_audible(sound_voice_t voice) {
            && !(device.melody.fail_start && device.melody.starts == device.melody.fail_start);
 }
 
+bool
+sound_voice_wait_audible(sound_voice_t voice, uint32_t timeout_ms) {
+    if (!sound_voice_audible(voice) && sound_is_playing(voice) && timeout_ms) {
+        const bool blocked = device.melody.fail_start && device.melody.starts == device.melody.fail_start;
+        timing_sleep_ms(blocked ? timeout_ms : SOUND_CONTROL_POLL_MS);
+    }
+    return sound_voice_audible(voice);
+}
+
 void
 timing_sleep_ms(uint32_t ms) {
     if (device.pulse.producer.enabled && device.pulse.producer.cadence) {
