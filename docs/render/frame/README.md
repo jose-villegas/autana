@@ -76,7 +76,7 @@ time ([cull laps](../../tools/Frame-Cost.md)):
 The dropdown has each debug view's hatched bar, what it adds, and every stage
 in ms.
 
-<!-- generated: pipeline-frame-stages sha256=cd10aaf2ccf1df74cfb7d870130801ad945d7620e03fcb10ef4ebf70d55bc530 -->
+<!-- generated: pipeline-frame-stages sha256=aba64319f0d1b9e98e40e8ffc85a71245d487eb4c12a73be525ea1010876f6cb -->
 ![Frame stages as shipped](../../images/render/pipeline-frame-stages.png)
 
 ![Inside cull, transform and draw](../../images/render/pipeline-frame-stages.sub-stages.png)
@@ -136,7 +136,7 @@ Board ms per frame from a perf-scope image, mean of 79 lap windows. A parent is 
 | frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.12 |
 | total | 51.23 | 100% | +7.47 | +5.04 | +34.40 |
 
-Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull, boxes, overdraw, copies.
+Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull, boxes, overdraw, copies, triangles.
 
 </details>
 <!-- /generated: pipeline-frame-stages -->
