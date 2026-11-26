@@ -54,11 +54,14 @@ endforeach()
 target_link_libraries(render_engine INTERFACE ${launcher_packages})
 
 # The renderer and its scene shell, which asks display_quarter_now (display/display.h):
-# render_host_quarter.c answers with the run's quarter. A render_host_core consumer defines its own.
+# render_host_quarter.c answers with the run's quarter, and render_host_panel.c is
+# the panel and its capture hooks, which a render_host program has none of. A
+# render_host_core consumer defines its own.
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
 target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
-    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c")
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c"
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_panel.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer
