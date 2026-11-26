@@ -37,10 +37,8 @@ BUDGET = 24
 SHEET_ALONE_BUDGET = 24
 # A budget for the wall and the half disc simplified as two passes, and the half disc's share of it.
 TWO_PASS_BUDGET, SHEET_SHARE = 96, 0.5
-# A path view straight at the wall, its size unlike a probe face's, and a batch too small for two probe faces.
-PATH_VIEW = (192, 128, 0.25)
-PATH_EYE = (150.0, 150.0, 150.0)
-SMALL_BATCH = 50000
+# One cube face per batch.
+SMALL_BATCH = leaks.probes.PROBE_FACE ** 2 if np is not None else None
 # Quantisation steps per source unit, which sets the join step's tolerance.
 POSITION_SCALE = 8
 # The half disc carved out as a mesh of its own, at too few triangles to stay round.
@@ -74,15 +72,14 @@ def arch():
 
 @contextmanager
 def opening_camera():
-    # An outline shrinking past REACH counts as a hole. Keep the outer silhouette out of this fixture's view
-    # by framing the sheet's bounding rectangle head-on.
+    # Isolate the arch from the outer silhouette with a probe face aimed head-on.
     half_height = OPENING_RADIUS / 2
     eye_x = OPENING_RADIUS
     pose = (eye_x, half_height, 0, -1, 0, 0)
-    height = PATH_VIEW[1]
     lens = half_height / (eye_x + SHEET_BEHIND)
-    with mock.patch.object(leaks.probes, "region_poses", return_value=([], None)):
-        yield (*CAMERA, (2 * height, height, lens, [pose]))
+    with mock.patch.object(leaks.probes, "region_poses", return_value=([pose], None)), \
+         mock.patch.object(leaks.probes, "FACE_LENS", lens):
+        yield CAMERA
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -302,20 +299,13 @@ class LeakProbeTests(unittest.TestCase):
                      position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
             self.simplified(Allocation())
 
-    def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
+    def test_region_probes_find_the_same_holes_across_small_batches(self):
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
         holed = self.pos, np.delete(self.tris, inside, axis=0)
-        target = self.pos[self.tris[inside]].mean(axis=0)
-        eye = np.array(PATH_EYE)
-        pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
         whole_batches = len(self.probes.holes(*holed))
         with mock.patch.object(leaks, "LAUNCH", SMALL_BATCH):
-            without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
-            with_path = leaks.LeakProbes(self.pos, self.tris, *CAMERA, path=(*PATH_VIEW, [pose]))
-            self.assertEqual(len(with_path.views), len(without.views) + 1)
-            self.assertEqual(with_path.holes(self.pos, self.tris), [])
-            self.assertEqual(len(without.holes(*holed)), whole_batches, "a batch edge lost a view")
-            self.assertGreater(len(with_path.holes(*holed)), len(without.holes(*holed)))
+            probes = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
+            self.assertEqual(len(probes.holes(*holed)), whole_batches, "a batch edge lost a view")
 
     def test_a_region_left_out_falls_back_to_the_sources_bounds(self):
         probes = leaks.LeakProbes(self.pos, self.tris, None, CAMERA[1])
@@ -327,28 +317,15 @@ class LeakProbeTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SealCameraTests(unittest.TestCase):
     def scene(self, camera=True):
-        # The scene camera stands anywhere, on no path; the flight is a second camera.
-        component = SimpleNamespace(near_z=2.0, path=None)
-        flight = SimpleNamespace(kind="camera", component=SimpleNamespace(near_z=2.0, path="the flight"))
-        return SimpleNamespace(region="the region", camera=SimpleNamespace(component=component) if camera else None,
-                               objects=[SimpleNamespace(kind="camera", component=component), flight])
+        component = SimpleNamespace(near_z=CAMERA[1])
+        return SimpleNamespace(region=CAMERA[0], camera=SimpleNamespace(component=component) if camera else None)
 
     def test_no_scene_or_no_camera_gives_none(self):
-        renderer = SimpleNamespace(seal_views=None)
-        self.assertIsNone(mesh_import.seal_camera(None, renderer))
-        self.assertIsNone(mesh_import.seal_camera(self.scene(camera=False), renderer))
+        self.assertIsNone(mesh_import.seal_camera(None))
+        self.assertIsNone(mesh_import.seal_camera(self.scene(camera=False)))
 
-    def test_the_region_and_near_plane_come_alone_without_seal_views(self):
-        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=None)), ("the region", 2.0))
-        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace()), ("the region", 2.0))
-
-    def test_seal_views_add_the_paths_views_at_their_size_and_lens(self):
-        views = SimpleNamespace(every_ms=33, size=(8, 6))
-        with mock.patch("r3d.poses.path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
-            camera = mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
-        self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
-        self.assertEqual(sampled.call_args.args[0].path, "the flight")
-        self.assertEqual(sampled.call_args.args[1:], ((8, 6), 33))
+    def test_the_seal_uses_the_scenes_region_and_near_plane(self):
+        self.assertEqual(mesh_import.seal_camera(self.scene()), CAMERA)
 
 
 if __name__ == "__main__":

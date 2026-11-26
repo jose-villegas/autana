@@ -442,8 +442,7 @@ but chords curved borders and flattens curved pieces, so the piece behind stops
 covering the gap.
 
 The probe step runs for every renderer of a scene with a camera, lit or not. Its views are
-the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
-path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>.
 
 | Term | Meaning |
 |---|---|

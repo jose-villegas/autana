@@ -2,8 +2,8 @@
 
 A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
 at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
-probes spread through the camera's region (views/probes.py's placement), each through six cube faces, and from
-`path` views when given. Holes are connected regions of flagged sky pixels. A sky pixel is flagged if its region
+probes spread through the camera's region (views/probes.py's placement), each through six cube faces.
+Holes are connected regions of flagged sky pixels. A sky pixel is flagged if its region
 holds no source sky or it lies more than REACH probe pixels from the source's sky. `pins` answers each hole with one
 source vertex to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
 the farthest-point step of Douglas and Peucker's line reduction, taken on a surface and only where sky shows.
@@ -31,10 +31,9 @@ ROUNDS = 24
 
 
 class LeakProbes:
-    """Views of a source mesh: cube faces from probes in `region` ((lo, hi), or the source's bounds when None),
-    then the `path` views ((width, height, lens, poses) as views/probes.py's select takes them, or None)."""
+    """Cube faces from probes in `region` ((lo, hi), or the source's bounds when None)."""
 
-    def __init__(self, positions, tris, region, near, path=None):
+    def __init__(self, positions, tris, region, near):
         self.positions, self.tris = np.asarray(positions, dtype=float), np.asarray(tris)
         lo, hi = region if region is not None else (self.positions.min(axis=0), self.positions.max(axis=0))
         self.query = RayQuery(self.positions, self.tris)
@@ -42,9 +41,6 @@ class LeakProbes:
                                        probes.spacing_for(lo, hi, None, near), near, PROBE_SEED)
         face = probes.PROBE_FACE
         self.views = [(face, face, probes.FACE_LENS, pose) for pose in poses]
-        if path is not None:
-            width, height, lens, poses = path
-            self.views += [(width, height, lens, pose) for pose in poses]
         self.source_sky = [~self.query.first_hits(origins, directions)[0] for _, origins, directions in self._batches()]
         self.source = np.ones(len(self.tris), dtype=bool)
         self.finished = []
