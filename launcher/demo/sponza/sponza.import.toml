@@ -18,12 +18,12 @@ simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true
 # The fits train on probes over the whole atrium (the scene camera has no path).
 probes = {}
 
-# The free-standing props: one mesh per repeated shape, each copy drawing
-# `triangles` times the variant's objects_scale. No rule names the flagpoles: one that passes
-# through the wall stays in the rest, since a carved pole too thin to fill
-# its socket shows sky around it, and one that touches nothing is carved as
-# a free repeat (20 of the 46). Seams are free: a locked contact keeps every
-# copy's border vertices, which a prop of a few dozen triangles cannot afford.
+# The props and drapes have one mesh per shape, each copy drawing
+# `triangles` times the variant's objects_scale. A flagpole through the wall
+# stays in the rest, since a carved pole too thin to fill its socket shows
+# sky around it. Free flagpoles are carved as free repeats (20 of the 46).
+# Seams are free, since a locked contact keeps border vertices that a prop
+# of a few dozen triangles cannot afford.
 [[objects.meshes]]
 match = { material = "vase" }
 triangles = 235
@@ -60,16 +60,23 @@ match = { material = "chain" }
 triangles = 1
 seam = "free"
 
-# The variant's triangles budget the rest, apart from its props and cards, and
-# are its fit's budget, so a probe fit stays closed (Appearance-Fit.md); its
-# ceiling caps the rest plus every stored copy prototype. Unpinned free
-# repeats derive their detail from the camera's closest view within that
-# ceiling. 12716 is the 13313 this variant had before the drape's two skins
-# collapsed to one sheet, less the 597 start triangles that saved the fabric
-# (2110 to 1513): spent elsewhere, they let the fit move columns over the
-# plants in held-out views.
+# The rest's 12716 start triangles include 1448 assigned to fabric across
+# 18 pieces, by nearest source triangle per rest triangle. At objects_scale
+# 0.92, a rule of 87 gives 80 triangles per piece, about 1448 / 18.
+[[objects.meshes]]
+match = { material = "fabric_*" }
+triangles = 87
+seam = "free"
+
+# The variant's triangles budget the fit over the rest. Its ceiling caps
+# the rest plus every stored copy prototype. Unpinned free repeats derive
+# their detail from the camera's closest view within that ceiling.
+#
+# The rest gets 12716 - 1448 = 11268 to keep the finest drawn total.
+# Carve rules have no share key, so recompute both budgets if the variant's
+# budget changes.
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 12716
+triangles = 11268
 objects_scale = 0.92
 ceiling = 30000

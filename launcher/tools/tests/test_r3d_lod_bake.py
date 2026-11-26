@@ -24,6 +24,7 @@ from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
 from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
+from tests.r3d_env import needs_llvm
 import test_r3d_lod
 
 GRID = 24
@@ -48,6 +49,11 @@ SPACING = 10  # ticks between the patch's vertices, so a miss shows past roundin
 BUMP = 3 * SPACING  # how far the patch's one raised vertex stands off its plane
 # How far rounding the pushed corners to ticks can leave a fine vertex outside.
 ROUNDING_TICKS = 1.0
+# The coarsest cloth must cover at least this fraction of its finest projected area.
+COARSE_AREA_MIN = 0.9
+CLOTH_CELLS = 12
+CLOTH_TICK_SCALE = 1024
+AREA_SAMPLES_PER_AXIS = 256
 
 
 def wavy_grid(n=GRID):
@@ -151,6 +157,45 @@ class BakedLevelsTest(unittest.TestCase):
             *centre, radius, error, saves = mesh_asset.LOD_GROUP.unpack_from(blob, at)
             self.assertEqual((*engine_frame._mirror_position(centre), radius, error, saves),
                              mesh_asset.LOD_GROUP.unpack_from(mirrored, at))
+
+
+@needs_llvm
+class ClothOutlineTest(unittest.TestCase):
+    def test_the_midsurface_keeps_its_outline_at_the_coarsest_level(self):
+        from r3d.procedural.wave_sheet import BACK, FRONT, sheet
+        from r3d.ray_query import RayQuery
+        from r3d.source import midsurface
+
+        cloth = sheet(CLOTH_CELLS, shape="zigzag", amplitude=0.2, frequency=(2, 0), layers=2, thickness=0.025)
+        collapsed = midsurface.collapse(cloth.positions, cloth.tris, cloth.layer == BACK,
+                                        np.zeros(len(cloth.tris), dtype=int), RayQuery)
+        np.testing.assert_array_equal(collapsed.drawn, cloth.layer == FRONT)
+
+        fractions = []
+        for points, tris in ((collapsed.points, collapsed.tri_v[collapsed.drawn]), (cloth.positions, cloth.tris)):
+            mesh = read_back(bake_lit_mesh(points, None, tris, np.ones(len(tris), dtype=int),
+                                          position_scale=CLOTH_TICK_SCALE))
+            fine_points, _, fine_tris, _, _ = lit_mesh.finest_triangles(mesh)
+            self.assertIsNotNone(mesh.lod)
+            coarse_tris = np.concatenate([mesh.tris[start:start + count]
+                                          for (_, _, start, count, *_), (_, parent) in zip(mesh.clusters, mesh.lod)
+                                          if parent == LOD_NONE])
+            self.assertLess(len(coarse_tris), len(fine_tris))
+
+            # Orthographic pixel centres facing -z count each covered sample once, even where skins overlap.
+            lo, hi = mesh.pos.min(axis=0), mesh.pos.max(axis=0)
+            centres = (np.arange(AREA_SAMPLES_PER_AXIS) + 0.5) / AREA_SAMPLES_PER_AXIS
+            x, y = np.meshgrid(*(lo[:2, None] + (hi - lo)[:2, None] * centres))
+            origins = np.column_stack((x.ravel(), y.ravel(), np.full(x.size, hi[2] + 1)))
+            directions = np.broadcast_to((0.0, 0.0, -1.0), origins.shape)
+            fine_area = RayQuery(fine_points, fine_tris).blocked(origins, directions).sum()
+            coarse_area = RayQuery(mesh.pos, coarse_tris).blocked(origins, directions).sum()
+            fractions.append(coarse_area / fine_area)
+
+        midsurface_area, two_skin_area = fractions
+        measured = f"midsurface {midsurface_area:.4f}, two skins {two_skin_area:.4f}"
+        self.assertGreaterEqual(midsurface_area, COARSE_AREA_MIN, measured)
+        self.assertLess(two_skin_area, COARSE_AREA_MIN, measured)
 
 
 def lens_rows(eye, target, model, shift):
