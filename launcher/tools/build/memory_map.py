@@ -86,7 +86,7 @@ args = json.loads(sys.argv[2])
 os.environ.update(json.loads(Path(args["env-file"]).read_text(encoding="utf-8")))
 config = SDKConfig(args["kconfig"], args["config"])
 entries = set()
-for path in args["fragments-list"].split(";"):
+for path in args["fragments"]:
     for fragment in parse_fragment_file(path, config).fragments:
         if isinstance(fragment, Mapping):
             for obj, symbol, scheme in fragment.entries:
@@ -295,8 +295,13 @@ def iram_entries(build):
         batch = re.match(r'"([^"\n]+\.bat)"|([^\s]+\.bat)', command)
         command = (build / next(value for value in batch.groups() if value)).read_text(encoding="utf-8")
     arguments = {key: value.strip('"') for key, value in re.findall(
-        r'--(kconfig|config|env-file|fragments-list)\s+("[^"\n]*"|[^\s]+)', command)}
-    if set(arguments) != {"kconfig", "config", "env-file", "fragments-list"}:
+        r'--(kconfig|config|env-file|fragments-list-file|fragments-list)\s+("[^"\n]*"|[^\s]+)', command)}
+    if "fragments-list-file" in arguments:  # newer ldgen.cmake: one fragment path per line in a file
+        listed = (build / arguments.pop("fragments-list-file")).read_text(encoding="utf-8")
+        arguments["fragments"] = [line.strip() for line in listed.splitlines() if line.strip()]
+    elif "fragments-list" in arguments:
+        arguments["fragments"] = arguments.pop("fragments-list").split(";")
+    if set(arguments) != {"kconfig", "config", "env-file", "fragments"}:
         raise ValueError("ldgen rule lacks configuration or fragment inputs")
     script = re.search(r'("[^"\n]*ldgen\.py"|[^\s"]*ldgen\.py)', command).group(1).strip('"')
     return json.loads(run(idf_python(), "-c", LDGEN_ENTRIES, str(Path(script).parent), json.dumps(arguments)))
