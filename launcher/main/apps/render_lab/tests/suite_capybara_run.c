@@ -1,20 +1,25 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "app/app_arena.h"
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/capybara_sponza/capybara_run.h"
 #include "scene/scene.h"
 #include "testkit/cleanup.h"
 
 static entity_t loaded;
+/* The app arena where the scene keeps its blocks, as it stood before the load. */
+static size_t mark;
 
 static void
 release_fixture(void) {
     scene_release(loaded);
+    app_arena_rewind(mark);
 }
 
 static void
 test_capybara_gallop_ground_speed_follows_instance_scale(void) {
+    mark = app_arena_mark();
     loaded = scene_load(CAPYBARA_SCENE);
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(loaded));
