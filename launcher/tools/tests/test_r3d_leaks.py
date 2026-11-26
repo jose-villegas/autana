@@ -279,8 +279,9 @@ class LeakProbeTests(unittest.TestCase):
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
     def test_a_wall_moved_back_within_behind_shows_no_hole_and_one_moved_further_shows_one(self):
-        # A plain wall facing the camera, and the backdrop behind it.
-        h = WALL_HALF_WIDTH
+        # A plain wall facing the camera, wide enough that moving it shifts its outline by less than a pixel, and the
+        # backdrop behind it.
+        h = BACKDROP_HALF / 2
         wall = np.array([(0.0, -h, -h), (0.0, h, -h), (0.0, h, h), (0.0, -h, h)])
         pos, tris = with_backdrop(wall, np.array([(0, 1, 2), (0, 2, 3)]))
         probes = leaks.LeakProbes(pos, tris, *CAMERA)
