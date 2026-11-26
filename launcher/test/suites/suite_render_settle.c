@@ -648,6 +648,13 @@ test_disabled_and_already_refined_settings_never_settle(void) {
 }
 
 #ifndef ESP_PLATFORM
+/* A held frame that settles one band reads the clock for the presentation
+ * and live draw (0-2), its refine draw with the raster's stage timers (3-19),
+ * then the compose: four readings apart, its first no later than 21 and its
+ * last no earlier than 24. */
+#define COMPOSE_LATER_READ 22
+#define COMPOSE_END_READ   25
+
 static void
 test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     static const resolution_step_t steps[] = {{W, H}, {W / 2, H / 2}};
@@ -672,6 +679,20 @@ test_dynamic_resolution_settles_at_the_top_without_pricing_refinement(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, refined.settled_rows);
     TEST_ASSERT_EQUAL_INT(over_us, refined.settle_us);
     TEST_ASSERT_EQUAL_INT(live_us, refined.draw_us);
+    TEST_ASSERT_FALSE(c->still_over);
+
+    /* A held frame that only refines composes settled rows: that compose is not judged. */
+    /* Every reading up to the compose's start says live_us, every later one
+     * live_us + over_us: the refine costs nothing and the compose costs over_us. */
+    int64_t settled_compose[COMPOSE_END_READ + 1];
+    for (int i = 0; i <= COMPOSE_END_READ; i++) {
+        settled_compose[i] = i < 2 ? 0 : i < COMPOSE_LATER_READ ? live_us : live_us + over_us;
+    }
+    clock_fake_script(settled_compose, sizeof settled_compose / sizeof settled_compose[0]);
+    const render_context_frame_t composed = frame(r, NULL, 0);
+    TEST_ASSERT_GREATER_THAN_INT(0, composed.settled_rows);
+    TEST_ASSERT_EQUAL_INT(0, composed.settle_us);
+    TEST_ASSERT_EQUAL_INT(over_us, composed.upscale_us);
     TEST_ASSERT_FALSE(c->still_over);
 
     const int64_t live_only[] = {0, 0, over_us, over_us, over_us};

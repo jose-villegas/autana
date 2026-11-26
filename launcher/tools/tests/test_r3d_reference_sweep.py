@@ -10,7 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
-    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
+    from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
 
     from r3d import reference_sweep
     from r3d.reference_render import main as reference_main

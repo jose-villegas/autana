@@ -34,9 +34,6 @@ typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 /* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
 #define R3D_LOD_PERMILLE            1000
 
-/* The most frames lod.pick_every may spread the pick over. */
-#define R3D_LOD_PICK_EVERY_MAX      8
-
 /* An instance's level state, R3D_LOD_STATE_SETS sets of bits: its coarse
  * bits, then the blend's arrived and blending bits (r3d_lod_pick()). */
 #define R3D_LOD_STATE_SETS          3

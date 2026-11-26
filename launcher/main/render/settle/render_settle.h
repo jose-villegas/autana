@@ -7,10 +7,8 @@
 
 #include "render/partial/render_partial.h"
 
-#define RENDER_SETTLE_BANDS               32
-#define RENDER_SETTLE_COST_WEIGHT_DIVISOR 8
-#define RENDER_SETTLE_COST_FRAC_BITS      3
-#define RENDER_SETTLE_DIVIDE_PX           1
+#define RENDER_SETTLE_BANDS          32
+#define RENDER_SETTLE_COST_FRAC_BITS 3
 
 typedef struct {
     uint8_t quiet[RENDER_SETTLE_BANDS]; /* consecutive held frames whose live rows missed this band */

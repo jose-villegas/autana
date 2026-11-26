@@ -38,6 +38,7 @@ static const render_debug_view_t views[] = {
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
     {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
+    {.name = "triangles", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_triangles_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -88,6 +89,30 @@ static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
 render_context_t*
 render_context_main(void) {
     return &main_context;
+}
+
+/* The last frame's choices, as frame_record reads them. */
+static frame_record_context_t
+recorded(const render_context_t* c) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_view_t* view = &c->frame_view;
+#else
+    const render_view_t* view = NULL;
+#endif
+    return (frame_record_context_t){view, &c->settings, &c->steer, &c->frame, c->scale_percent};
+}
+
+/* Out of line, so the draw's own stack frame does not hold the record context. */
+static __attribute__((noinline)) void
+record_before_draw(const render_context_t* c, const r3d_instance_t* instances, int count) {
+    const frame_record_context_t context = recorded(c);
+    frame_record_before_draw(&context, &c->raster, instances, count);
+}
+
+void
+render_context_record_frame(const render_context_t* context, uint32_t dt_ms) {
+    const frame_record_context_t recorded_context = recorded(context);
+    frame_record_frame(&recorded_context, &context->raster, dt_ms);
 }
 
 void
@@ -619,6 +644,7 @@ settle_finish(render_context_t* c, render_rows_t live, bool picks_levels, int32_
     render_settle_done(&c->settle, r->height, rows, cost_us);
     c->frame.settle_us = cost_us;
     c->frame.settled_rows = rows.end - rows.first;
+    c->settle_live_rows = mathi_max(live.end - live.first, 0);
     if (live.first < live.end) {
         rows.first = mathi_min(rows.first, live.first);
         rows.end = mathi_max(rows.end, live.end);
@@ -695,7 +721,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->observed = false;
     c->frame_view = *view;
 #endif
-    frame_record_before_draw(c, instances, count);
+    record_before_draw(c, instances, count);
     begin_draw(c);
     aim_raster(c, instances, count, view, clear);
     const bool held = drawn_held(c, view);
@@ -768,6 +794,18 @@ compose_rows(render_context_t* c, int height) {
     c->frame.rows_end = end * per;
 }
 
+/* The compose cost a held frame is judged on: under settle, only the live
+ * rows' share of the rows composed, so refining never hands the camera back. */
+static int32_t
+judged_upscale_us(const render_context_t* c) {
+    const raster_t* r = &c->raster;
+    const int composed = raster_drew_every_row(r) ? r->height : r->end_row - r->first_row;
+    if (c->frame.settled_rows <= 0 || composed <= 0) {
+        return c->frame.upscale_us;
+    }
+    return (int32_t)((int64_t)c->frame.upscale_us * mathi_min(c->settle_live_rows, composed) / composed);
+}
+
 /* A fixed-path frame's compose: only the rows it drew. A judged held frame
  * over the budget hands the held camera back to the policy. */
 static void
@@ -779,7 +817,7 @@ compose_fixed(render_context_t* c, uint16_t* destination, uint8_t* seams, resolu
     }
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->still_judged) {
-        c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
+        c->still_over = c->frame.draw_us + judged_upscale_us(c) > c->ladder.budget_us;
     }
 }
 

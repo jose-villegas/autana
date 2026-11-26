@@ -14,7 +14,7 @@ from r3d import appearance_simplify
 from r3d.fit import geometry_views
 from r3d.reference_set import PROBE_SEED
 from r3d.views import probes
-from tests.r3d_env import needs_mitsuba
+from tests.r3d_env import needs_llvm
 from tests.test_r3d_views_probes import closed_box
 
 
@@ -24,18 +24,18 @@ except ImportError:
     torch = None
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(torch is None, "the reference buffers need PyTorch")
 class SelectionTests(unittest.TestCase):
     def test_visible_copies_independent_poses_and_determinism(self):
         from r3d import ray_query
 
         self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
-        ray_query.VARIANT = "scalar_rgb"
+        ray_query.VARIANT = "llvm_ad_rgb"
         box, box_tris = closed_box(0.5)
         room, room_tris = closed_box(3.0)
         source = SimpleNamespace(p=np.concatenate([box, room]),
-                                 tri_v=np.concatenate([box_tris, room_tris[:, ::-1] + len(box)]))
+                                 tri_v=np.concatenate([box_tris, room_tris[:, ::-1] + len(box)]), textures=[None])
         carved = np.arange(len(source.tri_v)) < len(box_tris)
         region, near, spacing = (np.full(3, -2.0), np.full(3, 2.0)), 0.05, 4.0
         ordinary = probes.select(source.p, source.tri_v, region, near, spacing, PROBE_SEED, select_size=8)
@@ -62,7 +62,8 @@ class WiringTests(unittest.TestCase):
     def test_only_probe_fit_passes_geometry_views_to_optimise(self):
         mesh = appearance_simplify.FitMesh(np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0, 1, 2]]),
                                          np.ones(1), 1, np.arange(3))
-        source = SimpleNamespace(object_names=["copy"], tri_o=np.array([0]), tri_m=np.array([0]), names=["mat"])
+        source = SimpleNamespace(object_names=["copy"], tri_o=np.array([0]), tri_m=np.array([0]), names=["mat"],
+                                 textures=[None])
         camera = SimpleNamespace(background=0, region="region", near_z=0.1)
         selected = object()
         for shaping in (None, SimpleNamespace(spacing=2.0)):

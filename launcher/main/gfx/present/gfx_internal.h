@@ -90,7 +90,7 @@ void expand_reset_for_test(void);
 /* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool
 band_is_transient(void) {
-    return current_mode.layout == GFX_LAYOUT_BANDS;
+    return !gfx_mode_keeps_picture(&current_mode);
 }
 
 /* Presentation state band mode reads. */
@@ -111,6 +111,10 @@ void note_send_failure(esp_err_t err);
 bool send_fb_rows(int y0, int y1);
 #endif
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+extern int64_t dev_bytes_sent;
+#endif
+
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* gfx_debug.c: the overlays and counts gfx_debug.h switches and reads. */
 extern bool debug_overlay_on;
@@ -119,7 +123,6 @@ extern recti_t* leaf_rect_scratch;
 extern int dev_strips_sent_full;
 extern int dev_strips_sent_gathered;
 extern int dev_strips_sent_partial;
-extern int64_t dev_bytes_sent;
 
 static inline bool
 overlay_any_on(void) {

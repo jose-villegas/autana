@@ -79,12 +79,9 @@ The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
 bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
-`doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
-meshlet still; its normal run also writes that image beside the view GIFs.
 Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
-name of the scene's full renderer; the scene must also place `OBJECT_lite`,
-`OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
+name of the scene's fitted renderer.
 The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
 `tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
@@ -162,8 +159,9 @@ the WSL CUDA environment; the board stage consumes a board capture. Both use
 this writer.
 
 `--stage board` takes one `--capture PATH` per board run of
-`run_sponza_bakes_suite`, all from the same diagnostics image, and uses their median; `--check` reports without writing.
-It rejects missing variants, missing or repeated per-pose timings, failed
+`run_sponza_perf_suite`, all from the same diagnostics image, and uses the
+median of the bake's row; `--check` reports without writing.
+It rejects a capture without that row, missing or repeated per-pose timings, failed
 suites and mismatched build identities, and rewrites the board tables and
 `launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
 weights change. `--build-commit SHA` accepts a capture from that commit while
@@ -193,7 +191,7 @@ and lists every input.
 The fingerprint decides whether the stage runs, not what it remakes. Each
 start, reference set, fit and bake is kept in the bake cache under a key of its
 own inputs, so a run remakes only what changed. A key the run asks for twice is
-made once: the three fitted variants read one reference set.
+made once.
 
 | Result | Key | Folder in the bake cache |
 |---|---|---|
@@ -218,8 +216,8 @@ The doc-images GPU stage waits for active board locks, then takes heavy and runs
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
-`scripts/lib/local_schedule.py` stops a stage's process tree once no task or
-bake has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
+`scripts/lib/local_schedule.py` stops a stage's process tree once no task,
+bake or reference pose has finished for `GPU_STAGE_PROGRESS_SECONDS`, and in any case after
 `GPU_STAGE_HANG_SECONDS`. A dispatch starts at once and keeps the board-lock
 wait; `force` controls freshness independently.
 
@@ -316,21 +314,11 @@ Sweep result records are the resume markers. A worker failure prints its
 traceback, kills the other workers and fails the stage. SIGTERM kills the
 workers too; workers die with their parent.
 
-Reference poses share the loaded source through copy-on-write, and every
-pose's rays are fixed, so a pose renders the same in any worker. A source with
-bounced light renders its poses in the main process, where Mitsuba's threads use
-every core. Standalone reference renders size their pool from available memory.
-An admitted prepare sizes its pool from its own admission estimate
-(`PREPARE_BYTES`, or `SMOKE_PREPARE_BYTES` for a smoke prepare). At pool
-creation, live WSL and cgroup memory also cap the worker count, using the
-memory floors while retaining at least one worker. The pool logs the chosen
-worker count, both capacities and the parent's resident size.
-`worker reference_poses` reports `pose_peak_pss_bytes` and `pose_workers`.
-The PSS value sums each worker's maximum end-of-pose sample from Linux
-`smaps_rollup`; it is not a simultaneous pool high-water mark. PSS shares
-copy-on-write pages proportionally. Unavailable PSS samples report zero.
-Bake and visibility sampling are serial. Platforms without fork render
-poses serially.
+Reference poses render one after another in one process: on the GPU a launch
+fills the device, and on the CPU Mitsuba's threads trace one pose on every core.
+`worker reference_poses` reports `pose_peak_pss_bytes`, the process's largest
+end-of-pose PSS sample from Linux `smaps_rollup` (zero where unavailable).
+Bake and visibility sampling are serial.
 
 The rest belong to apps, and each app's `tools/README.md` says what its
 images show.
@@ -413,7 +401,8 @@ stateDiagram-v2
     Close --> [*]: give back the scene, pack and framebuffer
 ```
 
-If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+If [`render_host_open()`](../../launcher/tools/render/render_host.c) returns false,
+`exit_code` carries the command's result.
 
 `render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
 retain frame history in host and development builds. Saving can return NULL
@@ -452,7 +441,8 @@ through their recorded views.
 
 Each draw receives a `provider_frame_t`. The optional `frame_count` hook
 sets the default count after provider options. Optional `path_ms` and `seek` hooks
-expose a provider's path duration and camera cuts. The scene-file provider
+expose a provider's path duration and camera cuts; a run with `path_ms` prints
+`RENDER path_ms=<n>` on stderr after setup. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.
@@ -562,6 +552,14 @@ stands: `frame,ms`, its world position and rotation quaternion. A `--video`
 run writes them to `PATH.poses.csv` and refuses `--poses`, so every video can
 be held to the poses of the reference it is scored against.
 
+`--ids DIR` saves each frame's ID map and `entries.json` from an ID view such
+as `--view triangles`. It writes the pose log to `DIR/capture.poses.csv`, also
+when recording video, and refuses an explicit `--poses`.
+
+`--camera-poses FILE` drives the active camera from a source-frame poses file.
+Its size must match the upright raster size. Each pose supplies one frame.
+When provided, `--frames` must equal the pose count.
+
 ```sh
 ./launcher/tools/render/scenes/boot_anim_render_host.sh --video   # every scene's script takes this,
                                                      # writing <label>.avi beside <label>.bmp
@@ -569,9 +567,8 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
                                                      # checks frame count, size and rate agree
 ```
 
-Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
-field's 4 GB, so a run whose video would pass 1 GB is refused before
-anything is drawn, with the frame count
+A RIFF AVI 1.0 file keeps its size in a 32-bit field, so a run whose
+video would pass 4 GB is refused before anything is drawn, with the frame count
 that does fit stated in the refusal; `render_host_video_frames_fit()` gives
 an open run that count, and a run stepped past its `--frames` stops its
 video there with an error. `--video` never changes what a scene's

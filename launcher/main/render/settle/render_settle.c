@@ -3,6 +3,10 @@
 #include <string.h>
 
 #include "math/scalar/mathi.h"
+#include "math/signal/smooth.h"
+
+/* The perspective divide every pixel while refining. */
+#define RENDER_SETTLE_DIVIDE_PX 1
 
 void
 render_settle_forget(render_settle_t* s) {
@@ -12,7 +16,7 @@ render_settle_forget(render_settle_t* s) {
 
 static int
 band_row(int band, int height) {
-    return (int)((int64_t)band * height / RENDER_SETTLE_BANDS);
+    return band * height / RENDER_SETTLE_BANDS;
 }
 
 void
@@ -99,8 +103,7 @@ render_settle_done(render_settle_t* s, int height, render_rows_t rows, int32_t c
     const int64_t one_us = INT64_C(1) << RENDER_SETTLE_COST_FRAC_BITS;
     const int64_t measured = (int64_t)mathi_max(cost_us, 0) * one_us / (rows.end - rows.first);
     const int64_t sample = measured < one_us ? one_us : measured;
-    const int64_t learned =
-        s->row_us == 0 ? sample : s->row_us + ((sample - s->row_us) / RENDER_SETTLE_COST_WEIGHT_DIVISOR);
+    const int64_t learned = s->row_us == 0 ? sample : smooth_step_i64(s->row_us, sample, SMOOTH_RTT_DIVISOR);
     s->row_us = learned > INT32_MAX ? INT32_MAX : (int32_t)learned;
 }
 
