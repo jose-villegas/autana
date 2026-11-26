@@ -7,8 +7,8 @@
 #define HAPTIC_HZ             202
 #define HAPTIC_LIGHT_GAIN_PCT 30
 #define HAPTIC_FIRM_GAIN_PCT  60
-/* Shortest pulse whose firm shake reaches the long tone's (docs/haptics/README.md);
- * light shares it, so the strengths differ by gain only. */
+/* Firm is the shortest pulse whose median shake reaches 90% of the 400 ms tone's
+ * in every run (docs/haptics/README.md). Light shares its duration at lower gain. */
 #define HAPTIC_LIGHT_MS       100
 #define HAPTIC_FIRM_MS        100
 
