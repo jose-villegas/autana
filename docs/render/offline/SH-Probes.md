@@ -32,7 +32,7 @@ matching the mesh frame.
 ```mermaid
 flowchart LR
     grid[Grid] --> classify[Classify] --> trace[Trace] --> project[Project]
-    project --> sun[Add sun] --> dilate[Dilate] --> encode[Encode]
+    project --> direct[Add direct lights] --> dilate[Dilate] --> encode[Encode]
 ```
 
 Only the requesting import's source is traced.
@@ -41,8 +41,8 @@ ProbeViews supplies the jittered cell grid, classification and relocation.
 The record addresses regular cell centres; tracing uses relocated positions.
 Inside cells receive synchronous six-neighbour dilation from outside cells.
 
-Paths include direct sky and baked sunlight bounced at the surface bake's depth.
-Realtime lights contribute neither paths nor analytic sun terms.
+Paths include direct sky and the baked sun, point and spot lights, bounced at the surface bake's depth.
+Realtime lights contribute neither paths nor direct terms.
 Ambient, artistic indirect intensity, tone mapping and AO do not alter transport.
 
 For each RGB channel, $N$ path directions $\omega$ project as
@@ -51,11 +51,17 @@ For each RGB channel, $N$ path directions $\omega$ project as
 c_{lm} = \frac{4\pi}{N} \sum_{\omega} L(\omega)\, Y_{lm}(\omega)
 ```
 
-A directional sun contributes separately, with one shadow ray per outside probe and sun:
+No path can hit a sun, point or spot light, so each adds its light straight
+to every outside probe. It takes one shadow ray per probe and light, no farther
+than a point or spot light, and none where that light's falloff is zero:
 
 ```math
-c_{lm}^{\text{sun}} = \pi \cdot \text{colour} \cdot \text{intensity} \cdot \text{visibility} \cdot Y_{lm}(\omega_{\text{sun}})
+c_{lm}^{\text{direct}} = \pi \cdot \text{colour} \cdot \text{intensity} \cdot \text{falloff} \cdot \text{visibility} \cdot Y_{lm}(\omega_{\text{light}})
 ```
+
+The falloff is 1 for a sun and the range window and cone of
+[Bake-Method.md](Bake-Method.md#point-and-spot-lights) for a point or spot
+light; a probe has no normal, so there is no cosine.
 
 The SH basis follows Sloan 2008<sup>[[129]](../../Citations.md#sloan-2008)</sup>;
 the separation of lighting coefficients and diffuse convolution follows
@@ -63,6 +69,6 @@ Ramamoorthi and Hanrahan 2001<sup>[[128]](../../Citations.md#ramamoorthi-hanraha
 These are radiance coefficients; a diffuse consumer applies the cosine kernel.
 
 The bake log reports cells, inside cells, wall time, bytes, primary paths
-($`n_{\text{outside}} \cdot n_{\text{directions}} \cdot n_{\text{spp}}`$) and sun shadow rays. Classification rays and
+($`n_{\text{outside}} \cdot n_{\text{directions}} \cdot n_{\text{spp}}`$) and the direct lights' shadow rays. Classification rays and
 secondary bounces are excluded from the primary-path count, as with reference
 bake planning.

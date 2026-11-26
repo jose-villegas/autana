@@ -83,18 +83,18 @@ or skinned renderer.
 | `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `seal_views`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
 | `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
-| `light` | `type`, `color`, `intensity`; `mode` | A directional light; see [light](#light). |
+| `light` | `type`, `color`, `intensity`; `mode`; `range`, `inner_angle`, `outer_angle` | A directional, point or spot light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
 ## What the scene must carry
 
 | A scene with | Must carry | May also carry |
 |---|---|---|
-| a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility and `seal_views` | `[indirect]`, when a renderer bakes `[bake].indirect` |
+| a baked renderer (`bake = true`) | a light (a directional, point or spot object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility and `seal_views` | `[indirect]`, when a renderer bakes `[bake].indirect` |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
-placed renderer reads; `[sky]` is read only by a bake.
+placed renderer reads; `[sky]` and point and spot lights are read only by a bake.
 
 ## Option reference
 
@@ -374,20 +374,58 @@ refuse clips that break this rule.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `light` | `type`, `color`, `intensity`; `mode` | A directional light with realtime or baked mode. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity`; `mode`; `range`, `inner_angle`, `outer_angle` | A directional light, realtime or baked; a point or spot light, baked. | `mode = "realtime"`; the rest required. | [light](#light) |
 
 #### light
 
 `mode` is `"realtime"` by default or `"baked"`. Realtime lights stay out of
-surface and probe bakes. A baked light contributes at runtime only when the
-scene has no probes.
+surface and probe bakes. A baked directional light contributes at runtime
+only when the scene has no probes.
 
-Only directional lights are scene objects; `point` and `spot` are reserved.
-Its direction toward the light is the object's +Y axis turned by its rotation.
-Position and scale do not matter. The lights a bake sees are the directional
-objects with `mode = "baked"` in file order, then `[sky]`, then `[ambient]`. The sun is a point
-source, so its shadows are hard. A double-sided face is lit on both sides and
-keeps the brighter.
+| `type` | Placed by | Keys besides `color`, `intensity` | Modes |
+|---|---|---|---|
+| `directional` | its rotation: the light shines from the object's +Y axis turned by it | none | realtime, baked |
+| `point` | its position | `range` | baked |
+| `spot` | its position, shining along its −Y axis turned by its rotation | `range`, `inner_angle`, `outer_angle` | baked |
+
+```toml
+[[objects]]
+name = "lamp"
+position = [0.0, 2.5, 0.0]
+
+[objects.light]
+type = "spot"
+mode = "baked"
+color = [1.0, 0.9, 0.7]
+intensity = 4.0
+range = 6.0          # world units; the light reaches zero there
+inner_angle = 20.0   # degrees from the axis: full light inside
+outer_angle = 35.0   # degrees: no light outside
+```
+
+![A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone](../../images/render/light-point-spot.png)
+
+A point or spot light falls off by inverse square to zero at `range`; a spot
+fades from `inner_angle` to `outer_angle`. The formula is in
+[Bake-Method.md](../offline/Bake-Method.md#point-and-spot-lights). The keys follow
+glTF's punctual lights<sup>[[147]](../../Citations.md#khr-lights-punctual)</sup>.
+
+| Rule | Refused otherwise |
+|---|---|
+| a point or spot light is `mode = "baked"` | realtime: only directional lights light movers at runtime |
+| `range` > 0 | zero or negative |
+| 0 ≤ `inner_angle` < `outer_angle` ≤ 90 | any other pair |
+| a point or spot light has no `parent` | a parent: the bake places a light by its own transform |
+| a point or spot light is read by a baked renderer | a scene with no baked renderer: nothing reads the light |
+
+Point and spot lights stay out of the scene's runtime lights. Their light is in
+the baked colours, and skinned renderers see it through the scene's probes; a
+scene without probes gives them none of it.
+
+A directional light's position and scale do not matter. The lights a bake sees
+are the light objects with `mode = "baked"` in file order, then `[sky]`, then
+`[ambient]`. Every light from an object is a point source, so its shadows are
+hard. A double-sided face is lit on both sides and keeps the brighter.
 
 #### seal_views
 

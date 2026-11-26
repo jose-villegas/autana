@@ -341,6 +341,9 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/re
 # The import's seam policies: a pillar on a floor through the importer's contact graph and simplify pass.
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT/render" > "$WORK/contact_figures.log" 2>&1
 # --orphans scans this runner: import-mesh-contact.png
+# A point and a spot light baked into a floor, a box and a pillar, drawn by the host renderer.
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/light_figures.py --out "$OUT/render" > "$WORK/light_figures.log" 2>&1
+# --orphans scans this runner: light-point-spot.png
 
 # The baked mesh's figures: the demo scene's delivered mesh, its clusters and tree, and the clusterizer's build.
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$tree_stem" --out "$OUT/render" \
