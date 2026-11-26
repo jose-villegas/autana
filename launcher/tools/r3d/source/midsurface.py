@@ -7,7 +7,7 @@ from typing import NamedTuple
 import numpy as np
 
 from r3d.geometry import (
-    WELD_TOLERANCE, edge_uses, face_normals, nearest_triangles, triangle_search, vertex_normals, weld_map,
+    WELD_TOLERANCE, edge_uses, face_normals, halve_toward, nearest_triangles, triangle_search, vertex_normals, weld_map,
 )
 
 # A pair's skins face each other: the dot of the two normals is below this.
@@ -102,28 +102,31 @@ def untangled(p, tri_v, origin, shift, moved_tris, rows, *, shorten=None):
     """(points, rows still turned over): `p` with each moved point (row len(p) + k of `moved_tris`, the triangles
     `tri_v` moved) at origin[k] + shift[k]. Where a move turns one of `rows` over, its corners take the mean move
     of the triangles of `rows` around them, as Laplacian smoothing does (Sorkine 2005), for up to UNTANGLE_ROUNDS
-    rounds. On rows marked by `shorten`, shortening the remaining moves can keep tight folds from turning over."""
+    rounds. On rows marked by `shorten`, halving the remaining moves (halve_toward) can keep tight folds from turning
+    over."""
     shift = np.array(shift, dtype=np.float64, copy=True)
     old = p[tri_v]
     corners = moved_tris[rows] - len(p)
     count = np.zeros(len(shift))
     np.add.at(count, corners.reshape(-1), 1)
-    for done in range(2 * UNTANGLE_ROUNDS + 1):
-        points = np.concatenate([p, origin + shift])
-        flipped = rows[turned(old, points[moved_tris], rows)]
-        if not len(flipped) or done == 2 * UNTANGLE_ROUNDS:
+
+    def turned_rows(move):
+        return rows[turned(old, np.concatenate([p, origin + move])[moved_tris], rows)]
+
+    for _ in range(UNTANGLE_ROUNDS):
+        flipped = turned_rows(shift)
+        if not len(flipped):
             break
-        if done < UNTANGLE_ROUNDS:
-            stuck = np.unique(moved_tris[flipped] - len(p))
-            total = np.zeros_like(shift)
-            np.add.at(total, corners.reshape(-1), np.repeat(shift[corners].mean(axis=1), 3, axis=0))
-            shift[stuck] = total[stuck] / count[stuck, None]
-        else:
-            retry = flipped[shorten[flipped]] if shorten is not None else []
-            if not len(retry):
-                break
-            shift[np.unique(moved_tris[retry] - len(p))] /= 2
-    return points, flipped
+        stuck = np.unique(moved_tris[flipped] - len(p))
+        total = np.zeros_like(shift)
+        np.add.at(total, corners.reshape(-1), np.repeat(shift[corners].mean(axis=1), 3, axis=0))
+        shift[stuck] = total[stuck] / count[stuck, None]
+    if shorten is None:
+        flipped = turned_rows(shift)
+    else:
+        flipped = halve_toward(shift, np.zeros_like(shift), turned_rows,
+                               lambda left: np.unique(moved_tris[left[shorten[left]]] - len(p)), UNTANGLE_ROUNDS)
+    return np.concatenate([p, origin + shift]), flipped
 
 
 def collapse(p, tri_v, far, piece, far_query, *, near=None):
