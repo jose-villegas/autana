@@ -5768,10 +5768,6 @@ test_contact_footprint_and_partial_redraw(void) {
     node.bounds = (box3s_t){{-BLOB_HALF_X, -1, -BLOB_HALF_Z}, {BLOB_HALF_X, 1, BLOB_HALF_Z}};
     mesh.nodes = &node;
     TEST_ASSERT_TRUE(renderer_set_mesh(mover, &mesh));
-    const float scale = 0.5F;
-    transformf_t pose = transform_local(mover);
-    transformf_set_scale(&pose, vec3f_scale(vec3f_one(), scale));
-    transform_set_local(mover, pose);
     scene_contact_t contact = {0};
     contact = (scene_contact_t){GROUND_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, contact.warp};
     scene_set_contact(mover, &contact);

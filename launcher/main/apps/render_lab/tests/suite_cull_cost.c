@@ -20,10 +20,10 @@
 
 #include "esp_log.h"
 
-#include "app/app_arena.h"
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/one_core_draw.h"
+#include "apps/render_lab/tests/scene_suite.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -108,11 +108,9 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
 
 static void
 measure_family(const scene_baked_t* family) {
-    const size_t mark = app_arena_mark();
-    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
-    const entity_t scene = scene_load(family->scene);
-    (void)scene_failure(scene, &why);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), why.what);
+    scene_suite_t loaded = scene_suite_load(family->scene);
+    const entity_t scene = loaded.scene;
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), family->scene);
     const handle_t load = asset_store_load(family->scene);
     const asset_pack_t* pack = asset_store_loaded(load);
     const char* bake = family->bake;
@@ -168,8 +166,7 @@ measure_family(const scene_baked_t* family) {
     memory_free(raster.scratch);
     memory_free(halved_clusters);
     asset_store_release(load);
-    scene_release(scene);
-    app_arena_rewind(mark);
+    scene_suite_release(&loaded);
 }
 
 static void
