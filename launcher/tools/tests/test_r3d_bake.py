@@ -109,9 +109,9 @@ class SplitTests(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-class StepShorteningTests(unittest.TestCase):
-    def test_shorten_step_untangles_a_numpy_sliver(self):
-        from r3d.step_projection import shorten_step
+class HalveTowardTests(unittest.TestCase):
+    def test_halve_toward_untangles_a_numpy_sliver(self):
+        from r3d.geometry import halve_toward
 
         height = 0.02
         start = np.array([[-1.0, 0, 0], [1.0, 0, 0], [0.0, height, 0]])
@@ -122,33 +122,25 @@ class StepShorteningTests(unittest.TestCase):
         tip = triangles[0, -1]
         step[tip, 1] = -1.5 * height
 
-        def turned(move, _changed):
+        def turned(move):
             return np.flatnonzero(z_normals(start + move, triangles) <= 0)
 
         def corners(rows):
             indices = np.unique(triangles[rows])
             return indices[movable[indices]]
 
-        self.assertEqual(len(turned(step, None)), 1)
         expected = step / 2
-        self.assertEqual(len(shorten_step(step, previous, turned, corners, rounds=1)), 0)
+        self.assertEqual(len(halve_toward(step, previous, turned, corners, rounds=1)), 0)
         np.testing.assert_array_equal(step, expected)
 
-        step[:] = expected * 2
-        self.assertEqual(len(shorten_step(step, previous, turned, corners, rounds=0)), 0)
-        np.testing.assert_array_equal(step, previous)
+        proposed = expected * 2
+        step[:] = proposed
+        np.testing.assert_array_equal(halve_toward(step, previous, turned, corners, rounds=0), [0])
+        np.testing.assert_array_equal(step, proposed)
 
-        # Restoring the first tip turns its neighbor until that neighbor's edge is restored too.
-        start = np.concatenate([start, [[1, 2 * height, 0], [-1, 2 * height, 0]]])
-        triangles = np.array([[0, 1, 2], [3, 4, 2]])
-        movable = np.array([False, False, True, True, True])
-        previous = np.zeros_like(start)
-        step = previous.copy()
-        step[tip, 1] = -2 * height
-        step[3:, 1] = -1.5 * height
-        np.testing.assert_array_equal(turned(step, None), [0])
-        self.assertEqual(len(shorten_step(step, previous, turned, corners, rounds=0)), 0)
-        np.testing.assert_array_equal(step, previous)
+        movable[tip] = False
+        np.testing.assert_array_equal(halve_toward(step, previous, turned, corners, rounds=1), [0])
+        np.testing.assert_array_equal(step, proposed)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

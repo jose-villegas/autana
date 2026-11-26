@@ -36,7 +36,7 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
-from r3d.geometry import closest_point_on_triangles, grouped_indices, triangle_areas  # noqa: E402
+from r3d.geometry import closest_point_on_triangles, halve_toward, triangle_areas  # noqa: E402
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
@@ -44,7 +44,6 @@ from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E40
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
-from r3d.step_projection import shorten_step  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -54,8 +53,8 @@ FAR = 1.0e5
 # The fit refines a shape in place: no free point leaves its start by more than this many of its shortest start
 # edges (shortest_edge), however rarely the colour views see it; a seam-held point follows its target (hold_seams).
 MOVE_REACH = 1.0
-# A step can shrink to 1/256 of its proposed move before rollback, bounding the repair work on slivers.
-FLIP_HALVING_ROUNDS = 8
+# Rounds of halving a turned triangle's corner moves toward the last step before they are put back.
+TURNED_HALVING_ROUNDS = 8
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
@@ -251,67 +250,47 @@ def hold_seams(points: "torch.Tensor", holds: SeamHolds, start: "torch.Tensor") 
     return points.index_put((held,), _seam_targets(points, corners, barycentric))
 
 
-def _orientation_guard(tri_points, start, step_scale, holds, held_positions, delta):
-    """Build a projection for the single-sided rest faces, including moving seam targets."""
+def _turned_guard(tri_points, holds, held_positions):
+    """Keep single-sided faces facing their seam-held start."""
     import torch
 
+    start = held_positions()
     device = start.device
     faces = torch.as_tensor(tri_points, device=device)
-    start_normals = _triangle_cross(held_positions(delta)[faces])
+    start_normals = _triangle_cross(start[faces])
     # A zero-area start face has no reference direction.
     magnitude = start_normals.abs().amax(dim=1)
     oriented = magnitude > 0
     start_normals /= torch.where(oriented, magnitude, 1)[:, None]
 
-    # Index the faces by the free points that drive them. A held corner moves with its target.
     no_index = -1
     drivers = np.arange(len(start), dtype=np.int64)[:, None]
-    hold_index = np.full(len(start), no_index)
     if holds is not None and len(holds.points):
         drivers = np.pad(drivers, ((0, 0), (0, holds.corners.shape[1] - 1)), constant_values=no_index)
         drivers[holds.points] = holds.corners
-        hold_index[holds.points] = np.arange(len(holds.points))
     if holds is not None:
         drivers[holds.pinned] = no_index
         drivers[np.isin(drivers, holds.pinned)] = no_index
     dependencies = drivers[tri_points].reshape(len(tri_points), -1)
-    incidence = grouped_indices(dependencies.reshape(-1))
-    incidence.pop(no_index, None)
+
+    def turned(candidate):
+        return torch.where(oriented & ((_triangle_cross(held_positions(candidate)[faces]) * start_normals).sum(1) <= 0))[0]
 
     def movable_corners(rows):
         indices = np.unique(dependencies[rows.cpu().numpy()])
         return torch.as_tensor(indices[indices != no_index], device=device)
 
-    def project(candidate, previous):
-        positions = held_positions(candidate)
-        flipped = None
+    def restore_turned(candidate, previous):
+        rows = halve_toward(candidate, previous, turned, movable_corners, TURNED_HALVING_ROUNDS)
+        while len(rows):
+            indices = movable_corners(rows)
+            indices = indices[(candidate[indices] != previous[indices]).any(1)]
+            if not len(indices):
+                raise ValueError("fit still has a turned single-sided face after restoring its corner moves")
+            candidate[indices] = previous[indices]
+            rows = turned(candidate)
 
-        def turned_rows(_candidate, changed):
-            nonlocal flipped
-            if changed is None:
-                dots = (_triangle_cross(positions[faces]) * start_normals).sum(dim=1)
-                flipped = torch.where(oriented & (dots <= 0))[0]
-                return flipped
-
-            changed_points = changed.cpu().numpy()
-            affected = np.unique(np.concatenate([incidence[p] for p in changed_points]) // dependencies.shape[1])
-            positions[changed] = start[changed] + step_scale[changed] * candidate[changed]
-            if holds is not None and len(holds.points):
-                held = np.unique(hold_index[tri_points[affected]])
-                held = held[held != no_index]
-                indices = torch.as_tensor(holds.points[held], device=device)
-                corners = torch.as_tensor(holds.corners[held], device=device)
-                weights = torch.as_tensor(holds.barycentric[held], dtype=start.dtype, device=device)
-                positions[indices] = _seam_targets(positions, corners, weights)
-            rows = torch.as_tensor(np.union1d(affected, flipped.cpu().numpy()), device=device)
-            dots = (_triangle_cross(positions[faces[rows]]) * start_normals[rows]).sum(dim=1)
-            flipped = rows[oriented[rows] & (dots <= 0)]
-            return flipped
-
-        if len(shorten_step(candidate, previous, turned_rows, movable_corners, FLIP_HALVING_ROUNDS)):
-            raise ValueError("fit could not restore the orientation of a single-sided face")
-
-    return project
+    return restore_turned
 
 
 def triangle_edges(points, tris, vertex_point):
@@ -1046,8 +1025,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
     single_sided = vertex_point[tris[~np.asarray(double, dtype=bool)]]
     with torch.no_grad():
-        project_step = (_orientation_guard(single_sided, start, step_scale, holds, held_positions, delta)
-                        if len(single_sided) else None)
+        restore_turned = _turned_guard(single_sided, holds, held_positions) if len(single_sided) else None
 
     copy_points, copy_colours = (None, None) if copies is None else (
         torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))
@@ -1166,7 +1144,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                                                      sample_scale, surface_margin)
         loss = error + laplacian * drift + cost_weight * predicted + surface + front_weight * front + depth_weight * depth
         loss.backward()
-        if project_step is not None:
+        if restore_turned is not None:
             previous_delta = delta.detach().clone()
         adam.step()
         schedule.step()
@@ -1175,8 +1153,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             # A point moves step_scale * delta, so a cap of MOVE_REACH shortest edges bounds its row of delta.
             length = delta.norm(dim=1, keepdim=True)
             delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
-            if project_step is not None:
-                project_step(delta, previous_delta)
+            if restore_turned is not None:
+                restore_turned(delta, previous_delta)
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:

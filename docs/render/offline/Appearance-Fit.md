@@ -93,9 +93,12 @@ and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 It keeps every triangle: one no coverage view shows may still face a camera they miss.
 A border point within the seam tolerance that the hold rule refuses stays at its start.
 
-A hole pixel shows no fitted surface where the reference differs from the clear
-colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
-more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
+The fit, device and reference show the scene's clear colour where they draw nothing.
+A hole pixel shows no fitted surface where the reference differs from that colour
+by more than `HOLE_DE`.
+
+The closure gate rejects held-out hole growth of more than `CLOSURE_GROWTH` of
+the held-out pixels beyond the start's holes.
 
 ## Cost model
 
@@ -172,12 +175,10 @@ $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
 clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
 shortest start edge from its start (a seam-held point follows its target).
 
-The fit shortens steps that would turn a single-sided rest triangle at least
-90 degrees from its start orientation after seam holds. This follows the
-safe-step principle of Smith and Schaefer<sup>[[149]](../../Citations.md#smith-schaefer-2015)</sup>.
-
-Where nothing is drawn the renderer shows the scene's clear colour, as the
-device and reference do.
+After seam holds, a single-sided triangle is turned if it faces at least 90 degrees
+from its start normal. Following Smith and Schaefer<sup>[[149]](../../Citations.md#smith-schaefer-2015)</sup>,
+the fit halves turned triangles' corner moves toward the last step for up to
+`TURNED_HALVING_ROUNDS` rounds, then puts back the corner moves of any still turned.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
 import at its writer and is not lit again. A fit is judged on held-out poses by
@@ -280,7 +281,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, within `MOVE_REACH` of each vertex's shortest start edge from the start. The fit halves turned single-sided triangles' corner moves toward the last step for up to `TURNED_HALVING_ROUNDS` rounds, then puts back the corner moves of any still turned. |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
