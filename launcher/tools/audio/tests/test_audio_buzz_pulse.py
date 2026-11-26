@@ -2,15 +2,30 @@
 import importlib.util
 import io
 from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location("buzz", Path(__file__).resolve().parents[1] / "audio_buzz_sweep.py")
 buzz = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(buzz)
+from autana_runner import AutanaRunError
 
 
 class PulseSweepTests(unittest.TestCase):
+    def test_short_pulse_window_uses_board_rejection(self):
+        hz, window, volume, pulse = "202", "30", "30", "30"
+        tone = ("tone", hz, window, volume, "--pulse", pulse, "--json")
+        error = AutanaRunError(1, ("autana", *tone), stderr="TONE usage")
+        with tempfile.TemporaryDirectory() as directory:
+            args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", hz, "--ms", window,
+                                            "--volumes", volume, "--pulse", pulse,
+                                            "--out", str(Path(directory) / "capture.txt")])
+            with mock.patch.object(buzz, "autana_run", side_effect=("{}", "", error)) as run:
+                with self.assertRaisesRegex(AutanaRunError, "TONE usage"):
+                    buzz.capture(args)
+                run.assert_called_with(args.autana, *tone)
+
     def test_pulse_points(self):
         args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "202", "--volumes", "30,60",
                                         "--pulse", "30,60,100,200", "--runs", "1", "--loud", "0"])

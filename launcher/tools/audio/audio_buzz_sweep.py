@@ -12,17 +12,14 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_drc_sweep import numbers
-from build.c_header import read_define
 from autana_runner import autana_run, record_line
 
 TONE_PARSE = ROOT / "launcher/main/sound/console/console_tone_parse.h"
 PULSE_WINDOW_MAX_MS = read_define(TONE_PARSE, "CONSOLE_TONE_PULSE_WINDOW_MAX_MS")
-IMU = ROOT / "launcher/main/input/motion/imu.h"
-BUZZ_HZ = read_define(IMU, "IMU_ODR_BASE_HZ") / (1 << read_define(IMU, "IMU_BUZZ_ODR_CODE"))
-MS_PER_SECOND = read_define(ROOT / "launcher/packages/math/include/math/scalar/units.h", "MATH_MS_PER_S")
-PULSE_WINDOW_MIN_MS = int(read_define(IMU, "IMU_FIFO_SAMPLES") * MS_PER_SECOND / BUZZ_HZ) + 1
 CAPTURE = Path("docs/audio/data/audio_buzz_capture.txt")
 FIRST_HZ, LAST_HZ, STEP_HZ = 20, 300, 10
 # Safety: the speaker is rated 1 W. Long, loud, low tones are what push a small cone past its travel.
@@ -114,10 +111,11 @@ def sweep(args, output, frequencies, shakes):
 def capture(args):
     if not 0 < args.ms <= MAX_MS:
         raise ValueError(f"tone length must be 1..{MAX_MS} ms")
-    if args.pulse is not None and (not args.pulse or not PULSE_WINDOW_MIN_MS <= args.ms <= PULSE_WINDOW_MAX_MS):
-        raise ValueError(f"pulse measurement window must be {PULSE_WINDOW_MIN_MS}..{PULSE_WINDOW_MAX_MS} ms")
-    if args.pulse and any(not 0 < pulse <= min(args.ms, MAX_MS) for pulse in args.pulse):
-        raise ValueError(f"pulse length must be 1..{min(args.ms, MAX_MS)} ms")
+    if args.pulse is not None:
+        if args.ms > PULSE_WINDOW_MAX_MS:
+            raise ValueError(f"pulse measurement window must be at most {PULSE_WINDOW_MAX_MS} ms")
+        if not args.pulse or any(not 0 < pulse <= args.ms for pulse in args.pulse):
+            raise ValueError(f"pulse length must be 1..{args.ms} ms")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         output.write(f"# autana --json replies on {args.board}, {date.today()}, surface={args.surface}, "
