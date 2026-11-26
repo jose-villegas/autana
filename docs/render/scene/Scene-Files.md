@@ -219,6 +219,7 @@ normal_weight = 1.0
 | `colour_set` | nonnegative integer | Selects an external LCOL set on a colourless mesh. | Mesh-owned colours. | [colour_set](#colour_set) |
 | `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
+| `visibility: probes` | `source = "probes"`; `every_ms`, `size` with a camera path; `samples`, `margin` | Keeps triangles first seen from its fit's probe faces, and from the camera path when there is one. | Off. | [visibility: probes](#visibility-probes) |
 | `seal_views` | `every_ms`, `size` | Adds the camera path's frames to the views a sealed import is checked from. | Off: probes in the camera's region alone. | [seal_views](#seal_views) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
@@ -284,6 +285,16 @@ drawn face are kept too, since the depth test picks among coincident faces.
 The views are square, as wide as the longer side of `size`, so the panel held
 either way up is covered; `margin` and the pose spacing cover geometry that
 enters between samples.
+
+#### visibility: probes
+
+The probe source keeps what the renderer's fit trains on from its probes
+([probes](../offline/Mesh-Import.md#probes)): the same training faces, picked
+beside the fit's coverage poses, drawn by the camera path's rule above. It
+needs a `fit` and `geometry.probes` on the import. Probes are the base, and a
+known path adds to them. When the scene camera has a path, `every_ms` and
+`size` sample it as for `camera_path`, and those triangles are kept too.
+Without a path, both keys are refused.
 
 #### shading: smooth
 

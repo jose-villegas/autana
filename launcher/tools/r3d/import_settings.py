@@ -238,7 +238,7 @@ def load_variant(value, steps, where):
     return variant
 
 
-VISIBILITY_SOURCES = ("camera_region", "camera_path")
+VISIBILITY_SOURCES = ("camera_region", "camera_path", "probes")
 
 
 def load_visibility(table, where="visibility"):
@@ -247,20 +247,29 @@ def load_visibility(table, where="visibility"):
     tries per triangle); `camera_path` keeps what any pose of the scene
     camera's path sees at `size` pixels, sampled every `every_ms`, with
     `samples` squared rays per pixel and the view widened by `margin`
-    pixels on each side. Each mesh renderer carries its own."""
+    pixels on each side. `probes` keeps what the import's probe faces see
+    (geometry.probes), and the camera path's poses too when the scene camera
+    has a path: `every_ms` and `size` sample it, and are refused without one.
+    Each mesh renderer carries its own."""
     source = text(table.get("source", "camera_region"), f"{where}.source")
     if source not in VISIBILITY_SOURCES:
         raise SettingsError(f"{where}.source must be one of {', '.join(VISIBILITY_SOURCES)}")
     if source == "camera_region":
         check_keys(table, ("rounds",), where, optional=("source",))
         return SimpleNamespace(source=source, rounds=count(table["rounds"], f"{where}.rounds"))
-    check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
-    size = pixel_size(table["size"], f"{where}.size")
+    if source == "probes":
+        check_keys(table, ("source",), where, optional=("every_ms", "size", "samples", "margin"))
+        if ("every_ms" in table) != ("size" in table):
+            raise SettingsError(f"{where}.every_ms and {where}.size sample the camera path together")
+    else:
+        check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
     margin = integer(table.get("margin", 0), f"{where}.margin")
     if margin < 0:
         raise SettingsError(f"{where}.margin cannot be negative")
-    return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
-                           size=size,
+    sampled = "every_ms" in table
+    return SimpleNamespace(source=source,
+                           every_ms=count(table["every_ms"], f"{where}.every_ms") if sampled else None,
+                           size=pixel_size(table["size"], f"{where}.size") if sampled else None,
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
@@ -469,9 +478,11 @@ def load_import_settings(path):
         names = [variant.name for variant in variants]
         if len(set(names)) != len(names):
             raise SettingsError("variants names must be unique")
-        budgets = [variant.triangles for variant in variants]
-        if len(set(budgets)) != len(budgets):
-            raise SettingsError("variants with the same triangle budget would produce the same mesh")
+        # Everything but its name shapes a variant's mesh: its triangle budget, ceiling and copy scale.
+        shapes = [repr(sorted((key, value) for key, value in vars(variant).items() if key != "name"))
+                  for variant in variants]
+        if len(set(shapes)) != len(shapes):
+            raise SettingsError("variants with the same settings would produce the same mesh")
     else:
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
@@ -897,12 +908,27 @@ def load_scene(path):
                                   ("camera region", region is not None, "camera_region" in sources)):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
-        if present and not needed:
+        # Probes spread through the region when there is one, the source's bounds without.
+        read = needed or (name == "camera region" and any(item.renderer.fit and item.settings.fit.probes
+                                                              for item in jobs))
+        if present and not read:
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
     if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
         raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
+    for item in jobs:
+        visibility = item.renderer.visibility
+        if visibility is None or visibility.source != "probes":
+            continue
+        where = f"scene.objects {item.object.name!r} mesh_renderer.visibility"
+        if item.renderer.fit is None or item.settings.fit.probes is None:
+            raise SettingsError(f"{where}.source probes keeps what its fit's probe faces show: it needs mesh_renderer.fit "
+                                "and its import's geometry.probes")
+        if (visibility.every_ms is None) != (camera_path is None):
+            raise SettingsError(f"{where}.every_ms and size are " + (
+                "required: the probes add the scene camera path's poses" if camera_path is not None else
+                "read by nothing: the scene camera has no path"))
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "

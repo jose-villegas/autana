@@ -190,6 +190,62 @@ class ImportWiringTests(unittest.TestCase):
         by_path.assert_called_once_with("p", "t", "d", "i", ["pose"], 224, 224, 0.62 * 224 / 184, 6.0, 3, 8)
         by_region.assert_called_once_with("p", "t", "d", "i", 4, "rng", [0, 0, 0], [1, 1, 1])
 
+    def test_the_probe_start_keeps_what_the_faces_its_fit_trains_on_show_and_the_path(self):
+        from r3d import reference_set
+        from r3d.views import probes as probe_views
+        from r3d.views.probes import ProbeViews
+
+        # A sampled pose carries its spacing, so faces chosen beside the visibility's own path (every 500 ms)
+        # instead of the fit's coverage poses (every 20 ms) would differ.
+        def sampled(animation, node, every_ms, width, height, lens, near):
+            return width, height, lens, near, [np.array([float(every_ms), 0.0, 0.0, 0.0, 0.0, -1.0])]
+
+        picked = []
+
+        def select(positions, tris, region, near, spacing, seed, path=None, **options):
+            picked.append(path)
+            beside = 0.0 if path is None else float(path[3][0][0])
+            return ProbeViews([np.array([beside, 1.0, 2.0, 1.0, 0.0, 0.0])], [], {}, 1.0)
+
+        traced = []
+
+        def trace(p, t, d, i, rows, width, *rest):
+            traced.append((width, [list(row) for row in rows]))
+            return np.array([width == 64, width != 64, False])
+
+        fit = SimpleNamespace(size=(184, 224), coverage_every_ms=20, train_every_ms=1000, held_out_every_ms=5000)
+        settings = SimpleNamespace(fit=SimpleNamespace(probes=SimpleNamespace(spacing=None, face=64)), alpha_keep=None)
+        visibility = SimpleNamespace(source="probes", every_ms=500, size=(184, 224), samples=2, margin=1)
+        source = SimpleNamespace(p=np.zeros((3, 3), np.float32), tri_v=np.array([[0, 1, 2]]))
+        renderer_module = SimpleNamespace(render_sets=lambda *args, **kwargs: None)
+        for path in (SimpleNamespace(animation=pathlib.Path("fly.anim.toml"), clip="fly", node="camera"), None):
+            with self.subTest(path=path is not None), tempfile.TemporaryDirectory() as directory:
+                picked.clear(), traced.clear()
+                camera = SimpleNamespace(half_fov_short_tan=0.62, near_z=6.0, region=None, path=path)
+                scene_ = SimpleNamespace(camera=SimpleNamespace(component=camera), lights=[], indirect=None,
+                                         tonemap_white=1.0)
+                job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(fit=fit), bake=None)
+                with mock.patch.object(mesh_source, "sample_camera_path", side_effect=sampled), \
+                        mock.patch.object(mesh_source, "load_source", return_value=source), \
+                        mock.patch.object(probe_views, "select", side_effect=select), \
+                        mock.patch.object(mesh_import, "visible_from_path", side_effect=trace), \
+                        mock.patch.dict(sys.modules, {"r3d.reference_render": renderer_module}):
+                    seen = mesh_import.visible_triangles(visibility, scene_, "p", "t", "d", "i", "rng", job)
+                    reference_set.prepare_references(reference_set.reference_inputs(job, scene_),
+                                                     pathlib.Path(directory))
+                    written = (pathlib.Path(directory) / reference_set.PROBE_TRAINING[0]).read_text()
+                # One pick for the start, one for the reference set, beside the same coverage poses.
+                self.assertEqual(len(picked), 2)
+                self.assertEqual(repr(picked[0]), repr(picked[1]))
+                face = traced[-1]
+                self.assertEqual(face[0], 64)
+                self.assertEqual(face[1], [[20.0 if path else 0.0, 1.0, 2.0, 1.0, 0.0, 0.0]])
+                self.assertIn("pose %g 1 2 1 0 0" % (20.0 if path else 0.0), written)
+                # The path adds what its own poses (the visibility's spacing) show.
+                self.assertEqual(seen.tolist(), [True, path is not None, False])
+                if path is not None:
+                    self.assertEqual(traced[0][1][0][0], 500.0)
+
     @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
     def test_the_camera_path_is_the_scene_clip_sampled_at_the_step_s_size_and_lens(self):
         with tempfile.TemporaryDirectory() as directory:

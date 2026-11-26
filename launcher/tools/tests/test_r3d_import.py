@@ -395,6 +395,31 @@ class SceneTests(unittest.TestCase):
         self.lit_rejects("visibility", 'visibility = { source = "camera_path", rounds = 2 }\n')
         self.lit_rejects("margin cannot be negative", PATH.replace("margin = 2", "margin = -1"))
 
+    def test_probe_visibility_needs_import_probes_and_samples_the_path_only_when_there_is_one(self):
+        probed = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT, output=VARIANT_OUTPUT)
+        fit = FIT.replace('budget = 8\n', '')
+        probes = 'variant = "mesh"\nvisibility = { source = "probes" }\n' + fit
+        probes_path = 'variant = "mesh"\nvisibility = { source = "probes", every_ms = 100, size = [8, 6] }\n' + fit
+        scene = load_scene(self.lit(probes_path, objects=camera(path=True, region=False), **probed))
+        seen = scene.renderers[0].renderer.visibility
+        self.assertEqual((seen.source, seen.every_ms, seen.size, seen.samples, seen.margin), ("probes", 100, (8, 6), 3, 0))
+        scene = load_scene(self.lit(probes, objects=camera(region=False), **probed))
+        self.assertIsNone(scene.renderers[0].renderer.visibility.every_ms)
+        # Probes spread through the camera region when the scene has one: it is read.
+        load_scene(self.lit(probes, objects=camera(), **probed))
+        needs = "source probes keeps what its fit's probe faces show"
+        self.lit_rejects(needs, probes.replace(fit, FIT), objects=camera(path=True, region=False),
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
+        self.lit_rejects(needs, probes.replace(fit, ""), objects=camera(region=False), **probed)
+        self.lit_rejects("required: the probes add the scene camera path", probes,
+                         objects=camera(path=True, region=False), **probed)
+        self.lit_rejects("read by nothing: the scene camera has no path", probes_path, objects=camera(region=False),
+                         **probed)
+        self.lit_rejects("sample the camera path together", probes_path.replace(", size = [8, 6]", ""),
+                         objects=camera(path=True, region=False), **probed)
+        self.lit_rejects("visibility.rounds", 'variant = "mesh"\nvisibility = { source = "probes", rounds = 2 }\n',
+                         objects=camera(region=False), **probed)
+
     def test_path_visibility_size_names_the_key_for_invalid_pixels(self):
         for size in ("[0, 6]", "[8, -1]", "[true, 6]", "[8.0, 6]", "[8]", '"8,6"'):
             with self.subTest(size=size):
@@ -748,11 +773,15 @@ class SceneTests(unittest.TestCase):
         self.assertTrue(all(abs(a - b) < 1e-12 for a, b in zip(scene.lights[0]["direction"], [1.0, 0.0, 0.0])))
         self.assertEqual((scene.camera.component.path.clip, scene.camera.component.path.node), ("fly", "camera"))
 
-    def test_identical_import_variant_budgets_are_rejected(self):
-        variants = VARIANT + VARIANT.replace('name = "mesh"', 'name = "copy"')
+    def test_identical_import_variants_are_rejected_and_a_ceiling_tells_them_apart(self):
+        copy = VARIANT.replace('name = "mesh"', 'name = "copy"')
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(SettingsError, "same mesh"):
-                load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + variants))
+                load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT + copy))
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(write_import(directory, output='[output]\n',
+                                                         body=SIMPLIFY + VARIANT + copy + 'ceiling = 20\n'))
+        self.assertEqual([(variant.triangles, variant.ceiling) for variant in settings.variants], [(10, None), (10, 20)])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -1189,6 +1218,26 @@ class LocalSourceTests(unittest.TestCase):
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
+
+    def test_probe_visibility_keys_the_start_by_the_probes_and_the_path(self):
+        from bake import bake
+
+        def start(probes, visibility, coverage="100"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + probes + VARIANT)
+                fit = FIT.replace('budget = 8\n', '').replace('coverage_every_ms = 100', 'coverage_every_ms = ' + coverage)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + visibility + fit)
+                scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
+                return bake.stage_keys(scene.renderers[0], scene, {stage: stage for stage in bake.STAGES})["start"]
+
+        sampled = 'visibility = { source = "probes", every_ms = 100, size = [8, 6] }\n'
+        first = start("probes = { spacing = 2.0 }\n", sampled)
+        self.assertNotEqual(start("probes = { spacing = 3.0 }\n", sampled), first, "the probes are not in the key")
+        self.assertNotEqual(start("probes = { spacing = 2.0 }\n", sampled.replace("100", "200")), first,
+                            "the path's poses are not in the key")
+        self.assertNotEqual(start("probes = { spacing = 2.0 }\n", sampled, coverage="50"), first,
+                            "the fit's coverage poses, which the probe faces are chosen beside, are not in the key")
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

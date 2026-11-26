@@ -656,8 +656,15 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
         if job.renderer.visibility is not None:
             visibility = job.renderer.visibility
             camera = recipe["camera"] = camera_inputs(scene)
-            if visibility.source == "camera_path":
+            if getattr(visibility, "every_ms", None) is not None:
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+            if visibility.source == "probes":
+                # The faces are the fit's: chosen beside its coverage poses (reference_set.fit_probe_views).
+                camera["probes"] = canonical(job.settings.fit.probes)
+                if scene.camera.component.path is not None:
+                    fit = job.renderer.fit
+                    camera["probe_path"] = poses.digest(scene.camera.component, fit.coverage_every_ms, fit.size, tools,
+                                                        unavailable)
     simplify = job.settings.simplify
     if simplify and simplify.seal_seams and scene.camera is not None:
         # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.

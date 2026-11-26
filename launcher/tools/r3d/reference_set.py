@@ -103,6 +103,28 @@ def reference_inputs(job, scene):
                            probes=job.settings.fit.probes)
 
 
+def coverage_poses(scene, size, every_ms):
+    """The camera path's coverage poses at a fit's pose `size`, every `every_ms`, through the square view held
+    either way up: what the fit prunes over, and what its probe faces are chosen beside."""
+    from r3d.mesh_source import camera_path_poses
+
+    return camera_path_poses(scene, SimpleNamespace(size=size, every_ms=None), every_ms)
+
+
+def probe_path(coverage):
+    """The `path` probes.select takes from coverage_poses' (width, height, lens, near, poses)."""
+    width, height, lens, _, poses = coverage
+    return width, height, lens, poses
+
+
+def fit_probe_views(job, scene):
+    """The probe faces the fitted renderer `job` trains on, chosen beside its coverage poses when the scene camera
+    has a path: the start's `probes` visibility keeps what these show."""
+    fit, camera = job.renderer.fit, scene.camera.component
+    path = None if camera.path is None else probe_path(coverage_poses(scene, tuple(fit.size), fit.coverage_every_ms))
+    return probe_views(job.settings, camera, path)
+
+
 def prepare_references(inputs, work, store=None, progress=None):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
@@ -124,9 +146,9 @@ def prepare_references(inputs, work, store=None, progress=None):
         (work / portrait).write_text(poses_text(w, h, lens, near, training))
         (work / landscape).write_text(poses_text(h, w, lens, near, training))
         (work / HELD_OUT[0]).write_text(poses_text(w, h, lens, near, held_out))
-        coverage = camera_path_poses(scene, visibility, spacing.coverage_every_ms)
+        coverage = coverage_poses(scene, inputs.size, spacing.coverage_every_ms)
         (work / COVERAGE).write_text(poses_text(*coverage))
-        path, count = (coverage[0], coverage[1], coverage[2], coverage[4]), len(training)
+        path, count = probe_path(coverage), len(training)
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
@@ -135,11 +157,10 @@ def prepare_references(inputs, work, store=None, progress=None):
     return count
 
 
-def probe_poses(inputs, work, path):
-    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record; returns the
-    training faces. An alpha-masked import keeps its masked triangles and lets rays through their cut texels."""
-    import json
-
+def probe_views(settings, camera, path):
+    """The probes' training and held-out faces (r3d/views/probes.py) of the import `settings` under the scene
+    `camera`, beside the `path` views ((width, height, lens, poses), or None). An alpha-masked import keeps its
+    masked triangles and lets rays through their cut texels."""
     import numpy as np
 
     from r3d.light import AlphaTest
@@ -147,14 +168,30 @@ def probe_poses(inputs, work, path):
     from r3d.ray_query import RayQuery
     from r3d.views import probes
 
-    settings, camera = inputs.job().settings, inputs.scene().camera.component
-    face = probes.PROBE_FACE if inputs.probes.face is None else inputs.probes.face
     source = load_source(settings, np.float32)
     query = None
     if settings.alpha_keep is not None:
         query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
-    views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
-                          path, query=query)
+    return probes.select(source.p, source.tri_v, camera.region, camera.near_z, settings.fit.probes.spacing,
+                         PROBE_SEED, path, query=query)
+
+
+def probe_face(settings):
+    """A probe face's square size in pixels: geometry.probes.face, or the probes' default."""
+    from r3d.views import probes
+
+    face = settings.fit.probes.face
+    return probes.PROBE_FACE if face is None else face
+
+
+def probe_poses(inputs, work, path):
+    """Writes the probes' training and held-out faces (probe_views) and their record; returns the training
+    faces."""
+    import json
+
+    settings, camera = inputs.job().settings, inputs.scene().camera.component
+    face = probe_face(settings)
+    views = probe_views(settings, camera, path)
     for (poses, _), faces in ((PROBE_TRAINING, views.training), (PROBE_HELD_OUT, views.held_out)):
         (work / poses).write_text(poses_text(face, face, views.face_lens, camera.near_z, faces))
     (work / PROBE_RECORD).write_text(json.dumps(views.record) + "\n")

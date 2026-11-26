@@ -50,10 +50,9 @@ name = "street_fitted_full"
 mesh = "bistro.import.toml"
 variant = "bistro_fitted_full"
 bake = true
-visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
+visibility = { source = "probes", every_ms = 500, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
-budget = 18678
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
