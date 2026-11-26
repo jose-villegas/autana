@@ -746,7 +746,7 @@ class CarvedBakeTests(FittedBakeCase):
 
     def test_each_carved_renderer_has_its_own_bundle_start_and_byte_keyed_fit(self):
         path = self.root / "mesh.import.toml"
-        path.write_text(path.read_text() + '\n[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\n')
+        path.write_text(path.read_text() + '\n[[objects.meshes]]\nmatch = { material = "m" }\n')
         found = self.bakes(AnyStart())
         starts = [item for item in found if item.kind == "mesh"]
         fits = [item for item in found if item.kind == "fit"]

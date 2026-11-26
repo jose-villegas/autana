@@ -391,7 +391,7 @@ points at.
 ### Fit cost sweep
 
 `fitted_variant.py sweep` remakes and scores a fitted recipe at several
-cost weights, one GPU fit at a time:
+cost weights along a camera path, one GPU fit at a time:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \

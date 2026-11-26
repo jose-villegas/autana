@@ -33,7 +33,7 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
     labels = np.zeros(len(t), dtype=int)
-    rule = {'match': {'material': 'prop'}, 'triangles': 1}
+    rule = {'match': {'material': 'prop'}}
     copies = []
     for index, mirrored in enumerate((False, False, True)):
         linear = np.diag([-1 if mirrored else 1, 1, 1])
@@ -43,7 +43,7 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         copies.append((instance, (p @ linear.T + at, rgb + index, faces, np.full(len(t), materials[index]))))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
-                               scale={}, shapes=[dict(shape, rule={**rule, 'triangles': 1 + k}) for k in range(shapes)],
+                               scale={}, shapes=[dict(shape, rule={'match': {'object': f'prop_{k}'}}) for k in range(shapes)],
                                src=SimpleNamespace(names=['prop', 'leaf'], object_names=['a', 'b', 'c']))
     obj = SimpleNamespace(name='atrium', matrix=np.diag([2., 3, 4]).tolist(), position=[5., 6, 7],
                           kind='mesh_renderer', animator=None)
@@ -204,8 +204,12 @@ class MeshBundleTests(unittest.TestCase):
     def check_whole_import(self, all_carved=False):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            path = write_import(root, output='[output]\n', body=SIMPLIFY + VARIANT +
-                                f'[[objects.meshes]]\nmatch = {{ object = "{"*" if all_carved else "prop*"}" }}\ntriangles = 4\nseam = "free"\n')
+            budget = 3 * len(TRIANGLES)
+            variant = VARIANT.replace("triangles = 10", f"triangles = {budget}")
+            longest = np.linalg.norm(np.ptp(POINTS * 2, axis=0))
+            simplify = SIMPLIFY.replace("dense_edge = 1.0", f"dense_edge = {longest}")
+            path = write_import(root, output='[output]\n', body=simplify + variant +
+                                f'[[objects.meshes]]\nmatch = {{ object = "{"*" if all_carved else "prop*"}" }}\nseam = "free"\n')
             (root / 'm.obj').write_text(obj_text([('prop_a', POINTS, TRIANGLES),
                                                  ('prop_b', POINTS + [8, 0, 0], TRIANGLES),
                                                  ('rest', POINTS * 2 + [16, 0, 0], TRIANGLES)]))
@@ -306,7 +310,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
     start_path(work, job).write_bytes(data)
     job.renderer.variant = SimpleNamespace(name='fixture')
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                       surface_weight=0, surface_margin=0, budget=1)
+                                       surface_weight=0, surface_margin=0)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
         stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
@@ -332,18 +336,18 @@ class FitCommandTests(unittest.TestCase):
         args = self.command(probes=SimpleNamespace())
         self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt', 'probes.txt'])
         self.assertEqual(self.values(args, '--reference'), ['reference', 'reference_landscape', 'reference_probes'])
-        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt', 'probes.txt'])
+        self.assertNotIn('--coverage-poses', args)
 
     def test_a_camera_without_a_path_fits_on_the_probe_sets_alone(self):
         args = self.command(path=False, probes=SimpleNamespace())
         self.assertEqual(self.values(args, '--poses'), ['probes.txt'])
-        self.assertEqual(self.values(args, '--coverage-poses'), ['probes.txt'])
+        self.assertNotIn('--coverage-poses', args)
         self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
 
     def test_without_probes_the_fit_reads_the_path_sets_alone(self):
         args = self.command()
         self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
-        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
+        self.assertNotIn('--coverage-poses', args)
 
     def test_every_fit_scores_its_held_out_sets_and_only_a_probe_fit_gates_closure_on_them(self):
         for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace()))):
@@ -469,7 +473,7 @@ class FitCopiesTests(unittest.TestCase):
 class BundlePackTests(SceneFiles):
     def bundle_scene(self):
         write_import(self.root, 'a.import.toml', output='[output]\n',
-                     body=SIMPLIFY + '[[variants]]\nname = "a"\ntriangles = 10\n[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 1\n')
+                     body=SIMPLIFY + '[[variants]]\nname = "a"\ntriangles = 10\n[[objects.meshes]]\nmatch = { material = "m" }\n')
         data = bundle_fixture(self.root)[0]
         entries, copies = mesh_bundle.decode(data)
         entries = [('a' if name == 'hall.atrium' else name, kind, blob) for name, kind, blob in entries]

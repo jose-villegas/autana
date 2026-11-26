@@ -231,6 +231,8 @@ def sweep_main(argv):
         job = placed_variant(scene, args.variant)
     except SettingsError as error:
         parser.error(str(error))
+    if scene.camera.component.path is None:
+        parser.error("the cost sweep needs a camera path for held-out frame scores")
     points = [{"cost_weight": weight} for weight in args.cost_weights]
     variant = job.renderer.variant
     if args.board_ms is not None and len(args.board_ms) != len(points):

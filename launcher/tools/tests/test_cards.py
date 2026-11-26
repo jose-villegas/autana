@@ -160,7 +160,7 @@ class CardTests(unittest.TestCase):
         leaf = src.tri_m == src.names.index('leaf')
         from r3d.mesh_source import with_triangles
         src = with_triangles(src, src.tri_v[leaf], src.tri_t[leaf], src.tri_m[leaf], tri_o=src.tri_o[leaf])
-        settings.simplify = SimpleNamespace(dense_edge=SIDE, props=[], props_share=0.,
+        settings.simplify = SimpleNamespace(dense_edge=SIDE,
                                            colour_deviation=1., seal_seams=False)
         job = albedo_jobs(settings)[0]
         job.renderer.variant.triangles = len(src.tri_v)

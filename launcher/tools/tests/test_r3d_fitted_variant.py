@@ -1,7 +1,9 @@
 """Checks the fitted-variant recipe's pose handling: which poses it holds
-out, and that the poses pruning counts over cover the panel held either way
+out, and that the coverage poses cover the panel held either way
 up. Needs NumPy."""
 
+import contextlib
+import io
 import pathlib
 import sys
 import tempfile
@@ -207,6 +209,16 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
 
+
+    def test_cost_sweep_requires_a_camera_path_before_preparing_references(self):
+        scene = SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path=None)))
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint")))
+        with unittest.mock.patch.object(fitted_variant, "load_scene", return_value=scene), \
+                unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                unittest.mock.patch.object(fitted_variant, "sweep_references", side_effect=AssertionError("prepared")), \
+                contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit):
+            fitted_variant.sweep_main(["scene.toml", "--variant", "paint", "--out", "out"])
+        self.assertIn("needs a camera path", errors.getvalue())
 
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
