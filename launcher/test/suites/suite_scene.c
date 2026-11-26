@@ -2935,16 +2935,73 @@ make_batch_entry(test_pack_t* pack, const batch_case_t* spec) {
     }
 }
 
+/* red.colors in LCOL_TEST_SETS sets, each the quad's front colours then its
+ * back ones: set k's front has channel k at full, its back channel 2. */
 static void
-make_batch_pack(const batch_case_t* spec) {
+make_back_lcol_entry(test_pack_t* pack) {
+    enum { PER_SET = 2 * QUAD_VERTICES * LCOL_RGB888_BYTES };
+
+    uint8_t* colors = test_pack_add(pack, "red.colors", LCOL_ASSET, LCOL_HEADER_SIZE + (LCOL_TEST_SETS * PER_SET));
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+    test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, QUAD_VERTICES);
+    test_pack_put32(colors + LCOL_AT_BACK_COUNT, QUAD_VERTICES);
+    for (int set = 0; set < LCOL_TEST_SETS; set++) {
+        uint8_t* front = colors + LCOL_HEADER_SIZE + (set * PER_SET);
+        for (int v = 0; v < QUAD_VERTICES; v++) {
+            front[(v * LCOL_RGB888_BYTES) + set] = UINT8_MAX;
+            front[((QUAD_VERTICES + v) * LCOL_RGB888_BYTES) + 2] = UINT8_MAX;
+        }
+    }
+}
+
+/* The batch scene changed by `spec`, its colour sets holding back colours
+ * after their front ones when `back`. */
+static void
+make_batch_pack_coloured(const batch_case_t* spec, bool back) {
     test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 3);
     uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
     make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
     test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
     make_batch_entry(&pack, spec);
-    const lcol_case_t colours = {0};
-    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    if (back) {
+        make_back_lcol_entry(&pack);
+    } else {
+        const lcol_case_t colours = {0};
+        make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    }
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)), spec->id);
+}
+
+static void
+make_batch_pack(const batch_case_t* spec) {
+    make_batch_pack_coloured(spec, false);
+}
+
+/* A batch whose sets hold back colours: the copy in set 1 shows set 1's back
+ * colours, copied with its front ones into the renderer's resident span. */
+static void
+test_a_batch_copy_in_a_later_set_draws_that_set_s_resident_back_colours(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const batch_case_t spec = {.id = "back", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_pack_coloured(&spec, true);
+    const scene_renderer_t* r = &resolved(load("test_batch"))->renderers[0];
+    const int count = r->mesh.vertex_count;
+    TEST_ASSERT_EQUAL_INT(count, r->mesh.back_count);
+    TEST_ASSERT_EQUAL_PTR(r->mesh.colors + count, r->mesh.back_colors);
+    const uintptr_t begin = (uintptr_t)r->resident;
+    TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
+                     && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * 2 * count)) <= begin + lent_size(r->resident));
+    r3d_lit_mesh_t second;
+    r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
+    for (int v = 0; v < count; v++) {
+        TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.back_colors[v][2]);
+    }
 }
 
 static void
@@ -9063,6 +9120,7 @@ run_scene_suite(void) {
     RUN_TEST(test_finds_compare_name_hashes);
     RUN_TEST(test_lcol_instances_and_refusals);
     RUN_TEST(test_a_batch_draws_its_copies_from_one_renderer);
+    RUN_TEST(test_a_batch_copy_in_a_later_set_draws_that_set_s_resident_back_colours);
     RUN_TEST(test_batch_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
