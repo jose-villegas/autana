@@ -172,10 +172,7 @@ Ambient is flat, or sampled from a baked probe grid given by
 `scene_set_probes()` at each skinned renderer's bounds centre; the technique,
 from the bake to the per-vertex shading, is [Light Probes](../frame/Light-Probes.md).
 
-### Contact discs
-
-`scene_set_contact_blob()` puts a dithered disc on the ground under a
-renderer; [Contact Shadows](../frame/Contact-Shadows.md) breaks it down.
+`scene_set_contact()` configures a skinned renderer’s [contact shadow](../frame/Contact-Shadows.md).
 
 ## 6. Current limits
 

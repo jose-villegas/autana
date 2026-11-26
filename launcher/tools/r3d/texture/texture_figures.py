@@ -151,7 +151,8 @@ def divide_sheet(args, work):
         print(labels[-1])
     lower = truth.copy()
     lower.paste(pictures[1].crop((0, top, truth.width, truth.height)), (0, top))
-    clusters = render_compare.find_clusters(truth, lower, None, DIVIDE_CROPS)
+    clusters = render_compare.find_clusters(truth, lower, None, DIVIDE_CROPS,
+                                           crop=lambda cluster: square_box(cluster, truth.size))
     rows = []
     for cluster in clusters:
         box = square_box(cluster, truth.size)

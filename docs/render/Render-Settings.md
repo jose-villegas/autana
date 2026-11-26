@@ -59,6 +59,8 @@ that field's table in the asset.
 | `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
 | `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
 | `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
+| `settle.frame_us` | `4000` | `[0, RENDER_SETTLE_FRAME_US_MAX]` | basic | microseconds a held frame may spend redrawing quiet rows at the finest quality, at least one band once due; 0 never refines |
+| `settle.hold_frames` | `6` | `[RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]` | advanced | frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -129,9 +131,12 @@ Off is only for measuring.
 ## partial_redraw
 
 While the camera holds still, a frame redraws only the rows the changed
-objects cover, and the picture is the one a full redraw gives
-([how](frame/Partial-Redraw.md)). It applies at the fixed scale with frame
-generation off, and costs nothing when it does not apply.
+objects cover ([Partial-Redraw.md](frame/Partial-Redraw.md)). Quiet rows can
+[settle](frame/Settle.md) at refined quality.
+
+A held view draws at the fixed scale or dynamic resolution's top step,
+and is never generated. Partial redraw costs nothing on timed and generated
+paths, which skip it.
 
 ## lod
 
@@ -164,6 +169,12 @@ reports as its triangles.
 | Clusters and instances the cull drops | no |
 | Anything drawn that is not a lit-mesh cluster | no |
 | The import's [`[[variants]].triangles`](offline/Mesh-Import.md#variants-triangles) | no: a ceiling on the detail a mesh holds, not a frame's cost |
+
+## settle
+
+A held view draws quiet rows at the finest LOD without blends, texture
+shortcuts or small fill ([Settle.md](frame/Settle.md)). `frame_us` budgets
+each pass. `hold_frames` sets when a quiet band is due.
 
 ## The render asset
 

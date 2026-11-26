@@ -1225,21 +1225,45 @@ class AppearanceFitTests(unittest.TestCase):
         self.assertGreater(in_front, 0.0)
         self.assertEqual(over_the_rest, 0.0, "only pixels where the source shows a copy count")
 
-    def test_distance_is_the_view_axis_distance_where_drawn(self):
+    def card_in_view(self):
+        """A half-unit card 3 units before a 48x40 camera: the card, its projection and its renderer."""
         import torch
 
         from r3d.appearance_simplify import Renderer
-        from r3d.fit.gbuffer import distance
 
         card = self.card(0.0, half=0.5)
         matrix = torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5),
                                  dtype=torch.float32, device="cuda")
         render = Renderer(card.tris, card.double, card.vertex_point, (48, 40), "cuda")
+        return card, matrix, render
+
+    def test_distance_is_the_view_axis_distance_where_drawn(self):
+        import torch
+
+        from r3d.fit.gbuffer import distance
+
+        card, matrix, render = self.card_in_view()
         fitted, shown = distance(render, torch.as_tensor(card.points, dtype=torch.float32, device="cuda"), matrix)
         drawn = shown >= 0
         self.assertTrue(drawn.any() and not drawn.all())
         np.testing.assert_allclose(fitted[drawn].cpu().numpy(), 3.0, rtol=1e-5)
         self.assertTrue(torch.isinf(fitted[~drawn]).all())
+
+    def test_a_pixel_normal_shorter_than_the_floor_has_a_bounded_gradient(self):
+        import torch
+
+        from r3d.appearance_simplify import NORMAL_FLOOR
+
+        card, matrix, render = self.card_in_view()
+        points = torch.as_tensor(card.points, dtype=torch.float32, device="cuda")
+        # Interpolated normals of zero length, as where opposite vertex normals meet inside a triangle.
+        values = torch.zeros((40, 48, 6), device="cuda", requires_grad=True)
+        normal, covered = render.normals(points, matrix, [0.0, 0.0, 3.0], raster=render.raster(points, matrix),
+                                         values=values)
+        (normal * torch.tensor([0.3, 0.2, 0.9], device="cuda")).sum().backward()
+        self.assertTrue(covered.any())
+        self.assertTrue(torch.isfinite(normal).all())
+        self.assertLessEqual(float(values.grad.abs().max()), 1.0 / NORMAL_FLOOR)
 
     def gbuffer_fit(self, rest, shown, source, carved, copies=None, **weights):
         """The rest fitted on positions alone to one view of `shown`, the mesh the reference shows: its points."""

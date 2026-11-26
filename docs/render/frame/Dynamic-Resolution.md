@@ -147,7 +147,7 @@ The caller hands the whole frame's target; the cost a policy holds is the part t
 |---|---|
 | A frame's sample | its period, from one draw to the next, less its draw and compose and less what it waited for the panel (`gfx_present_waited_us()`), between 0 and the target |
 | Which frames teach | frames a policy drew and timed; not generated, held or fixed ones, nor a pause (`render_context_skip()`) |
-| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`RESOLUTION_UNSCALED_WEIGHT_DIVISOR`), seeded by the first sample |
+| The average | exponential, with the weight TCP gives its smoothed round-trip time<sup>[[134]](../../Citations.md#rfc6298)</sup> (`SMOOTH_RTT_DIVISOR`), seeded by the first sample |
 | The floor | the scaled part keeps at least `RESOLUTION_SCALED_MIN_PERCENT` of the target |
 
 - Smoothing a measured frame time with the present's wait left out follows Binks<sup>[[135]](../../Citations.md#binks-2011)</sup>, which averages ten frames.
@@ -167,6 +167,8 @@ The caller hands the whole frame's target; the cost a policy holds is the part t
 While the camera holds still, with frame generation on or off, frames are drawn as [partial redraw](Partial-Redraw.md) draws them, at the top step and without being priced: the first redraws every row, later ones only the rows that changed. A held frame that costs more than the budget hands size selection back to the policy until the view changes.
 
 So each stop pays one whole frame at the top step, which is not judged: it says what a full redraw costs, not a held frame.
+
+A frame that also [settles](Settle.md) is judged on its live draw and its live rows' share of the compose, never on the refined rows.
 
 ## Where a frame's time goes at each size
 

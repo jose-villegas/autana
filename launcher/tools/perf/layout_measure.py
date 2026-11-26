@@ -17,6 +17,8 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
+sys.path.insert(0, str(REPO / "launcher/tools"))
+from build.math_constants import blank_comments, integer_defines  # noqa: E402
 from doc_tables import table_rows  # noqa: E402
 from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
@@ -396,12 +398,11 @@ def run_flash(args, seed, runner=None):
 def filter_limits(project):
     """Read the compared firmware's accepted pattern width and count."""
     text = (Path(project) / "launcher/test/suites.h").read_text(encoding="utf-8")
-    def define(name):
-        match = re.search(r"^\s*#define\s+" + name + r"\s+(\d+)\b", text, re.MULTILINE)
-        if not match or int(match.group(1)) <= 0:
+    definitions = integer_defines([blank_comments(text)])
+    for name in ("SUITE_FILTER_LEN", "SUITE_FILTER_MAX"):
+        if definitions.get(name, 0) <= 0:
             raise ValueError(f"invalid filter limit {name}")
-        return int(match.group(1))
-    return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
+    return definitions["SUITE_FILTER_LEN"] - 1, definitions["SUITE_FILTER_MAX"]
 
 
 class FilterOverlap(RuntimeError):

@@ -204,8 +204,8 @@ panel's orientation, each stage a [frame-cost](../../tools/Frame-Cost.md) bracke
 <!-- generated: light-probes-cost check: python launcher/main/apps/render_lab/tools/stress_doc_table.py docs/render/frame/Light-Probes.md light-probes-cost stress-skinned-sh-blobs --check -->
 | Preset | Quarter | `r3d.cull` | `r3d.transform` | `r3d.draw` | `r3d.upscale` | `frame.record` | `anim.pose` | `anim.light` | `anim.skin` | Sum goal | Ceiling |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `stress-skinned-sh-blobs` | portrait | 330 | 1250 | 7060 | 2130 | 10 | 1550 | 240 | 2930 | 15340 | 17650 |
-| `stress-skinned-sh-blobs` | landscape | 320 | 1250 | 7790 | 2180 | 10 | 1540 | 240 | 2920 | 16080 | 18500 |
+| `stress-skinned-sh-blobs` | portrait | 310 | 1230 | 7090 | 2040 | 10 | 1530 | 250 | 2900 | 15260 | 17550 |
+| `stress-skinned-sh-blobs` | landscape | 310 | 1240 | 7810 | 2130 | 10 | 1530 | 250 | 2890 | 16060 | 18470 |
 <!-- /generated: light-probes-cost -->
 
 The sample, the convolution and the per-vertex evaluation run inside

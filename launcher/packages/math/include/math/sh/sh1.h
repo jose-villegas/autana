@@ -39,3 +39,6 @@ sh1_irradiance_eval(const sh1_irradiance_t* e, vec3f_t normal) {
     }
     return (vec3f_t){channels[0], channels[1], channels[2]};
 }
+
+/* Returns zero for an isotropic field. */
+vec3f_t sh1_rgb_dominant_direction(const sh1_rgb_t* radiance, vec3f_t channel_weights);

@@ -269,7 +269,8 @@ load_capybara(runner_t* runner) {
         fail("no capybara subject");
         return false;
     }
-    scene_set_contact_blob(runner->entity, RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    const scene_contact_t contact = {RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, false};
+    scene_set_contact(runner->entity, &contact);
     scene_set_probes(runner->root, scene_probes(sponza));
     runner->applied = (gait_pick_t){-1, 1.0F};
     return true;

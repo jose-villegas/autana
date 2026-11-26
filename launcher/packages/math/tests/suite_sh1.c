@@ -42,10 +42,41 @@ test_sh_direction_closed_form(void) {
     TEST_ASSERT_GREATER_THAN(minus.z, plus.z);
 }
 
+static void
+test_sh_dominant_single_direction(void) {
+    sh1_rgb_t sh = {0};
+    const vec3f_t direction = vec3f_normalize((vec3f_t){-1, 2, 3});
+    sh1_rgb_add_direction(&sh, direction, (vec3f_t){1, 2, 3});
+    const vec3f_t got = sh1_rgb_dominant_direction(&sh, vec3f_one());
+    TEST_ASSERT_FLOAT_WITHIN(SH_EPSILON, 0, vec3f_length(vec3f_sub(got, direction)));
+}
+
+static void
+test_sh_dominant_rgb_weights(void) {
+    sh1_rgb_t sh = {0};
+    const vec3f_t weights = {1, 2, 3};
+    sh1_rgb_add_direction(&sh, vec3f_unit_x(), (vec3f_t){2, 0, 0});
+    sh1_rgb_add_direction(&sh, vec3f_down(), vec3f_unit_y());
+    sh1_rgb_add_direction(&sh, vec3f_unit_z(), vec3f_unit_z());
+    const vec3f_t expected = vec3f_normalize((vec3f_t){2, -2, 3});
+    const vec3f_t got = sh1_rgb_dominant_direction(&sh, weights);
+    TEST_ASSERT_FLOAT_WITHIN(SH_EPSILON, 0, vec3f_length(vec3f_sub(got, expected)));
+}
+
+static void
+test_sh_dominant_isotropic_field(void) {
+    const sh1_rgb_t sh = {.c = {{1, 2, 3}}};
+    const vec3f_t got = sh1_rgb_dominant_direction(&sh, vec3f_one());
+    TEST_ASSERT_EQUAL_FLOAT(0, vec3f_length(got));
+}
+
 void
 suite_sh1(void) {
     RUN_TEST(test_sh_constant_and_lerp);
     RUN_TEST(test_sh_direction_closed_form);
+    RUN_TEST(test_sh_dominant_single_direction);
+    RUN_TEST(test_sh_dominant_rgb_weights);
+    RUN_TEST(test_sh_dominant_isotropic_field);
 }
 
 SUITE_REGISTER(suite_sh1);
