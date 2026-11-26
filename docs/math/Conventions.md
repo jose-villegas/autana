@@ -83,12 +83,11 @@ and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |
 
-### C-runtime calls in hot code
+## C-runtime calls in hot code
 
-| Rule | Where |
-|---|---|
-| [Hot-call link gate](../tools/Build-Variants.md#hot-call-link-gate) | [`check_hot_calls.py`](../../launcher/tools/build/check_hot_calls.py) requires a reason for C-runtime calls in hot functions |
+The [hot-call link gate](../tools/Build-Variants.md#hot-call-link-gate) requires
+a reason for C-runtime calls in hot functions.
 
-Hot code loads unaligned 16-bit values bytewise. Xtensa has no unaligned load,
-so `memcpy(&v, p, 2)` emits a call. A published measurement found bytewise loads
-made blitting about six times faster.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>
+In hot functions, read an unaligned 16-bit value as two byte loads,
+`p[0] | p[1] << 8`. `memcpy(&v, p, 2)` compiles to a library call, which the
+hot-call gate rejects without a `Library call:` note.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>

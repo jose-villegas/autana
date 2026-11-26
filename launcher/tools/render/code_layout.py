@@ -69,7 +69,8 @@ def baseline_applies(text, sdkconfig):
 
 
 def run(tool, *arguments):
-    return subprocess.run([tool, *arguments], check=True, capture_output=True, text=True).stdout
+    return subprocess.run([tool, *arguments], stdin=subprocess.DEVNULL,
+                          check=True, capture_output=True, text=True).stdout
 
 
 def find_tool(name):
@@ -151,26 +152,28 @@ def target_of(operands):
 XTENSA_LITERAL_BYTES = 4
 
 
-def skip_pools(found, decode_from=None, jump_pools=True):
+def skip_pools(found, decode_from=None, jump_pools=None):
     """Drop literal targets and, unless jump_pools is false, skipped pools,
     decoding code again after each pool."""
     if not found:
         return found
+    if jump_pools is None:
+        # A jump table can enter a skipped span without a direct branch to it.
+        jump_pools = not any(ins[2] == "jx" for ins in found)
     start = found[0][0]
     end = found[-1][0] + found[-1][1]
     pools = set()
     tried = set()
-    # Each repair tries a fresh byte address or drops instructions. Between
-    # decodes, at most one instruction per byte can be dropped.
-    span = end - start
-    for _ in range((2 * span + 1) * (span + 1)):
+    while True:
         literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
         pending = sorted(address for address in literals
                          if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
         if not pending:
+            attempts = len(tried)
             repaired = _skip_jump_pools(found, decode_from, tried, start, end) if jump_pools else found
             if repaired == found:
                 break
+            assert len(tried) > attempts or len(repaired) < len(found)
             found = repaired
             continue
         for address in pending:
@@ -179,18 +182,15 @@ def skip_pools(found, decode_from=None, jump_pools=True):
             prefix = [ins for ins in found if ins[0] + ins[1] <= address]
             suffix = decode_from(resume) if decode_from else [ins for ins in found if ins[0] >= resume]
             found = prefix + [ins for ins in suffix if ins[0] < end]
-    else:
-        raise AssertionError("literal and jump pool decoding did not converge")
-
     if decode_from:
-        for _ in range(span + 1):
+        while True:
+            attempts = len(tried)
             targets = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r"} - {None}
             repaired = _resync(found, ((target, target) for target in targets), decode_from, tried, start, end)
             if repaired == found:
                 break
+            assert len(tried) > attempts
             found = repaired
-        else:
-            raise AssertionError("branch target decoding did not converge")
     return found
 
 
@@ -438,9 +438,7 @@ def function_code(text, decode_range=None, precise=()):
                 copy += 1
                 key = "%s#%d" % (name, copy)
             again = (lambda start: decode_range(start, end)) if key in precise else None
-            # Code a jump table enters has no branch into it, so a function
-            # with one keeps every span a jump skips.
-            code = skip_pools(body, again, jump_pools=not any(ins[2] == "jx" for ins in body))
+            code = skip_pools(body, again)
             found[key] = [instruction_text(mnemonic, operands) for _, _, mnemonic, operands in code]
 
     for line in text.splitlines():

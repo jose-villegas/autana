@@ -305,10 +305,7 @@ def ninja_rule(ninja, output):
 def iram_entries(build, ninja=None):
     if ninja is None:
         ninja = (build / "build.ninja").read_text(encoding="utf-8")
-    try:
-        rule = ninja_rule(ninja, "esp-idf/esp_system/ld/sections.ld")
-    except ValueError as exc:
-        raise ValueError("build.ninja has no ldgen rule") from exc
+    rule = ninja_rule(ninja, "esp-idf/esp_system/ld/sections.ld")
     binding = re.search(r"^  COMMAND = (.+)$", rule, re.M)
     if binding is None:
         raise ValueError("ldgen rule lacks a COMMAND binding")

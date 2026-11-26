@@ -24,7 +24,9 @@ DUMP = """
 42000033: 000025 call8 42000220 <local>
 42000036: 000006 j 42000210 <divide+0x4>
 42000039: ffff91 l32r a9, 4200001c <hot-0x4> (400011e8 <memset>)
-4200003c: ffff71 l32r a7, 4200001c <hot-0x4> (7fff <absolute+0x7eff>)
+4200003c: ffff71 l32r a7, 4200001c <hot-0x4> (400011e8 <memset>)
+4200003f: 207220 mov a7, a2
+42000042: 0007e0 callx8 a7
 """
 
 CODE_SECTIONS = {".flash.text"}
@@ -43,9 +45,7 @@ MAP = """
 
 class HotCallsGate(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = pathlib.Path(temp.name)
+        self.root = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
 
     def write(self, name, content):
         path = self.root / name
@@ -63,12 +63,77 @@ build other.elf: LINK rule
   LINK_FLAGS = -T esp32s3.rom.libc_unused.ld
 """
         runtime = gate.runtime_ranges(MAP, ninja, self.root / IDF_DIR, "esp32s3", CODE_SECTIONS)
-        decoded = gate.code_layout.skip_pools(gate.code_layout.parse_objdump(DUMP))
+        elf = self.root / "launcher.elf"
+        function = gate.code_layout.Symbol(0x42000020, "hot", 0x25, "t")
+
+        def disassemble(_tool, _elf, *args):
+            start = int(next(arg for arg in args if arg.startswith("--start-address=")).split("=")[1], 16)
+            return [ins for ins in gate.code_layout.parse_objdump(DUMP) if ins[0] >= start]
+
+        with patch.object(gate.code_layout, "decode", side_effect=disassemble):
+            calls = list(gate.linked_calls("objdump", elf, function, [], runtime))
         self.assertEqual(
-            [(address, name) for address, target, name in gate.callees(decoded) if runtime(target)],
-            [(0x42000020, "floorf"), (0x42000026, "memset"), (0x42000036, "divide"),
-             (0x42000039, "memset")],
+            calls,
+            [("hot", "floorf", 0x42000020), ("hot", "memset", 0x42000026), ("hot", "divide", 0x42000036)],
         )
+
+    def test_linked_calls_keep_jump_table_arms_skipped_by_a_forward_jump(self):
+        dump = """42000020: 0000a0 jx a8
+42000023: 000006 j 42000029 <hot+0x9>
+42000026: 000025 call8 400011e8 <memset>
+42000029: f01d retw.n
+"""
+        function = gate.code_layout.Symbol(0x42000020, "hot", 0xb, "t")
+        with patch.object(gate.code_layout, "run", return_value=dump):
+            calls = list(gate.linked_calls("objdump", self.root / "launcher.elf", function, [],
+                                           lambda address: address == 0x400011e8))
+        self.assertEqual(calls, [("hot", "memset", 0x42000026)])
+
+    def test_only_code_sections_contribute_runtime_archive_ranges(self):
+        runtime = gate.runtime_ranges(MAP, "build launcher.elf: LINK rule\n", self.root / IDF_DIR,
+                                      "esp32s3", CODE_SECTIONS)
+        self.assertFalse(runtime(0x7ff0))
+        self.assertTrue(runtime(0x42000200))
+
+    def test_note_ends_at_terminator_before_trailing_comment(self):
+        name = "launcher/main/example.c"
+        path = self.write(name, "// Library call: Copies a.\na(); // copy\nb();\n")
+        calls = [("hot", "memcpy", 1), ("hot", "memcpy", 2)]
+        self.assertEqual(gate.violations(self.root, calls, [f"{path}:2", f"{path}:3"]),
+                         [f"{name}:3: hot calls memcpy at 0x2"])
+
+    def test_note_spans_blank_line_inside_statement(self):
+        path = self.write("launcher/main/example.c", "// Library call: Copies a.\na(\n\n    b());\n")
+        self.assertEqual(gate.violations(self.root, [("hot", "memcpy", 1)], [f"{path}:4"]), [])
+
+    def test_empty_marker_in_merged_block_fails_independently(self):
+        name = "launcher/main/example.c"
+        cases = (
+            ("// Library call:\n// Library call: Copies a.\n", 3),
+            ("/* Library call:\n * Library call: Copies a. */\n", 3),
+            ("/* Library call: */\n/* Library call: Copies a. */\n", 3),
+            ("/* Library call: */\n/* Unrelated prose. */\n/* Library call: Copies a. */\n", 4),
+            ("/* Library call: Library call: Copies a. */\n\n", 1),
+        )
+        for notes, call_line in cases:
+            with self.subTest(notes=notes):
+                path = self.write(name, notes + "a();\n")
+                bad = gate.violations(self.root, [("hot", "memcpy", 1)], [f"{path}:{call_line}"])
+                self.assertEqual(bad, [f"{name}:1: Library call: annotation has no reason"])
+
+    def test_own_source_prefers_innermost_nonzero_line_in_outer_file(self):
+        outer = "example.c:30"
+        inner = "example.c:12 (discriminator 1)"
+        self.assertEqual(gate.own_source(["example.c:0", inner, outer]), inner)
+        self.assertEqual(gate.own_source(["other.h:12", outer]), outer)
+        self.assertEqual(gate.own_source(["other.h:12", "example.c:0"]), "example.c:0")
+        self.assertEqual(gate.own_source([inner, "example.c:20", outer]), inner)
+
+    def test_missing_elf_exits_with_its_path(self):
+        done = subprocess.run([sys.executable, gate.__file__, str(self.root)], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn(str(self.root / "launcher.elf"), done.stderr)
 
     def test_active_layout_and_attribute_sites_supply_the_hot_set(self):
         sources = self.root / "launcher/main"

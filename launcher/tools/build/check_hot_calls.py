@@ -24,23 +24,19 @@ from bisect import bisect_right
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "render"))
 
-import memory_map  # noqa: E402
 import code_layout  # noqa: E402
+import memory_map  # noqa: E402
 import packages  # noqa: E402
-from c_comments import scan, sources as comment_sources  # noqa: E402
+from c_comments import blank_comments, is_cpp, scan, sources as comment_sources  # noqa: E402
 from layout_pad import placed_sections  # noqa: E402
-from objdump_calls import symbol_base  # noqa: E402
+from objdump_calls import decoded_calls, symbol_base  # noqa: E402
 
 ROM_RUNTIME = ("libc", "libgcc")
 RUNTIME = (*ROM_RUNTIME, "libm")
 RUNTIME_ARCHIVE = re.compile(r"(?:^|[/\\])(?:" + "|".join(RUNTIME) + r")\.a\(")
 ROM_ASSIGNMENT = re.compile(r"^\s*(?:PROVIDE(?:_HIDDEN)?\s*\(\s*)?\w+\s*=\s*(0x[\da-fA-F]+)\s*\)?\s*;", re.M)
-DIRECT_CALL = frozenset(("call0", "call4", "call8", "call12", "j"))
-INDIRECT_CALL = frozenset(("callx0", "callx4", "callx8", "callx12"))
-NAMED_TARGET = r"([\da-f]+)\s+<([^>]+)>"
-DIRECT_TARGET = re.compile(NAMED_TARGET)
-LITERAL_TARGET = re.compile(r"(a\d+),.*\(" + NAMED_TARGET + r"\)")
 ANNOTATION = "Library call:"
 # A note above a statement or signature covers it through the line ending it.
 STATEMENT_ENDS = (";", "{", "}")
@@ -105,21 +101,6 @@ def runtime_ranges(map_text, ninja, idf, target, code_sections):
     return lambda address: address in rom or any(start <= address < end for start, end in ranges)
 
 
-def callees(decoded):
-    """Return (call site, target address, target name) in instruction order."""
-    next_call = {}
-    calls = []
-    for address, _, mnemonic, operands in reversed(decoded):
-        if mnemonic in INDIRECT_CALL:
-            next_call[operands.strip()] = address
-        elif mnemonic in DIRECT_CALL and (target := DIRECT_TARGET.fullmatch(operands.strip())):
-            calls.append((address, int(target[1], 16), symbol_base(target[2])))
-        elif mnemonic == "l32r" and (target := LITERAL_TARGET.fullmatch(operands.strip())):
-            register, value, name = target.groups()
-            calls.append((next_call.get(register, address), int(value, 16), symbol_base(name)))
-    return sorted(calls)
-
-
 def linked_calls(objdump, elf, function, ranges, runtime):
     end = function.address + function.size
 
@@ -127,23 +108,21 @@ def linked_calls(objdump, elf, function, ranges, runtime):
         return code_layout.decode(objdump, elf, f"--start-address={start:#x}", f"--stop-address={end:#x}")
 
     decoded = code_layout.skip_pools(decode_from(function.address), decode_from)
-    for site, target, callee in callees(decoded):
-        if runtime(target):
+    for site, target, callee in decoded_calls(decoded):
+        if target is not None and runtime(target):
+            callee = symbol_base(callee)
             names = (name for start, end, name in ranges if start <= site < end) if ranges else (function.name,)
             yield from ((name, callee, site) for name in names)
 
 
-def statement_lines(source, first):
+def statement_lines(source, code, first):
     """The lines from `first` through the one closing its statement or signature."""
-    lines = source.splitlines()
-    if first > len(lines) or not lines[first - 1].strip():
+    if first > len(source) or not source[first - 1].strip():
         return range(first, first)
-    end = first
-    while end <= len(lines) and lines[end - 1].strip() and not lines[end - 1].rstrip().endswith(STATEMENT_ENDS):
-        end += 1
-    if end > len(lines) or not lines[end - 1].strip():
-        return range(first, first + 1)
-    return range(first, end + 1)
+    for end in range(first, len(code) + 1):
+        if code[end - 1].rstrip().endswith(STATEMENT_ENDS):
+            return range(first, end + 1)
+    return range(first, first + 1)
 
 
 def annotations(root):
@@ -157,22 +136,28 @@ def annotations(root):
         source = path.read_text(encoding="utf-8")
         if ANNOTATION not in source:
             continue
+        source_lines = source.splitlines()
+        code = blank_comments(source, cpp=is_cpp(path)).splitlines()
+        resolved = path.resolve()
         for comment in scan(path, source):
-            _, marker, reason = comment.text.partition(ANNOTATION)
-            if not marker:
+            reasons = "\n".join(comment.raw_lines).split(ANNOTATION)[1:]
+            if not reasons:
                 continue
-            line = next(line for line, raw in zip(comment.line_range, comment.raw_lines) if ANNOTATION in raw)
-            notes[comment] = (name, line)
-            if not reason.strip():
-                continue
+            marker_lines = (line for line, raw in zip(comment.line_range, comment.raw_lines)
+                            for _ in range(raw.count(ANNOTATION)))
             lines = comment.line_range
-            for line in lines:
-                covered.setdefault((path.resolve(), line), set()).add(comment)
             end = comment.spans[-1][1]
             tail = source[end:].split("\n", 1)[0]
-            if comment.own_line and not tail.strip():
-                for line in statement_lines(source, lines.stop):
-                    covered.setdefault((path.resolve(), line), set()).add(comment)
+            statement = statement_lines(source_lines, code, lines.stop) if comment.own_line and not tail.strip() else ()
+            for index, (line, reason) in enumerate(zip(marker_lines, reasons, strict=True)):
+                if comment.kind == "block":
+                    reason = reason.partition("*/")[0]
+                has_reason = bool(reason.strip(" /*\t\r\n"))
+                note = (comment, index)
+                notes[note] = (name, line, has_reason)
+                if has_reason:
+                    for covered_line in (*lines, *statement):
+                        covered.setdefault((resolved, covered_line), set()).add(note)
     return covered, notes
 
 
@@ -204,8 +189,11 @@ def violations(root, calls, locations):
             relative = path.relative_to(root) if path.is_relative_to(root) else path
             label = f"{relative.as_posix()}:{line}"
         bad.append(f"{label}: {function} calls {callee} at {address:#x}")
-    bad.extend(f"{path}:{line}: Library call: annotation covers no C-runtime call"
-               for note, (path, line) in notes.items() if note not in used)
+    for note, (path, line, has_reason) in notes.items():
+        if not has_reason:
+            bad.append(f"{path}:{line}: Library call: annotation has no reason")
+        elif note not in used:
+            bad.append(f"{path}:{line}: Library call: annotation covers no C-runtime call")
     return sorted(bad)
 
 

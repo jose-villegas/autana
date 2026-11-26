@@ -545,7 +545,7 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
 }
 
 /* The transform of a view that skips hidden clusters, boxing each one.
- * Library call: transform_clusters()'s matrix copy runs once per transform call, never per vertex. */
+ * Library call: one matrix copy per transform call, inlined from the cluster transform, never per vertex. */
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 transform_boxed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {

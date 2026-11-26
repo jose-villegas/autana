@@ -10,12 +10,14 @@ import sys
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools/build"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(ROOT / "launcher/tools/quality"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from icount_gate import load_baseline
 from code_layout import LayoutError, find_tool, instructions, parse_objdump, run, skip_pools, symbols
 import bench_capture
+from objdump_calls import CALL_SYMBOL, decoded_calls
 
 DATA = ROOT / "docs/math/data"
 PLACEHOLDER = "# Board capture pending: run autana suite math_perf --flash."
@@ -32,7 +34,6 @@ SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
 ROW_SYMBOL_PREFIX = "math_bench_"
 MANIFEST = "math_bench_manifest"
 ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm", "calibration")
-CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
 def parse_disassembly(text, rows, resolve=None):
@@ -55,31 +56,25 @@ def parse_disassembly(text, rows, resolve=None):
         if name not in cache:
             body = "\n".join(found[name])
             decoded, again = resolve(name, body) if resolve else (parse_objdump(body), None)
-            cache[name] = skip_pools(decoded, again)
+            cache[name] = skip_pools(decoded, again, jump_pools=True)
         return cache[name]
 
     result = {}
     for key in sorted(expected):
         code = function_code(ROW_SYMBOL_PREFIX + key)
         mnemonics = {item[2] for item in code}
-        registers = {}
+        call_sites = {site: (mnemonic, operands) for site, _, mnemonic, operands in code
+                      if mnemonic in ("call8", "callx8")}
         callees = set()
-        for _, _, mnemonic, operands in code:
-            targets = re.findall(r"<([^>]+)>", operands)
-            register = operands.split(",", 1)[0].strip()
-            if mnemonic == "call8" and targets:
-                if not CALL_SYMBOL.fullmatch(targets[-1]):
+        for site, address, name in decoded_calls(code):
+            if site not in call_sites:
+                continue
+            mnemonic, operands = call_sites[site]
+            if address is not None and not CALL_SYMBOL.fullmatch(name):
+                if mnemonic == "call8":
                     raise ValueError(f"invalid call target in {key}: {operands}")
-                callees.add(targets[-1])
-                registers.clear()
-            elif mnemonic == "callx8":
-                callees.add(targets[-1] if targets and CALL_SYMBOL.fullmatch(targets[-1])
-                            else registers.get(register, "*" + register))
-                registers.clear()
-            elif mnemonic == "l32r" and targets and "(" in operands and CALL_SYMBOL.fullmatch(targets[-1]):
-                registers[register] = targets[-1]
-            else:
-                registers.pop(register, None)
+                name = "*" + operands.split(",", 1)[0].split()[0]
+            callees.add(name)
         for callee in callees:
             for name in found:
                 if name == callee or name.startswith(callee + "."):

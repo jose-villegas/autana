@@ -20,7 +20,8 @@ def scratch_tree(work, root=ROOT, fresh=False):
     # A shared clone with the source's HEAD in its index: what reads the index (the bake keys' submodule
     # gitlinks, the tracked-file lists) sees the source, and its uncommitted edits are working changes.
     def git(*args):
-        return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout.strip()
+        return subprocess.run(["git", *args], stdin=subprocess.DEVNULL,
+                              check=True, capture_output=True, text=True).stdout.strip()
     git("clone", "-q", "--shared", "--no-checkout", str(root), str(tree))
     git("-C", str(tree), "read-tree", git("-C", str(root), "rev-parse", "HEAD"))
     for name in tracked_files(root):
