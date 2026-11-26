@@ -170,8 +170,12 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
 clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
-shortest start edge from its start (a seam-held point follows its target): the
-fit refines the start in place, and a corner cannot slide across its own face.
+shortest start edge from its start (a seam-held point follows its target).
+
+The fit shortens steps that would turn a single-sided rest triangle at least
+90 degrees from its start orientation after seam holds. This follows the
+safe-step principle of Smith and Schaefer<sup>[[149]](../../Citations.md#smith-schaefer-2015)</sup>.
+
 Where nothing is drawn the renderer shows the scene's clear colour, as the
 device and reference do.
 

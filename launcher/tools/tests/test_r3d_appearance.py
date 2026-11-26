@@ -528,6 +528,37 @@ class AppearanceMeshTests(unittest.TestCase):
         self.assertGreater(held.min(), 0.9 * reach * scale.min())
 
     @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_colour_fit_keeps_single_sided_slivers_facing_their_start(self):
+        from r3d import appearance_simplify as appearance
+
+        height = 0.02
+        sliver = np.array([[-1.0, 0, 0], [1.0, 0, 0], [0.0, height, 0]])
+        points = np.concatenate([sliver, sliver + [3, 0, 0]])
+        tris = np.arange(len(points)).reshape(-1, 3)
+        double = np.array([False, True])
+        mesh = FitMesh(points, np.full_like(points, 0.5), tris, double, 64, np.arange(len(points)))
+        tips = tris[:, -1]
+        target = np.full((1, len(tips), 3), 0.5 - height, dtype=np.float32)
+        views = [(np.eye(4), target)]
+        render = mock.Mock(side_effect=lambda positions, colours, *args: (colours[tips] + positions[tips, 1:2])[None])
+
+        def normal_dots(positions):
+            a, b, c = positions[tris].transpose(1, 0, 2)
+            return np.cross(b - a, c - a)[:, 2] * (2 * height)
+
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            fitted, _, history = appearance.optimise(
+                mesh, views, (len(tips), 1), steps=20, batch=1, lr_position=0.01,
+                lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
+        for positions, *_ in render.call_args_list:
+            self.assertTrue((normal_dots(positions[0].detach().numpy())[~double] > 0).all())
+        dots = normal_dots(fitted)
+        self.assertTrue((dots[~double] > 0).all())
+        self.assertTrue((dots[double] < 0).all())
+        self.assertTrue((fitted[tips[~double], 1] < height).all())
+        self.assertLess(history[-1], history[0])
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
     def test_local_scale_holds_tiny_edges_against_image_pull(self):
         from r3d import appearance_simplify as appearance
 
