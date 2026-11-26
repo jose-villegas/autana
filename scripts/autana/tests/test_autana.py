@@ -78,7 +78,6 @@ def status_command(argv, environ, handler):
 def run_main(argv, environ=None, handler=None):
     handler = handler or mock.Mock(return_value=0)
     with status_command(argv, environ or {}, handler), \
-         mock.patch.object(autana, "idf_python", return_value="python"), \
          mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
         with unittest.TestCase().assertRaises(SystemExit) as stop:
             autana.main()
@@ -535,9 +534,6 @@ class DeviceCommandTests(unittest.TestCase):
     word, in place of a flag every command used to parse for itself."""
 
     def setUp(self):
-        patcher = mock.patch.object(autana, "idf_python", return_value="python")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         patcher = mock.patch.object(autana, "device_tool", return_value=Path("device.py"))
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -581,7 +577,10 @@ class BoardCommandSpawnTests(unittest.TestCase):
         device.return_value.poll.return_value = 0
         device.return_value.returncode = 0
         device.return_value.communicate.return_value = (json.dumps({"boards": []}), "")
-        with mock.patch.object(autana, "has_pyserial", return_value=True),              mock.patch.object(autana, "launch_process_tree", device),              mock.patch.object(autana, "close_process_tree"),              mock.patch("subprocess.Popen", side_effect=OSError("no other process")) as other,              mock.patch("builtins.print"):
+        with mock.patch.object(autana, "launch_process_tree", device), \
+             mock.patch.object(autana, "close_process_tree"), \
+             mock.patch("subprocess.Popen", side_effect=OSError("no other process")) as other, \
+             mock.patch("builtins.print"):
             run()
         return device.call_args_list, other.call_args_list
 
@@ -597,10 +596,6 @@ class BoardCommandSpawnTests(unittest.TestCase):
         with without_environment(autana.WAIT_ENV):
             device, other = self.spawns(autana.refused_as_busy)
         self.assertEqual((len(device), other), (1, []))
-
-    def test_without_pyserial_device_py_runs_under_idf_python(self):
-        with mock.patch.object(autana, "has_pyserial", return_value=False),              mock.patch.object(autana, "idf_python", return_value="idf-python"):
-            self.assertEqual(autana.device_python(), "idf-python")
 
 
 def make_project(root):
@@ -1879,7 +1874,6 @@ class OneShotForwardingTests(MainTest):
                 with mock.patch.dict(os.environ), \
                      mock.patch.object(autana, "capture_device", side_effect=capture), \
                      mock.patch.object(autana, "refused_as_busy", return_value=False), \
-                     mock.patch.object(autana, "idf_python", return_value=sys.executable), \
                      mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
                      mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
                      mock.patch.object(device, "open_when_free", return_value=FakeConnection([transcript])), \

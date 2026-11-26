@@ -16,7 +16,6 @@ file; docs/cli/ shows it, written by scripts/autana/cli_reference.py.
 import contextlib
 import gzip
 import importlib
-import importlib.util
 import json
 import math
 import os
@@ -37,7 +36,7 @@ from process_tree import launch_process_tree, close_process_tree, install_consol
 from console_protocol import parse_assignment, reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
+from espressif import idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT, parse_apps  # noqa: E402
 
@@ -197,27 +196,18 @@ PROJECT_ENV = autana_config.PROJECT_ENV
 INTERRUPT_GRACE_SECONDS = 5
 
 
-def has_pyserial():
-    return importlib.util.find_spec("serial") is not None
-
-
-def device_python():
-    """This interpreter when it has pyserial, the one module device.py needs,
-    else ESP-IDF's Python. device.py finds ESP-IDF itself for the tools that
-    need it (esptool, parttool, coredump), so a command that never builds or
-    flashes, such as devices or status, never pays for finding ESP-IDF: a
-    dozen git calls."""
-    return sys.executable if has_pyserial() else idf_python()
-
-
 def device_command(*args, wait=None):
-    """device.py runs under device_python(). `--owner`/`--wait` are
+    """device.py runs under this interpreter: it re-runs itself under ESP-IDF's
+    Python when this one lacks pyserial, and finds ESP-IDF itself for the tools
+    that need it (esptool, parttool, coredump), so a command that never builds
+    or flashes, such as devices or status, never pays for finding ESP-IDF, a
+    dozen git calls. `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
     command: owner() names the lock holder, and `--wait` is a caller's own
     `wait` when it gives one (send()'s short fail-fast window, used only
     without a global `--wait`), else the global `--wait` (WAIT_ENV), else
     left to device.py's own 600 s default."""
-    command = [device_python(), "-u", str(device_tool()), "--owner", owner()]
+    command = [sys.executable, "-u", str(device_tool()), "--owner", owner()]
     wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
         command += ["--wait", str(wait)]
