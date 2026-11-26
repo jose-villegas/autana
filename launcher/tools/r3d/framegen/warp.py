@@ -4,8 +4,9 @@ to a later pose, and fill what the warp leaves empty.
 
 The raster is the render size, stretched to the panel on the way out, so a
 pixel's ray is the one poses.camera_rays casts through the same place of
-the panel. A pixel's view depth is near_z / iz, with iz its stored depth
-over R3D_DEPTH_NEAREST; R3D_DEPTH_EMPTY marks the sky, which warps as a
+the panel. A pixel's view depth is depth_near / iz, with iz its stored depth
+over R3D_DEPTH_NEAREST and depth_near the frame's own depth scale, which the
+renderer fits to the nearest bound in view (raster_depth_near()); R3D_DEPTH_EMPTY marks the sky, which warps as a
 direction (rotation only) and loses to anything drawn.
 """
 import pathlib
@@ -25,29 +26,30 @@ R3D_DEPTH_EMPTY = read_define(SPAN_HEADER, "R3D_DEPTH_EMPTY")
 # UINT16_MAX in the header: the largest a depth word holds.
 R3D_DEPTH_NEAREST = int(np.iinfo(np.uint16).max)
 
-# The dump's header (render_lab_render_host.c --dump): width and height as int32.
-DUMP_HEADER = struct.Struct("<ii")
+# The dump's header (render_lab_render_host.c --dump): width and height as int32,
+# then the frame's depth scale as float32.
+DUMP_HEADER = struct.Struct("<iif")
 
 
 def read_dump(path):
-    """(colour, depth): (h, w) uint16 arrays of one --dump file, the colour
-    native RGB565 (gfx_color_t is stored in panel order)."""
+    """(colour, depth, depth_near) of one --dump file: (h, w) uint16 arrays,
+    the colour native RGB565 (gfx_color_t is stored in panel order), and the
+    scale its depth is encoded at."""
     data = pathlib.Path(path).read_bytes()
-    width, height = DUMP_HEADER.unpack_from(data)
+    width, height, depth_near = DUMP_HEADER.unpack_from(data)
     pixels = width * height
     words = np.frombuffer(data, dtype="<u2", offset=DUMP_HEADER.size, count=2 * pixels)
-    return gfx_color.swap(words[:pixels]).reshape(height, width), words[pixels:].reshape(height, width)
+    return gfx_color.swap(words[:pixels]).reshape(height, width), words[pixels:].reshape(height, width), depth_near
 
 
 class Lens:
     """The panel's pinhole (panel_w x panel_h, lens = tan of half the short
     side's field of view) seen through a raster of width x height."""
 
-    def __init__(self, panel_w, panel_h, lens, near, width, height):
+    def __init__(self, panel_w, panel_h, lens, width, height):
         # As poses.camera_rays spreads its rays.
         short = min(panel_w, panel_h)
         self.half_x, self.half_y = lens * panel_w / short, lens * panel_h / short
-        self.near = near
         self.width, self.height = width, height
 
     def rays(self):
@@ -57,9 +59,10 @@ class Lens:
         return np.meshgrid(x * self.half_x, y * self.half_y)
 
 
-def warp(colour, depth, lens, pose_from, pose_to):
-    """Forward-warp one raster to `pose_to`: (colour, depth, written), each
-    pixel splatted to the nearest one with the nearest point winning;
+def warp(colour, depth, depth_near, lens, pose_from, pose_to):
+    """Forward-warp one raster, its depth encoded at `depth_near`, to
+    `pose_to`: (colour, depth, written), each pixel splatted to the nearest
+    one with the nearest point winning; the depth out keeps that encoding and
     `written` is False on holes. A pose is (eye xyz, forward xyz)."""
     sx, sy = lens.rays()
     drawn = depth != R3D_DEPTH_EMPTY
@@ -67,7 +70,7 @@ def warp(colour, depth, lens, pose_from, pose_to):
     r1, u1, f1 = camera_basis(pose_to[3:])
     direction = f0 + sx[..., None] * r0 + sy[..., None] * u0
     # A drawn pixel moves with the eye; the sky only turns.
-    z = lens.near * R3D_DEPTH_NEAREST / np.maximum(depth, 1)
+    z = depth_near * R3D_DEPTH_NEAREST / np.maximum(depth, 1)
     offset = np.asarray(pose_from[:3]) - np.asarray(pose_to[:3])
     point = np.where(drawn[..., None], direction * z[..., None] + offset, direction)
     cz = point @ f1
@@ -83,7 +86,7 @@ def warp(colour, depth, lens, pose_from, pose_to):
     out_depth = np.full(depth.size, R3D_DEPTH_EMPTY, dtype=np.uint16)
     written = np.zeros(depth.size, dtype=bool)
     out_colour[target] = colour[keep][chosen]
-    near_iz = lens.near * R3D_DEPTH_NEAREST / np.where(source_drawn, source_cz, 1)
+    near_iz = depth_near * R3D_DEPTH_NEAREST / np.where(source_drawn, source_cz, 1)
     out_depth[target] = np.where(source_drawn, np.clip(near_iz, 1, R3D_DEPTH_NEAREST), R3D_DEPTH_EMPTY)
     written[target] = True
     shape = depth.shape

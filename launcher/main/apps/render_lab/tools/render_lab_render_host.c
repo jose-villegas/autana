@@ -74,7 +74,8 @@ static int console_step_count;
 static recti_t size_rect;
 
 /* --dump DIR: each frame's raster colour then depth, before the upscale, as
- * DIR/NNNN.raw: width and height as int32, then width x height RGB565, then
+ * DIR/NNNN.raw: width and height as int32, the frame's depth scale
+ * (raster_depth_near()) as float32, then width x height RGB565, then
  * width x height inverse depth (r3d_span.h), all little-endian. For the frame
  * generation experiment (launcher/tools/r3d/framegen/); host only. */
 #define DUMP_PATH_MAX 512
@@ -377,9 +378,11 @@ dump_raster(int index) {
     (void)snprintf(path, sizeof path, "%s/%04d.raw", dump_dir, index);
     /* The raster's own size: the one its colour and depth rows are laid out at. */
     const int32_t size[2] = {raster->width, raster->height};
+    const float depth_near = raster_depth_near(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     FILE* out = fopen(path, "wb");
     const bool written = out != NULL && fwrite(size, sizeof size[0], 2, out) == 2
+                         && fwrite(&depth_near, sizeof depth_near, 1, out) == 1
                          && fwrite(raster_color(raster), sizeof(gfx_color_t), pixels, out) == pixels
                          && fwrite(raster_depth(raster), sizeof(uint16_t), pixels, out) == pixels;
     if (out == NULL || fclose(out) != 0 || !written) {
