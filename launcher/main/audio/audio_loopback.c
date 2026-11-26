@@ -40,7 +40,7 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 }
 
 bool
-audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result,
-                                audio_loopback_observer_fn observer, void* context) {
-    return measure(hz, ms, 0, db, result, observer, context);
+audio_loopback_measure_observed(uint16_t hz, uint16_t ms, uint16_t settle_ms, float* db,
+                                audio_loopback_result_t* result, audio_loopback_observer_fn observer, void* context) {
+    return measure(hz, ms, settle_ms, db, result, observer, context);
 }

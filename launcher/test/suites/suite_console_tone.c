@@ -276,6 +276,7 @@ static struct {
             int64_t* times;
             uint16_t ms;
             uint16_t window_ms;
+            unsigned settled_windows;
             int64_t now_us;
             int64_t onset_us;
             int64_t last_selected_us;
@@ -536,10 +537,11 @@ tone_imu_serve(void) {
 }
 
 bool
-audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result,
-                                audio_loopback_observer_fn observer, void* context) {
+audio_loopback_measure_observed(uint16_t hz, uint16_t ms, uint16_t settle_ms, float* db,
+                                audio_loopback_result_t* result, audio_loopback_observer_fn observer, void* context) {
     TEST_ASSERT_EQUAL_UINT16(TEST_TARGET_HZ, hz);
     TEST_ASSERT_EQUAL_UINT16(device.pulse.capture.window_ms, ms);
+    device.pulse.capture.settled_windows += settle_ms == AUDIO_LOOPBACK_SETTLE_MS;
     device.measures++;
     const int64_t start = device.pulse.capture.now_us;
     device.pulse.capture.onset_us = start;
@@ -549,6 +551,9 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
     *db = device.measures % 2 ? -100 : -12;
     if (result) {
         *result = (audio_loopback_result_t){.measured_hz = hz, .noise_dbfs = device.measures % 2 ? TEST_NOISE_DBFS : 0};
+    }
+    if (!observer) {
+        return true;
     }
     unsigned bursts = 0;
     while (device.pulse.capture.now_us - start < (int64_t)ms * MATH_US_PER_MS && bursts++ < TEST_PULSE_MAX_BURSTS) {
@@ -919,6 +924,21 @@ pulse_fixture(uint16_t pulse_ms) {
 }
 
 static void
+test_tone_pulse_without_imu_uses_settle(void) {
+    const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
+    input_fake_motion_present(false);
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
+    const char* error = console_tone_check(&args, line);
+    const bool shake_unavailable = !error && strstr(line, ", shake n/a");
+    free(line);
+    TEST_ASSERT_NULL(error);
+    TEST_ASSERT_EQUAL_UINT(2, device.measures);
+    TEST_ASSERT_TRUE(shake_unavailable);
+    TEST_ASSERT_EQUAL_UINT(device.measures, device.pulse.capture.settled_windows);
+}
+
+static void
 test_tone_pulse_selects_onset_to_end_and_accepts_ended_voice(void) {
     const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
     char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
@@ -1225,6 +1245,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_melody_console_failure_and_usage);
     RUN_TEST(test_melody_console_later_failures);
     RUN_TEST(test_tone_pulse_measures_from_parked_imu);
+    RUN_TEST(test_tone_pulse_without_imu_uses_settle);
     RUN_TEST(test_tone_pulse_board_cadence);
     RUN_TEST(test_tone_pulse_delayed_gap_precedes_start);
     RUN_TEST(test_tone_pulse_measures_after_odr_switch);
