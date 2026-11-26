@@ -4,7 +4,6 @@ import contextlib
 import io
 import math
 import pathlib
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -79,11 +78,8 @@ class EngineFrameTests(unittest.TestCase):
         mask = sum(bit << index for index, bit in enumerate(inside)).to_bytes(1, "little")
         raw = (sh.HEADER.pack(sh.VERSION, sh.SH_PROBES_FLAG_INSIDE_MASK, *origin, *spacing, 1.0, *dims)
                + b"".join(sh.RECORD.pack(*values[i * record:(i + 1) * record]) for i in range(count)) + mask)
-        script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
-                  "from asset.engine_frame import to_engine; from r3d.sh_probe_asset import TYPE; "
-                  "sys.stdout.buffer.write(to_engine(TYPE, sys.stdin.buffer.read()))")
-        converted = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).resolve().parents[1])],
-                                   input=raw, capture_output=True, check=True).stdout
+        with mock.patch.dict(sys.modules, {"numpy": None}):
+            converted = to_engine(sh.TYPE, raw)
         _, _, moved, _, _, _, mask_at = sh.layout(converted)
         self.assertEqual(moved, (1.0, 2.0, -(3.0 + 2 * 2.0)))
         z_row = 1 + sh.L1_AXES.index(2)
@@ -95,6 +91,13 @@ class EngineFrameTests(unittest.TestCase):
                 self.assertEqual(list(sh.RECORD.unpack_from(converted, sh.HEADER.size + target * sh.RECORD.size)), expected)
                 self.assertEqual(converted[mask_at] >> target & 1, inside[source])
         self.assertEqual(build_pack.to_engine(sh.TYPE, converted), raw)
+
+    def test_probe_coefficient_with_no_mirrored_int16_is_refused(self):
+        values = [0] * (sh.COEFFICIENTS * sh.CHANNELS)
+        values[(1 + sh.L1_AXES.index(2)) * sh.CHANNELS] = INT16_MIN
+        raw = sh.HEADER.pack(sh.VERSION, 0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1, 1, 1) + sh.RECORD.pack(*values)
+        with self.assertRaisesRegex(ValueError, "int16"):
+            to_engine(sh.TYPE, raw)
 
     def test_unrepresentable_mirror_is_rejected(self):
         source = self.root / "probe.mesh"

@@ -49,6 +49,8 @@ def _mirror_probes(entry):
         x, y, z = (value if sign > 0 else count - 1 - value for value, count, sign in zip(at, dims, AXIS_SIGNS))
         source = (z * dims[1] + y) * dims[0] + x
         values = sh.RECORD.unpack_from(entry, sh.HEADER.size + source * sh.RECORD.size)
+        if any(value == INT16_MIN and sign < 0 for value, sign in zip(values, row_signs)):
+            raise ValueError("mirrored SH coefficient does not fit int16")
         records += sh.RECORD.pack(*(value * sign for value, sign in zip(values, row_signs)))
         if inside and entry[mask_at + source // sh.MASK_BITS_PER_BYTE] >> (source % sh.MASK_BITS_PER_BYTE) & 1:
             inside[target // sh.MASK_BITS_PER_BYTE] |= 1 << (target % sh.MASK_BITS_PER_BYTE)

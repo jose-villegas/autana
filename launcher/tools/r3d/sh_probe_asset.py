@@ -19,6 +19,7 @@ COEFFICIENTS = read_define(SH1_OWNER, 'SH1_COEFFICIENT_COUNT')
 L1_AXES = (1, 2, 0)
 HEADER_FIELDS = (('VERSION', 'H'), ('FLAGS', 'H'), ('ORIGIN', '3f'), ('SPACING', '3f'), ('SCALE', 'f'), ('DIMS', '3H'), ('PADDING', '2x'))
 HEADER = checked_struct(OWNER, 'SH_PROBES', HEADER_FIELDS)
+RECORD = struct.Struct(f'<{COEFFICIENTS * CHANNELS}h')
 U16_BITS = 16
 DIM_MAX = (1 << U16_BITS) - 1
 QUANT_MAX = DIM_MAX >> 1
@@ -48,9 +49,6 @@ def encode(origin, spacing, dims, coefficients, inside=None):
     quantized = np.rint(coefficients / scale).astype('<i2')
     mask = np.packbits(inside, bitorder='little').tobytes()
     return HEADER.pack(VERSION, SH_PROBES_FLAG_INSIDE_MASK, *origin, *spacing, scale, *dims) + quantized.tobytes() + mask
-
-
-RECORD = struct.Struct(f'<{COEFFICIENTS * CHANNELS}h')
 
 
 def layout(data):
