@@ -76,7 +76,7 @@ class ProbeTests(unittest.TestCase):
         settings = SimpleNamespace(path=None, seed=0, alpha_keep=None, double_sided=set())
         requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=SPP)
         indirect = SimpleNamespace(bounces=2, rays=1)
-        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=indirect))
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=indirect))
         colour = np.array([0.4, 0.6, 1.0])
         scene = SimpleNamespace(path=None, lights=[dict(type='sky', mode=LIGHT_MODE_BAKED, color=colour.tolist(), intensity=1.0)],
                                 camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
@@ -138,7 +138,7 @@ class ProbeTests(unittest.TestCase):
         requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
         settings = SimpleNamespace(path=None, seed=0, alpha_keep=None, double_sided=set())
         indirect = SimpleNamespace(bounces=2)
-        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=indirect))
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=indirect))
         scene = SimpleNamespace(path=None, lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         transport = mock.Mock()
@@ -176,7 +176,7 @@ class ProbeTests(unittest.TestCase):
         source = corridor(albedo=0)
         settings = SimpleNamespace(path=None, seed=0, alpha_keep=None, double_sided=set())
         requested = SimpleNamespace(spacing=0.5, directions=DIRECTIONS, spp=1)
-        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=1, rays=1)))
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=SimpleNamespace(bounces=1, rays=1)))
         camera = SimpleNamespace(near_z=0.001, region=([0.25, 0.25, 1.0], [1.25, 1.25, 2.0]))
         scene = SimpleNamespace(path=None, lights=[sun([0, 0, 1])], camera=SimpleNamespace(component=camera),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
@@ -231,14 +231,14 @@ class ProbeTests(unittest.TestCase):
             visible = ~query.blocked(origins, directions)
             traced = np.einsum('nk,n,nc->kc', sh.basis(directions), visible,
                                np.broadcast_to(irradiance, directions.shape)) / samples
-            got = sh.sun_term(query, np.array([origin]), [sun])[0]
+            got = sh.direct_term(query, np.array([origin]), [sun], 0.01)[0][0]
             np.testing.assert_allclose(got, traced, atol=4e-4)
 
     def test_sun_uses_only_baked_lights(self):
         from r3d.import_settings import load_light
 
         query = mock.Mock()
-        query.blocked.side_effect = lambda points, directions: np.zeros(len(points), dtype=bool)
+        query.blocked.side_effect = lambda points, directions, reach=None: np.zeros(len(points), dtype=bool)
         points = np.array([[0., 0., 0.], [1., 0., 0.]])
         component = dict(type='directional', color=[0.2, 0.4, 0.8], intensity=2)
         realtime = load_light(component, [0, 0, 0], 'light')
@@ -246,13 +246,13 @@ class ProbeTests(unittest.TestCase):
         expected = np.broadcast_to(math.pi * sh.basis(np.array([[0., 1., 0.]]))[:, :, None]
                                    * np.array(component['color']) * component['intensity'],
                                    (len(points), sh.COEFFICIENTS, sh.CHANNELS)).copy()
-        self.assertEqual(sh.sun_term(query, points, [realtime]).tobytes(), np.zeros_like(expected).tobytes())
-        self.assertEqual(sh.sun_term(query, points, [baked]).tobytes(), expected.tobytes())
-        self.assertEqual(sh.sun_term(query, points, [realtime, baked]).tobytes(), expected.tobytes())
+        self.assertEqual(sh.direct_term(query, points, [realtime], 0.01)[0].tobytes(), np.zeros_like(expected).tobytes())
+        self.assertEqual(sh.direct_term(query, points, [baked], 0.01)[0].tobytes(), expected.tobytes())
+        self.assertEqual(sh.direct_term(query, points, [realtime, baked], 0.01)[0].tobytes(), expected.tobytes())
         invalid = baked.copy()
         del invalid['mode']
         with self.assertRaises(KeyError):
-            sh.sun_term(query, points, [invalid])
+            sh.direct_term(query, points, [invalid], 0.01)[0]
         with self.assertRaises(ValueError):
             load_light(dict(component, mode='unknown'), [0, 0, 0], 'light')
 
@@ -358,7 +358,7 @@ class ProbeTests(unittest.TestCase):
         points = np.stack(np.meshgrid([-5., 0.], [-5., 0.], [-5., 0., 5.], indexing='ij'), axis=-1).reshape(-1, 3)
         settings = SimpleNamespace(seed=0, alpha_keep=None, double_sided=set())
         requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
-        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2)))
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=SimpleNamespace(bounces=2)))
         scene = SimpleNamespace(path=None, lights=[], camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
                                 indirect=SimpleNamespace(albedo_boost=1.0))
         transport = mock.Mock()
