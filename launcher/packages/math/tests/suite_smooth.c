@@ -48,6 +48,14 @@ test_alpha_keeps_small_steps_exact(void) {
     }
 }
 
+static void
+test_integer_step_moves_a_share_and_truncates(void) {
+    TEST_ASSERT_EQUAL_INT64(110, smooth_step_i64(100, 180, SMOOTH_RTT_DIVISOR));
+    TEST_ASSERT_EQUAL_INT64(90, smooth_step_i64(100, 20, SMOOTH_RTT_DIVISOR));
+    TEST_ASSERT_EQUAL_INT64(100, smooth_step_i64(100, 107, SMOOTH_RTT_DIVISOR));
+    TEST_ASSERT_EQUAL_INT64(100, smooth_step_i64(100, 93, SMOOTH_RTT_DIVISOR));
+}
+
 void
 suite_smooth(void) {
     RUN_TEST(test_one_half_life_leaves_half);
@@ -55,5 +63,6 @@ suite_smooth(void) {
     RUN_TEST(test_time_constant_matches_half_life);
     RUN_TEST(test_half_steps_compose_to_full_step);
     RUN_TEST(test_alpha_keeps_small_steps_exact);
+    RUN_TEST(test_integer_step_moves_a_share_and_truncates);
 }
 SUITE_REGISTER(suite_smooth)

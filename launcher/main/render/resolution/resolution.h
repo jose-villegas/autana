@@ -130,12 +130,10 @@ void resolution_predict_measured(resolution_predict_t* predict, const resolution
 
 /* The whole frame's budget split: the policies hold the scaled part (draw
  * and upscale) to the target less what frames pay outside it. That cost is
- * an exponential average with weight 1/RESOLUTION_UNSCALED_WEIGHT_DIVISOR,
- * the gain of TCP's smoothed round-trip time (Paxson et al. 2011, RFC 6298
- * section 2.3), seeded by its first sample. The scaled part keeps
- * at least RESOLUTION_SCALED_MIN_PERCENT of the target. */
-#define RESOLUTION_UNSCALED_WEIGHT_DIVISOR 8
-#define RESOLUTION_SCALED_MIN_PERCENT      25
+ * an exponential average with weight 1/SMOOTH_RTT_DIVISOR (math/signal/smooth.h),
+ * seeded by its first sample. The scaled part keeps at least
+ * RESOLUTION_SCALED_MIN_PERCENT of the target. */
+#define RESOLUTION_SCALED_MIN_PERCENT 25
 
 typedef struct {
     int32_t target_us;   /* the whole frame's */

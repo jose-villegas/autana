@@ -505,7 +505,7 @@ def _rect(xs, ys, weight, margin, max_side):
     return max(0, x0 - margin), max(0, y0 - margin), min(width, x1 + margin), min(height, y1 + margin)
 
 
-def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=64):
+def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=64, crop=None):
     """The count most telling clusters of changed pixels between a and b.
 
     A pixel changed if any channel moved by more than threshold, or it is a
@@ -514,6 +514,11 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
     then the rest by total difference. Each rect is the changed pixels'
     bounding box plus margin, clamped to the image; a cluster larger than
     max_side is cut to its strongest max_side window.
+
+    The clusters are exclusive: one whose crop overlaps a stronger one's is
+    dropped and the next taken, so no two crops show the same pixels. A
+    cluster's crop is its rect, or crop(cluster) for a sheet that cuts a
+    different box around it.
     """
     _same_size(a, b)
     pa, pb = _pixels(a), _pixels(b)
@@ -535,7 +540,21 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
         x0, y0, x1, y1 = _rect(cx, cy, weight, margin, max_side)
         clusters.append(Cluster(x0, y0, x1, y1, int(holes[cy, cx].sum()), int(pick.sum()), int(diff[cy, cx].sum())))
     clusters.sort(key=lambda c: (c.holes, c.strength), reverse=True)
-    return clusters[:count]
+    crop = crop or (lambda c: (c.x0, c.y0, c.x1, c.y1))
+    kept, boxes = [], []
+    for cluster in clusters:
+        box = crop(cluster)
+        if not any(_overlap(box, other) for other in boxes):
+            kept.append(cluster)
+            boxes.append(box)
+        if len(kept) == count:
+            break
+    return kept
+
+
+def _overlap(a, b):
+    """Whether boxes a and b, each (x0, y0, x1, y1) with x1 and y1 exclusive, share a pixel."""
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
 def crop_sheet(entries, labels, zoom=ZOOM):
@@ -873,6 +892,25 @@ class ReferenceVideoWriter:
             self.video.close()
 
 
+def video_sheet(rows, out, label_a, label_b, fps, crop):
+    """Synchronous video pairs as labelled rows, cropped identically, sampled into one GIF."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from docs.figures import save_gif
+    runs = [read_video(path) for _, a, b in rows for path in (a, b)]
+    rate = runs[0][0]
+    if any(other != rate for other, _ in runs):
+        raise ValueError("video rows need the same frame rate")
+    shown = []
+    for frame, tiles in enumerate(zip(*(frames for _, frames in runs))):
+        if int(frame * fps / rate) == int((frame - 1) * fps / rate) and frame > 0:
+            continue
+        pictures = [Image.fromarray(tile).crop(crop) if crop else Image.fromarray(tile) for tile in tiles]
+        panels = [[(f"{title}: {label_a}", pictures[2 * row]),
+                   (f"{title}: {label_b}", pictures[2 * row + 1])] for row, (title, _, _) in enumerate(rows)]
+        shown.append(still_sheet(panels))
+    save_gif(shown, out, 1000 / fps)
+
+
 MATERIAL_PANEL_MIN = 180
 MATERIAL_VIEWS = 4
 MATERIAL_EMPTY = (24, 24, 24)
@@ -1023,12 +1061,16 @@ def main():
     parser.add_argument("--bake", nargs=2, action="append", metavar=("LABEL", "VIDEO"))
     parser.add_argument("--bake-reference", nargs=2, action="append", metavar=("LABEL", "REFERENCE_DIR"),
                         help="the reference made with that --bake's own settings, scored and shown beside the common one")
+    parser.add_argument("--still-column", nargs=2, action="append", metavar=("LABEL", "FILE"),
+                        help="a labelled column of still pixels; at least two columns")
     parser.add_argument("--angle-column", nargs=2, action="append", metavar=("LABEL", "DIR"),
                         help="a column of the --out normal-angle sheet: appearance_simplify.py --score --angle-dir's output")
     parser.add_argument("--heatmap-dir")
     parser.add_argument("--reference-sheet", metavar="PNG",
                         help="with --reference-video or --reference-bakes, one sheet of --sheet-frames")
     parser.add_argument("--sheet-frames", default="2,4", help="comma-separated video frame indices for --reference-sheet")
+    parser.add_argument("--video-row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
+    parser.add_argument("--crop-box", nargs=4, type=int, metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"))
     parser.add_argument("--video", nargs=2, metavar=("A.avi", "B.avi"))
     parser.add_argument("--csv")
     parser.add_argument("--fps", type=float)
@@ -1059,6 +1101,20 @@ def main():
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if args.reference_video and (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
+    if args.video_row:
+        if not args.label_a or not args.label_b or not args.fps:
+            parser.error("--video-row needs --label-a, --label-b and --fps")
+        video_sheet(args.video_row, args.out, args.label_a, args.label_b, args.fps, args.crop_box)
+        return
+    if args.still_column:
+        if len(args.still_column) < 2:
+            parser.error("--still-column needs at least two columns")
+        panels = []
+        for label, path in args.still_column:
+            with Image.open(path) as picture:
+                panels.append((label, picture.convert("RGB")))
+        still_row(panels).save(args.out, optimize=True)
+        return
     if args.angle_column:
         angle_sheet(args.angle_column).save(args.out, optimize=True)
         return

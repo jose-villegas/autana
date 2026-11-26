@@ -836,8 +836,123 @@ test_mat3_product_applies_right_operand_first(void) {
     }
 }
 
+static void
+test_quatf_from_to_rotates_directions_at_any_scale(void) {
+    const vec3f_t a = {1.0F, -2.0F, 3.0F};
+    const vec3f_t b = {2.0F, 1.0F, -4.0F};
+    const quatf_t turn = quatf_from_to(vec3f_scale(a, 1.0E-30F), vec3f_scale(b, 1.0E30F));
+    assert_vec3(vec3f_normalize(b), quatf_rotate(turn, vec3f_normalize(a)));
+    const quatf_t identity = quatf_identity();
+    const quatf_t absent = quatf_from_to(a, vec3f_zero());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &absent, sizeof absent);
+}
+
+static void
+test_quatf_from_to_handles_half_turns(void) {
+    const vec3f_t down = vec3f_scale(vec3f_up(), -1.0F);
+    const quatf_t turn = quatf_from_to(down, vec3f_up());
+    assert_vec3(vec3f_up(), quatf_rotate(turn, down));
+    assert_vec3(vec3f_back(), quatf_rotate(turn, vec3f_forward()));
+    const quatf_t axial = quatf_from_to(vec3f_forward(), vec3f_back());
+    assert_vec3(vec3f_back(), quatf_rotate(axial, vec3f_forward()));
+
+    const float lean = 1.0E-5F;
+    const vec3f_t almost_down = {lean, -1.0F, 0};
+    const quatf_t near = quatf_from_to(almost_down, vec3f_up());
+    const vec3f_t raised = quatf_rotate(near, almost_down);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 0.0F, raised.x);
+    assert_vec3(vec3f_back(), quatf_rotate(near, vec3f_back()));
+}
+
+static void
+test_quatf_looking_with_missing_up_and_nonfinite_forward(void) {
+    const quatf_t look = quatf_looking(vec3f_forward(), vec3f_zero());
+    assert_vec3(vec3f_forward(), quatf_rotate(look, vec3f_forward()));
+    assert_vec3(vec3f_up(), quatf_rotate(look, vec3f_up()));
+    const quatf_t identity = quatf_identity();
+    const quatf_t bad = quatf_looking((vec3f_t){INFINITY, 1, 0}, vec3f_up());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &bad, sizeof bad);
+}
+
+static void
+test_quatf_from_to_near_antiparallel(void) {
+    const vec3f_t starts[] = {{1.0F, 0.8F, 0.9F}, {0.9F, 1.0F, 0.8F}, {0.8F, 0.9F, 1.0F}};
+    const float steps[] = {1.0E-7F, 1.0E-6F, 1.0E-5F, 1.0E-4F, 1.0E-3F};
+    const float sides[] = {-1.0F, 1.0F};
+    for (size_t i = 0; i < sizeof starts / sizeof starts[0]; i++) {
+        const vec3f_t a = starts[i];
+        const vec3f_t unit = vec3f_normalize(a);
+        for (size_t j = 0; j < sizeof sides / sizeof sides[0]; j++) {
+            vec3f_t b = vec3f_scale(a, -1.0F);
+            b.z = nextafterf(b.z, sides[j]);
+            assert_vec3(vec3f_normalize(b), quatf_rotate(quatf_from_to(a, b), unit));
+            for (size_t k = 0; k < sizeof steps / sizeof steps[0]; k++) {
+                b.z = -a.z + sides[j] * steps[k];
+                assert_vec3(vec3f_normalize(b), quatf_rotate(quatf_from_to(a, b), unit));
+            }
+        }
+    }
+}
+
+static void
+test_quatf_from_to_uses_least_aligned_axis_near_opposition(void) {
+    const vec3f_t a = {0.25F, 0.5F, 1.0F};
+    vec3f_t b = vec3f_scale(a, -1.0F);
+    b.z = nextafterf(b.z, 0.0F);
+    const vec3f_t axis = vec3f_normalize(vec3f_cross(vec3f_unit_x(), a));
+    const quatf_t turn = quatf_from_to(a, b);
+    assert_vec3(axis, quatf_rotate(turn, axis));
+}
+
+static void
+test_quatf_looking_keeps_roll_across_both_poles(void) {
+    const float poles[] = {-1.0F, 1.0F};
+    const float sides[] = {-1.0F, 1.0F};
+    const float outside = 1.0E-4F;
+    const float inside = 1.0E-8F;
+    const float edge_outside = 1.01E-6F;
+    const float edge_inside = 0.99E-6F;
+    const float tolerance = 2.0F * outside;
+    for (size_t i = 0; i < sizeof poles / sizeof poles[0]; i++) {
+        for (size_t j = 0; j < sizeof sides / sizeof sides[0]; j++) {
+            const vec3f_t up = vec3f_up();
+            const vec3f_t pole = {0, poles[i], 0};
+            const float side = sides[j];
+            const quatf_t past = quatf_looking((vec3f_t){0, pole.y, side * outside}, up);
+            const quatf_t within = quatf_looking((vec3f_t){0, pole.y, side * inside}, up);
+            const vec3f_t roll_delta = vec3f_sub(quatf_rotate(past, up), quatf_rotate(within, up));
+            TEST_ASSERT_FLOAT_WITHIN(tolerance, 0.0F, vec3f_length(roll_delta));
+
+            const quatf_t edge_past = quatf_looking(pole, (vec3f_t){0, 1, side * edge_outside});
+            const quatf_t edge_within = quatf_looking(pole, (vec3f_t){0, 1, side * edge_inside});
+            assert_vec3(quatf_rotate(edge_past, up), quatf_rotate(edge_within, up));
+        }
+    }
+}
+
+static void
+test_transformf_aims_with_quatf_pole_roll(void) {
+    const vec3f_t position = {1, 2, 3};
+    const vec3f_t down = vec3f_down();
+    const vec3f_t up = vec3f_up();
+    const quatf_t rotation = quatf_looking(down, up);
+    const transformf_t pose = transformf_looking(position, down, up);
+    assert_vec3(quatf_rotate(rotation, up), quatf_rotate(pose.rotation, up));
+    transformf_t current = transformf_identity();
+    transformf_set_position(&current, position);
+    transformf_look_at(&current, vec3f_add(position, down), up);
+    assert_vec3(quatf_rotate(rotation, up), quatf_rotate(current.rotation, up));
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_quatf_from_to_near_antiparallel);
+    RUN_TEST(test_quatf_from_to_uses_least_aligned_axis_near_opposition);
+    RUN_TEST(test_quatf_looking_keeps_roll_across_both_poles);
+    RUN_TEST(test_transformf_aims_with_quatf_pole_roll);
+    RUN_TEST(test_quatf_from_to_rotates_directions_at_any_scale);
+    RUN_TEST(test_quatf_from_to_handles_half_turns);
+    RUN_TEST(test_quatf_looking_with_missing_up_and_nonfinite_forward);
     RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);

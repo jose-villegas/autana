@@ -1,9 +1,9 @@
 # Partial Redraw
 
-`render/partial/render_partial.h`: while the camera holds still, a frame
+[`render/partial/render_partial.h`](../../../launcher/main/render/partial/render_partial.h): while the camera holds still, a frame
 redraws and recomposes only the rows where something changed. The rest of the
-picture stays as the last frame left it, and the result is the same picture a
-full redraw gives.
+picture stays as the last frame left it. Live rows match a whole live redraw;
+quiet rows can [settle at refined quality](Settle.md).
 
 It is on by default, with the `partial_redraw` render setting
 ([Render-Settings.md](../Render-Settings.md#partial_redraw)). Under

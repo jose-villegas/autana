@@ -20,7 +20,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 # A wall with a half-round opening and, a little behind it, a half disc slightly wider than the opening: two
 # pieces that cover the wall only by overlapping, as an arch ring in front of a vault's end does.
@@ -121,7 +121,7 @@ class ViewHoleTests(unittest.TestCase):
         self.assertEqual(len(leaks.view_holes(sky, none)), 2)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LeakProbeTests(unittest.TestCase):
     @classmethod
@@ -243,7 +243,7 @@ class LeakProbeTests(unittest.TestCase):
         eye = np.array(PATH_EYE)
         pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
         whole_batches = len(self.probes.holes(*holed))
-        with mock.patch.object(leaks, "BATCH", SMALL_BATCH):
+        with mock.patch.object(leaks, "LAUNCH", SMALL_BATCH):
             without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
             with_path = leaks.LeakProbes(self.pos, self.tris, *CAMERA, path=(*PATH_VIEW, [pose]))
             self.assertEqual(len(with_path.views), len(without.views) + 1)

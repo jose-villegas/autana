@@ -11,6 +11,7 @@ from r3d.cards import CARD_MIP_LEVELS
 from r3d.cards.pages import pack_pages
 from r3d.mesh_source import with_triangles
 from r3d.texture import texture_asset, uv_transfer
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class PageTests(unittest.TestCase):
@@ -95,6 +96,7 @@ class PageTests(unittest.TestCase):
 
 
 class CardSamplingTests(unittest.TestCase):
+    @needs_llvm
     def test_a_wall_hides_samples_but_a_cut_texel_passes_them(self):
         import tempfile
         from r3d.cards.choose import probe_weights, VISIBILITY_MARGIN
@@ -108,13 +110,14 @@ class CardSamplingTests(unittest.TestCase):
             points[:, 2] = PLANE_Z - VISIBILITY_MARGIN
             normals = np.tile([0., 0., 1.], (len(points), 1))
             faces = [np.array([0., 0., EYE_Z, 0., 0., -1.])]
-            wall = RayQuery(source.p, source.tri_v, "scalar_rgb")
+            wall = RayQuery(source.p, source.tri_v, "llvm_ad_rgb")
             np.testing.assert_array_equal(probe_weights(points, faces, wall, 1.0, near_floor=0.), 0)
-            cut = RayQuery(source.p, source.tri_v, "scalar_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
+            cut = RayQuery(source.p, source.tri_v, "llvm_ad_rgb", hit_filter=AlphaTest(source, KEEP_ALPHA))
             weight = probe_weights(points, faces, cut, 1.0, near_floor=0.)
             np.testing.assert_array_equal(weight[np.asarray(SOLID)], 0)
             self.assertTrue((weight[~np.asarray(SOLID)] > 0).all())
 
+    @needs_llvm
     def test_slab_rejects_hits_outside_epsilon(self):
         from r3d.cards import CARD_EPSILON
         from r3d.cards.bake import bake_pixels
@@ -130,7 +133,7 @@ class CardSamplingTests(unittest.TestCase):
             positions = np.array([[-1., -1., z], [1., -1., z], [-1., 1., z], [1., 1., z]])
             sub = with_triangles(SimpleNamespace(p=positions, textures=[None]),
                                  tris, tris, np.zeros(len(tris), int))
-            query = RayQuery(positions, tris, "scalar_rgb", hit_filter=AlphaTest(sub, .5))
+            query = RayQuery(positions, tris, "llvm_ad_rgb", hit_filter=AlphaTest(sub, .5))
             mask, _, _ = bake_pixels(card, query)
             self.assertEqual(bool(mask.any()), kept, z)
 

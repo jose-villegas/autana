@@ -15,6 +15,7 @@ sys.path.insert(0, str(TOOLS / "render"))
 from r3d import process_budget
 import bake_steps
 import doc_stages
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class PipelineMeasuresTests(unittest.TestCase):
@@ -171,6 +172,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         self.assertEqual(probes['Driver'], '123')
         self.assertEqual([line.split('|')[1].strip() for line in doc_stages.machine_table(probes).splitlines()[2:]],
                          list(doc_stages.MACHINE_FIELDS))
+    @needs_llvm
     def test_importer_counts_real_stage_boundaries_without_gpu(self):
         import numpy as np
         from types import SimpleNamespace as NS

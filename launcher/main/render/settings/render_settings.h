@@ -94,6 +94,16 @@ typedef struct {
 /* Every SMALL_FILL_<name> preset, for a list that has to cover them all: X(name) each. */
 #define SMALL_FILL_PRESETS(X) X(SMOOTH) X(FAST) X(FAST_DITHER) X(FAST_GRAIN)
 
+/* settle: redrawing quiet rows at the finest quality (docs/render/frame/Settle.md). */
+#define RENDER_SETTLE_FRAME_US_MAX 32000 /* past any frame, and within a pack row */
+#define RENDER_SETTLE_HOLD_MIN     1
+#define RENDER_SETTLE_HOLD_MAX     255 /* a band's count of quiet frames fits a byte */
+
+typedef struct {
+    int frame_us; /* basic [0, RENDER_SETTLE_FRAME_US_MAX]: microseconds a held frame may spend redrawing quiet rows at the finest quality, at least one band once due; 0 never refines */
+    int hold_frames; /* advanced [RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]: frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again */
+} render_settle_settings_t;
+
 typedef struct {
     bool cull;                   /* basic: skips clusters and world boxes outside the picture */
     bool depth_fit;              /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
@@ -103,6 +113,7 @@ typedef struct {
     render_anim_settings_t anim; /* pose rate by size (docs/render/animation/Skinned-Meshes.md) */
     render_texture_settings_t texture; /* the textured span fill (docs/assets/formats/LTEX.md) */
     render_small_fill_settings_t small_fill; /* small triangles filled in one colour (docs/render/frame/Coverage.md#small-fill) */
+    render_settle_settings_t settle; /* a held view refined over frames (docs/render/frame/Settle.md) */
 } render_settings_t;
 
 // clang-format on
