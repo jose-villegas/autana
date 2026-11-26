@@ -1,6 +1,16 @@
-"""Modem-line policy for opening a running USB Serial/JTAG board."""
+"""Serial I/O policy for USB Serial/JTAG boards."""
 import errno
 import os
+
+READ_BYTES = 4096
+
+
+def read_ready(connection, limit=READ_BYTES):
+    """Read available bytes up to limit, or wait for one byte if empty.
+
+    Requesting more bytes than are available can stall until the read timeout.
+    """
+    return connection.read(min(max(connection.in_waiting, 1), limit))
 
 
 def before_open(connection):

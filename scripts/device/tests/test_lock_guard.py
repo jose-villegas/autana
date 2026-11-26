@@ -974,9 +974,11 @@ class LostLockTests(Store):
                     device.reset()
 
     def test_a_lost_heartbeat_stops_a_capture_mid_read(self):
-        class Endless:
-            def read(self, unused_size):
-                return b"line\n"
+        class Endless(Replies):
+            def read(self, size):
+                data = super().read(size)
+                self.data = data
+                return data
 
         with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.01), \
                 contextlib.redirect_stderr(io.StringIO()), \
@@ -985,7 +987,7 @@ class LostLockTests(Store):
                 self.lose_heartbeat(held)
                 started = time.monotonic()
                 with self.assertRaises(device.LockLost):
-                    device.capture(Endless(), self.root / "capture.log", 30, None, complete=None)
+                    device.capture(Endless(b"line\n"), self.root / "capture.log", 30, None, complete=None)
                 self.assertLess(time.monotonic() - started, 5)
 
     def test_a_heartbeat_on_a_stale_lock_is_refused(self):
@@ -1012,18 +1014,16 @@ class LostLockTests(Store):
 
     def reopen_after_reset(self, reconnected):
         class PortGone(FakeConnection):
-            said = False
-
-            def read(self, unused_size):
-                if not self.said:
-                    self.said = True
-                    return b"boot line\n"
+            def read(self, size):
+                if self.chunks:
+                    return super().read(size)
                 raise OSError("USB device disappeared")
 
-        with mock.patch.object(device, "open_when_free", return_value=PortGone()), \
+        connection = PortGone([b"boot line\n"])
+        with mock.patch.object(device, "open_when_free", return_value=connection), \
                 mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):
-            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=PortGone())
+            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=connection)
 
     def test_a_reopen_after_reset_ends_port_lost_only_on_usb_absence(self):
         with device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
@@ -1040,9 +1040,10 @@ class LostLockTests(Store):
                 super().__init__()
                 self.held = held
 
-            def read(self, unused_size):
+            def read(self, size):
+                data = super().read(size)
                 self.held.lost.set()
-                return b""
+                return data
 
         args = Namespace(owner="a", purpose="send", wait=0, line="TUNE", reply="TUNE",
                          until=[TUNE_END], seconds=30, optional=False)
@@ -1776,13 +1777,9 @@ class DurationTests(Store):
                          [None, None, "boom"])
 
     def test_a_command_that_answers_an_error_is_recorded_with_it(self):
-        class Answers(FakeConnection):
-            def read(self, unused_size):
-                return b"TUNE_ERR unknown\n"
-
         args = Namespace(owner="a", purpose="send", wait=0, line="SET x 1", reply="TUNE",
                          until=[TUNE_ERR], seconds=5, optional=False)
-        with mock.patch.object(device, "open_when_free", return_value=Answers()), \
+        with mock.patch.object(device, "open_when_free", return_value=Replies(b"TUNE_ERR unknown\n")), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.send(args, self.store, BOARD_A), 1)
         self.assertEqual(durations_rows(self.store)[-1]["error"], "TUNE_ERR unknown")

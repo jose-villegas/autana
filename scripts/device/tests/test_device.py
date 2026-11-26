@@ -271,8 +271,6 @@ class StreamTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
                          "needs a pseudo-terminal and pyserial")
     def test_a_read_returns_what_the_board_sent_without_waiting_out_the_timeout(self):
-        """A board sending less than a full buffer is read as it arrives: asking
-        for STREAM_READ_BYTES instead held every chunk for the whole timeout."""
         line = b"FRAMEREC 1\n"
         with port_guard.fake_port() as (board, name), \
                 mock.patch.object(device, "locked_port", return_value=name):
@@ -281,7 +279,7 @@ class StreamTests(unittest.TestCase):
                 os.write(board, line)
                 self.wait_for_waiting(connection, len(line))
                 began = time.monotonic()
-                data = device.read_ready(connection)
+                data = device.board_serial.read_ready(connection)
                 took = time.monotonic() - began
             finally:
                 connection.close()
@@ -1802,8 +1800,10 @@ class TuneSetTests(unittest.TestCase):
 
     def test_a_dropped_line_is_asked_again(self):
         class AnswersSecondAsk(FakeConnection):
-            def read(self, unused_size):
-                return b"TUNE_OK r3d.side=3\n" if len(self.writes) == 2 else b""
+            def write(self, data):
+                super().write(data)
+                if len(self.writes) == 2:
+                    self.chunks.append(b"TUNE_OK r3d.side=3\n")
 
         connection = AnswersSecondAsk()
         with mock.patch.object(device, "EXCHANGE_SECONDS", 0.05), mock.patch("builtins.print"):
