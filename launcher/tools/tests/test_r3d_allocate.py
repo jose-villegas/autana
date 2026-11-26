@@ -20,6 +20,7 @@ from test_r3d_detail import sphere
 SPHERE_RINGS = 8
 SMALL_SCALE = 0.01
 COPY_SHIFT = np.array([512., -1024., 256.])
+ERROR_SAMPLES = 49
 
 
 class SharedErrorTests(unittest.TestCase):
@@ -61,13 +62,33 @@ class SharedErrorTests(unittest.TestCase):
                 self.assertEqual(result.counts["local"], result.counts["distant"])
 
     def test_measured_small_piece_stays_at_its_floor(self):
-        result = owner.allocate([self.large, self.small], 3 * self.coarse[0] + self.coarse[1], None)
-        floor = owner.FLOOR_SHARE * bounds_diagonal(self.small.positions)
+        small = owner.Piece("small", self.small.positions, self.tris, 1, True)
+        candidates = []
+
+        def measure(positions, triangles, error):
+            kept = detail.level(positions, triangles, error)
+            candidates.append((positions, kept))
+            return kept
+
+        with patch.object(owner, "level", side_effect=measure):
+            result = owner.allocate([self.large, small], 3 * self.coarse[0] + self.coarse[1], None)
+        floor = owner.FLOOR_SHARE * bounds_diagonal(small.positions)
         self.assertGreater(result.error, floor)
-        error = owner.piece_error(self.small, result.error)
-        kept = detail.level(self.small.positions, self.small.triangles, error)
+        self.assertEqual(owner.piece_error(small, result.error), floor)
+        positions, kept = min(candidates, key=lambda candidate: len(candidate[1]))
         self.assertEqual(result.counts["small"], len(kept))
-        self.assertLessEqual(detail.surface_error(self.small.positions, self.tris, self.small.positions, kept), floor)
+        self.assertLessEqual(detail.surface_error(positions, self.tris, positions, kept), floor)
+
+    def test_the_floor_does_not_discard_a_finer_feasible_measured_level(self):
+        piece = owner.Piece("prototype", self.positions, self.tris, 1, True)
+        floor = owner.piece_error(piece, np.inf)
+        finer_error = floor * 2 / 3
+        errors = np.linspace(finer_error, floor, ERROR_SAMPLES)
+        self.assertTrue(np.all(np.diff([owner.piece_count(piece, error) for error in errors]) <= 0))
+        limit = owner.piece_count(piece, finer_error)
+        self.assertLess(limit, len(piece.triangles))
+        self.assertLessEqual(owner.piece_count(piece, floor), limit)
+        self.assertLessEqual(owner.allocate([piece], limit, limit).error, finer_error)
 
     def test_rest_uses_one_floor_and_prunes_a_tiny_disconnected_part(self):
         tiny = np.array([[0., 0., 0.], [SMALL_SCALE, 0., 0.], [0., SMALL_SCALE, 0.]]) + [0, 0, 2]

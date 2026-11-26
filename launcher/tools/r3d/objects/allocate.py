@@ -1,7 +1,9 @@
 """Allocate drawn and stored triangles by a shared shape error."""
 
 import math
+from bisect import bisect_right
 from dataclasses import dataclass
+from functools import cached_property
 
 import numpy as np
 
@@ -14,6 +16,8 @@ FLOOR_SHARE = 0.05
 # The simplifier takes a float32 error.
 ERROR_RESOLUTION = np.finfo(np.float32).eps
 REST_OPTIONS = ERROR_ABSOLUTE | PRUNE
+MEASURED_GRID_STEP = math.sqrt(2)
+MEASURED_GRID_SIZE = 1 + math.ceil(math.log(FLOOR_SHARE / ERROR_RESOLUTION, MEASURED_GRID_STEP))
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,17 @@ class Piece:
     triangles: np.ndarray
     copies: int
     measured: bool
+
+    @cached_property
+    def _measured_curve(self):
+        """The best measured count available at each error in the piece's grid."""
+        local = self.positions - self.positions[0]
+        diagonal = bounds_diagonal(self.positions)
+        errors = [0.0]
+        if diagonal > 0:
+            errors.extend(diagonal * np.geomspace(ERROR_RESOLUTION, FLOOR_SHARE, MEASURED_GRID_SIZE))
+        counts = [len(level(local, self.triangles, error)) for error in errors]
+        return errors, np.minimum.accumulate(counts)
 
 
 @dataclass(frozen=True)
@@ -43,10 +58,11 @@ def piece_error(piece, error) -> float:
 def piece_count(piece, error) -> int:
     """Count a prototype or an entire source object at its capped error."""
     error = piece_error(piece, error)
+    if piece.measured:
+        errors, counts = piece._measured_curve
+        return int(counts[bisect_right(errors, error) - 1])
     local = piece.positions - piece.positions[0]
-    kept = (level(local, piece.triangles, error) if piece.measured else
-            simplify_to_error(local, piece.triangles, error, REST_OPTIONS))
-    return len(kept)
+    return len(simplify_to_error(local, piece.triangles, error, REST_OPTIONS))
 
 
 def allocate(pieces, drawn, stored, fixed_drawn=0, fixed_stored=0) -> Allocation:

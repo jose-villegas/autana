@@ -295,10 +295,11 @@ shared world-space error ε and its floor, 5% of its bounds diagonal in source u
 | Step | Triangle accounting |
 |---|---|
 | Pay fixed cost | Charge cards and held triangles first. |
-| Count pieces | Re-measure each carved prototype's surface error. Count each rest object with meshoptimizer's absolute error and component pruning. A small component can disappear within its object's error. |
+| Count pieces | For each carved prototype, re-measure levels on a fixed error grid scaled to its bounds. Use the fewest triangles among levels within its allowed error. Count each rest object with meshoptimizer's absolute error and component pruning. |
 | Bisect ε | Take the smallest error whose drawn and stored counts fit. A drawn copy pays for all its triangles. A stored prototype pays once per stored mesh, including distinct mirrored or sidedness meshes. |
 | Emit and verify | Simplify the rest in one pass and lock the retained vertices of objects at their floors. If the result exceeds either limit, bisect again with measured excess. An allocation that cannot meet the limits raises a settings error. |
 
+A small rest component can disappear within its object's error allowance.
 Camera views do not enter the allocation. The carved copies of a prototype all share its count.
 `objects_report.py SCENE --object NAME --out DIR --carved BUNDLE` shows each shape's counts,
 measured surface error and floor, with a source and baked comparison sheet.
