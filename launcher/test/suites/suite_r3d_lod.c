@@ -2503,6 +2503,7 @@ test_a_steer_that_moved_owes_picks_while_the_camera_holds_still(void) {
     open_spread(EVERY, true);
     render_settings_t settings = spread_over(EVERY);
     settings.partial_redraw = true;
+    settings.settle.frame_us = 0; /* Only LOD censuses should advance pick_round. */
     settings.lod.triangle_budget = 1000;
     render_context_set_settings(spread_context, &settings);
     const render_view_t view = axis_view();

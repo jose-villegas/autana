@@ -192,7 +192,7 @@ class StressCorners(unittest.TestCase):
                           "few-copies", "carved-near", "carved-far", "textured", "textured-far", "record", "foliage-near",
                           "foliage-near-opaque", "foliage-far", "foliage-far-opaque", "skinned-sh-blobs", "contact-blobs",
                           "butterflies", "few-butterflies", "cull-setup", "baked-tree", "small-grain", "small-dither",
-                          "small-off", "stack-skip", "carved-blend"}, set(preset_copies()))
+                          "small-off", "stack-skip", "settle", "carved-blend"}, set(preset_copies()))
 
     def test_the_baked_ring_is_culled_through_its_tree(self):
         """The ring alone, one mesh and no copy, culled through its tree at every pose of the turn."""

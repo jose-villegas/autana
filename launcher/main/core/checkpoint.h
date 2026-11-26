@@ -4,6 +4,7 @@
 #include "build/build_variant.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#include <stddef.h>
 #include <string.h>
 #include "core/memory.h"
 
@@ -63,6 +64,19 @@ checkpoint_pointer(const void* owner) {
     memcpy(&value, owner, sizeof value);
     return value;
 }
+
+/* The caller checks that the block contains the field before accessing it. */
+#define CHECKPOINT_FIELD_GET(block, type, field, out)                                                                  \
+    do {                                                                                                               \
+        _Static_assert(sizeof(out) == sizeof(((type*)0)->field), "checkpoint field size mismatch");                    \
+        memcpy(&(out), (block)->data + offsetof(type, field), sizeof(out));                                            \
+    } while (0)
+
+#define CHECKPOINT_FIELD_SET(block, type, field, value)                                                                \
+    do {                                                                                                               \
+        _Static_assert(sizeof(value) == sizeof(((type*)0)->field), "checkpoint field size mismatch");                  \
+        memcpy((block)->data + offsetof(type, field), &(value), sizeof(value));                                        \
+    } while (0)
 
 static inline void
 checkpoint_capture_at(checkpoint_t* state, const void* owner, size_t bytes) {
