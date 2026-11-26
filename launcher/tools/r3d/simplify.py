@@ -180,7 +180,7 @@ def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, le
     """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
     while a view shows sky through the result, the pass runs again with one more source vertex locked per hole.
     A round whose locks leave the pass more triangles than its budget, or than its first run when that is
-    already over, is tried again with the half that answers the widest holes, and ends the pass when not one lock
+    already over, is tried again with the half that answers the largest holes, and ends the pass when not one lock
     fits. `record`, a dict, takes the rounds run, the vertices locked and
     the holes the result still shows."""
     used, local = np.unique(tris, return_inverse=True)

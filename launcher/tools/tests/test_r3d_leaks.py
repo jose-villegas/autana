@@ -100,14 +100,16 @@ class PinTests(unittest.TestCase):
     def test_a_hole_is_answered_by_its_vertex_farthest_from_the_result(self):
         free = np.ones(len(self.pos), dtype=bool)
         np.testing.assert_array_equal(leaks.pins(self.pos, self.tris, [np.array([1])], *self.result, free), [3])
-        # The farthest first: vertex 4 stands 9 off the result, vertex 3 only 3.
+        # In the holes' order, whichever stands farther off the result: vertex 4 stands 9 off it, vertex 3 only 3.
         np.testing.assert_array_equal(leaks.pins(self.pos, self.tris, [np.array([1]), np.array([2])], *self.result, free),
+                                      [3, 4])
+        np.testing.assert_array_equal(leaks.pins(self.pos, self.tris, [np.array([2]), np.array([1])], *self.result, free),
                                       [4, 3])
 
     def test_holes_that_choose_one_vertex_lock_it_once(self):
         free = np.ones(len(self.pos), dtype=bool)
         picked = leaks.pins(self.pos, self.tris, [np.array([1]), np.array([1]), np.array([2])], *self.result, free)
-        np.testing.assert_array_equal(picked, [4, 3])
+        np.testing.assert_array_equal(picked, [3, 4])
 
     def test_a_locked_vertex_is_passed_over_and_a_hole_with_none_free_gets_none(self):
         free = np.ones(len(self.pos), dtype=bool)

@@ -452,7 +452,7 @@ path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_
 
 A lock keeps triangles the rest of the mesh then goes without, so the rest is a
 little coarser. A round whose locks would leave the pass over its budget is tried again
-with half of them, the widest holes first, and the pass ends when none fits. Each round adds a ray trace and a
+with half of them, the largest holes (most pixels) first, and the pass ends when none fits. Each round adds a ray trace and a
 simplify run to the bake.
 
 A gap no view sees stays open: the probes bound what a free camera meets, and

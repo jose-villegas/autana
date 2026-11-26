@@ -1,15 +1,15 @@
 """Where a simplified mesh lets the view past a surface its source closes, and the source vertices that close it.
 
-A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
-at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
-probes spread through the camera's region (views/probes.py's placement), each through six cube faces, and from
-`path` views when given. In a view, a pixel is open where the simplified mesh shows sky the source covers, or where
-the source hits and the mesh hits nothing or lies beyond BEHIND times the source's distance, in a region that holds
-an OPENING square whole. Open pixels form connected regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
-to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
-the farthest-point step of Douglas and Peucker's line reduction, taken on a surface and only where sky shows.
-simplify.py locks the pins and simplifies again until no view has a hole, ROUNDS run out or the locks would
-break the pass's budget.
+A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source, at a
+border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from probes
+spread through the camera's region (views/probes.py's placement), each through six cube faces, and from `path` views
+when given. In a view, a pixel is open where the simplified mesh shows sky the source covers, or where the source hits
+and the mesh hits nothing or lies beyond BEHIND times the source's distance, in a region that holds an OPENING square
+whole. Open pixels form connected regions; a region with no pixel of the source's own sky is a hole. Holes are listed
+largest first, and `pins` answers each, in that order, with one source vertex to lock: the vertex of the source
+triangles seen through the hole that lies farthest from the simplified surface, the farthest-point step of Douglas and
+Peucker's line reduction, taken on a surface and only where a view opens. simplify.py locks the pins and simplifies
+again until no view has a hole, ROUNDS run out or the locks would break the pass's budget.
 """
 
 import numpy as np
@@ -64,7 +64,7 @@ class LeakProbes:
             start = end
 
     def holes(self, positions, tris):
-        """Per hole a mesh shows, the source triangles seen through it."""
+        """Per hole a mesh shows, the source triangles seen through it, the hole of most pixels first."""
         result = RayQuery(positions, tris)
         holes = []
         for (views, origins, directions), (source_hit, source_distance) in zip(self._batches(), self.source_hits):
@@ -83,8 +83,8 @@ class LeakProbes:
                                    (~source_hit[rows]).reshape(shape))
                 if masks:
                     _, _, seen = self.query.first_hits(origins[rows], directions[rows])
-                    holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
-        return holes
+                    holes.extend((int(mask.sum()), np.unique(seen[mask.reshape(-1)])) for mask in masks)
+        return [seen for _, seen in sorted(holes, key=lambda hole: -hole[0])]
 
     def repair(self, rows, result_positions, result_tris, free):
         """(number of holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the
@@ -126,9 +126,9 @@ def view_holes(open_mask, source_sky):
 
 
 def pins(positions, tris, holes, result_positions, result_tris, free):
-    """One vertex per hole, the farthest first: of the vertices of its triangles (rows of `tris`) that `free`
-    allows, the one farthest from the result's surface. A hole with no free vertex gets none, and holes that choose
-    one vertex share it."""
+    """One vertex per hole, in the holes' order (holes() lists the largest first, so a pass short of budget closes
+    the most pixels): of the vertices of its triangles (rows of `tris`) that `free` allows, the one farthest from
+    the result's surface. A hole with no free vertex gets none, and holes that choose one vertex share it."""
     search = triangle_search(result_positions[result_tris])
     picked = {}
     for seen in holes:
@@ -136,5 +136,5 @@ def pins(positions, tris, holes, result_positions, result_tris, free):
         candidates = candidates[free[candidates]]
         if len(candidates):
             distance = nearest_triangles(positions[candidates], search)[2]
-            picked[int(candidates[np.argmax(distance)])] = float(distance.max())
-    return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)
+            picked.setdefault(int(candidates[np.argmax(distance)]), len(picked))
+    return np.array(list(picked), dtype=np.int64)
