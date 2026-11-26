@@ -1,10 +1,10 @@
-"""The contact-disc figure in docs/render/frame/Contact-Shadows.md, drawn from contact_figures_probe.c, which calls
-the runtime's contact_blob_draw().
+"""The contact figures in docs/render/frame/Contact-Shadows.md, drawn from the runtime rasterizer.
 
     python launcher/tools/r3d/contact/contact_figures.py --cc CC --out DIR
 
 contact-disc.png: the dithered disc at four strengths, seen straight down, and the share of pixels it halves
 against distance from its centre, drawn and modelled.
+contact-shapes.png: a disc, four foot contacts and a joint mask on the same ground scale.
 """
 import math
 import pathlib
@@ -19,11 +19,13 @@ from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, figure, save, 
 from docs.producer import Producer  # noqa: E402
 
 PRODUCER = Producer(area="render", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
-                    outputs=("contact-disc.png",))
+                    outputs=("contact-disc.png", "contact-shapes.png"))
 
-SOURCES = (HERE / "contact_figures_probe.c", ROOT / "launcher/main/render/contact/contact_blob.c")
+CONTACT = ROOT / "launcher/main/render/contact"
+SOURCES = (HERE / "contact_figures_probe.c", CONTACT / "contact_blob.c", CONTACT / "contact_mask.c")
 DISC_SIZE = (9, 5)
 DISC_HEIGHTS = (1.1, 1)
+SHAPES_SIZE = (8, 3)
 DISC_PAPER = 0.92  # the grey a disc darkens, so its edge shows on the page
 COVERAGE_BINS = 24
 COVERAGE_REACH = 1.2  # distance over the radius the coverage plot reaches, past the rim
@@ -73,6 +75,16 @@ def disc_plot(data, out):
 def main():
     data, out = probe_into_folder(__doc__, SOURCES)
     disc_plot(data, out)
+    side = data["disc"]["side"]
+    shapes = data["shapes"]
+    fig = figure(SHAPES_SIZE)
+    for column, (shape, covered) in enumerate(shapes.items(), start=1):
+        axis = fig.add_subplot(1, len(shapes), column)
+        mask = np.array(covered, bool).reshape(side, side)
+        axis.imshow(np.where(mask, DISC_PAPER / 2, DISC_PAPER), cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+        axis.set_title(shape, fontsize=LABEL_SIZE, color=INK)
+        axis.set_axis_off()
+    save(fig, out / "contact-shapes.png")
 
 
 if __name__ == "__main__":
