@@ -27,3 +27,10 @@ sh1_rgb_add_direction(sh1_rgb_t* sh, vec3f_t direction, vec3f_t radiance_times_w
         sh->c[i] = vec3f_add(sh->c[i], vec3f_scale(radiance_times_weight, basis[i]));
     }
 }
+
+vec3f_t
+sh1_rgb_dominant_direction(const sh1_rgb_t* radiance, vec3f_t channel_weights) {
+    const vec3f_t direction = {vec3f_dot(radiance->c[3], channel_weights), vec3f_dot(radiance->c[1], channel_weights),
+                               vec3f_dot(radiance->c[2], channel_weights)};
+    return vec3f_dot(direction, direction) > 0 ? vec3f_normalize(direction) : vec3f_zero();
+}
