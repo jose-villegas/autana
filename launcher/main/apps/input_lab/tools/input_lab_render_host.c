@@ -1,8 +1,11 @@
 /* Deterministic page fixtures use the real app callbacks and drawing. */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "app/app.h"
 #include "apps/input_lab/imu_probe.h"
+#include "apps/input_lab/tools/input_lab_render_tap.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "input/motion/imu.h"
@@ -16,8 +19,6 @@
 #define FRAME_MS  16
 #define POSE_FRAMES                                                                                                    \
     ((IMU_REST_SETTLE_MS + FRAME_MS - 1) / FRAME_MS + (IMU_REST_WINDOW_MS + FRAME_MS - 1) / FRAME_MS + 1)
-#define TAP_X 180
-#define TAP_Y 220
 static int page;
 static bool tapped, results, orientation, no_sensor;
 static int shell_quarter;
@@ -157,8 +158,8 @@ setup(int quarter) {
 }
 
 static const render_input_step_t touch[] = {
-    {TAP_FRAME, true, {TAP_X, TAP_Y}},
-    {TAP_FRAME + 1, false, {TAP_X, TAP_Y}},
+    {TAP_FRAME, true, INPUT_LAB_RENDER_TAP_POINT},
+    {TAP_FRAME + 1, false, INPUT_LAB_RENDER_TAP_POINT},
 };
 
 static void
@@ -171,6 +172,10 @@ draw(const provider_frame_t* frame) {
     }
     in.boot.pressed = frame->index < page;
     app_list()->frame(frame->dt_ms, &in);
+    if (tapped && ui_clipped_text() != 0) {
+        fprintf(stderr, "ERROR: random-tap clipped HUD text in frame %d\n", frame->index);
+        exit(EXIT_FAILURE);
+    }
 }
 
 const frame_provider_t input_lab_provider = {

@@ -31,6 +31,10 @@ touch_example(touch_example_t* s, const input_t* input) {
 
 ## Delivery
 
+![Touch sample positions and the timeline of a scripted tap and home swipe](../images/input/touch-trace.png)
+
+Brief contact gaps leave the touch down, and the home swipe fires during the drag.
+
 | Rule | Owner |
 |---|---|
 | The task polls at `TOUCH_POLL_HZ` and latches press and release edges, so a tap that falls entirely between rendered frames still reaches the next frame | `touch.c` |

@@ -7,6 +7,10 @@ The two buttons are different kinds of device.
 | BOOT | active-low GPIO 0 | level debounced into edges by `input/buttons/button_fsm.c`; also selects the ROM bootloader |
 | PWR | AXP2101 latched interrupt status over I2C | completed event, not a readable finger-down level |
 
+![BOOT raw and debounced levels during a scripted tap and hold](../images/input/button-timeline.png)
+
+The BOOT tap emits a press and release, while the long press emits a press and one hold event.
+
 [power/](../../launcher/main/power/README.md) owns the PMU handle and key
 interrupts. The input polling task calls `power_poll()` at `POLL_HZ`,
 independently of rendering; its battery cache adds one refresh per second.

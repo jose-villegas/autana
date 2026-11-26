@@ -5,9 +5,8 @@
 #
 #   doc_images.sh <out-tree> <work-dir>
 #
-# <out-tree> gets input/: the Motion page and its results, rendered on the host
-# and turned upright, and the shake reader's trace and animation over the
-# retained mixed-direction shake capture.
+# <out-tree> gets input/: host-rendered pages, scripted touch and BOOT traces,
+# and the shake reader's trace and animation over the mixed-direction capture.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow,
 # numpy and matplotlib. Renderer output goes to logs under <work-dir>.
@@ -32,6 +31,9 @@ for page in motion:motion-page motion-results:motion-results; do
 done
 
 cc=$(find_cc) || exit 2
+run "$PYTHON" launcher/tools/input/contact_figures.py --cc "$cc" --random-tap "$W/random-tap.bmp" \
+    --touch "$OUT/touch-trace.png" --button "$OUT/button-timeline.png"
+
 samples=$W/shake-mixed.txt
 run "$PYTHON" "$APP/tools/shake_fit.py" "$APP/tools/data/shake-mixed.log.gz" --samples "$samples"
 run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --samples "$samples" \
