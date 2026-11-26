@@ -7,8 +7,10 @@ import base64
 import json
 import os
 import struct
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -134,6 +136,142 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(1, self.verdict(BOOT + PASSING + BOOT, actions=["tap 1 1"]))
 
 
+# A stand-in QEMU: serves the console on the given port, writes to its own
+# stdout and stderr, prints one passing test, then ends as `mode` says.
+FAKE_QEMU = """
+import socket, sys, time
+port, mode = int(sys.argv[1]), sys.argv[2]
+if mode == "early":
+    print("qemu-system-xtensa: -drive: could not open disk image", file=sys.stderr, flush=True)
+    sys.exit(1)
+conn, _ = socket.create_server(("127.0.0.1", port)).accept()
+print("qemu stdout line", flush=True)
+print("qemu-system-xtensa: cache.c:42: assertion failed", file=sys.stderr, flush=True)
+conn.sendall(b"/src/suite_gfx.c:40:test_fill:PASS\\n")
+if mode == "sentinel":
+    conn.sendall(b"SELFTEST_COMPLETE failures=0 elapsed_ms=1\\n")
+elif mode == "exit":
+    sys.exit(3)
+elif mode == "unread":
+    time.sleep(0.5)
+    sys.exit(3)
+elif mode == "close":
+    conn.close()
+time.sleep(60)
+"""
+
+
+class QemuStopTest(unittest.TestCase):
+    """A run that stops before it finishes says how: the console's end, QEMU's
+    exit status and QEMU's own output, from a real process standing in for QEMU."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.folder = Path(folder.name)
+        self.script = self.folder / "fake_qemu.py"
+        self.script.write_text(FAKE_QEMU, encoding="utf-8")
+        self.log, self.output = self.folder / "serial.log", self.folder / "qemu_output.log"
+
+    def run_fake(self, mode, timeout=30):
+        port = qemu_run.free_port()
+        return qemu_run.run_qemu([sys.executable, str(self.script), str(port), mode], port,
+                                 str(self.log), str(self.output), timeout, [])
+
+    def start_fake(self, mode):
+        """The fake QEMU in `mode` and our console on it, both closed after the test."""
+        port = qemu_run.free_port()
+        proc = subprocess.Popen([sys.executable, str(self.script), str(port), mode],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(proc.wait)
+        console = qemu_run.Console(proc, port, str(self.log), time.monotonic() + 30)
+        self.addCleanup(console.close)
+        return proc, console
+
+    def test_a_finished_run_reports_no_stop(self):
+        self.assertEqual((True, None), self.run_fake("sentinel"))
+
+    def test_qemu_exiting_names_its_exit_code_and_keeps_its_output(self):
+        finished, stopped = self.run_fake("exit")
+        self.assertFalse(finished)
+        self.assertTrue(stopped.endswith("; QEMU exit code 3"), stopped)
+        output = self.output.read_text(encoding="utf-8")
+        self.assertIn("qemu stdout line", output)
+        self.assertIn("qemu-system-xtensa: cache.c:42: assertion failed", output)
+
+    def test_qemu_exiting_before_its_console_opens_is_named_and_the_verdict_still_runs(self):
+        self.assertEqual((False, "QEMU exited before its console opened; QEMU exit code 1"),
+                         self.run_fake("early"))
+        self.assertIn("could not open disk image", self.output.read_text(encoding="utf-8"))
+        with unittest.mock.patch("builtins.print"):
+            self.assertEqual(1, qemu_run.verdict(str(self.log), False, [], "x", str(self.output)))
+
+    def test_what_qemu_sent_before_it_exited_is_still_read(self):
+        # The console is read only after the fake has exited, so its last line waits in the socket.
+        proc, console = self.start_fake("exit")
+        proc.wait(timeout=30)
+        self.assertEqual(["/src/suite_gfx.c:40:test_fill:PASS"], list(console.lines()))
+        self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
+
+    def test_qemu_exiting_with_a_line_of_ours_unread_ends_the_console_as_an_exit(self):
+        # Closing a socket with unread bytes resets it: the reader must take that as QEMU's end.
+        proc, console = self.start_fake("unread")
+        console.send("BUILD_ID_REQUEST")
+        proc.wait(timeout=30)
+        list(console.lines())
+        self.assertEqual(qemu_run.QEMU_EXITED, console.ended)
+
+    def test_a_console_closed_while_qemu_runs_says_so(self):
+        with unittest.mock.patch.object(qemu_run, "QEMU_EXIT_GRACE_SECONDS", 0.3):
+            self.assertEqual((False, "QEMU closed the console; QEMU was still running"),
+                             self.run_fake("close"))
+
+    def test_a_run_out_of_time_says_so(self):
+        self.assertEqual((False, "the run's --timeout passed"), self.run_fake("hang", timeout=2))
+
+    def test_the_verdict_prints_the_stop_the_console_and_qemu_output_and_fails(self):
+        self.run_fake("exit")
+        with unittest.mock.patch("builtins.print") as printed:
+            self.assertEqual(1, qemu_run.verdict(str(self.log), False, [], "QEMU exited; QEMU exit code 3",
+                                                 str(self.output)))
+        text = "\n".join(" ".join(map(str, call.args)) for call in printed.call_args_list)
+        self.assertIn("run stopped: QEMU exited; QEMU exit code 3", text)
+        self.assertIn("console's last line: /src/suite_gfx.c:40:test_fill:PASS", text)
+        self.assertIn("    qemu-system-xtensa: cache.c:42: assertion failed", text)
+
+    def test_the_verdict_prints_only_the_last_lines_of_qemu_output(self):
+        self.log.write_text(PASSING, encoding="utf-8")
+        count = qemu_run.QEMU_OUTPUT_TAIL_LINES
+        self.output.write_text("".join("line %d\n\n" % n for n in range(count + 1)), encoding="utf-8")
+        with unittest.mock.patch("builtins.print") as printed:
+            qemu_run.verdict(str(self.log), False, [], "QEMU exited; QEMU exit code 0", str(self.output))
+        shown = [call.args[0].strip() for call in printed.call_args_list if call.args[0].startswith("    ")]
+        self.assertEqual(["line %d" % n for n in range(1, count + 1)], shown)
+
+    def test_a_missing_qemu_output_still_names_the_stop(self):
+        self.log.write_text(PASSING, encoding="utf-8")
+        with unittest.mock.patch("builtins.print") as printed:
+            self.assertEqual(1, qemu_run.verdict(str(self.log), False, [], "QEMU exited; QEMU exit code 0",
+                                                 str(self.folder / "absent.log")))
+        self.assertIn("run stopped: QEMU exited; QEMU exit code 0",
+                      [call.args[0] for call in printed.call_args_list])
+
+    def test_a_run_that_did_not_stop_early_says_nothing_about_qemu(self):
+        self.log.write_text(PASSING + COMPLETE, encoding="utf-8")
+        with unittest.mock.patch("builtins.print") as printed:
+            self.assertEqual(0, qemu_run.verdict(str(self.log), True, [], None, str(self.output)))
+        self.assertFalse([call for call in printed.call_args_list if "QEMU" in str(call.args)])
+
+
+class ExitStatusTextTest(unittest.TestCase):
+    def test_exit_codes_signals_and_windows_errors_are_named(self):
+        self.assertEqual("exit code 0", qemu_run.exit_status_text(0))
+        self.assertEqual("exit code 3", qemu_run.exit_status_text(3))
+        self.assertEqual("killed by SIGSEGV", qemu_run.exit_status_text(-11))
+        self.assertEqual("killed by signal 999", qemu_run.exit_status_text(-999))
+        self.assertEqual("exit code 0xC0000005", qemu_run.exit_status_text(0xC0000005))
+
+
 class FakeConsole:
     def __init__(self, lines):
         self.sent, self._lines = [], lines
@@ -201,6 +339,11 @@ class RunSuiteTest(unittest.TestCase):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=0 unmatched=1"))
 
+    def test_tests_narrow_the_suite_on_the_console(self):
+        console = FakeConsole(["RUNSUITE_COMPLETE name=run_sand_suite found=1 selected=1 unmatched=0"])
+        self.assertTrue(qemu_run.run_suite(console, "run_sand_suite", "bistro/portrait,quiet"))
+        self.assertEqual(console.sent, ["RUNSUITE run_sand_suite bistro/portrait,quiet"])
+
     def test_another_suites_completion_is_not_this_ones(self):
         self.assertFalse(self.run_suite(
             "RUNSUITE_COMPLETE name=run_sand_suite_perf found=1 selected=3 unmatched=0"))
@@ -234,9 +377,9 @@ class DriveFrameTest(unittest.TestCase):
         self.assertEqual(sent, ["TOUCH down 10 20"])
 
     def test_a_send_writes_the_rest_of_the_step_as_typed(self):
-        ok, sent = self.run_action("send render scene  sponza-lite")
+        ok, sent = self.run_action("send render scene  bistro")
         self.assertTrue(ok)
-        self.assertEqual(sent, ["render scene  sponza-lite"])
+        self.assertEqual(sent, ["render scene  bistro"])
 
     def test_a_tap_outside_the_screenshot_is_not_an_action(self):
         with unittest.mock.patch("builtins.print"):

@@ -173,7 +173,7 @@ That second rule exists because the obvious designs do not work:
 | Design | Problem |
 |---|---|
 | Cell-count, no amount: a cell is either water or not | Two adjacent cells at "full" and "empty" have no legal move that leaves a valid state in between: a wide pool freezes into a staircase. A genuine fixed point of any rule shaped like this, not a bug in one attempt at it. |
-| Local mass diffusion only: an amount per cell, shared with immediate neighbours alone | Correct per the literature, and measurably too slow: levelling a 184-cell pool by neighbour-to-neighbour diffusion takes tens of thousands of steps, because information moves only one cell per step. Measured: a real-width pool was still 6 cells proud after 5,000 steps. An `O(n^2)` bound on any rule of this shape, not a tuning problem. |
+| Local mass diffusion only: an amount per cell, shared with immediate neighbours alone | Correct per the literature, and measurably too slow: levelling a 184-cell pool by neighbour-to-neighbour diffusion takes tens of thousands of steps, because information moves only one cell per step. Measured: a real-width pool was still 6 cells proud after 5,000 steps. An $`O(n^2)`$ bound on any rule of this shape, not a tuning problem. |
 | Mass, plus a bounded surface scan: what shipped | See below. |
 
 ### Cross-flow: a cheap stand-in for pressure

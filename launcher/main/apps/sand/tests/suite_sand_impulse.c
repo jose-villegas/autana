@@ -1333,28 +1333,29 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
      * single-mover scenes. */
     impulse_t buf[8];
 
-    sand_t g;
+    sand_t* const g = malloc(sizeof *g);
+    TEST_ASSERT_NOT_NULL(g);
     memset(cells, 0, (size_t)SUBDIV_W * SUBDIV_H);
-    sand_init(&g, cells, SUBDIV_W, SUBDIV_H, 4242U);
-    sand_enable_impulses(&g, buf, 8);
+    sand_init(g, cells, SUBDIV_W, SUBDIV_H, 4242U);
+    sand_enable_impulses(g, buf, 8);
 
     enum { SX = 1, SY = 2, DIR_RIGHT = 2 };
 
-    sand_fill_box(&g, 0, SUBDIV_H - 1, SUBDIV_W, SUBDIV_H, STONE);
-    sand_set(&g, SX, SY, STONE);
-    sand_impulse_dislodge(&g, SX, SY, DIR_RIGHT, SUBDIV_SPEED, 0);
+    sand_fill_box(g, 0, SUBDIV_H - 1, SUBDIV_W, SUBDIV_H, STONE);
+    sand_set(g, SX, SY, STONE);
+    sand_impulse_dislodge(g, SX, SY, DIR_RIGHT, SUBDIV_SPEED, 0);
 
     int prev_x = SX;
     long total_moved = 0;
     for (int i = 0; i < SUBDIV_STEPS; i++) {
-        sand_step(&g, 0, 1000, 0);
+        sand_step(g, 0, 1000, 0);
 
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, g.impulse_count,
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, g->impulse_count,
                                       "the mover must still be tracked every step of this sweep - it "
                                       "starts far from the floor and every wall, so nothing here "
                                       "should ever drop or settle it before SUBDIV_STEPS is up");
 
-        const int x = (int)((unsigned)g.impulse_buf[0].index % (unsigned)SUBDIV_W);
+        const int x = (int)((unsigned)g->impulse_buf[0].index % (unsigned)SUBDIV_W);
         const int dx = x - prev_x;
         char msg[192];
         snprintf(msg, sizeof msg,
@@ -1374,6 +1375,7 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
                                      "the push roll must have succeeded at least once across "
                                      "SUBDIV_STEPS steps at speed SUBDIV_SPEED, or this sweep never "
                                      "actually exercised the one-cell-per-step path it claims to pin");
+    free(g);
 }
 
 /* THE POSITIVE CASE - a full-speed push clears SEVERAL cells in a single
@@ -1673,17 +1675,18 @@ test_a_chunk_bounces_off_the_grid_edge_instead_of_waiting_there_forever(void) {
     chunk_board_t board = chunk_board_open(EDGE_W, EDGE_H);
 
     for (uint32_t k = 1; k <= (uint32_t)EDGE_SEEDS; k++) {
-        sand_t g;
-        chunk_board_reset(&board, &g, k);
+        sand_t* const g = malloc(sizeof *g);
+        TEST_ASSERT_NOT_NULL(g);
+        chunk_board_reset(&board, g, k);
 
         enum { EDGE_X = EDGE_W - 1, SY = 1, DIR_RIGHT = 2 };
 
-        throw_chunk(&g, EDGE_X, SY, DIR_RIGHT, EDGE_MAX_STEPS);
+        throw_chunk(g, EDGE_X, SY, DIR_RIGHT, EDGE_MAX_STEPS);
 
         int fx = -1;
         for (int x = 0; x < EDGE_W; x++) {
             for (int y = 0; y < EDGE_H - 1; y++) {
-                if (CELL_MATERIAL(sand_at(&g, x, y)) == MAT_STONE) {
+                if (CELL_MATERIAL(sand_at(g, x, y)) == MAT_STONE) {
                     fx = x;
                 }
             }
@@ -1703,6 +1706,7 @@ test_a_chunk_bounces_off_the_grid_edge_instead_of_waiting_there_forever(void) {
                  "and the plain wait never changes direction",
                  (unsigned)k, EDGE_X);
         TEST_ASSERT_TRUE_MESSAGE(fx < EDGE_X, msg);
+        free(g);
     }
 
     chunk_board_close(&board);
@@ -1761,23 +1765,24 @@ test_a_chunk_dropped_on_flat_ground_still_settles_on_it(void) {
     chunk_board_t board = chunk_board_open(OPEN_W, OPEN_H);
 
     for (uint32_t k = 1; k <= (uint32_t)OPEN_SEEDS; k++) {
-        sand_t g;
-        chunk_board_reset(&board, &g, k);
+        sand_t* const g = malloc(sizeof *g);
+        TEST_ASSERT_NOT_NULL(g);
+        chunk_board_reset(&board, g, k);
 
         enum { SX = OPEN_W / 2, SY = 1, DIR_DOWN = 0 };
 
-        throw_chunk(&g, SX, SY, DIR_DOWN, OPEN_MAX_STEPS);
+        throw_chunk(g, SX, SY, DIR_DOWN, OPEN_MAX_STEPS);
 
         char msg[192];
         snprintf(msg, sizeof msg,
                  "seed %u: still airborne or bouncing after OPEN_MAX_STEPS "
                  "(%d) steps of an ordinary drop onto open, flat ground",
                  (unsigned)k, OPEN_MAX_STEPS);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, g.impulse_count, msg);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, g->impulse_count, msg);
 
         int landed_y = -1;
         for (int x = 0; x < OPEN_W; x++) {
-            if (CELL_MATERIAL(sand_at(&g, x, OPEN_H - 2)) == MAT_STONE) {
+            if (CELL_MATERIAL(sand_at(g, x, OPEN_H - 2)) == MAT_STONE) {
                 landed_y = OPEN_H - 2;
             }
         }
@@ -1787,6 +1792,7 @@ test_a_chunk_dropped_on_flat_ground_still_settles_on_it(void) {
                  "sideways to a different row",
                  (unsigned)k, OPEN_H - 2);
         TEST_ASSERT_EQUAL_INT_MESSAGE(OPEN_H - 2, landed_y, msg);
+        free(g);
     }
 
     chunk_board_close(&board);
@@ -2615,8 +2621,11 @@ test_a_thrown_powder_grain_flings_water_out_of_the_pool_it_hits(void) {
     free(buf);
     free(cells);
 
-    char why[512];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 512 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "summed across 200 seeds, water flung outside the pool's own "
              "original footprint must clear %d - measured 454 with transfer, "
              "387 for the same scene with transfer's own gate hard-mutated off "
@@ -2626,6 +2635,7 @@ test_a_thrown_powder_grain_flings_water_out_of_the_pool_it_hits(void) {
              "trips it",
              EJECTA_WATER_THRESHOLD);
     TEST_ASSERT_GREATER_THAN_MESSAGE(EJECTA_WATER_THRESHOLD, total, why);
+    free(why);
 }
 
 /* THE DETERMINISTIC HALF OF THE SAME CLAIM, and why the threshold above is
@@ -2771,24 +2781,25 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "budget-guard impulse queue must fit in what the framebuffer "
                                       "leaves");
 
-    sand_t g;
+    sand_t* const g = malloc(sizeof *g);
+    TEST_ASSERT_NOT_NULL(g);
     memset(cells, 0, (size_t)BUDGET_W * BUDGET_H);
-    sand_init(&g, cells, BUDGET_W, BUDGET_H, 9U);
-    sand_enable_impulses(&g, buf, BUDGET_IMPULSE_MAX);
+    sand_init(g, cells, BUDGET_W, BUDGET_H, 9U);
+    sand_enable_impulses(g, buf, BUDGET_IMPULSE_MAX);
 
-    sand_fill_box(&g, 0, BUDGET_H - 1, BUDGET_W, BUDGET_H, STONE);
-    sand_fill_box(&g, 2, 0, BUDGET_W, 1, CELL_MAKE(MAT_DIRT, 0));
-    sand_set(&g, 1, 0, STONE);
+    sand_fill_box(g, 0, BUDGET_H - 1, BUDGET_W, BUDGET_H, STONE);
+    sand_fill_box(g, 2, 0, BUDGET_W, 1, CELL_MAKE(MAT_DIRT, 0));
+    sand_set(g, 1, 0, STONE);
 
     enum { DIR_RIGHT = 2 };
 
-    sand_impulse_dislodge(&g, 1, 0, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
+    sand_impulse_dislodge(g, 1, 0, DIR_RIGHT, 255, SAND_IMPULSE_SPEED_RAMP);
 
     int max_seen = 0;
     for (int i = 0; i < BUDGET_STEPS; i++) {
-        sand_step(&g, 0, 1000, 0);
-        if (g.impulse_count > max_seen) {
-            max_seen = g.impulse_count;
+        sand_step(g, 0, 1000, 0);
+        if (g->impulse_count > max_seen) {
+            max_seen = g->impulse_count;
         }
         char why[192];
         snprintf(why, sizeof why,
@@ -2796,8 +2807,8 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
                  "capacity (%d) - sand_impulse() should refuse silently before "
                  "this can ever happen, so reaching it means the per-step cap "
                  "did not hold",
-                 i, g.impulse_count, BUDGET_IMPULSE_MAX);
-        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(BUDGET_IMPULSE_MAX, g.impulse_count, why);
+                 i, g->impulse_count, BUDGET_IMPULSE_MAX);
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(BUDGET_IMPULSE_MAX, g->impulse_count, why);
     }
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, max_seen,
@@ -2808,20 +2819,21 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
     /* Still stepping normally afterwards - a fresh sand_impulse() must
      * still succeed once the plow's own entries have had room to clear,
      * proving this was never a permanently wedged buffer. */
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, g.impulse_count,
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, g->impulse_count,
                                   "the plow's own entries must have fully cleared by the end of "
                                   "this run - otherwise the fresh sand_impulse() below is not "
                                   "actually testing an empty buffer draining, it is testing a "
                                   "still-busy one");
-    sand_set(&g, BUDGET_W - 2, BUDGET_H - 2, CELL_MAKE(MAT_SAND, 8));
-    sand_impulse(&g, BUDGET_W - 2, BUDGET_H - 2, DIR_RIGHT, 200);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, g.impulse_count,
+    sand_set(g, BUDGET_W - 2, BUDGET_H - 2, CELL_MAKE(MAT_SAND, 8));
+    sand_impulse(g, BUDGET_W - 2, BUDGET_H - 2, DIR_RIGHT, 200);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, g->impulse_count,
                                   "a fresh sand_impulse() queued after the plow's own run must "
                                   "still succeed - the shared buffer must drain as entries settle, "
                                   "not fill up and stay full");
 
     free(buf);
     free(cells);
+    free(g);
 }
 
 /*

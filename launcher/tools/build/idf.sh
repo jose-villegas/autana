@@ -84,8 +84,14 @@ idf_needs_shim() {
     [ -n "${MSYSTEM:-}" ]
 }
 
+# ccache waits on a lock another process keeps without end; ccache_watch.py
+# stops such a build and names the lock.
 idf() {
-    idf_in "$_IDF_DIR" idf.py "$@"
+    _IDF_WATCH="$_IDF_TOOLS/ccache_watch.py"
+    if idf_needs_shim; then
+        _IDF_WATCH="$(cygpath -w "$_IDF_WATCH")"
+    fi
+    idf_in "$_IDF_DIR" python "$_IDF_WATCH" -- idf.py "$@"
 }
 
 idf_in() {

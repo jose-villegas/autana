@@ -14,7 +14,8 @@ watch` lists the same commands.
 | `autana codec <reg> [value]` | development builds: read, or write then read back, one codec register (hex or decimal) |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | PATH.png plus a PATH.json state snapshot; landscape by default |
 | `autana screenshot --frames N -o PATH` | N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed |
-| `autana record [-o PATH] [--seconds S]` | each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it; stops when stdin ends or after S seconds; development builds |
+| `autana video -o PATH [--fps N] [--seconds S]` | live panel windows to an H.264 MP4 plus frames.csv; stdin lines go to the board; development builds |
+| `autana record [-o PATH] [--seconds S]` | each frame's render input as records (FRAMEREC), to PATH or stdout; console lines from stdin go to the board, so FREEZE, STEP and RESUME pause and step it, and it stops when stdin ends; with --seconds it reads no stdin and stops after S seconds; development builds |
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |
 | `autana battery --log [--json]` | persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds |
 | `autana battery --log --clear` | erase the battery history namespace |
@@ -31,3 +32,45 @@ Where a coredump lands and how to read it:
 `framewatch` is explained in
 [the frame watch](../firmware/Frame-Watch.md#no-allocating-or-logging-in-steady-state)
 and `perf` in [Frame-Cost.md](../tools/Frame-Cost.md#hardware-counters).
+
+## Panel video
+
+```sh
+autana video -o run.mp4 --fps 5 --seconds 10
+autana video -o run.mp4 --fps 5
+printf 'DRAG 20 40 200 240 500\n' | autana video -o drag.mp4 --fps 5
+```
+
+The device lock and port cover capture through `PANELCAP_END`. The command
+releases both before decoding and encoding. Board text goes to stderr.
+EOF, Ctrl+C, or the `--seconds` timer stops capture. Timed capture leaves stdin unread.
+
+| Recording rule | Effect |
+|---|---|
+| App memory | Recording uses `PANELCAP_CAPTURE_BYTES` of app heap. From the launcher, START takes the app heap for the visit. Starting an app from there ends the recording with `PANELCAP STOP app switch`. |
+| Short on memory | START prints `PANELCAP ERR no memory: need N, largest free M` in bytes and exits non-zero. |
+| App switch | Capture reports `PANELCAP STOP app switch`, drains its last published present, and ends. |
+
+`--fps` limits device publication. The landscape H.264 MP4 samples the
+latest present at each 30 Hz device timestamp. Gaps repeat the last
+picture, and bursts contribute the latest eligible picture.
+
+`run.frames.csv` records each complete present beside the MP4.
+
+| Column | Meaning |
+|---|---|
+| `present_seq` | Device sequence, including presents that merged or were lost. |
+| `device_us` | Device time at present start, in microseconds. |
+| `host_ns` | Host wall-clock time when the final part arrived, in nanoseconds. |
+| `windows` | Dirty rectangles in the present. |
+| `packed_bytes` | Bytes of PackBits pixel data. |
+| `dropped_before` | Presents since the previous publication that were unpublished due to the FPS gate, an image still being sent, or a redraw owed. Their windows merge into the next published present. Capped at 65535. |
+
+The summary reports
+
+- `presents` and `fps` for complete presents received and their attained rate.
+- `device_dropped` for the whole run’s count of presents the device did not publish.
+- `host_dropped` for presents rejected after missing, repeated, out-of-order or damaged parts or invalid data.
+- `MB/s` for packed pixel throughput.
+
+See [panel video framing](../tools/Panel-Video.md) and the [FFmpeg pin](../tools/Framework-Versions.md#ffmpeg).

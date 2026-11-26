@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -135,16 +136,16 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){
-            .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
-            .entity = c->entity,
-            .clear = RGB565BE(c->clear_rgb)};
+        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
+                                             .entity = c->entity,
+                                             .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
     }
     for (int i = 0; i < asset->skinned_renderer_count; i++) {
         scene->renderers[asset->renderer_count + i].entity = asset->skinned_renderers[i].entity;
+        scene->renderers[asset->renderer_count + i].resident_arrays = SCENE_RESIDENT_ALL; /* skins read the pack */
     }
     return scene;
 }
@@ -216,6 +217,7 @@ open_lod_bits(scene_t* scene) {
     if (scene->lod_bits == NULL) {
         return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
     }
+    scene->lod_bit_words = words;
     memset(scene->lod_bits, 0, words * sizeof(uint32_t));
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
@@ -441,15 +443,9 @@ free_columns(scene_t* scene) {
     memory_free(scene->chunks);
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_texturing_free(&scene->renderers[i]);
+        scene_mesh_release(&scene->renderers[i]);
     }
     scene_hierarchy_release(scene);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (scene->copies != NULL) {
-        asset_store_copies_remove(scene->copies);
-        scene_free_kept(scene->copies);
-    }
-#endif
-    scene_free_kept(scene->resident);
     scene_free_kept(scene);
 }
 
@@ -483,9 +479,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
     done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
                                        : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
-    if (done.status == SCENE_OK) {
-        done = scene_mesh_make_resident(scene);
-    }
     if (done.status == SCENE_OK) {
         done = scene_renderer_open_cuts(scene);
     }
@@ -649,6 +642,34 @@ scene_state(entity_t root) {
     return record == NULL || row != SCENE_ROW_ROOT ? PENDING_NONE : record->state;
 }
 
+void
+scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing) {
+    const char* name = scene->asset.names[entity].name;
+    *starved = true;
+    scene->starved_count++;
+    scene->active_renderers_stale = true;
+    (void)fprintf(stderr, "scene: no memory to %s %s; it is not drawn\n", doing, name);
+}
+
+void
+scene_unstarve(scene_t* scene, bool* starved) {
+    scene->starved_count -= *starved;
+    *starved = false;
+}
+
+/* The first entity starved now: a skin without its buffers or a renderer
+ * without its copies. */
+static const char*
+starved_name(const scene_t* scene) {
+    for (int i = 0; i < scene->renderer_count; i++) {
+        const scene_row_t e = scene->renderers[i].entity;
+        if (scene->renderers[i].starved || scene->skinned_renderers[e].starved) {
+            return scene->asset.names[e].name;
+        }
+    }
+    return scene->root->id;
+}
+
 bool
 scene_failure(entity_t root, scene_failure_t* why) {
     const scene_root_t* record = record_of(root);
@@ -657,7 +678,7 @@ scene_failure(entity_t root, scene_failure_t* why) {
     if (record == NULL || (record->state != PENDING_FAILED && !starved)) {
         return false;
     }
-    *why = record->failure;
+    *why = starved ? scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, starved_name(record->scene)) : record->failure;
     return true;
 }
 
@@ -751,6 +772,9 @@ scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
     checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
+    /* Each copy's level carries from frame to frame. Sized as allocated: a
+     * renderer given a mesh with fewer levels keeps its words. */
+    checkpoint_capture_at(saved, &scene->lod_bits, scene->lod_bit_words * sizeof(*scene->lod_bits));
     scene_animation_checkpoint_capture(saved, scene);
 }
 #endif

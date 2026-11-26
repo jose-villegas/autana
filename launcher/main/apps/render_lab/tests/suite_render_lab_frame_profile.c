@@ -49,6 +49,7 @@ typedef struct {
     const char* pack;
     const char* entity;
     const capybara_take_t* take;
+    bool textured; /* render_lab.textures on: its row and take read TEXTURED_TAKE */
     perf_budget_t quarters[LAB_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
@@ -59,22 +60,23 @@ static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_C
 static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
 
 /* A capybara scenario: its take and budgets. */
-#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
+#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), false, __VA_ARGS__}
 
 /* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, + 1%; per
  * quarter, portrait then landscape. The table's order is the docs' row order. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
+    {.scene = &scene_sponza, .quarters = {{48826, 60160}, {46066, 56159}}},
     CAPYBARA_ROW(capybara_home, {{20845, 21185}, {21592, 22018}}),
     CAPYBARA_ROW(capybara_close, {{22561, 23064}, {23551, 23948}}),
     CAPYBARA_ROW(capybara_blend, {{21149, 22049}, {21812, 22708}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
-    {&scene_bistro_textured, BISTRO_SCENE, BISTRO_CAMERA, NULL, {{39282, 58474}, {41835, 54808}}},
+    {&scene_bistro, BISTRO_SCENE, BISTRO_CAMERA, NULL, false, {{36375, 54681}, {38062, 51881}}},
+    {&scene_bistro, BISTRO_SCENE, BISTRO_CAMERA, NULL, true, {{39282, 58474}, {41835, 54808}}},
 };
 
 static const char* TAG = "render_lab_profile";
+
+/* The row suffix and take of a scenario drawn with render_lab.textures on, as its baselines name them. */
+#define TEXTURED_TAKE            "textures"
 
 /* The steps capture: a line per FRAME_PROFILE_LINE_FRAMES frames of one
  * scenario at one ladder step, then each frame's whole:draw:upscale us and
@@ -90,27 +92,48 @@ static const char* TAG = "render_lab_profile";
 static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
-static void
-release_fixture(void) {
-    frame_profile_trace_free(&played);
-    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
-    lab_test_exit(&saved);
-}
-
 /* The scenario and quarter the next test plays: one test each, so a row over its
  * ceiling does not stop the rows after it. */
 static const profile_scenario_t* scenario;
 static size_t quarter_index;
 
+/* One console line, formatted, for the showing scene. */
+static void
+send(const char* format, ...) {
+    char command[ASSET_NAME_MAX];
+    va_list args;
+    va_start(args, format);
+    const int length = vsnprintf(command, sizeof command, format, args);
+    va_end(args);
+    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+}
+
+static void
+release_fixture(void) {
+    frame_profile_trace_free(&played);
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
+    TEST_ASSERT_TRUE(render_lab_textures_set_on(false));
+    lab_test_exit(&saved);
+}
+
 /* The row the scenario reports as. */
 static const char*
 scenario_row(void) {
-    return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+    static char textured_row[ASSET_NAME_MAX];
+    if (scenario->take != NULL) {
+        return scenario->take->row;
+    }
+    if (!scenario->textured) {
+        return scenario->scene->key;
+    }
+    (void)snprintf(textured_row, sizeof textured_row, "%s-%s", scenario->scene->key, TEXTURED_TAKE);
+    return textured_row;
 }
 
 static const char*
 scenario_take(void) {
-    return scenario->take == NULL ? NULL : scenario->take->name;
+    return scenario->take != NULL ? scenario->take->name : scenario->textured ? TEXTURED_TAKE : NULL;
 }
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
@@ -147,25 +170,13 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
         render_lab_test_replay_pose(TAG, path->entity, path->duration_ms,
                                     (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter,
-                                    NULL, 0, NULL);
+                                    NULL, 0, NULL, 0, FRAME_PROFILE_REPLAY_DRAWS);
     }
     for (int rank = 0; rank < count; rank++) {
         render_lab_test_replay_pose(TAG, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row,
-                                    quarter, NULL, 0, NULL);
+                                    quarter, NULL, 0, NULL, 0, FRAME_PROFILE_REPLAY_DRAWS);
     }
     release_report();
-}
-
-/* One console line, formatted, for the showing scene. */
-static void
-send(const char* format, ...) {
-    char command[ASSET_NAME_MAX];
-    va_list args;
-    va_start(args, format);
-    const int length = vsnprintf(command, sizeof command, format, args);
-    va_end(args);
-    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof command);
-    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
 }
 
 static scenario_path_t
@@ -178,6 +189,10 @@ enter_scenario(void) {
     const entity_t entity =
         entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
     TEST_ASSERT_FALSE(handle_is_none(entity));
+    if (scenario->textured) {
+        TEST_ASSERT_TRUE(render_lab_textures_set_on(true));
+        lab_test_frame(false, NULL); /* the frame that opens them, before any timed */
+    }
     const capybara_take_t* take = scenario->take;
     if (take != NULL) {
         send(CAPYBARA_VIEW_COMMAND, take->view);
@@ -227,6 +242,7 @@ test_real_time_frame_profile(void) {
         *run = (profile_run_t){path, {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}, 0};
     }
     const frame_profile_t p = frame_profile_play(&run->playback, lab_test_profile_frame, &run->remainder_us, &played);
+    frame_profile_log_laps(TAG, scenario_row(), &p, lab_perf_quarters[quarter_index].name); /* before the replays */
     /* The peaks first: a row over its budget is the one they explain. */
     report_path(&run->path, &p);
     judge_profile(&p);
@@ -265,6 +281,14 @@ log_step_frames(const step_frame_t* frames, int count, resolution_step_t size) {
     memory_free(line);
 }
 
+/* The last frame's record, read off the frame call's stack chain. */
+static __attribute__((noinline)) step_frame_t
+pinned_step_frame(int32_t whole_us) {
+    const render_context_frame_t f = render_context_frame(render_context_main());
+    TEST_ASSERT_EQUAL_INT(0, f.step);
+    return (step_frame_t){whole_us, f.draw_us, f.upscale_us, f.stats.triangles};
+}
+
 /* The path at one ladder step held for every frame, at a fixed frame step so
  * every step draws the same poses: what dynamic resolution would pay for
  * each frame at each step, for launcher/tools/r3d/dynres_replay.py. */
@@ -282,10 +306,7 @@ test_dynres_steps(void) {
     for (int i = 0; i < frames; i++) {
         const int64_t start = timing_now_us();
         (void)lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
-        const int32_t whole_us = (int32_t)(timing_now_us() - start);
-        const render_context_frame_t f = render_context_frame(render_context_main());
-        TEST_ASSERT_EQUAL_INT(0, f.step);
-        records[i] = (step_frame_t){whole_us, f.draw_us, f.upscale_us, f.stats.triangles};
+        records[i] = pinned_step_frame((int32_t)(timing_now_us() - start));
     }
     log_step_frames(records, frames, size);
     memory_free(records);

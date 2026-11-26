@@ -16,12 +16,11 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from autana_runner import autana_run, record_line
-sys.path.insert(0, str(ROOT / "launcher/tools/build"))
-from c_header import read_define
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import US_PER_SECOND, MS_PER_SECOND
 
-sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.build_pack import pack_files
 
 REPORT_WINDOWS = 2

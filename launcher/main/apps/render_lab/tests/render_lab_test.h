@@ -32,12 +32,12 @@ void render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]);
  * line into `out`. */
 void render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int frames, char* out, size_t size);
 
-/* Replays a paused pose: cull counts, then FRAME_PROFILE_REPLAY_DRAWS
+/* Replays a pose with fixed dt_ms per draw (zero holds it): cull counts, then `draws`
  * shaded frames, logged as FRAME_PROFILE_REPLAY under tag. Optional
  * stage_us receives each of the `count` stages' mean microseconds before
  * the window clears. */
 void render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms,
                                  const char* row, const char* quarter, const char* const* stages, int count,
-                                 int64_t* stage_us);
+                                 int64_t* stage_us, uint32_t dt_ms, int draws);
 
 #endif

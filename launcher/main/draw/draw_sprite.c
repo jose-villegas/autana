@@ -274,7 +274,7 @@ blend_span(gfx_color_t* row, int x0, int x1, const slice_axis_t* axis, bool mirr
 /* A flat centre as one blended rectangle; the panel rectangle it covers, or
  * an empty one for a sprite without one. */
 static __attribute__((noinline)) recti_t
-draw_flat_centre(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* sx, const slice_axis_t* sy) {
+flat_centre_rect(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* sx, const slice_axis_t* sy) {
     if (!s->flat_centre) {
         return recti_empty();
     }
@@ -284,7 +284,6 @@ draw_flat_centre(const sprite_t* s, recti_t dst, int turns, const slice_axis_t* 
     recti_t centre = affine2x_map_recti(&turn, inner);
     centre.x += dst.x;
     centre.y += dst.y;
-    draw_rect_blend(centre.x, centre.y, centre.w, centre.h, s->centre_color, s->centre_alpha);
     return centre;
 }
 
@@ -349,7 +348,10 @@ draw_sprite_scaled(const sprite_t* s, recti_t dst, int quarter_turns, int scale)
     }
     const slice_axis_t sx = slice_axis(frame.w, s->color.width, s->border.left, s->border.right, scale);
     const slice_axis_t sy = slice_axis(frame.h, s->color.height, s->border.top, s->border.bottom, scale);
-    const recti_t centre = draw_flat_centre(s, dst, turns, &sx, &sy);
+    const recti_t centre = flat_centre_rect(s, dst, turns, &sx, &sy);
+    if (s->flat_centre) {
+        draw_rect_blend(centre.x, centre.y, centre.w, centre.h, s->centre_color, s->centre_alpha);
+    }
 
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {

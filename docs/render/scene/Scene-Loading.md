@@ -79,7 +79,7 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
 
 | Piece | From |
 |---|---|
-| The scene's block, resident mesh arrays, its animators' storage | the app arena |
+| The scene's block, its shown renderers' mesh copies, its animators' storage | the app arena |
 | The raster scratch block | the app arena |
 | Skinning output and skin light storage, while the skin's entity is active; light tables | the internal heap |
 | A development debug view's state | the PSRAM heap |
@@ -88,13 +88,23 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
   the app rewinds past it, so scenes still release in any order.
 - Releasing the last scene drops the scratch, so an app that marks before
   `scene_load()` may rewind after `scene_release()`.
+- A scratch that must grow takes a new block and leaves the old to the arena.
+  When the arena refuses, the context keeps the old block: that frame is not
+  drawn, and a later one the block fits is.
 - `scene_load()` mounts the scene's pack; `scene_load_from()` takes a pack, so
   a test can load from one it builds.
 - The pack outlives the scene, which reads its entry and every skin, skeleton
   and clip it names in place.
-- Static meshes copy their positions, triangles and colours into one PSRAM
-  block per scene, one copy per distinct array. Skinned meshes keep reading
-  the pack.
+- A static renderer copies its positions, triangles and colours into PSRAM
+  the first time it is active, so a renderer that is never enabled, such as
+  an alternative model an app switches in later, takes nothing. An array
+  renderers share is copied once.
+- The copies stay until the scene is released: disabling keeps them, and
+  enabling again takes nothing. A renderer whose copies do not fit is not
+  drawn, and `scene_failure()` names it, until it stops being active;
+  becoming active again retries the copy.
+- Skinned meshes, and meshes an app sets with `renderer_set_mesh()`, are
+  drawn where they are.
 - The entry is validated before its components attach. Settings supply
   ambient and tone map before light and skin attachment.
 

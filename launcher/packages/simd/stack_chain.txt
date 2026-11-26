@@ -1,0 +1,1 @@
+indirect suite_simd_perf.c:median_cycles : suite_simd_perf.c:fill_ref suite_simd_perf.c:fill_simd suite_simd_perf.c:repeat2_ref suite_simd_perf.c:repeat2_simd suite_simd_perf.c:copy_ref suite_simd_perf.c:copy_simd

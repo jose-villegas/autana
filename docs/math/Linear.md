@@ -122,8 +122,17 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#shepperd-1978)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
+| <a id="quat-looking"></a>`quatf_looking(forward, up)` | aims local +Z along `forward`. Zero or nonfinite forward gives identity. Float only, no fixed-point twin | For unit forward $`f`$, $`r = \mathrm{normalize}(up \times f)`$, $`u = f \times r`$, then $`\mathrm{from\_basis}(r,u,f)`$ |
+| <a id="quat-from-to"></a>`quatf_from_to(a, b)` | shortest turn from direction `a` to `b`<sup>[[145]](../Citations.md#melax-2000)</sup>. Zero or nonfinite input gives identity. Float only, no fixed-point twin | $`\mathrm{normalize}(c,L+d)`$, where $`c=a\times b`$, $`d=a\cdot b`$ and $`L=\lVert a\rVert\lVert b\rVert`$<br>For $`d<0`$, use $`\mathrm{normalize}((L-d)\hat c,\lVert c\rVert)`$ with the axis projected perpendicular to $`a`$. Near opposition, use a half-turn about the least-aligned basis axis crossed with $`a`$ |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#shoemake-1985)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#eberly-2011)</sup> |
+
+Both rotations scale input directions by powers of two before computing
+cross products. `quatf_from_to` uses the half-turn when the cross length is at
+most `QUATF_OPPOSITION_SINE_TOLERANCE` times the product of the input lengths.
+
+When up is missing or parallel, `quatf_looking` uses +Z as up, or -Z when
+forward has a positive Z component. It uses +Y if the substitute is parallel.
 
 `quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
 A device sweep measures nlerp component error over quaternion pairs and
@@ -171,9 +180,9 @@ the columns of `L = [a c; b d]` and its translation.
 `mat3f_t` is a row-major linear matrix.
 
 | `mat3f_identity()` | identity linear matrix | $`m_{rc} = [r=c]`$ |
-- `mat3f_from_mat4()` takes a mat4's linear part, without translation; `mat3f_mul()` multiplies two.
+- `mat3f_from_mat4()` takes a mat4's linear part, without translation; `mat3f_mul()` multiplies two; `mat3f_scale()` multiplies every entry by a scalar.
 - `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division.
-- It satisfies `cofactor(M) * transpose(M) = det(M) * I`, a reflection's determinant negative.
+- It satisfies $`\mathrm{cofactor}(M)\,M^{T} = \det(M)\,I`$, a reflection's determinant negative.
 - Dividing it by the determinant gives the inverse-transpose.
 
 ## mat4 (`f x`)
@@ -207,13 +216,14 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_compute_matrix(&t)` | a fresh model matrix from a const transform | $`M = T\,R\,S`$ |
 | `P_view(&t)` | the camera's view matrix | $`V = R^{\mathsf T}\,T(-\mathit{position})`$ |
 | `transformf_rotate_around(&t, point, axis, angle)` | float only: turns about the line through `point` along `axis`, in the parent's frame; the position swings round `point` and the rotation turns with it | $`q = \mathrm{from\_axis\_angle}(\hat a, \mathit{angle})`$<br> $`\mathit{position} \leftarrow \mathit{point} + q\,(\mathit{position} - \mathit{point})`$<br> $`\mathit{rotation} \leftarrow \mathrm{normalize}(q\;\mathit{rotation})`$ |
+| <a id="transform-blend"></a>`transformf_blend(&a, &b, weight)` | float only: linear position and scale, shortest-arc nlerp rotation; the result's cached matrix is cleared, so it is rebuilt on next use | $`w = \min(1, \max(0, \mathit{weight}))`$<br>$`p = (1-w)p_a + w p_b`$<br>$`s = (1-w)s_a + w s_b`$<br>$`q = \mathrm{nlerp}(q_a,q_b,w)`$ |
 | `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
 | `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
 | `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
 | `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#shepperd-1978)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
-| `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
-| `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
+| `P_look_along(&t, direction, up)` | aims local +Z along `direction`. Float uses [`quatf_looking`](#quat-looking). Fixed-point requires a nonzero direction and nonparallel up | For fixed-point, `transformx_aim_rotation` computes $`f=\mathrm{normalize}(\mathit{direction})`$, $`r=\mathrm{normalize}(\mathit{up}\times f)`$, then $`\mathrm{from\_basis}(r,f\times r,f)`$ |
+| `P_look_at(&t, target, up)` | aims at `target` with the direction and up rules of `P_look_along` | `P_look_along(&t, target - position, up)` |
 
 ## The transform cache
 

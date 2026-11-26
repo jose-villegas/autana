@@ -28,6 +28,7 @@ rotation = [18.4, -48.7, 0.0]    # pitch, yaw, roll in degrees
 
 [objects.light]
 type = "directional"
+mode = "baked"
 color = [1.0, 0.92, 0.78]
 intensity = 3.0
 
@@ -52,7 +53,7 @@ visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit]      # fitted to reference renders of the source
 prune = { budget = 13313, coverage_every_ms = 20 }
-poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
+poses = { size = [184, 224], samples = 4, denoise = true, train_every_ms = 1000, held_out_every_ms = 5000 }
 
 [objects.mesh_renderer.fit.optimise]
 steps = 2000
@@ -61,23 +62,6 @@ laplacian = 10.0
 normal_weight = 1.0
 surface_weight = 10.0
 surface_margin = 0.25
-
-[[objects]]
-name = "statue"
-position = [0.0, 0.0, 300.0]
-scale = [2.0, 2.0, 2.0]
-
-[objects.mesh_renderer]          # a flat fit: one colour per face
-mesh = "statue.import.toml"
-variant = "statue_flat_fitted"
-bake = true
-shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_region", rounds = 160 }
-
-[objects.mesh_renderer.fit]
-prune = { budget = 4000, coverage_every_ms = 20 }
-poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
-optimise = { steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, surface_weight = 10.0, surface_margin = 0.25 }
 ```
 
 ## Objects
@@ -96,21 +80,21 @@ or skinned renderer.
 
 | Component | Fields | What it is |
 |---|---|---|
-| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
+| `mesh_renderer` | `mesh`, `variant`, `bake`, `shading`, `visibility`, `seal_views`, `fit`, `indirect` | Draws a mesh asset. `mesh` names an import file beside the scene; `variant` chooses its geometry variant. |
 | `skinned_renderer` | `mesh`, `variant` | Draws imported albedo with its skin and skeleton, lit at runtime. Takes no `bake`. |
 | `animator` | `clips`, `default_clip`, `wrap` | Selects a skinned renderer's clips and playback. |
-| `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
+| `light` | `type`, `color`, `intensity`; `mode`; `range`, `inner_angle`, `outer_angle` | A directional, point or spot light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
 ## What the scene must carry
 
 | A scene with | Must carry | May also carry |
 |---|---|---|
-| a baked renderer (`bake = true`) | a light (a directional object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility | `[indirect]`, when a renderer bakes `[bake].indirect` |
+| a baked renderer (`bake = true`) | a light (a directional, point or spot object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility and `seal_views` | `[indirect]`, when a renderer bakes `[bake].indirect` |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
-placed renderer reads; `[sky]` is read only by a bake.
+placed renderer reads; `[sky]` and point and spot lights are read only by a bake.
 
 ## Option reference
 
@@ -214,6 +198,8 @@ coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
 size = [184, 224]
+samples = 4         # 4 x 4 rays per pixel
+denoise = true      # OIDN with albedo + normal guides
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -233,17 +219,18 @@ normal_weight = 1.0
 | `colour_set` | nonnegative integer | Selects an external LCOL set on a colourless mesh. | Mesh-owned colours. | [colour_set](#colour_set) |
 | `visibility: camera_region` | `source = "camera_region"`, `rounds` | Keeps triangles visible from any point in the camera's region. | Off. | [visibility: camera_region](#visibility-camera_region) |
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
+| `seal_views` | `every_ms`, `size` | Adds the camera path's frames to the views a sealed import is checked from. | Off: probes in the camera's region alone. | [seal_views](#seal_views) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
-| `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.poses` | `size`, `samples`, `denoise`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
 
 `bake = true` writes this renderer's lit mesh; otherwise it draws the shared
-imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
+imported albedo mesh. `shading`, `visibility`, `seal_views`, `fit`, and `indirect` require
 `bake = true`. A baked renderer's transform must be identity. Its output is
 `<scene>.<object>.bundle`; an albedo renderer uses `<variant>.bundle`. An import is
 packed only through the scenes that place it. The same import can have
@@ -307,19 +294,8 @@ described in [The baked mesh](../offline/Baked-Mesh.md#clusters-and-the-tree).
 
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
 lighting points per face; `auto` chooses a count from face area. One point lights a face
-from one place, so a shadow edge lands on whole faces
-([smooth against flat](../offline/Bake-Quality.md#the-demo-variants)).
-
-A flat fit starts from these sampled colours, then fits them. Top: one fixed
-sample against adaptive on the fit's start mesh. Bottom: adaptive against the
-finished fit.
-
-![One fixed face sample against adaptive, then adaptive against the flat fit](../../images/render/import-face-samples.png)
-
-Face samples are the useful control; extra samples converge, and a face's one
-colour leaves edge error that sampling cannot remove. A flat bake's sky rays
-are the sky light's `rays`. Sweeps, and `bake_fidelity.py` to score your own
-settings, are in the scene tools README.
+from one place, so a shadow edge lands on whole faces. A flat bake's sky rays
+are the sky light's `rays`; `bake_fidelity.py` scores your own settings.
 
 #### fit.prune
 
@@ -332,6 +308,14 @@ pixels over. How a fit runs: [Appearance-Fit.md](../offline/Appearance-Fit.md#st
 `size = [width, height]` sets the pose resolution; `train_every_ms` spaces the
 training poses along the camera path, and poses at multiples of
 `held_out_every_ms` are held out and only scored ([Poses](../offline/Appearance-Fit.md#poses)).
+
+`samples` and `denoise` set how the reference renders are traced
+([Bake-Method.md](../offline/Bake-Method.md#fidelity-against-a-reference)):
+
+| Field | Meaning |
+|---|---|
+| `samples` | Rays per pixel along each side, at least 1: `samples`² primary rays per pixel. |
+| `denoise` | `true` filters each render with Open Image Denoise<sup>[[143]](../../Citations.md#oidn)</sup>, guided by the pixel's albedo and normal. |
 
 #### fit.optimise
 
@@ -390,16 +374,66 @@ refuse clips that break this rule.
 
 | Option | Keys | What it does | Default | Option link |
 |---|---|---|---|---|
-| `light` | `type`, `color`, `intensity` | A directional light: baked into baked renderers, applied at runtime to skinned renderers. | Required for an object with this component. | [light](#light) |
+| `light` | `type`, `color`, `intensity`; `mode`; `range`, `inner_angle`, `outer_angle` | A directional light, realtime or baked; a point or spot light, baked. | `mode = "realtime"`; the rest required. | [light](#light) |
 
 #### light
 
-Only directional lights are scene objects; `point` and `spot` are reserved.
-Its direction toward the light is the object's +Y axis turned by its rotation.
-Position and scale do not matter. The lights a bake sees are the directional
-objects in file order, then `[sky]`, then `[ambient]`. The sun is a point
-source, so its shadows are hard. A double-sided face is lit on both sides and
-keeps the brighter.
+`mode` is `"realtime"` by default or `"baked"`. Realtime lights stay out of
+surface and probe bakes. A baked directional light contributes at runtime
+only when the scene has no probes.
+
+| `type` | Placed by | Keys besides `color`, `intensity` | Modes |
+|---|---|---|---|
+| `directional` | its rotation: the light shines from the object's +Y axis turned by it | none | realtime, baked |
+| `point` | its position | `range` | baked |
+| `spot` | its position, shining along its −Y axis turned by its rotation | `range`, `inner_angle`, `outer_angle` | baked |
+
+```toml
+[[objects]]
+name = "lamp"
+position = [0.0, 2.5, 0.0]
+
+[objects.light]
+type = "spot"
+mode = "baked"
+color = [1.0, 0.9, 0.7]
+intensity = 4.0
+range = 6.0          # world units; the light reaches zero there
+inner_angle = 20.0   # degrees from the axis: full light inside
+outer_angle = 35.0   # degrees: no light outside
+```
+
+![A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone](../../images/render/light-point-spot.png)
+
+A point or spot light falls off by inverse square to zero at `range`; a spot
+fades from `inner_angle` to `outer_angle`. The formula is in
+[Bake-Method.md](../offline/Bake-Method.md#point-and-spot-lights). The keys follow
+glTF's punctual lights<sup>[[147]](../../Citations.md#khr-lights-punctual)</sup>.
+
+| Rule | Refused otherwise |
+|---|---|
+| a point or spot light is `mode = "baked"` | realtime: only directional lights light movers at runtime |
+| `range` > 0 | zero or negative |
+| 0 ≤ `inner_angle` < `outer_angle` ≤ 90 | any other pair |
+| a point or spot light has no `parent` | a parent: the bake places a light by its own transform |
+| a point or spot light is read by a baked renderer | a scene with no baked renderer: nothing reads the light |
+
+Point and spot lights stay out of the scene's runtime lights. Their light is in
+the baked colours, and skinned renderers see it through the scene's probes; a
+scene without probes gives them none of it.
+
+A directional light's position and scale do not matter. The lights a bake sees
+are the light objects with `mode = "baked"` in file order, then `[sky]`, then
+`[ambient]`. Every light from an object is a point source, so its shadows are
+hard. A double-sided face is lit on both sides and keeps the brighter.
+
+#### seal_views
+
+An import with [`seal_seams`](../offline/Mesh-Import.md#seal_seams) is checked for sky showing through its
+walls from probes in the camera's `region`. `seal_views` adds the camera path's own frames to those views:
+one every `every_ms`. `size` is the panel's width and height in pixels, and each frame is traced through a
+square view that covers it, as for [path visibility](#visibility-camera_path). A gap only a path pose sees is
+then closed too. It needs a camera with a `path`.
 
 ### Camera options
 
@@ -416,7 +450,7 @@ any other camera is refused because no bake step reads it.
 
 | Key | Meaning |
 |---|---|
-| `region = { min, max }` | the box the camera may occupy; region visibility casts from points inside it |
+| `region = { min, max }` | the box the camera may occupy; region visibility casts from points inside it, and a sealed import's probes stand in it |
 | `path = { animation, node }` | the clip the camera flies: `animation` is its `NAME.anim.toml` ([Animation-Tracks.md](../animation/Animation-Tracks.md)), relative to the scene file, and `node` the glTF node in it that is the camera. The clip's id is `NAME` and it travels in the scene's pack; `<node>/translation` must fit a track name's 31 bytes |
 | `background` | 0xRRGGBB, default black: the colour a pixel no mesh covers shows, on the panel and in the source reference |
 

@@ -18,7 +18,9 @@
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
 #include "render/batch/r3d_batch.h"
+#include "render/contact/contact_blob.h"
 #include "render/lod/r3d_lod.h"
+#include "render/probe/sh_probes.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
@@ -26,6 +28,7 @@
 #include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
+#include "scene/skin/skin_contact.h"
 
 typedef struct scene scene_t;
 #include "scene/scene_conventions.h"
@@ -74,7 +77,8 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
-    box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
+    scene_contact_t contact;
+    box3f_t drawn_bounds; /* geometry and contact bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
     bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
@@ -82,9 +86,20 @@ typedef struct {
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
+    vec3f_t contact_light;
     void* texturing;      /* its pack mesh's textures once opened (render/texture/), at load when they cut, or NULL */
     bool texturing_owner; /* the renderer that opened them: the scene holds one block per mesh id */
+    /* Its static arrays are copied into PSRAM when it is first ACTIVE
+     * (scene_mesh_take()); a renderer never shown takes none. */
+    uint8_t resident_arrays; /* a bit per array it draws from a copy; SCENE_RESIDENT_ALL: nothing left to copy */
+    bool starved;            /* its copies did not fit when it became ACTIVE: not drawn until it stops being ACTIVE */
+    void* resident;          /* its take of copies, or NULL */
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    asset_copies_t* copies; /* resident's arrays' sources, told to the asset store; NULL when none */
+#endif
 } scene_renderer_t;
+
+#define SCENE_RESIDENT_ALL 0xFFU
 
 /* Drops `r`'s textures, freeing them when it opened them; at the scene's close. */
 void scene_renderer_texturing_free(scene_renderer_t* r);
@@ -133,6 +148,10 @@ typedef struct {
 
 typedef struct {
     r3d_skin_t skin;
+    contact_mask_t contact_mask;
+    contact_joint_t* contact_joints;
+    skin_contacts_t contacts;
+    bool contact_mask_failed;
     r3d_lit_mesh_t bind;
     r3d_skin_output_t output;
     mat4f_t* model;
@@ -203,14 +222,11 @@ struct scene {
     r3d_skin_light_table_t* light_table;
     int light_table_users;
     bool light_table_dirty;
+    const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
-    int starved_count;  /* skins whose buffers did not fit; root->failure says which */
+    int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */
     uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
-    void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    asset_copies_t* copies; /* resident's arrays' sources, told to the asset store; NULL when none */
-#endif
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
@@ -223,6 +239,7 @@ struct scene {
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */
     uint32_t* lod_bits;          /* every renderer's coarse bits, kept from frame to frame */
+    size_t lod_bit_words;        /* how many words lod_bits holds, as allocated */
     /* The per-frame loops walk these, not every entity or renderer: a scene
      * with many disabled copies has few of either. */
     scene_row_t* staged; /* entities with an animator, a skin or a light, in entity order */
@@ -231,6 +248,11 @@ struct scene {
     int active_renderer_count;
     bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
+
+static inline bool
+scene_is_lit(const scene_t* scene) {
+    return scene->probes != NULL || scene->light_count > 0 || scene->ambient_intensity > 0.0F;
+}
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 /* Fault injection exercises allocation rollback without exhausting the heap. */
@@ -248,9 +270,13 @@ void* scene_allocate_kept(size_t bytes);
 void* scene_allocate_kept_optional(size_t bytes);
 void scene_free_kept(void* block);
 
-/* Copies static mesh arrays (positions, triangles, colours) into one block from scene_allocate_kept(),
- * deduplicated per array, and points the renderers at it. SCENE_ERR_MEMORY when the block cannot be had. */
-scene_failure_t scene_mesh_make_resident(scene_t* scene);
+/* Copies static renderer `index`'s arrays (positions, triangles, colours) and
+ * its batch's copy places not yet resident into one block from
+ * scene_allocate_kept(), and points it, and every renderer sharing an array,
+ * at the copies. False, with nothing kept, when the block cannot be had. */
+bool scene_mesh_take(scene_t* scene, int index);
+/* Frees `r`'s take when it came from the heap; at the scene's close. */
+void scene_mesh_release(scene_renderer_t* r);
 
 /* The columns of world record `index` (below SCENE_ROOTS_MAX) when it is READY, else NULL. */
 scene_t* scene_ready_at(int index);
@@ -354,9 +380,27 @@ void scene_skin_light_prepare(scene_t* scene, scene_row_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);
 r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
 bool scene_lights_allocate(scene_t* scene);
+
 void scene_lights_prepare(scene_t* scene);
+vec3f_t scene_light_brightest_direction(const scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
+void scene_skin_contacts_find(scene_t* scene, scene_row_t entity);
+void scene_skin_mask_refresh(scene_t* scene, const scene_renderer_t* renderer);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
+/* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
+ * is not drawn, and scene_failure() names it, until scene_unstarve() as it
+ * stops being ACTIVE. */
+void scene_starve(scene_t* scene, scene_row_t entity, bool* starved, const char* doing);
+void scene_unstarve(scene_t* scene, bool* starved);
 /* Stores the failure in `why`, which may be NULL; true for SCENE_OK. */
 bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what);
+
+#define CONTACT_LIGHT_ELEVATION_MIN 0.3F
+
+int scene_contact_blobs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blobs);
+box3f_t scene_contact_bounds(const scene_t* scene, scene_renderer_t* renderer, vec3f_t light);
+
+vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
+vec2f_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
+bool scene_contact_blob(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blob);

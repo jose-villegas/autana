@@ -1,25 +1,25 @@
 """Bounce light for the bake, traced by Mitsuba's path integrator.
 
-`PathLight` exports the full-detail source and the sun and sky once. For a point and a normal it sends the fixed
-cosine-weighted rays of `light.sky_directions` into the scene and averages what Mitsuba's path integrator gathers
+`PathLight` exports the full-detail source and the sun and sky once. For a point and a normal it sends the
+cosine-weighted rays of `light.sky_directions`, in the point's frame, into the scene and averages what Mitsuba's path integrator gathers
 along them: light that has bounced at least once, with next-event estimation at every hit, so a hit's own albedo,
 shadow and further bounces are all in it. Light that reaches the point without a bounce is not here; `light.light`
 adds it from shadow rays. The mean of the cosine-weighted radiance is the irradiance over pi, the unit `light.light`
 returns, so the albedo of the surface being baked multiplies it once.
 
 Mitsuba's variant is process-wide, so this runs on the variant of the ray queries beside it, `ray_query.VARIANT`
-unless the caller names one.
+unless the caller names one. Rays launch in chunks of at most `ray_query.LAUNCH`, each seeded by its number and the
+side being lit, so the light at a point depends on its place in the launch and never on the device.
 """
-import numpy as np
 
 from r3d import ray_query
 from r3d.geometry import corner_normals
-from r3d.light import sky_directions, tangent_frame
+from r3d.light import baked_lights, fixed_frame, hemisphere_ray, rows, sky_directions, summed_rays, vectors
 from r3d.mitsuba_reference import integrator, prepare
 
 SEED = 0
-# Rays per Mitsuba call: bounds the arrays a large bake allocates.
-BATCH = 1 << 18
+# Seeds apart per side of a double-sided point (light.lit_side), so the two sides draw separate samples.
+SIDE_SEEDS = 1 << 16
 
 
 class PathLight:
@@ -27,49 +27,46 @@ class PathLight:
         """`indirect` is the scene's `[bake].indirect` (bounces, rays) and `albedo_boost` its `[indirect]` boost, which
         belongs to the exported materials. Pure transport: the intensity is applied where the light is summed.
         Ambient has no transport meaning and stays with `light.light`."""
-        emitters = [item for item in lights if item["type"] != "ambient"]
+        emitters = [item for item in baked_lights(lights) if item["type"] != "ambient"]
         source.corner_normals = corner_normals(source.p, source.tri_v)
         variant = variant or ray_query.VARIANT
         self.scene = prepare(source, emitters, double_sided, variant=variant, keep_textures=True,
                              albedo_boost=albedo_boost)
         self.mi = self.scene.mi
         # Mitsuba counts the ray itself as depth 1, so each bounce adds one.
-        self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1))
+        self.integrator = self.mi.load_dict(integrator(indirect.bounces + 1, self.scene.masked))
         self.rays = indirect.rays
-        self.scalar = variant.startswith("scalar")
 
-    def bounce(self, points, normals, ray_offset):
-        """The bounced light at each point, on its `normals` side. Points go through in chunks so the rays in flight stay within BATCH however many points there are."""
-        local = sky_directions(self.rays)
-        out = np.zeros((len(points), 3))
-        step = max(1, BATCH // self.rays)
-        for index, start in enumerate(range(0, len(points), step)):
-            chunk = slice(start, start + step)
-            n = normals[chunk]
-            tu, tv = tangent_frame(n)
-            origin = np.repeat(points[chunk] + n * ray_offset, self.rays, axis=0)
-            direction = (tu[:, None] * local[None, :, 0:1] + tv[:, None] * local[None, :, 1:2]
-                         + n[:, None] * local[None, :, 2:3]).reshape(-1, 3)
-            found = self._radiance(origin, direction, SEED + index)
-            out[chunk] = found.reshape(len(n), self.rays, 3).mean(axis=1)
-        return out
-
-    def _radiance(self, origin, direction, seed):
+    def bounce(self, points, normals, ray_offset, frame=fixed_frame):
+        """device_bounce for NumPy points and unit normals."""
         mi = self.mi
-        sampler = mi.load_dict({"type": "independent"})
-        if self.scalar:
-            sampler.seed(seed)
-            out = np.zeros((len(origin), 3))
-            for index in range(len(origin)):
-                ray = mi.Ray3f(mi.Point3f(*origin[index].astype(np.float32)), mi.Vector3f(*direction[index].astype(np.float32)))
-                out[index] = np.array(self.integrator.sample(self.scene.scene, sampler, ray)[0])
-            return out
+        return rows(self.device_bounce(vectors(mi.Point3f, points), vectors(mi.Vector3f, normals), ray_offset,
+                                       frame=frame), len(points))
+
+    def device_bounce(self, points, normals, ray_offset, side=0, frame=fixed_frame):
+        """The bounced light at each point (Dr.Jit arrays), on its `normals` side, along each point's `frame`
+        (light.fixed_frame or light.turned_frame): the mean over the point's rays."""
         import drjit as dr
 
+        mi = self.mi
+        ray = hemisphere_ray(mi, points + normals * ray_offset, normals, frame(points, normals),
+                             sky_directions(self.rays))
+
+        def radiance(point, k, chunk):
+            sampler = mi.load_dict({"type": "independent"})
+            sampler.seed(SEED + side * SIDE_SEEDS + chunk, dr.width(point))
+            return self.integrator.sample(self.scene.scene, sampler, ray(point, k))[0]
+
+        return summed_rays(mi, mi.Color3f, dr.width(points), self.rays, radiance) / self.rays
+
+    def _radiance(self, origin, direction, seed):
+        """What the path integrator gathers along NumPy rays, one sample stream seeded by `seed`."""
+        import drjit as dr
+
+        mi = self.mi
+        sampler = mi.load_dict({"type": "independent"})
         sampler.seed(seed, len(origin))
-        o, d = origin.astype(np.float32), direction.astype(np.float32)
-        ray = mi.Ray3f(mi.Point3f(mi.Float(o[:, 0]), mi.Float(o[:, 1]), mi.Float(o[:, 2])),
-                       mi.Vector3f(mi.Float(d[:, 0]), mi.Float(d[:, 1]), mi.Float(d[:, 2])))
+        ray = mi.Ray3f(vectors(mi.Point3f, origin), vectors(mi.Vector3f, direction))
         radiance = self.integrator.sample(self.scene.scene, sampler, ray)[0]
         dr.eval(radiance)
-        return np.array(radiance).T
+        return rows(radiance, len(origin))

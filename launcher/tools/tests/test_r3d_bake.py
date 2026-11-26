@@ -6,6 +6,8 @@ validation. Skipped where the
 pinned environment (tools/r3d/requirements.txt) is not installed."""
 
 import collections
+import contextlib
+import io
 import pathlib
 import struct
 import sys
@@ -21,13 +23,14 @@ try:
     from tests import soup
 
     from r3d import geometry
+    from r3d.import_settings import LIGHT_MODE_BAKED
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
-    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
-                              weld_quantised, write_lit_mesh)
+    from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
+                              read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
-    from r3d.octree import build_octree, flatten_octree
+    from r3d.cluster_tree import build_tree, flatten_tree, node_bounds
     from r3d.repair import _weld_borders, repair
     from r3d import simplify as simplify_module
     from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
@@ -36,7 +39,34 @@ except ImportError:
     np = None
 
 from asset.asset_pack import parse_pack
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
+
+
+MEDIAN_LINE = "built by median splits"
+UNIT_BOX = 1.0
+# Items at doubling distances along x split off one at a time, so the tree is deep and lopsided: collapsed into
+# WIDE_FANOUT children a node, it stays deeper than a balanced one.
+LOPSIDED_ITEMS = 12
+WIDE_FANOUT = 4
+# The depth bound of the cutoff tests: a balanced tree of 1 << (CUTOFF_DEPTH * log2(fanout)) identical boxes
+# needs exactly the cutoff's binary levels.
+CUTOFF_DEPTH = 2
+# What a leaf holds and weighs in the median tests: a median tree of MEDIAN_ITEMS items under MEDIAN_DEPTH levels
+# of two fills every leaf.
+MEDIAN_LEAF_ITEMS = 3
+MEDIAN_DEPTH = 2
+MEDIAN_ITEMS = MEDIAN_LEAF_ITEMS << MEDIAN_DEPTH
+SHUFFLE_SEED = 20260517
+# Four groups of GROUP_SIZE items, GROUP_GAP apart along x and y, each spread over GROUP_SPREAD.
+GROUP_COUNT = 4
+GROUP_SIZE = 3
+GROUP_GAP = 1000.0
+GROUP_SPREAD = 10.0
+# Items spaced along x: a few NEAR_SPACING apart, then one FAR_OFFSET away (near_and_far()).
+NEAR_SPACING = 100.0
+FAR_OFFSET = 1000.0
+SPREAD_ITEMS = 16
+SPREAD_GAP = 100.0
 
 
 def z_normals(p, tris):
@@ -354,13 +384,58 @@ class ColourDeviationTests(unittest.TestCase):
 class ClusterTreeTests(unittest.TestCase):
     def setUp(self):
         p, tris = grid(8)
-        self.tris = tris
-        self.centres = (p[tris].mean(axis=1)) * 10.0
+        corners = p[tris] * 10.0
+        self.lo, self.hi = corners.min(axis=1), corners.max(axis=1)
         self.weights = np.arange(len(tris)) % 7 + 1
 
+    def tree(self, lo=None, hi=None, leaf_weight=12, max_items=255, fanout=8, max_depth=TREE_DEPTH_MAX):
+        lo = self.lo if lo is None else lo
+        hi = self.hi if hi is None else hi
+        weights = np.resize(self.weights, len(lo))
+        return flatten_tree(build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth))
+
+    def depth(self, nodes):
+        """Edges from the root to the deepest leaf."""
+        deepest, stack = 0, [(0, 0)]
+        while stack:
+            index, depth = stack.pop()
+            deepest = max(deepest, depth)
+            if not nodes[index]["leaf"]:
+                stack.extend((c, depth + 1) for c in range(nodes[index]["first"], nodes[index]["first"] + nodes[index]["count"]))
+        return deepest
+
+    def test_identical_boxes_split_in_halves_not_one_at_a_time(self):
+        """Every cut costs the same, so each takes the middle: the depth grows with the log of the count. The
+        bound is loose, so no median rebuild hides a chain."""
+        count = 400
+        lo, hi = np.zeros((count, 3)), np.ones((count, 3))
+        order, nodes = self.tree(lo, hi, leaf_weight=1, max_depth=count)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), int(np.ceil(np.log2(count))))
+
+    def test_the_median_tree_holds_as_many_items_as_its_depth_and_leaves_allow(self):
+        """Binary nodes and no leaf weight: the surface area tree needs one item a leaf, too deep, so the median
+        splits go to the bound with leaves of max_items, and one more item cannot fit."""
+        max_items, max_depth = 3, 2
+        count = max_items << max_depth
+        lo = np.arange(count, dtype=float)[:, None] * np.ones(3)
+        order, nodes = self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+        self.assertEqual(sorted(order), list(range(count)))
+        self.assertLessEqual(self.depth(nodes), max_depth)
+        self.assertEqual([max_items] * (1 << max_depth), [n["count"] for n in nodes if n["leaf"]])
+        lo = np.arange(count + 1, dtype=float)[:, None] * np.ones(3)
+        with self.assertRaisesRegex(AssertionError, "more items"):
+            self.tree(lo, lo + 1.0, leaf_weight=0, max_items=max_items, fanout=2, max_depth=max_depth)
+
+    def test_a_tree_too_deep_for_its_bound_is_built_by_median_splits_within_it(self):
+        _, unbound = self.tree(leaf_weight=1)
+        bound = self.depth(unbound) - 1
+        order, nodes = self.tree(leaf_weight=1, max_depth=bound)
+        self.assertLessEqual(self.depth(nodes), bound)
+        self.assertEqual(sorted(order), list(range(len(self.lo))))
+
     def test_children_sit_together_and_a_subtree_owns_a_run_of_items(self):
-        root = build_octree(self.centres, self.weights, 12, 6)
-        order, nodes = flatten_octree(root)
+        order, nodes = self.tree()
 
         def span(i):
             node = nodes[i]
@@ -374,20 +449,180 @@ class ClusterTreeTests(unittest.TestCase):
             return parts[0][0], parts[-1][1]
 
         self.assertEqual(span(0), (0, len(order)))
-        self.assertEqual(sorted(order), list(range(len(self.tris))))
+        self.assertEqual(sorted(order), list(range(len(self.lo))))
 
-    def test_a_leaf_holds_one_item_or_no_more_than_its_weight(self):
-        root = build_octree(self.centres, self.weights, 12, 6)
-        order, nodes = flatten_octree(root)
+    def test_a_leaf_holds_one_item_or_no_more_than_its_weight_and_count(self):
+        order, nodes = self.tree(max_items=3)
         for node in nodes:
             if node["leaf"]:
                 held = order[node["first"] : node["first"] + node["count"]]
-                self.assertTrue(len(held) == 1 or self.weights[held].sum() <= 12)
+                self.assertTrue(len(held) == 1 or (self.weights[held].sum() <= 12 and len(held) <= 3))
 
-    def test_a_depth_of_zero_keeps_everything_in_one_leaf(self):
-        order, nodes = flatten_octree(build_octree(self.centres, self.weights, 1, 0))
-        self.assertEqual(len(nodes), 1)
-        self.assertEqual(nodes[0]["count"], len(order))
+    def test_no_node_has_more_children_than_the_fanout(self):
+        _, nodes = self.tree(leaf_weight=1, fanout=4)
+        self.assertTrue(all(node["leaf"] or node["count"] <= 4 for node in nodes))
+        self.assertTrue(any(not node["leaf"] and node["count"] > 2 for node in nodes), "binary splits never merged")
+
+    def test_two_groups_far_apart_split_where_one_tight_group_stays_a_leaf(self):
+        group = np.array([[x, y, 0.0] for x in range(3) for y in range(3)])
+        tight = self.tree(group, group + 1.0, leaf_weight=100)[1]
+        apart = np.concatenate([group, group + 1000.0])
+        split = self.tree(apart, apart + 1.0, leaf_weight=100)[1]
+        self.assertEqual(len(tight), 1)
+        self.assertEqual([n["count"] for n in split if n["leaf"]], [9, 9])
+
+    def built(self, lo, hi=None, weights=None, leaf_weight=1, max_items=255, fanout=8, max_depth=TREE_DEPTH_MAX,
+              **options):
+        """(order, nodes, what build_tree printed): boxes of one unit from `lo` unless `hi` is given, one weight
+        each unless `weights` is."""
+        lo = np.asarray(lo, dtype=np.float64)
+        hi = lo + UNIT_BOX if hi is None else hi
+        weights = np.ones(len(lo), dtype=np.int64) if weights is None else weights
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            root = build_tree(lo, hi, weights, leaf_weight, max_items, fanout, max_depth, **options)
+        order, nodes = flatten_tree(root)
+        return order, nodes, printed.getvalue()
+
+    @staticmethod
+    def along(axis, positions):
+        """A box corner per position, on one axis."""
+        lo = np.zeros((len(positions), 3))
+        lo[:, axis] = positions
+        return lo
+
+    def leaf_items(self, order, nodes):
+        return [order[n["first"] : n["first"] + n["count"]] for n in nodes if n["leaf"]]
+
+    def test_a_collapsed_depth_past_the_bound_is_rebuilt_even_when_the_binary_levels_are_within_it(self):
+        lo = self.along(0, 2.0 ** np.arange(LOPSIDED_ITEMS))
+        _, natural_nodes, said = self.built(lo, fanout=WIDE_FANOUT)
+        natural = self.depth(natural_nodes)
+        self.assertEqual("", said)
+        self.assertGreater(natural, 1)
+        bound = natural - 1
+        order, nodes, said = self.built(lo, fanout=WIDE_FANOUT, max_depth=bound)
+        # "depth": the binary levels stayed within the recursion cutoff, so only the collapsed depth tripped it.
+        self.assertRegex(said, rf"surface area tree depth {natural} past {bound}; {MEDIAN_LINE}")
+        self.assertLessEqual(self.depth(nodes), bound)
+        self.assertEqual(sorted(order), list(range(LOPSIDED_ITEMS)))
+
+    def test_a_collapsed_depth_equal_to_the_bound_is_kept_as_built(self):
+        lo = self.along(0, 2.0 ** np.arange(LOPSIDED_ITEMS))
+        wide = self.built(lo, fanout=WIDE_FANOUT)
+        natural = self.depth(wide[1])
+        order, nodes, said = self.built(lo, fanout=WIDE_FANOUT, max_depth=natural)
+        self.assertEqual("", said)
+        self.assertEqual((wide[0], wide[1]), (order, nodes))
+
+    def test_the_recursion_cutoff_is_the_bound_in_binary_levels_and_one_more_level_goes_to_median(self):
+        for fanout in (2, WIDE_FANOUT):
+            levels = CUTOFF_DEPTH * int(np.log2(fanout))
+            count = 1 << levels
+            with self.subTest(fanout=fanout):
+                # Identical boxes split in halves, one item a leaf: the tree needs exactly `levels` binary levels.
+                order, nodes, said = self.built(self.along(0, np.zeros(count)), max_items=count, fanout=fanout,
+                                                max_depth=CUTOFF_DEPTH)
+                self.assertEqual("", said)
+                self.assertEqual([1] * count, [len(items) for items in self.leaf_items(order, nodes)])
+                order, nodes, said = self.built(self.along(0, np.zeros(count + 1)), max_items=count, fanout=fanout,
+                                                max_depth=CUTOFF_DEPTH)
+                self.assertIn(f"over {levels} binary levels past {CUTOFF_DEPTH}; {MEDIAN_LINE}", said)
+                self.assertLessEqual(self.depth(nodes), CUTOFF_DEPTH)
+                self.assertEqual(sorted(order), list(range(count + 1)))
+
+    def test_median_splits_cut_along_the_widest_axis(self):
+        positions = np.random.default_rng(SHUFFLE_SEED).permutation(MEDIAN_ITEMS)
+        for axis in range(3):
+            with self.subTest(axis=axis):
+                order, nodes, said = self.built(self.along(axis, positions), leaf_weight=0, max_items=MEDIAN_LEAF_ITEMS,
+                                                fanout=2, max_depth=MEDIAN_DEPTH)
+                self.assertIn(MEDIAN_LINE, said)
+                runs = sorted(sorted(positions[items].tolist()) for items in self.leaf_items(order, nodes))
+                starts = range(0, MEDIAN_ITEMS, MEDIAN_LEAF_ITEMS)
+                self.assertEqual([list(range(i, i + MEDIAN_LEAF_ITEMS)) for i in starts], runs)
+
+    def test_median_splits_make_no_split_where_every_item_fits_one_leaf(self):
+        lo = self.along(0, np.arange(SPREAD_ITEMS) * SPREAD_GAP)
+        order, nodes, said = self.built(lo, leaf_weight=SPREAD_ITEMS, max_items=SPREAD_ITEMS, fanout=2, max_depth=1)
+        self.assertIn(MEDIAN_LINE, said, "the surface area tree was not too deep for the median rebuild to matter")
+        self.assertEqual([{"leaf": True, "first": 0, "count": SPREAD_ITEMS}], nodes)
+        self.assertEqual(list(range(SPREAD_ITEMS)), sorted(order))
+
+    def near_and_far(self, near_count=3):
+        """near_count items NEAR_SPACING apart, then one FAR_OFFSET away."""
+        return self.along(0, [*(NEAR_SPACING * i for i in range(near_count)), FAR_OFFSET])
+
+    def test_a_fanout_that_fits_only_some_children_opens_the_largest_inner_child(self):
+        # The left three open into one node of three leaves, the right two into one of two: the root takes
+        # either, but not both, and the wide one first.
+        lo = self.along(0, [0.0, NEAR_SPACING, 2 * NEAR_SPACING, FAR_OFFSET, FAR_OFFSET + UNIT_BOX])
+        order, nodes, _ = self.built(lo, fanout=WIDE_FANOUT, max_depth=CUTOFF_DEPTH)
+        self.assertEqual(WIDE_FANOUT, nodes[0]["count"])
+        children = nodes[nodes[0]["first"] : nodes[0]["first"] + nodes[0]["count"]]
+        self.assertEqual([True, True, True, False], sorted((c["leaf"] for c in children), reverse=True))
+        (inner,) = [c for c in children if not c["leaf"]]
+        held = [self.leaf_items(order, [nodes[i]])[0] for i in range(inner["first"], inner["first"] + inner["count"])]
+        self.assertEqual([[3], [4]], sorted(held))
+
+    def test_an_opening_that_lands_exactly_on_the_fanout_is_taken(self):
+        order, nodes, _ = self.built(self.near_and_far(), fanout=WIDE_FANOUT, max_depth=CUTOFF_DEPTH)
+        self.assertEqual([{"leaf": False, "first": 1, "count": WIDE_FANOUT}] + [{"leaf": True, "first": i, "count": 1}
+                                                                              for i in range(WIDE_FANOUT)], nodes)
+
+    def test_a_node_stays_a_leaf_when_testing_its_items_costs_exactly_what_splitting_does(self):
+        count = WIDE_FANOUT
+        lo = self.along(0, np.zeros(count))
+        # Identical boxes make every cut cost node_cost plus the count: at node_cost 0 the leaf costs the same.
+        _, nodes, _ = self.built(lo, leaf_weight=count, max_items=count, node_cost=0.0)
+        self.assertEqual([{"leaf": True, "first": 0, "count": count}], nodes)
+        _, nodes, _ = self.built(lo, leaf_weight=count, max_items=count - 1, node_cost=0.0)
+        self.assertGreater(len(nodes), 1)
+
+    def test_a_leaf_whose_weight_equals_the_leaf_weight_is_accepted(self):
+        weights = np.arange(1, WIDE_FANOUT + 1)
+        lo = self.along(0, np.zeros(WIDE_FANOUT))
+        _, nodes, _ = self.built(lo, weights=weights, leaf_weight=int(weights.sum()))
+        self.assertEqual([{"leaf": True, "first": 0, "count": WIDE_FANOUT}], nodes)
+        _, nodes, _ = self.built(lo, weights=weights, leaf_weight=int(weights.sum()) - 1)
+        self.assertGreater(len(nodes), 1)
+
+    def test_two_axes_cutting_at_equal_cost_cut_along_the_first(self):
+        # The corners of a square in x and y: cutting along x costs what cutting along y or z does.
+        corners = [(0.0, 0.0, 0.0), (GROUP_GAP, 0.0, 0.0), (0.0, GROUP_GAP, 0.0), (GROUP_GAP, GROUP_GAP, 0.0)]
+        order, nodes, _ = self.built(np.array(corners), fanout=2, max_depth=CUTOFF_DEPTH)
+        self.assertEqual({0, 2}, set(order[:2]), "the first cut was not along x")
+
+    def test_the_input_order_does_not_change_the_tree_and_separated_groups_get_their_own_leaves(self):
+        rng = np.random.default_rng(SHUFFLE_SEED)
+        origins = np.array([(GROUP_GAP * (g % 2), GROUP_GAP * (g // 2), 0.0) for g in range(GROUP_COUNT)])
+        lo = (origins[:, None, :] + rng.uniform(0.0, GROUP_SPREAD, (GROUP_COUNT, GROUP_SIZE, 3))).reshape(-1, 3)
+        group_of = {tuple(row): i // GROUP_SIZE for i, row in enumerate(lo)}
+
+        def tree_of(rows):
+            order, nodes, _ = self.built(rows, leaf_weight=GROUP_SIZE, max_items=GROUP_SIZE, fanout=WIDE_FANOUT)
+            return [tuple(rows[i]) for i in order], nodes
+
+        shuffled = tree_of(lo[rng.permutation(len(lo))])
+        self.assertEqual(tree_of(lo[np.lexsort(lo.T)]), shuffled)
+        leaves = [shuffled[0][n["first"] : n["first"] + n["count"]] for n in shuffled[1] if n["leaf"]]
+        self.assertEqual(GROUP_COUNT, len(leaves))
+        for leaf in leaves:
+            self.assertEqual(1, len({group_of[row] for row in leaf}), "a leaf mixes two groups")
+
+    def test_node_bounds_are_the_tight_box_of_a_leafs_clusters_and_hold_every_child(self):
+        def cluster(lo, hi):
+            return (0, 0, 0, 0, np.array(lo, dtype=float), np.array(hi, dtype=float), False)
+
+        clusters = [cluster((0, 0, 0), (1, 1, 1)), cluster((-3, 2, 5), (4, 3, 6)),
+                    cluster((10, 10, 10), (11, 12, 13)), cluster((-1, -1, -1), (2, 2, 2))]
+        nodes = [{"leaf": False, "first": 1, "count": 2}, {"leaf": True, "first": 0, "count": 2},
+                 {"leaf": True, "first": 2, "count": 2}]
+        node_bounds(nodes, clusters)
+        expected = {1: ([-3, 0, 0], [4, 3, 6]), 2: ([-1, -1, -1], [11, 12, 13]), 0: ([-3, -1, -1], [11, 12, 13])}
+        for index, (lo, hi) in expected.items():
+            np.testing.assert_array_equal(lo, nodes[index]["lo"])
+            np.testing.assert_array_equal(hi, nodes[index]["hi"])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -484,7 +719,7 @@ class LitMeshTests(unittest.TestCase):
         rgb = np.full((len(p), 3), 128)
         with tempfile.TemporaryDirectory() as out:
             mesh = write_lit_mesh(out, "demo", p * 50.0, rgb, tris, np.zeros(len(tris), dtype=np.int64),
-                                  leaf_triangles=16, max_depth=4)
+                                  leaf_triangles=16)
             blob = parse_pack((pathlib.Path(out) / "demo.bundle").read_bytes())["demo"][1]
         vertices, triangles, clusters, nodes, scale, *at = lit_mesh.BLOB_HEADER.unpack_from(blob)
         self.assertEqual((vertices, triangles, clusters, nodes), (len(mesh.pos), len(tris), len(mesh.clusters), len(mesh.nodes)))
@@ -512,6 +747,20 @@ class LitMeshTests(unittest.TestCase):
         nodes = [{"leaf": True, "first": 0, "count": 2}]
         with self.assertRaises(AssertionError):
             validate(pos, np.zeros((6, 3)), tris, clusters, nodes)
+
+    def test_validation_refuses_a_tree_deeper_than_the_runtime_walks(self):
+        pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+        tris = np.array([[0, 1, 2]])
+        clusters = [(0, 3, 0, 1, np.zeros(3), np.ones(3), False)]
+
+        def chain(depth):
+            """`depth` inner nodes of one child each above the one leaf."""
+            return [{"leaf": False, "first": i + 1, "count": 1} for i in range(depth)] + [
+                {"leaf": True, "first": 0, "count": 1}]
+
+        validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX))
+        with self.assertRaisesRegex(AssertionError, "deeper"):
+            validate(pos, np.zeros((3, 3)), tris, clusters, chain(TREE_DEPTH_MAX + 1))
 
     def test_validation_refuses_more_triangles_than_uint16_offsets_hold(self):
         pos = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
@@ -584,10 +833,9 @@ def lighting_lights(**changes):
                   sky_intensity=0.9, ambient=0.06)
     values.update(changes)
     return [
-        {"type": "directional", "direction": values["sun"], "color": [1.0, 0.92, 0.78],
-         "intensity": values["sun_intensity"]},
-        {"type": "sky", "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
-        {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
+        soup.sun(values["sun"], [1.0, 0.92, 0.78], values["sun_intensity"]),
+        {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0.55, 0.68, 0.9], "intensity": values["sky_intensity"], "rays": values["sky_rays"]},
+        {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": values["ambient"]},
     ]
 
 
@@ -613,13 +861,13 @@ class FlatLightTests(unittest.TestCase):
         lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
         return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35, **kw)
 
-    @needs_mitsuba
+    @needs_llvm
     def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
         c = self.colours([0, 64])
         self.assertEqual(c[:2].tolist(), c[2:].tolist())
         self.assertNotEqual(c[0].tolist(), c[1].tolist(), "the wall must shade the two faces differently")
 
-    @needs_mitsuba
+    @needs_llvm
     def test_more_samples_per_face_converge(self):
         reference = self.colours([0], samples=256).astype(float)
         error = {n: np.abs(self.colours([0], samples=n) - reference).mean() for n in (1, 8, 64)}
@@ -630,7 +878,7 @@ class FlatLightTests(unittest.TestCase):
         counts = adaptive_sample_counts(np.array([0.2, 1.0, 1.4, 3.0, 8.0]), 1.0, 16)
         self.assertEqual(counts.tolist(), [1, 1, 1, 3, 8])
 
-    @needs_mitsuba
+    @needs_llvm
     def test_the_adaptive_count_respects_its_minimum(self):
         self.assertEqual(adaptive_sample_counts(np.array([0.2, 1.0, 5.0]), 1.0, 8, 3).tolist(), [3, 3, 5])
         small = self.colours([0], samples="auto", sample_area=1e6, min_samples=4)
@@ -639,7 +887,7 @@ class FlatLightTests(unittest.TestCase):
     def test_the_adaptive_count_is_capped(self):
         self.assertEqual(adaptive_sample_counts(np.array([5.0, 500.0]), 1.0, 6).tolist(), [5, 6])
 
-    @needs_mitsuba
+    @needs_llvm
     def test_auto_samples_follow_the_face_area_and_stop_at_the_cap(self):
         # Two equal floor triangles: auto takes one sample each at the median area, and at a tiny
         # reference takes the cap, which the fixed count of the same size reproduces exactly.
@@ -647,7 +895,7 @@ class FlatLightTests(unittest.TestCase):
         capped = self.colours([0], samples="auto", sample_area=1e-6, max_samples=3)
         self.assertEqual(capped.tolist(), self.colours([0], samples=3).tolist())
 
-    @needs_mitsuba
+    @needs_llvm
     def test_an_unshadowed_point_gets_the_sun_by_its_cosine_and_the_whole_sky(self):
         floor = soup.Soup([(0, 0, 0), (0, 0, 8), (8, 0, 8), (8, 0, 0)], [(0, 1, 2), (0, 2, 3)])
         wall = soup.box(extents=(1, 6, 8))
@@ -659,9 +907,9 @@ class FlatLightTests(unittest.TestCase):
         got = light(points, np.tile([0.0, 1.0, 0.0], (2, 1)), np.array([False, False]),
                     soup.rays(soup.concatenate([floor, wall])), lights, 0.5)
         want = direction[1] * sun["intensity"] * np.array(sun["color"]) + sky["intensity"] * np.array(sky["color"])
-        np.testing.assert_allclose(got, [want, want], rtol=1e-12)
+        np.testing.assert_allclose(got, [want, want], rtol=1e-6)  # float32 on the device
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_point_behind_the_wall_from_the_sun_is_in_its_shadow_and_loses_only_the_sun(self):
         floor = soup.Soup([(-8, 0, 0), (-8, 0, 8), (0, 0, 8), (0, 0, 0)], [(0, 1, 2), (0, 2, 3)])
         wall = soup.box(extents=(1, 60, 8))

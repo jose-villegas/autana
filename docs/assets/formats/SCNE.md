@@ -311,6 +311,6 @@ flowchart LR
 | Renderer | `renderer` names a renderers row, at most one batch each; that row's `colour_set` is 0, and its entity's transform is the batch's frame |
 | Cover | batches take the places, turns and chunks in turn: `first_copy` is the copies before it, `first_chunk` the chunks before it, and together they cover every row; `copy_count` is at least 1 |
 | Chunks | a batch's copy *k* is in its chunk *k* / 16; `centre` is finite, `reach` at least 0 and no copy's position farther from `centre`. The writer orders a batch's copies by the Morton code of their positions, so a chunk's copies are near each other |
-| Position | `centre + offset × reach / R3D_COPY_STEPS`, the batch's frame |
+| Position | `centre + offset * reach / R3D_COPY_STEPS`, the batch's frame |
 | Turn | the three smaller components of the copy's unit quaternion, each in `R3D_COPY_STEPS` steps of `R3D_COPY_TURN_RANGE`, and `largest` (0 to 3: x, y, z, w) the one left out, never negative, rebuilt from the others. A copy turns and moves only: the writer refuses one that scales, shears or reflects |
 | Colour set | each copy's LCOL set, below the mesh's set count; `scene_load()` opens the highest. The sets are resident together, set *s* at *s* times a set's length |

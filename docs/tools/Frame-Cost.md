@@ -48,9 +48,9 @@ The animation step brackets are `anim.pose` (clips and poses),
 `anim.light` (normal palettes and world lights), `anim.skin` and
 `anim.refit` (skinned bounds).
 
-The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
+The raster brackets are `r3d.cull`, `r3d.transform`,
 `r3d.draw`, `r3d.show` and `r3d.upscale`. Clip and span fill are inside
-`r3d.draw`. Laps split the cull, under `r3d.cull` or `r3d.census`:
+`r3d.draw`. Laps split the cull, under `r3d.cull`:
 
 | Lap | What it times |
 |---|---|
@@ -88,6 +88,16 @@ below show the line's shape and are not measurements):
 
 ```
 ms/frame laps: lap 90 ns | cpu0 r3d.draw.set_up 15.000/9000 r3d.draw.fill 24.700/8000 | cpu1 r3d.draw.set_up 15.500/9100
+```
+
+A frame-profile take (`frame_profile_play()`) forgets the laps after its
+warm-up frame, and `frame_profile_log_laps()` logs its sampled frames' laps
+once after the take, the same line behind its row and before its quarter.
+`frame_cost.py`'s `frame_laps_takes()` averages those per row and quarter,
+apart from the shell's windows:
+
+```
+frame_laps: capybara-close ms/frame laps: lap 90 ns | cpu0 r3d.draw.fill 24.700/8000 quarter=landscape
 ```
 
 A lap around a vertex or a triangle is not free next to the work it times.

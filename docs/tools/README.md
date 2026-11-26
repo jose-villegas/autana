@@ -26,6 +26,7 @@ The rest of this index lists the repository's checks and tools.
 | [Layout-Noise.md](Layout-Noise.md) | Why a neutral edit moves a timing, the seeded padding build (`--layout-seed`), and the pilot that measures how much a row moves with layout alone. |
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Console-Framing.md](Console-Framing.md) | How the device frames a block of data between begin and end lines on the console, and how a host script decodes it. |
+| [Panel-Video.md](Panel-Video.md) | Panel capture lifecycle, packet layout and host reassembly. |
 | [Process-Trees.md](Process-Trees.md) | Starting and stopping a command as one process tree on Windows and POSIX, so no child outlives its parent. |
 | [Doc-Figures.md](Doc-Figures.md) | Declaring the images a script makes; `figures_runner.py` to list, find, build and check them. |
 | [Figures.md](Figures.md) | Every doc image by area, with its thumbnail, the pages that show it and its producer. |

@@ -86,26 +86,40 @@ test_transition_blend_endpoints_midpoint_and_hemisphere(void) {
 }
 
 static void
-test_rotation_blend_matches_clamped_nlerp(void) {
+test_pose_blend_preserves_original_trs_bits(void) {
     fixture_t a = fixture(), b = fixture(), out = fixture();
-    anim_pose_rest(&SKELETON, &a.pose);
-    anim_pose_rest(&SKELETON, &b.pose);
-    const quatf_t av = quatf_normalize((quatf_t){1, 2, 3, 4});
-    static const quatf_t targets[] = {{4, -3, -2, 1}, {-4, 3, 2, -1}, {4, 3, -2, -1}};
-    static const float weights[] = {-1, 0, 1.0F / 256, 0.25F, 0.5F, 1, 2};
-    transformf_set_rotation(&a.local[0], av);
-    for (size_t i = 0; i < sizeof targets / sizeof targets[0]; i++) {
-        const quatf_t bv = quatf_normalize(targets[i]);
-        transformf_set_rotation(&b.local[0], bv);
-        for (size_t j = 0; j < sizeof weights / sizeof weights[0]; j++) {
-            const float weight = mathf_clamp(weights[j], 0, 1);
-            const quatf_t expected = quatf_nlerp(av, bv, weight);
-            anim_pose_blend(&a.pose, &b.pose, weights[j], &out.pose);
-            const quatf_t got = out.local[0].rotation;
-            TEST_ASSERT_FLOAT_WITHIN(1e-5F, expected.x, got.x);
-            TEST_ASSERT_FLOAT_WITHIN(1e-5F, expected.y, got.y);
-            TEST_ASSERT_FLOAT_WITHIN(1e-5F, expected.z, got.z);
-            TEST_ASSERT_FLOAT_WITHIN(1e-5F, expected.w, got.w);
+    static const float weights[] = {-1.0F, 0.0F, 0.3F, 1.0F / 3.0F, 0.999F, 1.0F, 2.0F};
+    const quatf_t first = quatf_normalize((quatf_t){1, -2, 3, 4});
+    const quatf_t second = quatf_normalize((quatf_t){-4, 3, -2, -1});
+    for (size_t i = 0; i < sizeof weights / sizeof weights[0]; i++) {
+        for (int j = 0; j < JOINTS; j++) {
+            const float joint = (float)j;
+            a.local[j] = (transformf_t){
+                .position = {-3.7F, joint + 0.3F, -4.9F}, .rotation = first, .scale = {1.3F, -0.9F, joint + 7.2F}};
+            b.local[j] = (transformf_t){
+                .position = {joint - 0.2F, -16.7F, 0.3F}, .rotation = second, .scale = {-9.1F, 0.3F, 0.2F}};
+            (void)transformf_matrix(&a.local[j]);
+            (void)transformf_matrix(&out.local[j]);
+        }
+        anim_pose_blend(&a.pose, &b.pose, weights[i], &out.pose);
+        for (int j = 0; j < JOINTS; j++) {
+            const float to = mathf_clamp(weights[i], 0.0F, 1.0F);
+            const float from = 1.0F - to;
+            const vec3f_t position =
+                vec3f_add(vec3f_scale(a.local[j].position, from), vec3f_scale(b.local[j].position, to));
+            const vec3f_t scale = vec3f_add(vec3f_scale(a.local[j].scale, from), vec3f_scale(b.local[j].scale, to));
+            const quatf_t rotation = quatf_nlerp(a.local[j].rotation, b.local[j].rotation, to);
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&position, &out.local[j].position, sizeof position));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&scale, &out.local[j].scale, sizeof scale));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&rotation, &out.local[j].rotation, sizeof rotation));
+            TEST_ASSERT_FALSE(out.local[j].cached);
+        }
+        anim_pose_blend(&a.pose, &b.pose, weights[i], &a.pose);
+        for (int j = 0; j < JOINTS; j++) {
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&out.local[j].position, &a.local[j].position, sizeof(vec3f_t)));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&out.local[j].rotation, &a.local[j].rotation, sizeof(quatf_t)));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(&out.local[j].scale, &a.local[j].scale, sizeof(vec3f_t)));
+            TEST_ASSERT_FALSE(a.local[j].cached);
         }
     }
     release(&out);
@@ -195,7 +209,7 @@ test_joint_binding_distinguishes_hash_collisions(void) {
 void
 suite_anim_pose(void) {
     RUN_TEST(test_joint_binding_distinguishes_hash_collisions);
-    RUN_TEST(test_rotation_blend_matches_clamped_nlerp);
+    RUN_TEST(test_pose_blend_preserves_original_trs_bits);
     RUN_TEST(test_rest_and_multiple_roots);
     RUN_TEST(test_transition_blend_endpoints_midpoint_and_hemisphere);
     RUN_TEST(test_skeleton_binding_failure_index_and_sampling);

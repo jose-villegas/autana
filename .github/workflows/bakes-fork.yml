@@ -1,0 +1,30 @@
+name: Bakes (fork)
+
+# A fork's pull request never reaches the bakes runner (bakes.yml runs only for branches pushed to this
+# repository), so its bake checks never report. This hosted check says why: it fails when the pull request needs a
+# bake the lock has no row for, which a maintainer makes by pushing the branch here and requesting
+# its Bakes run, and passes otherwise.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fork:
+    name: A fork's pull request needs no bake
+    if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Every needed key has a row and every row is needed
+        run: |
+          python launcher/tools/bake/bake.py check || {
+            echo "::error::this pull request needs bakes; a maintainer pushes its branch to this repository and requests its Bakes run (gh workflow run bakes.yml --ref <branch>)"
+            exit 1
+          }

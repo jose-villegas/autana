@@ -67,50 +67,56 @@ class GpuQueueTests(unittest.TestCase):
                 self.assertEqual(self.run_main(workflow, 'ready'), (0, quiet))
         self.assertNotIn(schedule.BAKES_WORKFLOW, schedule.QUIET_HOST_WORKFLOWS)
 
-    def test_cpu_share_is_the_top_cpus_and_never_empty(self):
-        for count in (1, 2, 3, 10, 12):
-            with self.subTest(count=count):
-                cpus = set(range(count))
-                share = schedule.cpu_share(cpus)
-                self.assertEqual(len(share), max(1, count // schedule.SHARED_CPU_DIVISOR))
-                self.assertEqual(min(share), count - len(share))
-        self.assertEqual(schedule.cpu_share({4, 7, 9, 11}), {9, 11})
-
-    @unittest.skipUnless(hasattr(os, 'sched_setaffinity'), 'the GPU stages run on Linux')
-    def test_start_runs_only_a_beside_board_stage_on_its_share(self):
+    @unittest.skipUnless(hasattr(os, 'SCHED_IDLE'), 'the GPU stages run on Linux')
+    def test_start_runs_every_stage_on_every_cpu_and_only_a_cpu_bake_at_idle_priority(self):
         import subprocess
         root = Path(__file__).resolve().parents[3]
-        probe = [sys.executable, '-c', 'import os, sys; sys.exit(len(os.sched_getaffinity(0)))']
-        ours = os.sched_getaffinity(0)
-        for workflow in schedule.GPU_WORKFLOWS:
+        # Exits with its CPU count, plus 1000 when it runs at SCHED_IDLE.
+        probe = [sys.executable, '-c', 'import os, sys; sys.exit(len(os.sched_getaffinity(0)) % 1000'
+                 ' + 1000 * (os.sched_getscheduler(0) == os.SCHED_IDLE))']
+        ours = len(os.sched_getaffinity(0)) % 1000
+        for workflow in (*schedule.GPU_WORKFLOWS, schedule.CPU_BAKES_WORKFLOW):
             with self.subTest(workflow=workflow):
                 environment = {name: value for name, value in os.environ.items() if name != 'GITHUB_OUTPUT'}
                 done = subprocess.run([sys.executable, 'scripts/lib/local_schedule.py', 'start', '--', *probe],
                                       cwd=root, capture_output=True, text=True,
                                       env=dict(environment, GPU_WORKFLOW=workflow))
-                quiet = workflow in schedule.QUIET_HOST_WORKFLOWS
-                self.assertEqual(done.returncode, len(ours) if quiet else len(schedule.cpu_share(ours)), done.stderr)
-                self.assertEqual('beside board work on CPUs' in done.stdout, not quiet)
+                idle = workflow == schedule.CPU_BAKES_WORKFLOW
+                self.assertEqual(done.returncode % 256, (ours + (1000 if idle else 0)) % 256, done.stderr)
+                self.assertEqual('beside board work on every CPU at SCHED_IDLE' in done.stdout, idle)
 
-    def test_workflows_separate_marker_wait_and_work(self):
+    def test_the_nightly_separates_marker_wait_and_work(self):
         root = Path(__file__).resolve().parents[3]
-        for filename, job in (('doc-images-gpu.yml', 'refresh'), ('nightly-perf.yml', 'nightly')):
-            workflow = yaml.safe_load((root / '.github/workflows' / filename).read_text())
-            self.assertEqual(workflow[True]['schedule'], [{'cron': '17 20 * * *'}])
-            self.assertEqual(workflow['jobs']['marker']['runs-on'], 'ubuntu-24.04')
-            wait = workflow['jobs']['wait']
-            self.assertEqual(wait['runs-on'], 'ubuntu-24.04')
-            self.assertIn('marker', wait['needs'])
-            self.assertEqual(wait['timeout-minutes'], 355)
-            self.assertEqual(wait['strategy'], {'max-parallel': 1, 'matrix': {'leg': [1, 2, 3, 4, 5]}})
-            self.assertLess(schedule.HOSTED_WAIT_SECONDS, wait['timeout-minutes'] * 60)
-            self.assertIn('wait', workflow['jobs'][job]['needs'])
-            if job == 'refresh':
-                self.assertEqual(wait['if'], workflow['jobs'][job]['if'])
-                self.assertIn('fingerprint', wait['needs'])
-            self.assertEqual(workflow['jobs'][job]['timeout-minutes'], 1380)
-            self.assertIn('marker', workflow['jobs'][job]['needs'])
-            self.assertEqual(workflow['jobs'][job]['env']['MARKER'], '${{ needs.marker.outputs.marker }}')
+        workflow = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())
+        self.assertEqual(workflow[True]['schedule'], [{'cron': '17 20 * * *'}])
+        self.assertEqual(workflow['jobs']['marker']['runs-on'], 'ubuntu-24.04')
+        wait = workflow['jobs']['wait']
+        self.assertEqual(wait['runs-on'], 'ubuntu-24.04')
+        self.assertIn('marker', wait['needs'])
+        self.assertEqual(wait['timeout-minutes'], 355)
+        self.assertEqual(wait['strategy'], {'max-parallel': 1, 'matrix': {'leg': [1, 2, 3, 4, 5]}})
+        self.assertLess(schedule.HOSTED_WAIT_SECONDS, wait['timeout-minutes'] * 60)
+        nightly = workflow['jobs']['nightly']
+        self.assertIn('wait', nightly['needs'])
+        self.assertEqual(nightly['timeout-minutes'], 1380)
+        self.assertIn('marker', nightly['needs'])
+        self.assertEqual(nightly['env']['MARKER'], '${{ needs.marker.outputs.marker }}')
+
+    def test_the_quiet_host_gpu_workflows_start_only_when_the_nightly_ends(self):
+        # A scheduled GPU render on the boards' host could hold the night's GPU wait past its last
+        # lane start; one that starts on the nightly's completion never overlaps the night.
+        root = Path(__file__).resolve().parents[3]
+        nightly = yaml.safe_load((root / '.github/workflows/nightly-perf.yml').read_text())['name']
+        for filename in schedule.QUIET_HOST_WORKFLOWS:
+            with self.subTest(workflow=filename):
+                workflow = yaml.safe_load((root / '.github/workflows' / filename).read_text())
+                self.assertNotIn('schedule', workflow[True])
+                self.assertEqual(workflow[True]['workflow_run'], {'workflows': [nightly], 'types': ['completed']})
+                # A dispatched nightly can end in the evening, before the scheduled night: every job the
+                # others wait on starts only for the scheduled one.
+                for name, job in workflow['jobs'].items():
+                    if 'needs' not in job:
+                        self.assertIn("github.event.workflow_run.event == 'schedule'", job['if'], name)
 
     def test_pending_counts_only_gpu_jobs_ready_to_run(self):
         for status in ('queued', 'waiting', 'in_progress', 'pending', 'requested', 'completed'):

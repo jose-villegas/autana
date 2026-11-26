@@ -1,0 +1,4 @@
+indirect audio_codec_mic_set audio_codec_mic_restore audio_codec_dac_feedback audio_codec_register audio_codec_drc_set : es8311.c:es8311_get_reg es8311.c:es8311_set_reg
+indirect audio_codec_device_open audio_codec_device_close : audio_codec_data_i2s.c:_i2s_data_enable
+indirect es8311.c:es8311_get_reg es8311.c:es8311_set_reg : audio_codec_ctrl_i2c.c:_i2c_ctrl_read_reg audio_codec_ctrl_i2c.c:_i2c_ctrl_write_reg
+indirect es8311_codec_new : audio_codec_ctrl_i2c.c:_i2c_ctrl_is_open

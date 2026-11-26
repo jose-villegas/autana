@@ -57,6 +57,7 @@ jobs:
           name: qemu-serial-logs
           path: |
             launcher/build.qemu.shell/qemu_serial.log
+            launcher/build.qemu.shell/qemu_output.log
           if-no-files-found: ignore
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

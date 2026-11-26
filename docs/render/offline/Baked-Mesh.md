@@ -5,6 +5,14 @@ meshlets the clusters are. Its entry is [LMSH](../../assets/formats/LMSH.md); a 
 colours are [LCOL](../../assets/formats/LCOL.md) sets. How a mesh is made is
 [Mesh-Import.md](Mesh-Import.md); drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 
+Card shapes carry [LUVS](../../assets/formats/LUVS.md) page coordinates and
+[MASK1 LTEX](../../assets/formats/LTEX.md) masks beside their mesh. Each page
+has its own clusters; chart zero names the page and every triangle uses it.
+
+Cards use corner colours through LCOL and have no coarser levels. Loading a
+renderer whose LUVS names MASK1 opens its cutting textures automatically,
+including carved copies identified by their shape id.
+
 ## Clusters and the tree
 
 Triangles group into **clusters**, the leaves of a tree rooted at `nodes[0]`:
@@ -27,14 +35,20 @@ vertices weld by position alone.
 
 Clusters are meshoptimizer's **meshlets**<sup>[[11]](../../Citations.md#meshoptimizer)</sup>:
 at most `geometry.meshlet_triangles` (4 to 256, default 32) of one sidedness.
-The octree is built over their centres.
+The finest clusters' tree is built over their boxes by the surface area heuristic<sup>[[130]](../../Citations.md#macdonald-1990)</sup>:
+a split is kept when the boxes' area-weighted cluster tests, plus `NODE_TEST_COST`
+in [`cluster_tree.py`](../../../launcher/tools/r3d/cluster_tree.py), come below testing the run as one leaf;
+a run over `LEAF_TRIANGLES` triangles always splits.
+The binary splits then collapse into nodes of up to `R3D_LIT_NODE_CHILDREN_MAX` children;
+a tree deeper than `R3D_LIT_TREE_DEPTH_MAX` is built again by median splits, and the bake log says so.
+Coarse clusters hang in runs under nodes of their own.
 
 ![The clusterizer cutting a small flat patch into meshlets, one per step](../../images/render/meshlet-build.gif)
 
 *The importer's clusterizer call on a flat patch, limit 16: whole meshlets in
 emitted order, since meshoptimizer has no per-triangle hook.*
 
-![Clusters painted by the meshlets debug view](../../images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../images/render/sponza-view-meshlets.png)
 
 ![Clusters and submitted triangles against the meshlet size](../../images/render/meshlets/meshlet-size-trade.png)
 
@@ -62,6 +76,6 @@ The `meshlet-sizes` chart and rows are generated from each size's own suite capt
 regenerated bake. The [meshlet capture recipe](../../../launcher/tools/render/README.md#meshlet-size-captures)
 owns preparation, capture validation and refresh commands.
 
-Meshlets share vertices, so a frame transforms fewer than with octree-cut
+Meshlets share vertices, so a frame transforms fewer than with tree-cut
 leaves. The draw order they set decides depth ties, a fraction of a percent of
 pixels. Levels of detail on them: [frame/Levels-of-Detail.md](../frame/Levels-of-Detail.md).

@@ -71,7 +71,7 @@ draw time; view modes give up frame time to show a diagnostic picture.
 | [Render scale](#render-scale-and-the-half-picture) | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
 | [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](frame/Dynamic-Resolution.md) |
 | [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
-| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
+| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | render settings `small_fill` | [Small fill](frame/Coverage.md#small-fill) |
 | [Render settings](Render-Settings.md) | culling, depth fit and batching, each off only to compare | none | `RENDER_SETTINGS_DEFAULT`, all on | `render_context_set_settings()`, or a [`.render.toml`](Render-Settings.md#the-render-asset) in the app's pack | [Render-Settings.md](Render-Settings.md) |
 | [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](frame/View-Modes.md) |
 
@@ -83,7 +83,7 @@ settings and take effect when the mesh is baked.
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
 | [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](offline/Baked-Mesh.md#meshlets) |
-| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](offline/Bake-Quality.md) |
+| [Decimation method](#decimation-method) | the fit's quality for a CUDA GPU at bake time | none | the fit | the renderer's `fit` table | [Bake-Quality.md](offline/Bake-Quality.md) |
 | [Level morph](frame/Levels-of-Detail.md#the-blend) | morphed level switches for flash, in place of the dither | LMOR sibling in flash | off | `geometry.morph` | [LMOR.md](../assets/formats/LMOR.md) |
 | [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](animation/Skinned-Lighting.md#lighting-modes) |
 
@@ -260,7 +260,8 @@ the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 
 ### Small fill
 
-`camera_set_small_fill(camera, SMALL_FILL_FAST)` fills
+Setting the render settings' `small_fill` to a fast preset from
+[Coverage.md](frame/Coverage.md#small-fill) fills
 triangles a few pixels across with one depth and one colour instead of
 walking their planes. `SMALL_FILL_SMOOTH`, the default, keeps the smooth
 picture exact.
@@ -294,15 +295,14 @@ The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the
 camera calls `raster_split_forget()` on its `raster_split_t`.
 
-### Bake variants
+### Decimation method
 
-A mesh can be baked smooth, flat, simplified or fitted to a reference, each a
-separate mesh entry a renderer names. Flat and lite variants draw fewer
-gradients or triangles; fitted keeps lite's triangle budget, moved onto what
-the camera path draws.
+A renderer with a `fit` table is fitted to reference renders on a CUDA GPU.
+Without a GPU the importer writes its start: the import simplified to the
+fit's budget. A lower budget is the runtime LOD cut, not another bake.
 
-- **Pick** with the fidelity tables and the
-  [board measurements](offline/Bake-Quality.md#board-measurements) in Bake-Quality.md.
+- **Use** the fit; the start is the fallback where CUDA is missing.
+- **Measured**: [Bake-Quality.md](offline/Bake-Quality.md).
 
 ### Skinned lighting
 

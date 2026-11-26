@@ -1,6 +1,7 @@
 """Recover shared geometry under rigid placements, including reflections, never scale."""
 
 import math
+from bisect import bisect_left, bisect_right
 from collections import Counter
 from dataclasses import dataclass, replace
 from itertools import product
@@ -8,7 +9,7 @@ from itertools import product
 import numpy as np
 from scipy.spatial import cKDTree
 
-from r3d.geometry import bounds_diagonal
+from r3d.geometry import bounds_diagonal, grouped_indices
 from r3d.lit_mesh import oriented
 
 # A 381-object OBJ scene measured a matching plateau between 1e-3 and 1e-2 of the bounds diagonal.
@@ -45,11 +46,9 @@ def source_objects(positions, tri_v, tri_m, tri_o, object_names) -> list[SourceO
     """Split triangles by source ownership, retaining vertices in first-use order."""
     positions, tri_v, tri_m, tri_o = map(np.asarray, (positions, tri_v, tri_m, tri_o))
     objects = []
-    for index, name in enumerate(object_names):
-        selected = tri_o == index
+    for index, selected in grouped_indices(tri_o).items():
+        name = object_names[index]
         triangles = tri_v[selected]
-        if not len(triangles):
-            continue
         vertices, first, inverse = np.unique(triangles, return_index=True, return_inverse=True)
         order = np.argsort(first)
         remap = np.argsort(order)
@@ -200,10 +199,26 @@ def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
     """Deterministic rigid matches in source order. Scaled copies remain separate shapes."""
     if not np.isfinite(tolerance) or tolerance < 0:
         raise ValueError('tolerance must be finite and nonnegative')
-    shapes, buckets = [], {}
+    # Each copy's vertex lies within tolerance x diagonal of its shape's once fitted, and so does its centroid, so
+    # the sorted vertex distances from the centroid differ by at most twice that, and so do their means and their
+    # largest: on a log scale the largest falls in one cell of this size or its neighbours, as it is at least
+    # diagonal / (2 sqrt 3). Only shapes passing all three are fitted.
+    cell = max(4 * math.sqrt(3) * tolerance, np.finfo(float).eps)
+    shapes, buckets, spreads = [], {}, []
     for obj in objects:
+        spread = np.sort(np.sqrt(((obj.positions - obj.positions.mean(axis=0)) ** 2).sum(axis=1)))
+        size = math.floor(math.log(max(spread[-1], np.finfo(float).tiny)) / cell)
+        limit = 2 * tolerance * bounds_diagonal(obj.positions)
+        mean = float(spread.mean())
         key = (len(obj.triangles), len(obj.positions), tuple(sorted(Counter(obj.materials).items())))
-        for index in buckets.get(key, ()):
+        found = buckets.setdefault(key, {})
+        candidates = []
+        for near in (size - 1, size, size + 1):
+            means, indices = found.get(near, ([], []))
+            candidates += indices[bisect_left(means, mean - limit):bisect_right(means, mean + limit)]
+        for index in sorted(candidates):
+            if np.abs(spreads[index] - spread).max() > limit:
+                continue
             shape = shapes[index]
             instance = match_object(shape, obj, tolerance)
             if instance is not None:
@@ -212,6 +227,10 @@ def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
         else:
             centre = (obj.positions.min(axis=0) + obj.positions.max(axis=0)) / 2
             first = Instance(obj.name, np.eye(3), centre, False, 0.0, tuple(range(len(obj.triangles))))
-            buckets.setdefault(key, []).append(len(shapes))
+            means, indices = found.setdefault(size, ([], []))
+            at = bisect_right(means, mean)
+            means.insert(at, mean)
+            indices.insert(at, len(shapes))
+            spreads.append(spread)
             shapes.append(Shape(obj.positions - centre, obj.triangles, obj.materials, (first,)))
     return shapes

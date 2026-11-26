@@ -12,8 +12,8 @@ renderer's shading is), samples the
 scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
-fits the start with the recipe's settings, prunes it to the recipe's budget
-and writes the renderer's mesh into DIR (r3d/fit/stage.py). bake/bake.py bakes the start as a mesh
+fits the start with the recipe's settings and writes the renderer's mesh
+into DIR (r3d/fit/stage.py). bake/bake.py bakes the start as a mesh
 of its own and the references once per ReferenceInputs into the bake cache,
 keyed, and its lock records what the start and the fit made.
 """
@@ -232,6 +232,8 @@ def sweep_main(argv):
         job = placed_variant(scene, args.variant)
     except SettingsError as error:
         parser.error(str(error))
+    if job.settings.fit.probes is not None:
+        parser.error("--budgets is refused with geometry.probes; the variant's triangles is the budget")
     points = [{"budget": budget, "cost_weight": weight} for budget in args.budgets for weight in args.cost_weights]
     variant = job.renderer.variant
     if any(budget > variant.triangles for budget in args.budgets):

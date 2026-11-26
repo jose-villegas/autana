@@ -22,7 +22,7 @@ there the head and tail cost more than the vector body saves.
 | Call | Does | Minimum |
 |---|---|---|
 | `simd_fill_u16(dst, value, count)` | `dst[i] = value` | `SIMD_FILL_U16_MIN` elements |
-| `simd_repeat2_u16(dst, src, count)` | `dst[2i] = dst[2i + 1] = src[i]` | `SIMD_REPEAT2_U16_MIN` source elements |
+| `simd_repeat2_u16(dst, src, count)` | `dst[2 * i] = dst[2 * i + 1] = src[i]` | `SIMD_REPEAT2_U16_MIN` source elements |
 | `simd_copy(dst, src, bytes)` | `memcpy` | `SIMD_COPY_MIN` bytes |
 
 `simd_repeat2_u16` vectorises when `dst` is 4-byte aligned. A source of any

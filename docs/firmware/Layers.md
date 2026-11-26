@@ -104,6 +104,7 @@ flowchart TB
 | Rule | What it means | Enforced by |
 |---|---|---|
 | Includes are layer-qualified | `"gfx/gfx.h"`, not `"gfx.h"`, even inside one folder, so an app reaching past `ui` into `gfx` shows at the line that does it | the style audit |
+| Folders include each other one way | inside a module too, a folder never includes a folder that includes it back, so a module's layers are the levels its includes draw; a folder that holds both what its subfolders need and what needs them gives the first to a folder below | FOLDER-CYCLE, HEADER-CYCLE |
 | Apps use the engine, the platform, the lab shell and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
 | The UI backend stays inside `ui/` | outside it, no firmware source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
 | `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-REQUIRES, PACKAGE-CONFIG |

@@ -1,6 +1,5 @@
 """Seeded capture acquisition and variance estimates shared by performance tools."""
 import json
-import os
 import math
 import re
 import shlex
@@ -11,19 +10,23 @@ import time
 from pathlib import Path
 from statistics import mean, stdev
 
-from capture import capture_board, require_same_board, quarter_row
-from device_report import read_capture_text, report_path_for
+from capture import capture_board, require_same_board, quarter_row, require_complete_capture
+from device_report import parse_perf_targets, parse_unpegged_targets, read_capture_text
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
-sys.path.insert(0, str(REPO / "launcher/tools/build"))
+sys.path.insert(0, str(REPO / "launcher/tools"))
+from build.math_constants import blank_comments, integer_defines  # noqa: E402
 from doc_tables import table_rows  # noqa: E402
-from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
+from process_tree import run_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
+from console_protocol import TUNE_SET  # noqa: E402
 
 from frame_profile import PROFILE_RE
+
+
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
 
@@ -37,7 +40,7 @@ def parse_markdown(text):
     for _, headings, cells in table_rows(text):
         headers = [cell(part) for part in headings]
         lowered = [header.lower() for header in headers]
-        if not any(name in lowered[0] for name in ("test", "name", "scenario", "run", "mesh")):
+        if not any(name in lowered[0] for name in ("test", "name", "scenario", "run", "mesh", "target")):
             continue
         value_index = next((i for i, name in enumerate(lowered)
                             if "measured" in name or "mean" in name), None)
@@ -52,7 +55,7 @@ def parse_markdown(text):
     return collected
 
 
-def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False):
+def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False, include_targets=False):
     """Yield each observation; rendered quarters and selected setup fields identify it."""
     for line in text.splitlines():
         if match := PROFILE_RE.search(line):
@@ -67,11 +70,14 @@ def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=Fal
                 yield quarter_row(fields["stage"] + ".p95" + identity, line), int(fields["p95_us"])
         elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
             yield quarter_row("scale_split " + match[1], line), int(match[2])
+        elif include_targets:
+            for target in parse_perf_targets(line)[0] + parse_unpegged_targets(line):
+                yield target["name"], int(target["measured"])
 
 
 def parse_timings(text):
     """Return the last observation of each named timing row."""
-    return dict(timing_samples(text))
+    return dict(timing_samples(text, include_targets=True))
 
 
 def parse_report(path):
@@ -97,52 +103,35 @@ def autana_command(*words, override=None):
 def run_stamped(command, log, timeout=1800):
     """Stamp each output line; past the deadline, or on an interrupt or SIGTERM,
     stop the command's whole process tree."""
-    import queue
-    import threading
     started = time.monotonic()
-    deadline = started + timeout
     lines = []
-    messages = queue.Queue()
-    process = launch_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, bufsize=1, cwd=REPO)
-    def read():
-        for line in process.stdout:
-            messages.put((time.monotonic() - started, line.rstrip("\n")))
-        messages.put(None)
-    reader = threading.Thread(target=read, daemon=True)
-    reader.start()
+
+    def stamp(line):
+        at, line = time.monotonic() - started, line.rstrip("\n")
+        print(line, flush=True)
+        log.write(line + "\n")
+        log.flush()
+        lines.append((at, line))
     try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise subprocess.TimeoutExpired(command, timeout)
-            item = messages.get(timeout=remaining)
-            if item is None:
-                break
-            at, line = item
-            print(line, flush=True)
-            log.write(line + "\n")
-            log.flush()
-            lines.append((at, line))
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise subprocess.TimeoutExpired(command, timeout)
-        code = process.wait(timeout=remaining)
-    except (queue.Empty, subprocess.TimeoutExpired):
-        try:
-            stop_process_tree(process)
-        except subprocess.TimeoutExpired:
-            pass
-        raise RuntimeError(f"capture timed out after {timeout}s")
-    except BaseException:
-        stop_process_tree(process)
-        raise
-    finally:
-        close_process_tree(process)
-        reader.join(timeout=2)
-        if not reader.is_alive():
-            process.stdout.close()
-    return code, lines, time.monotonic() - started
+        done = run_process_tree(command, timeout, on_line=stamp, cwd=REPO)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"capture timed out after {timeout}s") from None
+    return done.returncode, lines, time.monotonic() - started
+
+
+# The device tool emits this from TuneRefused before a suite capture can run.
+SET_REFUSED = f"device: {TUNE_SET} "
+
+
+class TuneSetupRefused(RuntimeError):
+    """A tunable assignment was refused during capture setup."""
+
+
+def require_tune_setup(lines):
+    """Stop measurement if the board refused a capture's assignment."""
+    for _, line in lines:
+        if line.startswith(SET_REFUSED):
+            raise TuneSetupRefused(line)
 
 
 def captured_runs(lines, suite_name, runs):
@@ -347,13 +336,18 @@ def run_flash(args, seed, runner=None):
                                          override=override)
                 for line in getattr(args, "send", None) or []:
                     command += ["--send", line]
+                for setting in getattr(args, "tune_set", None) or []:
+                    command += ["--set", setting]
                 if tests != "-":
                     command += ["--test", tests]
                 if index == 0:
                     command += ["--flash", "--perf-scope", "--layout-seed", str(seed)]
+                    if getattr(args, "hot_tunables", False):
+                        command.append("--hot-tunables")
                 if index > 0:
                     command += ["--expect-build-id", record["build_id"]]
                 code, lines, wall = runner(command, log, getattr(args, "timeout", 1800) * args.runs + getattr(args, "wait", 3600))
+                require_tune_setup(lines)
                 if code not in (0, 1):
                     refusal = capture_refusal(lines)
                     raise RuntimeError(refusal or f"{name} exited {code}; see {log.name}")
@@ -366,9 +360,7 @@ def run_flash(args, seed, runner=None):
                 record["board"] = require_same_board(boards)
                 runs = []
                 for number, capture in enumerate(captures):
-                    completion = report_path_for(capture).read_text(encoding="utf-8", errors="replace")
-                    if "- Ended: complete" not in completion:
-                        raise RuntimeError(f"incomplete capture: {capture}")
+                    require_complete_capture(capture)
                     table = make_table(template, capture, out / f"{stem}_{name}_{index}_{number + 1}.md", project, getattr(args, "timeout", 1800))
                     rows = parse_report(table)
                     owners, instructions = capture_metadata(capture, rows)
@@ -406,12 +398,11 @@ def run_flash(args, seed, runner=None):
 def filter_limits(project):
     """Read the compared firmware's accepted pattern width and count."""
     text = (Path(project) / "launcher/test/suites.h").read_text(encoding="utf-8")
-    def define(name):
-        match = re.search(r"^\s*#define\s+" + name + r"\s+(\d+)\b", text, re.MULTILINE)
-        if not match or int(match.group(1)) <= 0:
+    definitions = integer_defines([blank_comments(text)])
+    for name in ("SUITE_FILTER_LEN", "SUITE_FILTER_MAX"):
+        if definitions.get(name, 0) <= 0:
             raise ValueError(f"invalid filter limit {name}")
-        return int(match.group(1))
-    return define("SUITE_FILTER_LEN") - 1, define("SUITE_FILTER_MAX")
+    return definitions["SUITE_FILTER_LEN"] - 1, definitions["SUITE_FILTER_MAX"]
 
 
 class FilterOverlap(RuntimeError):

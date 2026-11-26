@@ -9,6 +9,7 @@ import math
 import os
 import re
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -102,6 +103,29 @@ class Replay(FakeAutana):
 
 
 class NightlyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # The six-commit repository every test starts from, made once: each test takes a copy of it,
+        # which is cheaper than the git launches that make it.
+        temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temp.cleanup)
+        cls.template = Path(temp.name) / "repo"
+        cls.template.mkdir()
+        chain.git(cls.template, "init")
+        chain.git(cls.template, "config", "user.email", "test@example.invalid")
+        chain.git(cls.template, "config", "user.name", "Test")
+        chain.git(cls.template, "config", "core.hooksPath", str(Path(temp.name) / "no-hooks"))
+        header = cls.template / "launcher/test/suites.h"
+        header.parent.mkdir(parents=True)
+        header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
+        (cls.template / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
+        cls.template_commits = []
+        for number in range(6):
+            (cls.template / "code").write_text(str(number))
+            chain.git(cls.template, "add", ".")
+            chain.git(cls.template, "commit", "-qm", f"change (#{100 + number})")
+            cls.template_commits.append(chain.git(cls.template, "rev-parse", "HEAD"))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         marker_env = patch.dict(os.environ, _AUTANA_HEAVY_LOCK_ROOT=str(Path(self.temp.name) / "heavy"))
@@ -112,8 +136,8 @@ class NightlyTests(unittest.TestCase):
         cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
         cache.start()
         self.addCleanup(cache.stop)
-        for owner in (chain, layout_measure):
-            guard = patch.object(owner, "launch_process_tree",
+        for owner, launch in ((chain, "launch_process_tree"), (layout_measure, "run_process_tree")):
+            guard = patch.object(owner, launch,
                                  side_effect=AssertionError("test attempted a real process launch"))
             guard.start()
             self.addCleanup(guard.stop)
@@ -124,11 +148,7 @@ class NightlyTests(unittest.TestCase):
         close.start()
         self.addCleanup(close.stop)
         self.repo = self.root / "repo"
-        self.repo.mkdir()
-        chain.git(self.repo, "init")
-        chain.git(self.repo, "config", "user.email", "test@example.invalid")
-        chain.git(self.repo, "config", "user.name", "Test")
-        chain.git(self.repo, "config", "core.hooksPath", str(self.root / "no-hooks"))
+        shutil.copytree(self.template, self.repo)
         plugged = patch.object(chain, "plugged_boards", return_value=["20E8", "2124"])
         self.plugged_patch = plugged
         plugged.start()
@@ -137,19 +157,10 @@ class NightlyTests(unittest.TestCase):
         self.local_patch = patch.object(chain, "local_boards", return_value=[])
         self.local_patch.start()
         self.addCleanup(self.local_patch.stop)
-        self.commits = []
-        header = self.repo / "launcher/test/suites.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("#define SUITE_FILTER_LEN 24\n#define SUITE_FILTER_MAX 4\n")
-        (self.repo / "launcher/test/suite_fixture.c").write_text("SUITE_REGISTER(suite);")
-        for number in range(6):
-            (self.repo / "code").write_text(str(number))
-            chain.git(self.repo, "add", ".")
-            chain.git(self.repo, "commit", "-qm", f"change (#{100 + number})")
-            self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.commits = list(self.template_commits)
         self.clock = Clock(22, 30)
         self.args = SimpleNamespace(repo=self.repo, out=self.root / "out", data=self.root / "data",
-                                    board="20E8", lane="0/2", previous=None,
+                                    board="20E8", lane="0/2", previous=None, tip=self.commits[-1],
                                     suite=[("suite", "-", "-")], selftest=None)
 
     def before_cutoff(self, scans):
@@ -222,15 +233,17 @@ class NightlyTests(unittest.TestCase):
         chain.git(self.repo, "add", ".")
         chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
         self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        self.args.tip = self.commits[-1]
         # The anchor, last night's commit, predates a suite added since as any older step does.
         for anchor in (False, True):
             with self.subTest(anchor=anchor):
                 self.assertEqual(self.night_suites(("suite", "late"), self.steps((1, 6), anchor=anchor)),
                                  (["suite", "suite", "late"], ["measured", "measured"]))
 
-    def test_the_newest_step_without_a_suite_fails_its_capture(self):
-        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 5))),
-                         (["suite"], ["measured", "capture_failed"]))
+    def test_a_lanes_last_step_measures_without_a_suite_it_predates(self):
+        # A lane measures a slice of the night's history: its last step may be older than a suite, as an anchor is.
+        self.assertEqual(self.night_suites(("suite", "missing"), self.steps((1, 3))),
+                         (["suite", "suite"], ["measured", "measured"]))
 
     def test_a_step_that_registers_none_of_the_suites_fails_its_capture(self):
         self.assertEqual(self.night_suites(("missing",), self.steps((1, 5))), ([], ["capture_failed", "capture_failed"]))
@@ -340,7 +353,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_cleanup_warning_does_not_change_lane_exit_status(self):
         plan = self.root / "plan.json"
-        plan.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
+        plan.write_text(json.dumps(dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
                                        lanes={"20E8": dict(lane="0/2", previous=None,
                                                           steps=[vars(self.steps()[0])])})))
         command = ["scoped_chain", "run", "--plan", str(plan), "--board", "20E8", "--lane", "0/2",
@@ -433,7 +446,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_unplugged_lane_preserves_failure_exit(self):
         path = self.root / "plan.json"
-        path.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
+        path.write_text(json.dumps(dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                                        marker=self.clock.now().isoformat(), lanes={"20E8": dict(
                                            lane=self.args.lane, previous=None,
                                            steps=[vars(step) for step in self.steps()])})))
@@ -491,7 +504,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_empty_lane_can_finish_after_multiple_rescans(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={"FAK1": dict(lane="0/1", steps=[], estimate=0)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -504,7 +517,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_hang_guard_stops_each_lane_and_waits_for_all(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -542,6 +555,23 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(json.loads(path.read_text()), planned)
 
+    def test_a_suite_the_tip_does_not_register_fails_the_night_and_its_lanes_still_run(self):
+        (self.repo / "launcher/test/suite_late.c").write_text("SUITE_REGISTER_ON_REQUEST(late);")
+        chain.git(self.repo, "add", ".")
+        chain.git(self.repo, "commit", "-qm", "a late suite (#106)")
+        self.commits.append(chain.git(self.repo, "rev-parse", "HEAD"))
+        process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        # The plan's tip is read, not the checkout: an older tip lacks the suite the checked-out HEAD registers.
+        for tip, status in ((self.commits[-1], 0), (self.commits[-2], 1)):
+            with self.subTest(tip=tip):
+                args = self.night(self.fak1_lane(), tip=tip)
+                args.suite = [("suite", "-", "-"), ("late", "-", "-")]
+                with patch.object(chain, "launch_process_tree", return_value=process) as launch, \
+                        patch.object(chain, "close_process_tree"), patch("sys.stderr", new=io.StringIO()) as said:
+                    self.assertEqual(chain.run_night(args, clock=self.clock), status)
+                launch.assert_called_once()
+                self.assertEqual("does not register suite(s) late" in said.getvalue(), bool(status))
+
     def test_supervisor_default_launch_owns_and_closes_process_tree(self):
         args = self.night(self.fak1_lane())
         process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
@@ -571,7 +601,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_interrupt_terminates_and_waits_every_child(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={"20E8": dict(lane="0/1", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=self.args.suite)
@@ -664,10 +694,11 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
 
-    def night(self, lanes=None, window=None):
-        """The night's arguments, with a plan written from the clock: `lanes` (none) and `window` (self.window())."""
+    def night(self, lanes=None, window=None, tip=None):
+        """The night's arguments, with a plan written from the clock: `lanes` (none), `window` (self.window()) and
+        `tip` (the newest commit)."""
         path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+        chain.write_json(path, dict(tip=tip or self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
                                     marker=self.clock.now().isoformat(), **(window or self.window()),
                                     lanes=lanes or {}))
         return SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
@@ -1138,11 +1169,13 @@ class NightlyTests(unittest.TestCase):
         results, _, _ = self.run_chain()
         self.assertEqual(results[0].outcome, "measured")
 
-    def test_main_hands_the_plans_deadline_to_the_chain(self):
+    def test_main_hands_the_plans_deadline_and_tip_to_the_chain(self):
+        # The plan's tip, not HEAD nor the lane's last step: the step that must run every suite.
+        tip = self.commits[2]
         for deadline in ("2026-10-18T10:00:00+00:00", None):
             with self.subTest(deadline=deadline):
                 path = self.root / "plan.json"
-                chain.write_json(path, dict(night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
+                chain.write_json(path, dict(tip=tip, night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
                                             lanes={"20E8": dict(lane="0", previous=None, steps=[])}))
                 argv = ["scoped_chain.py", "run", "--plan", str(path), "--board", "20E8", "--lane", "0",
                         "--data", str(self.args.data), "--out", str(self.args.out), "--suite", "suite", "-", "-"]
@@ -1152,6 +1185,7 @@ class NightlyTests(unittest.TestCase):
                         patch.object(chain, "read_last_night", return_value=dict(steps=[], selftest=dict(outcome="not_run"))):
                     self.assertEqual(chain.main(), 0)
                 self.assertEqual(run.call_args.args[1].deadline, deadline)
+                self.assertEqual(run.call_args.args[1].tip, tip)
 
     def test_the_night_stops_a_lane_still_running_at_the_deadline(self):
         ran = dict(ended="2026-10-18T10:01:00+00:00", stop_reason="interrupted",
@@ -1743,6 +1777,13 @@ class NightlyTests(unittest.TestCase):
                          [("44:BD:8D:78:21:24", None), ("20E8", "book2")])
         self.assertEqual(listing["unreachable"], ["legion"])
 
+    @staticmethod
+    def remote_stops(stop=None):
+        """Replaces subprocess.run for the remote lanes' stop calls; the night's own git calls still run."""
+        run = subprocess.run
+        return patch.object(chain.subprocess, "run", side_effect=lambda command, **options: run(command, **options)
+                            if command[0] == "git" else stop and stop(command, **options))
+
     def remote_night(self, launch, lanes=None, deadline=None):
         lane = dict(lane="1/2", previous=None, steps=[], estimate=chain.FIRST_STEP_SECONDS, host="book2",
                     host_name="Book2")
@@ -1804,7 +1845,7 @@ class NightlyTests(unittest.TestCase):
         def stopped(command, **options):
             stops.append(command)
             process.poll.return_value = 0
-        with patch.object(chain.subprocess, "run", side_effect=stopped):
+        with self.remote_stops(stopped):
             status, _ = self.remote_night(lambda *a, **kw: process)
         self.assertEqual(status, 1)
         self.assertEqual(stops, [["bash", "remote-lane.sh", "stop", "book2", "20E8"]])
@@ -1822,7 +1863,7 @@ class NightlyTests(unittest.TestCase):
         deadline = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
         def stop(command, **options):
             events.append("stop " + command[-1])
-        with patch.object(chain.subprocess, "run", side_effect=stop), patch("builtins.print"), \
+        with self.remote_stops(stop), patch("builtins.print"), \
                 patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))):
             self.remote_night(launch, lanes={"20E8": lane, "2124": dict(lane, lane="2/2")}, deadline=deadline.isoformat())
         # One shared grace: a second remote lane is not cut a whole grace after the first.
@@ -1833,7 +1874,7 @@ class NightlyTests(unittest.TestCase):
         process = Mock()
         process.poll.return_value = None
         process.wait.side_effect = [subprocess.TimeoutExpired("lane", 0), 0]
-        with patch.object(chain.subprocess, "run"), \
+        with self.remote_stops(), \
                 patch.object(self.clock, "sleep", side_effect=KeyboardInterrupt), \
                 self.assertRaises(KeyboardInterrupt):
             self.remote_night(lambda *a, **kw: process)

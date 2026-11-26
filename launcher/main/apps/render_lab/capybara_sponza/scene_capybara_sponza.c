@@ -227,7 +227,7 @@ apply_settings(void) {
 #endif
 }
 
-/* Sponza with its fitted full bake alone, its camera held still for the run to place. */
+/* Sponza with its bake, its camera held still for the run to place. */
 static bool
 load_sponza(void) {
     const scene_baked_t* family = &baked_sponza;
@@ -235,7 +235,7 @@ load_sponza(void) {
     if (handle_is_none(sponza)) {
         return false;
     }
-    if (!scene_baked_show(sponza, family, SCENE_BAKED_FITTED_FULL, failure, sizeof failure)) {
+    if (handle_is_none(scene_baked_find(sponza, family, failure, sizeof failure))) {
         return false;
     }
     camera = entity_find(sponza, name_hash(family->camera));
@@ -259,6 +259,8 @@ load_capybara(void) {
     }
     entity_set_enabled(entity_find(capybara, name_hash(CAPYBARA_MEADOW)), false);
     runner = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
+    const scene_contact_t contact = {RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, false};
+    scene_set_contact(runner, &contact);
     if (handle_is_none(runner) || !build_gait()) {
         fail("no capybara gallop");
         return false;

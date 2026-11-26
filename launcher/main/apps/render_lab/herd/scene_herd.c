@@ -280,7 +280,7 @@ load(void) {
         return false;
     }
     if (!lab_orbit_fit(&orbit, entity_find(loaded, name_hash(HERD_CAMERA)), still ? shown_sphere() : walk_sphere(),
-                       &HERD_FRAME)) {
+                       &HERD_FRAME, lab_view_orbit_zoom(&render_lab_view_tunables))) {
         fail("no herd camera");
         return false;
     }

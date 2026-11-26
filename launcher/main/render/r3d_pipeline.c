@@ -1,5 +1,5 @@
 #include "render/r3d_pipeline.h"
-#include "render/texture/r3d_texture.h"
+#include "render/texture/r3d_span_textured_internal.h"
 
 #include "render/r3d_span_internal.h"
 
@@ -93,6 +93,8 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
+            r3d_span_texture_setup_t texture;
+            vec2f_t uv[R3D_SPAN_CORNERS];
 
             /* The cluster a blended draw is on: its index, its morph weight and its
              * dither screen, held here so they take no registers across the draw. */
@@ -712,25 +714,25 @@ typedef unsigned draw_mode_t;
  * literal 0, so its copy tests no mask. */
 static inline __attribute__((always_inline)) void
 fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-              const r3d_span_vertex_t* c, const uint16_t* face_color, draw_mode_t mode, uint16_t screen) {
+              const r3d_span_vertex_t* c, uint32_t face, draw_mode_t mode, uint16_t screen) {
     FRAME_LAP("r3d.draw.set_up");
     if (screen != 0) {
-        r3d_span_screen_triangle(target, a, b, c, face_color, screen, false);
+        r3d_span_screen_triangle(target, a, b, c, face, screen, false);
         if ((mode & DRAW_WRITES) != 0) {
-            r3d_span_screen_triangle(target, a, b, c, face_color, screen, true);
+            r3d_span_screen_triangle(target, a, b, c, face, screen, true);
         }
         return;
     }
     if ((mode & DRAW_SKIPPING) != 0) {
-        r3d_span_capped_triangle(target, a, b, c, face_color);
-    } else if (face_color == NULL) {
+        r3d_span_capped_triangle(target, a, b, c, face);
+    } else if (face == R3D_SPAN_FACE_NONE) {
         r3d_span_triangle(target, a, b, c);
     } else {
-        r3d_span_triangle_solid(target, a, b, c, *face_color);
+        r3d_span_triangle_solid(target, a, b, c, (uint16_t)face);
     }
     FRAME_LAP("r3d.draw.cluster");
     if ((mode & DRAW_WRITES) != 0) {
-        r3d_span_triangle_write(target, a, b, c, face_color != NULL);
+        r3d_span_triangle_write(target, a, b, c, face != R3D_SPAN_FACE_NONE);
     }
 }
 
@@ -756,12 +758,12 @@ projected_polygon(const r3d_lens_t* lens, bool double_sided, r3d_pipeline_work_t
 }
 
 static inline __attribute__((always_inline)) void
-draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
+draw_clipped(const r3d_lens_t* lens, bool double_sided, uint32_t face, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work, uint16_t screen) {
     const int n = projected_polygon(lens, double_sided, work);
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
-        fill_triangle(target, &s[0], &s[i], &s[i + 1], face_color,
+        fill_triangle(target, &s[0], &s[i], &s[i + 1], face,
                       (target->writer_count != 0 ? DRAW_WRITES : 0U) | (target->skip_hidden ? DRAW_SKIPPING : 0U),
                       screen);
     }
@@ -826,19 +828,19 @@ morphed_colour(const r3d_lit_mesh_t* mesh, int v, int weight, uint8_t out[3]) {
  * vertices into the clip polygon; a cluster in a blend moves them `weight`
  * toward its morph targets, colours included. */
 static inline __attribute__((always_inline)) void
-rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, uint32_t face,
                 r3d_pipeline_work_t* work, int cluster, int weight) {
     clip_vertex_t* in = work->clip.poly;
     const int32_t step = weight != 0 ? morph_step(mesh, cluster, weight) : 0;
     const float unit = 1.0F / (float)R3D_LOD_MORPH_ONE;
     for (int k = 0; k < 3; k++) {
         uint8_t blended[3];
-        if (weight != 0 && face_color == NULL) {
+        if (weight != 0 && face == R3D_SPAN_FACE_NONE) {
             morphed_colour(mesh, tri[k], weight, blended);
         }
-        const uint8_t* rgb = face_color != NULL ? (const uint8_t[3]){0, 0, 0}
-                             : weight != 0      ? blended
-                                                : mesh->colors[tri[k]];
+        const uint8_t* rgb = face != R3D_SPAN_FACE_NONE ? (const uint8_t[3]){0, 0, 0}
+                             : weight != 0              ? blended
+                                                        : mesh->colors[tri[k]];
         const int16_t* at = mesh->positions[tri[k]];
         const vec3f_t p = weight != 0 ? vec3f_scale(morphed_position(at, mesh->morph_delta[tri[k]], step), unit)
                                       : (vec3f_t){(float)at[0], (float)at[1], (float)at[2]};
@@ -850,30 +852,29 @@ rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
 /* Flattened: the blended copy shares its clip and projection, and a cold
  * function would otherwise call them rather than take them inline. */
 static __attribute__((noinline, cold, flatten)) void
-draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
-             bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, uint32_t face, bool double_sided,
+             const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     FRAME_LAP("r3d.draw.clip");
-    rebuilt_corners(mesh, lens, tri, face_color, work, 0, 0);
-    draw_clipped(lens, double_sided, face_color, target, work, 0U);
+    rebuilt_corners(mesh, lens, tri, face, work, 0, 0);
+    draw_clipped(lens, double_sided, face, target, work, 0U);
     FRAME_LAP("r3d.draw.cluster");
 }
 
 /* Its own frame, so the morph maths is off the stack before the fill. */
 static __attribute__((noinline, cold)) void
-morphed_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+morphed_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, uint32_t face,
                 r3d_pipeline_work_t* work, int cluster, int weight) {
-    rebuilt_corners(mesh, lens, tri, face_color, work, cluster, weight);
+    rebuilt_corners(mesh, lens, tri, face, work, cluster, weight);
 }
 
 /* draw_rebuilt() of a cluster in a blend: moved its work->clip.blend weight
  * toward its morph targets and drawn through its screen. */
 static __attribute__((noinline, cold)) void
-draw_rebuilt_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri,
-                     const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target,
-                     r3d_pipeline_work_t* work) {
+draw_rebuilt_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, uint32_t face,
+                     bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     FRAME_LAP("r3d.draw.clip");
-    morphed_corners(mesh, lens, tri, face_color, work, work->clip.blend.cluster, work->clip.blend.weight);
-    draw_clipped(lens, double_sided, face_color, target, work, work->clip.blend.screen);
+    morphed_corners(mesh, lens, tri, face, work, work->clip.blend.cluster, work->clip.blend.weight);
+    draw_clipped(lens, double_sided, face, target, work, work->clip.blend.screen);
     FRAME_LAP("r3d.draw.cluster");
 }
 
@@ -891,9 +892,8 @@ morphed_vertices(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const 
 }
 
 static inline __attribute__((always_inline)) void
-draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, draw_mode_t mode,
-              int weight, uint16_t screen) {
+draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri, uint32_t face,
+              bool double_sided, const r3d_span_target_t* target, draw_mode_t mode, int weight, uint16_t screen) {
     FRAME_LAP("r3d.draw.tests");
     /* The writing draw takes the test inline, which keeps its frame at its
      * stack chain's budget; the reading draws leave it to the compiler, whose
@@ -909,58 +909,59 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     }
     FRAME_LAP("r3d.draw.vertices");
     r3d_span_vertex_t s[3];
-    if (weight != 0 && face_color == NULL) {
+    if (weight != 0 && face == R3D_SPAN_FACE_NONE) {
         morphed_vertices(mesh, v, tri, weight, s);
     } else {
         for (int k = 0; k < 3; k++) {
-            const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
+            const uint8_t* rgb = face == R3D_SPAN_FACE_NONE ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
             s[k] = span_corner(v[k], rgb);
         }
     }
-    fill_triangle(target, &s[0], &s[1], &s[2], face_color, mode, screen);
+    fill_triangle(target, &s[0], &s[1], &s[2], face, mode, screen);
 }
 
 /* A triangle wholly in front of the near plane; `blends` is a literal, so
  * the plain copy passes no weight and no screen. */
 static inline __attribute__((always_inline)) void
-draw_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-           const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, draw_mode_t mode,
-           const r3d_pipeline_work_t* work, bool blends) {
-    draw_in_front(mesh, v, tri, face_color, double_sided, target, mode, blends ? work->clip.blend.weight : 0,
+draw_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri, uint32_t face,
+           bool double_sided, const r3d_span_target_t* target, draw_mode_t mode, const r3d_pipeline_work_t* work,
+           bool blends) {
+    draw_in_front(mesh, v, tri, face, double_sided, target, mode, blends ? work->clip.blend.weight : 0,
                   blends ? work->clip.blend.screen : 0U);
 }
 
 /* A triangle the near plane cuts, rebuilt; `blends` is a literal, so each
  * copy calls one rebuild, the blended one reading work->clip.blend. */
 static inline __attribute__((always_inline)) void
-draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, uint32_t face,
                  bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool blends) {
     if (!blends) {
-        draw_rebuilt(mesh, lens, tri, face_color, double_sided, target, work);
+        draw_rebuilt(mesh, lens, tri, face, double_sided, target, work);
     } else {
-        draw_rebuilt_blended(mesh, lens, tri, face_color, double_sided, target, work);
+        draw_rebuilt_blended(mesh, lens, tri, face, double_sided, target, work);
     }
 }
 
 /* A triangle wholly in front of the near plane, textured with chart
  * `chart` of its cluster. */
-static void
+static __attribute__((noinline)) void
 draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target) {
+                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target,
+                    r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)
         || facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
-    r3d_span_vertex_t s[3];
-    vec2f_t uv[3];
+    r3d_span_vertex_t* const s = work->clip.projected;
+    vec2f_t* const uv = work->clip.uv;
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
         s[k] = span_corner(v[k], rgb);
         uv[k] = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
     }
     FRAME_LAP("r3d.draw.set_up");
-    r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
+    r3d_span_textured_triangle_with(target, &s[0], &s[1], &s[2], uv, texture, &work->clip.texture);
     FRAME_LAP("r3d.draw.cluster");
 }
 
@@ -970,7 +971,7 @@ static __attribute__((noinline, cold)) void
 draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, int cluster, int chart,
                   bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
-    rebuilt_corners(mesh, lens, tri, NULL, work, 0, 0);
+    rebuilt_corners(mesh, lens, tri, R3D_SPAN_FACE_NONE, work, 0, 0);
     clip_vertex_t* poly = work->clip.poly;
     for (int k = 0; k < 3; k++) {
         const vec2f_t uv = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
@@ -980,9 +981,12 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     const int n = projected_polygon(lens, double_sided, work);
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
-        const vec2f_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        vec2f_t* const uv = work->clip.uv;
+        uv[0] = (vec2f_t){poly[0].u, poly[0].v};
+        uv[1] = (vec2f_t){poly[i].u, poly[i].v};
+        uv[2] = (vec2f_t){poly[i + 1].u, poly[i + 1].v};
         FRAME_LAP("r3d.draw.set_up");
-        r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
+        r3d_span_textured_triangle_with(target, &s[0], &s[i], &s[i + 1], uv, texture, &work->clip.texture);
         FRAME_LAP("r3d.draw.cluster");
     }
 }
@@ -995,7 +999,7 @@ draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipe
               const uint16_t* tri, int cluster, int chart, bool double_sided, bool bounded,
               const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     if (bounded || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target);
+        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target, work);
     } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
         draw_textured_cut(mesh, lens, tri, cluster, chart, double_sided, target, work);
     }
@@ -1026,7 +1030,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
                r3d_pipeline_work_t* work, bool blends) {
     for (int t = first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
-        const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
+        const uint32_t face = mesh->face_colors == NULL ? R3D_SPAN_FACE_NONE : mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         const unsigned code = texture_code(mesh, (int)(c - mesh->clusters), t, mode, blends);
         if (code != R3D_TEXTURE_PLAIN) {
@@ -1036,9 +1040,9 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         }
         /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
+            draw_whole(mesh, v, tri, face, c->double_sided, target, mode, work, blends);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
+            draw_cut_by_near(mesh, lens, tri, face, c->double_sided, target, work, blends);
         }
     }
 }

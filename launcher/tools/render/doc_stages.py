@@ -30,36 +30,14 @@ from doc_tables import markdown
 from layout_measure import parse_timings, MEAN_RE
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
+from r3d.import_settings import SettingsError
+from r3d.poses import flight_camera, path_poses
 from r3d.scene_name import scene_id
 
 HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
-VARIANTS = ("lite", "flat", "fitted", "fitted-full", "flat-fitted")
 PATH_CULL_SAMPLING = SimpleNamespace(every_ms=100, size=(184, 224), samples=3, margin=8)
-
-
-class Fitted(NamedTuple):
-    """One fitted object of the GPU stage: the prefix of its rows, the bake it is compared with, what else it
-    carries (the normal and budget sweeps, the path cull, a point in the budget table) and its sheet's columns,
-    (label, row) pairs."""
-    name: str
-    prefix: str
-    baked: str
-    sheet: tuple
-    sweeps: bool = False
-    path_cull: bool = False
-    budget_point: bool = False
-
-
-# The stage runs the rows in this order, so a sheet may name the rows of an earlier entry.
-FITTED = (
-    Fitted("_fitted", "lite", "_lite", (("GI bake", "lite-GI-bake"), ("GI fit", "lite-GI-fit")), sweeps=True),
-    Fitted("_fitted_full", "full", "", (("GI bake", "full-GI-bake"), ("GI fit", "full-GI-fit")),
-           path_cull=True, budget_point=True),
-    Fitted("_flat_fitted", "flat", "_flat",
-           (("flat bake", "flat-GI-bake"), ("lite fit", "lite-GI-fit"), ("flat fit", "flat-GI-fit"))),
-)
 
 
 class LightSheet(NamedTuple):
@@ -112,7 +90,7 @@ def current_stamp():
 
 
 def host_inputs(scene_path):
-    """Host CMake inputs, compile flags and the compiler's -MM list, repo-relative.
+    """Host compile flags and what the build reads (its -MM list, CMake files and sourced scripts), repo-relative.
     System headers and compiler identity/version are not counted."""
     def relative(token):
         if not Path(token).is_absolute():
@@ -128,7 +106,6 @@ def host_inputs(scene_path):
     if not flags.startswith("flags "):
         raise ValueError(f"{HOST_SCRIPT.name} --deps printed no flags line")
     files = {relative(token) for token in compile_db.parse_dependencies(deps, directory=ROOT)}
-    files.update(("launcher/tools/render/CMakeLists.txt", "launcher/tools/render/scene/CMakeLists.txt"))
     return {"host flags": " ".join(relative(token) for token in flags.split()[1:]),
             **{f"host {name}": content_checksum(ROOT / name).decode() for name in sorted(files)}}
 
@@ -225,33 +202,28 @@ def machine_table(probes=None):
     return markdown(["Machine", "Value"], [(key, probes[key]) for key in MACHINE_FIELDS])
 
 
-def capture_rows(path, commit, id, object_name):
+def capture_rows(path, commit):
     from capture import QUARTERS, select_quarter
     text = select_quarter(path.read_text(encoding="utf-8", errors="replace"))
-    import re
     builds = re.findall(r"\b([0-9a-f]{12,40})-diag\b", text)
     if not builds or any(not commit.startswith(build) for build in builds):
         raise ValueError(f"{path}: missing or mismatched diagnostics build identity")
     if re.search(r"\bFAIL\b", text):
         raise ValueError(f"{path}: failed suite")
-    aliases = {object_name: id, **{object_name + "_" + name.replace("-", "_"): name for name in VARIANTS}}
-    names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
+    names = [match.group("name") for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
-        raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
-    return {aliases.get(base := name.removesuffix(f" quarter={QUARTERS[0]}"), base): value / 1000
-            for name, value in parse_timings(text).items()
-}
+        raise ValueError(f"{path}: duplicate means; give one --capture per run")
+    return {name.removesuffix(f" quarter={QUARTERS[0]}"): value / 1000 for name, value in parse_timings(text).items()}
 
-def board_means(captures, commit, id, object_name):
+
+def board_mean(captures, commit, object_name):
+    """The median over `captures` of the bake's mean board frame, in ms."""
     require_same_board({str(path): capture_board(path) for path in captures})
-    runs = [capture_rows(path, commit, id, object_name) for path in captures]
+    runs = [capture_rows(path, commit) for path in captures]
     for path, rows in zip(captures, runs):
-        missing = set((id, *VARIANTS)) - rows.keys()
-        if missing:
-            raise ValueError(f"{path}: missing variants {sorted(missing)}")
-    return {
-name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
-}
+        if object_name not in rows:
+            raise ValueError(f"{path}: no {object_name} row")
+    return statistics.median(rows[object_name] for rows in runs)
 
 def capture_pose_every_ms(paths) -> int:
     intervals = set()
@@ -265,29 +237,31 @@ def capture_pose_every_ms(paths) -> int:
     return intervals.pop()
 
 
-def board_frames(captures, expected, id, object_name, every_ms):
+def board_frames(captures, expected, object_name, every_ms):
+    """{pose time ms: median board frame ms} of the bake's rows; each capture holds each of `expected` once."""
     require_same_board({str(path): capture_board(path) for path in captures})
     values = {}
     for capture in captures:
         from capture import select_quarter
         text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
-        parsed = []
-        for row in poses(text):
-            name = {object_name: id, object_name + "_lite": "lite"}.get(row["row"], row["row"])
-            if name not in (id, "lite"):
-                continue
-            time_ms = row["time_ms"]
-            if time_ms % every_ms:
-                raise ValueError(f"{capture}: needs each full/lite pose exactly once")
-            parsed.append((name, time_ms, row["frame_us"] / US_PER_MS))
-        keys = [(name, time) for name, time, _ in parsed]
-        if len(keys) != len(expected) or set(keys) != set(expected):
-            raise ValueError(f"{capture}: needs each full/lite pose exactly once")
-        for name, time, value in parsed:
-            values.setdefault((name, time), []).append(value)
+        parsed = [(row["time_ms"], row["frame_us"] / US_PER_MS) for row in poses(text) if row["row"] == object_name]
+        times = [time for time, _ in parsed]
+        if any(time % every_ms for time in times) or len(times) != len(expected) or set(times) != set(expected):
+            raise ValueError(f"{capture}: needs each {object_name} pose exactly once")
+        for time, value in parsed:
+            values.setdefault(time, []).append(value)
     return {
-key: statistics.median(row) for key, row in values.items()
+time: statistics.median(row) for time, row in values.items()
 }
+
+def flight_poses(scene, visibility, every_ms=None, either_way_up=True):
+    """The poses the board flies: the scene's flight camera sampled at `visibility`'s size, every `every_ms`
+    (its own step when None). The scene camera may have no path, its fits trained on probes."""
+    camera = flight_camera(scene)
+    if camera is None:
+        raise SettingsError(f"{scene.path}: no camera on a path for the doc stage to fly")
+    return path_poses(camera, visibility.size, every_ms or visibility.every_ms, either_way_up)
+
 
 def capture_viewport(path, expected):
     import re
@@ -299,9 +273,7 @@ def capture_viewport(path, expected):
 def board(args, out, work):
     from r3d.cost_model import FEATURES, fit, mesh_rows
     from r3d.import_settings import load_scene
-    from r3d.mesh_import import camera_path_poses
     from r3d.fitted_variant import placed_variant, poses_text
-    import re
     import numpy as np
 
     commit = subprocess.check_output(["git", "rev-parse", args.build_commit or "HEAD"], cwd=ROOT).decode().strip()
@@ -311,27 +283,21 @@ def board(args, out, work):
         raise ValueError("board capture commit differs from current firmware sources")
     scene_path = args.scene
     id = scene_id(scene_path)
-    means = board_means(args.capture, commit, id, args.object)
-    (out / f"tables/{id}-board.md").write_text(markdown(["Mesh", "Median board ms"],
-        [(name, f"{means[name]:.3f}") for name in (id, *VARIANTS)]), encoding="utf-8")
+    mean = board_mean(args.capture, commit, args.object)
+    (out / f"tables/{id}-board.md").write_text(markdown(["Mesh", "Median board ms"], [(args.object, f"{mean:.3f}")]),
+                                               encoding="utf-8")
     scene = load_scene(scene_path)
-    job = placed_variant(scene, args.object + "_fitted")
+    job = placed_variant(scene, args.object)
     every_ms = capture_pose_every_ms(args.capture)
-    poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
+    poses = flight_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
-    frame_values = board_frames(args.capture, [(name, index * every_ms) for name in (id, "lite")
-                                             for index in range(len(poses[-1]))], id, args.object, every_ms)
+    frame_values = board_frames(args.capture, [index * every_ms for index in range(len(poses[-1]))], args.object,
+                                every_ms)
     (work / "board-poses.txt").write_text(poses_text(*poses))
-    rows, times, records = [], [], []
-    for name, asset in ((id, args.object), ("lite", args.object + "_lite")):
-        mesh = next(item.asset_path for item in scene.renderers if item.object.name == asset)
-        features = mesh_rows(mesh, work / "board-poses.txt")
-        for index, row in enumerate(features):
-            ms = frame_values[(name, index * every_ms)]
-            rows.append(row)
-            times.append(ms)
-            records.append((name, index, ms, row))
+    rows = mesh_rows(job.asset_path, work / "board-poses.txt")
+    times = [frame_values[index * every_ms] for index in range(len(rows))]
+    records = [(args.object, index, ms, row) for index, (ms, row) in enumerate(zip(times, rows))]
     weights = fit(np.array(rows), times)
     body = "feature " + " ".join(FEATURES) + "\nweight " + " ".join(f"{value:.9g}" for value in weights) + "\n"
     body += "".join(f"frame {name} {index} {ms:.3f} " + " ".join(f"{value:.9g}" for value in row) + "\n"
@@ -424,7 +390,7 @@ def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, record
 
 
 def bake_into(directory, scene, baked_name, path_cull, recorder=None):
-    from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
+    from r3d.mesh_import import bake_geometry, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     geometry = bake_geometry(baked, scene, recorder)
@@ -433,7 +399,7 @@ def bake_into(directory, scene, baked_name, path_cull, recorder=None):
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
         visibility = PATH_CULL_SAMPLING
-        width, height, lens, near, poses = camera_path_poses(scene, visibility)
+        width, height, lens, near, poses = flight_poses(scene, visibility)
         seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
             RayQuery(geometry.positions, geometry.tris),
             poses, width, height, lens, near, visibility.samples, visibility.margin)
@@ -512,11 +478,12 @@ class Keeper:
         return self.keep(folder, make_kept, folder, write_start, job, scene, estimates=PREPARE_BYTES, priority=True)
 
     def references(self, job, scene):
-        from bake.produce import REFERENCES, read_references
+        from bake.produce import read_references, reference_folder
         from r3d.process_budget import PREPARE_BYTES
         key = self.keys(job, scene)["reference"]
-        read_references(self.cache / REFERENCES / key)  # keep's done shortcut reads it too
-        return self.keep(self.cache / REFERENCES / key, kept_references, key, job, scene, self.cache,
+        folder = reference_folder(self.cache, key)
+        read_references(folder)  # keep's done shortcut reads it too
+        return self.keep(folder, kept_references, key, job, scene, self.cache,
                          estimates=PREPARE_BYTES, priority=True)
 
     def fit(self, point, point_dir, scene_path, scene, job, inputs):
@@ -533,27 +500,27 @@ class Keeper:
                          estimates=FIT_BYTES)
 
     def bake(self, scene, baked_name, path_cull):
-        """The bake of the renderer `baked_name`, with its PATH_CULL_SAMPLING cull as CULLED when `path_cull`."""
+        """The CPU bake of the fitted renderer `baked_name`, its start, with its PATH_CULL_SAMPLING cull as CULLED
+        when `path_cull`."""
         from r3d.process_budget import BAKE_BYTES
         baked = next(item for item in scene.renderers if item.object.name == baked_name)
         cull = None
         if path_cull:
-            poses = self.poses.digest(scene.camera.component, PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
+            poses = self.poses.digest(flight_camera(scene), PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
                                       self.tools, set())
             if poses is None:
                 raise ValueError(self.poses.reason(self.poses.missing))
             cull = [vars(PATH_CULL_SAMPLING), poses]
-        folder = self.doc("bake", self.keys(baked, scene)["mesh"], cull, code_digest(bake_into))
+        folder = self.doc("bake", self.keys(baked, scene)["start"], cull, code_digest(bake_into))
         return self.keep(folder, make_kept, folder, bake_into, scene, baked_name, path_cull, estimates=BAKE_BYTES,
                          priority=True)
 
 def smoke_prepare(scene_path, scene, job, inputs):
-    from r3d.mesh_import import camera_path_poses
     from r3d.fitted_variant import poses_text
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
     shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.bundle")
-    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.fit, 5000, either_way_up=False)
+    width, height, lens, near, poses = flight_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
     for name in ("reference", "reference_landscape", "reference_held_out"):
@@ -728,17 +695,14 @@ def _gpu(args, out, work, executor):
     scene_path = args.scene
     scene = load_scene(scene_path)
     id = scene_id(scene_path)
-    jobs = [placed_variant(scene, args.object + entry.name) for entry in FITTED]
-    if len({job.renderer.fit.held_out_every_ms for job in jobs}) != 1:
-        raise ValueError("GPU comparisons require a common held-out pose interval")
+    job = placed_variant(scene, args.object)
     made_from = gpu_inputs(scene_path, args.object)
     from bake import bake
     stamp = bake.digest(made_from)
     work = work / ("smoke-" if args.smoke else "full-") / stamp
     work.mkdir(parents=True, exist_ok=True)
-    inputs = work / "references"
     if args.smoke:
-        job = jobs[0]
+        inputs = work / "references"
         executor.submit(smoke_prepare, scene_path, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
         executor.submit(fit_point, {}, work / "fit", scene_path, scene, job, inputs, True,
                         work / "smoke.bundle", estimates=FIT_BYTES).result()
@@ -746,9 +710,9 @@ def _gpu(args, out, work, executor):
         return 0
     keeper = Keeper(executor)
     host = build_host(HOST_SCRIPT, work / "host", scene_path)
-    rows, comparisons, sweep = [], {}, []
-    bake_steps = []
+    rows, comparisons = [], {}
     weights, *_ = load(WEIGHTS)
+    reference_inputs = work / "inputs"
 
     def measure(label, job, mesh, reference_inputs):
         row, frames, values = executor.submit(measure_worker, label, job, mesh, reference_inputs,
@@ -757,78 +721,64 @@ def _gpu(args, out, work, executor):
         comparisons[label] = frames
         return values
 
-    fitted_futures, normal_futures, sweep_futures = {}, {}, {}
-    def prepared(index, job):
-        prefix = FITTED[index].prefix
-        reference_inputs = work / f"inputs-{prefix}"
-        fitted_futures[prefix] = keeper.fit({}, work / f"fit-{prefix}", scene_path, scene, job, reference_inputs)
-        if FITTED[index].sweeps:
-            for normal in normal_weights(job):
-                if normal != job.renderer.fit.normal_weight:
-                    variant = copy.deepcopy(job)
-                    variant.renderer.fit.normal_weight = normal
-                    normal_futures[normal] = keeper.fit({}, work / f"normal-{normal:g}", scene_path, scene, variant,
-                                                        reference_inputs)
-            for point in sweep_points(job):
-                point_dir = work / point_name(point)
-                if not recipe_point(job, point) and not (point_dir / "result.json").is_file():
-                    sweep_futures[point_dir.name] = keeper.fit(point, point_dir, scene_path, scene, job, reference_inputs)
+    futures = {}
+    def prepared(_index, job):
+        futures["fit"] = keeper.fit({}, work / "fit", scene_path, scene, job, reference_inputs)
+        for normal in normal_weights(job):
+            if normal != job.renderer.fit.normal_weight:
+                variant = copy.deepcopy(job)
+                variant.renderer.fit.normal_weight = normal
+                futures[f"normal-{normal:g}"] = keeper.fit({}, work / f"normal-{normal:g}", scene_path, scene, variant,
+                                                           reference_inputs)
+        for point in sweep_points(job):
+            point_dir = work / point_name(point)
+            if not recipe_point(job, point) and not (point_dir / "result.json").is_file():
+                futures[point_dir.name] = keeper.fit(point, point_dir, scene_path, scene, job, reference_inputs)
 
-    ready = prepare_variants(keeper, [(scene, job, work / f"inputs-{entry.prefix}") for entry, job in zip(FITTED, jobs)],
-                             prepared)
+    ready = prepare_variants(keeper, [(scene, job, reference_inputs)], prepared)
     light = submit_light_fits(keeper, scene_path, work)
-    bakes = [keeper.bake(scene, args.object + entry.baked, entry.path_cull) for entry in FITTED]
+    # The fit's start, the import simplified to the fit's budget, with its path cull.
+    baked = keeper.bake(scene, args.object, True)
 
-    for index, job in enumerate(jobs):
-        start_steps = ready[index].result()
-        entry = FITTED[index]
-        prefix = entry.prefix
-        reference_inputs = work / f"inputs-{prefix}"
-        baked = bakes[index].result()
-        bake_steps.append((f"{prefix}-GI-bake", baked.steps))
-        baked_job = next(item for item in scene.renderers if item.object.name == args.object + entry.baked)
-        measure(f"{prefix}-GI-bake", job, baked.folder / f"{baked_job.renderer.variant.name}.bundle", reference_inputs)
-        if entry.path_cull:
-            measure("full-path-culled", job, baked.folder / f"{CULLED}.bundle", reference_inputs)
-            run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
-                 out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
-                 reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
-                 "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
-                 comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
-        fit = fitted_futures[prefix].result()
-        bake_steps.append((f"{prefix}-fit-start", start_steps))
-        bake_steps.append((f"{prefix}-GI-fit", fit.steps))
-        fitted = fit.folder / FITTED_MESH
-        fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
-        if entry.budget_point:
-            sweep.append({"budget": job.renderer.fit.budget, "cost_weight": 0.0, **fitted_values})
-        image = out / "render/gpu" / f"appearance-indirect-{prefix}.png"
-        columns = [part for label, row in entry.sheet for part in ("--bake", label, comparisons[row])]
-        run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
-             "--reference-bakes", reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
-             *columns, "--crops", "3"], work / f"sheet-{prefix}.log")
-        if entry.sweeps:
-            normal_rows = []
-            for normal in normal_weights(job):
-                mesh = fitted if normal == job.renderer.fit.normal_weight else normal_futures[normal].result().folder / FITTED_MESH
-                measure(f"normal-{normal:g}", job, mesh, reference_inputs)
-                normal_rows.append(rows[-1])
-            (out / f"tables/{id}-normal.md").write_text(markdown(
-                ["Normal weight", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], normal_rows) +
-                "\n![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)\n")
-            command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
-                       out / "render/gpu/appearance-normal-heat.png"]
-            for normal in normal_weights(job):
-                command += ["--angle-column", f"normal {normal:g}", work / f"normal-{normal:g}/angles"]
-            run(command, work / "normal-sheet.log")
-            points = sweep_points(job)
+    start_steps = ready[0].result()
+    culled = baked.result().folder
+    measure("start", job, culled / f"{job.renderer.variant.name}.bundle", reference_inputs)
+    measure("start-path-culled", job, culled / f"{CULLED}.bundle", reference_inputs)
+    run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
+         out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
+         reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
+         "--bake", "start", comparisons["start"], "--bake", "path culled",
+         comparisons["start-path-culled"], "--crops", "3"], work / "path-sheet.log")
+    fit = futures["fit"].result()
+    bake_steps = [("fit-start", start_steps), ("fit", fit.steps)]
+    fitted = fit.folder / FITTED_MESH
+    measure("fit", job, fitted, reference_inputs)
+    run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
+         out / "render/gpu/appearance-indirect.png", "--reference-bakes", reference_inputs / "reference_held_out",
+         "--reference-scale", "2", "--sheet-frames", "0,4", "--bake", "simplifier", comparisons["start"],
+         "--bake", "fit", comparisons["fit"], "--crops", "3"], work / "sheet.log")
+    gpu_rows = list(rows)
+    normal_rows = []
+    for normal in normal_weights(job):
+        mesh = fitted if normal == job.renderer.fit.normal_weight else futures[f"normal-{normal:g}"].result().folder / FITTED_MESH
+        measure(f"normal-{normal:g}", job, mesh, reference_inputs)
+        normal_rows.append(rows[-1])
+    (out / f"tables/{id}-normal.md").write_text(markdown(
+        ["Normal weight", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], normal_rows) +
+        "\n![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)\n")
+    command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
+               out / "render/gpu/appearance-normal-heat.png"]
+    for normal in normal_weights(job):
+        command += ["--angle-column", f"normal {normal:g}", work / f"normal-{normal:g}/angles"]
+    run(command, work / "normal-sheet.log")
+    points = sweep_points(job)
 
-            def run_point(point, point_dir):
-                mesh = fitted if recipe_point(job, point) else sweep_futures[point_dir.name].result().folder / FITTED_MESH
-                return measure(point_dir.name, job, mesh, reference_inputs)
+    def run_point(point, point_dir):
+        mesh = fitted if recipe_point(job, point) else futures[point_dir.name].result().folder / FITTED_MESH
+        return measure(point_dir.name, job, mesh, reference_inputs)
 
-            run_sweep_points(work, points, run_point)
-            sweep = sweep_rows(work, points)
+    run_sweep_points(work, points, run_point)
+    sweep = sweep_rows(work, points)
     light_sheets(light, out, work, measure, comparisons)
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
@@ -836,23 +786,12 @@ def _gpu(args, out, work, executor):
         ["Budget", "Cost weight", "Triangles", "Held-out dE76", "Predicted ms"],
         [(row["budget"], row["cost_weight"], row["triangles"], f'{row["mean_delta_e"]:.3f}', f'{row["predicted_ms"]:.3f}')
          for row in sweep]) + "\n![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)\n")
+    gpu_images = ["appearance-indirect", "appearance-indirect.crops", "appearance-path-culled"]
+    if (out / "render/gpu/appearance-path-culled.crops.png").exists():
+        gpu_images.append("appearance-path-culled.crops")
     (out / f"tables/{id}-gpu.md").write_text(markdown(
-        ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], rows[:2] +
-        [row for row in rows if row[0].startswith("full-")]) + "\n" + "\n".join(
-        f"![{prefix} GI bake and fit{suffix}](../images/render/gpu/appearance-indirect-{prefix}{suffix}.png)"
-        for prefix in ("lite", "full") for suffix in ("", ".crops")) + "\n")
-    # The cost model has no shading term and cannot price a flat mesh; the board table times it.
-    flat_sheet = next(entry.sheet for entry in FITTED if entry.prefix == "flat")
-    measured = {row[0]: row for row in rows}
-    (out / f"tables/{id}-flat-fit.md").write_text(markdown(
-        ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle"],
-        [measured[name][:-1] for _label, name in flat_sheet]) + "\n" + "\n".join(
-        f"![Flat bake, lite fit and flat fit{suffix}](../images/render/gpu/appearance-indirect-flat{suffix}.png)"
-        for suffix in ("", ".crops")) + "\n")
-    with (out / f"tables/{id}-gpu.md").open("a") as output:
-        output.write("\n![Full bake and path cull](../images/render/gpu/appearance-path-culled.png)\n")
-        if (out / "render/gpu/appearance-path-culled.crops.png").exists():
-            output.write("\n![Path cull differences](../images/render/gpu/appearance-path-culled.crops.png)\n")
+        ["Mesh", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], gpu_rows) + "\n" +
+        "\n".join(f"![{name}](../images/render/gpu/{name}.png)" for name in gpu_images) + "\n")
     machine = machine_table()
     from bake_steps import block as steps_block, chart as steps_chart
     steps_chart(bake_steps, out / "render/gpu" / BAKE_STEPS_CHART)

@@ -13,7 +13,7 @@ mesh, and costs nothing at run time. A renderer asks for one with a `fit` table
 in its GPU environment. A `fit` table records the budget, the training,
 held-out and coverage poses, the optimiser settings and the output hashes.
 Measured results are in
-[Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
+[Bake-Quality.md](Bake-Quality.md#appearance-fit).
 
 ![Simplifier against the reference](../../images/render/appearance-lite-reference.png)
 ![Fitted mesh against the reference](../../images/render/appearance-chosen-heat.png)
@@ -21,9 +21,11 @@ Measured results are in
 
 | Key | Symbol | What it does |
 |---|---|---|
-| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles` |
+| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
+| `fit.poses.samples` | | reference rays per pixel side |
+| `fit.poses.denoise` | | Open Image Denoise on each reference render |
 | `fit.poses.train_every_ms` | | camera-path spacing of the training poses |
 | `fit.poses.held_out_every_ms` | | which of those poses are held out and only scored |
 | `fit.optimise.steps` | $`K`$ | optimiser steps |
@@ -57,6 +59,20 @@ flat meshes, so visibility is judged on the geometry that is drawn.
 A warm start splits the worst fitted triangles along their longest edge, grows
 the mesh to a larger budget, and fits it again.
 
+## Alpha and cards
+
+References use [per-hit alpha testing](Bake-Method.md#fidelity-against-a-reference).
+The depth and copy G-buffers preserve source triangle and carved flags.
+Probe fits add independent, finer-spaced geometry views to front and depth
+losses, so close copies constrain rest movement without colour references.
+
+Materials accepted by the card baker are hidden from camera references and
+the fit, while remaining in the light bake. MASK1 card copies are excluded
+from the fit's frozen-copy draw and copy-coverage gate.
+
+The fitted candidate carries baked colours, with no texture alpha to test.
+The importer's `alpha_mask` triangle drop applies to its drawn geometry.
+
 ## Poses
 
 `size = [width, height]` is two positive integers. Coverage widens this view to
@@ -64,22 +80,22 @@ cover both panel orientations. Of the samples `train_every_ms` takes from the
 camera path, those at multiples of `held_out_every_ms` (time 0 aside) are held
 out of training and used only for scoring.
 
-## Probes and the settle budget
+## Probes and closure
 
-An import's [`geometry.probes`](Mesh-Import.md#probes) adds cube faces of probes to
-the training views and a held-out set of faces from a second seed. Probe
-placement and the faces kept are traced on the source alone, never on the
-start, so the reference set stays keyed on its own inputs.
+An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
+and held-out faces from a second seed. Placement and face selection use the
+source alone, so the reference set depends only on its own inputs.
 
-The prune ranks coverage: each triangle's pixels over the path's coverage poses,
-then over the probes' training faces. A triangle the path shows outranks every
-one only a probe shows, so probes add surface after the path's surface is kept.
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-A hole pixel is one where the fit shows the clear colour and the reference is
-more than `HOLE_DE` from it. With either import setting the fit writes the
-held-out holes of each budget it tried to `holes.json`, beside `stretch.json`.
-[`geometry.budget`](Mesh-Import.md#budget) keeps the budget where
-those holes stop falling.
+It keeps every triangle: one no coverage view shows may still face a camera they miss.
+A border point within the seam tolerance that the hold rule refuses stays at its start.
+
+A hole pixel shows no fitted surface where the reference differs from the clear
+colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
+more than `CLOSURE_GROWTH` of the held-out pixels beyond the start's holes.
 
 ## Cost model
 
@@ -152,9 +168,12 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 ```
 
 Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
-$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
-$[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
-clear colour, as the device and reference do.
+$`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps. After each, colours are
+clamped to $[0, 1]$ and every free point is held within `MOVE_REACH` of its
+shortest start edge from its start (a seam-held point follows its target): the
+fit refines the start in place, and a corner cannot slide across its own face.
+Where nothing is drawn the renderer shows the scene's clear colour, as the
+device and reference do.
 
 The fitted colours are a bake in their own right, so the fitted mesh enters the
 import at its writer and is not lit again. A fit is judged on held-out poses by
@@ -197,6 +216,17 @@ normal angle:
 \theta = \frac{1}{|\Omega^{\cap}|}\sum_{p \in \Omega^{\cap}} \arccos\!\left(\hat{n}_p \cdot n^{\mathrm{ref}}_p\right)
 ```
 
+A vertex normal is the area-weighted sum of its faces' normals. A two-sided
+sheet built from pairs of opposite triangles would sum to zero, which has no
+direction. So each pair counts once, wound to agree with its neighbours
+across shared edges, starting from the one-sided triangles.
+
+A sum shorter than `NORMAL_FLOOR` of the mean triangle cross product is divided by that
+floor instead of its length, and an interpolated pixel normal shorter than
+`NORMAL_FLOOR` likewise: both bound the gradient where a normal has no
+direction. The fit logs how many pairs it counted, how many could not agree
+with every neighbour, and how many positions sit under the floor.
+
 ### What is reported
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude the surface,
@@ -234,9 +264,6 @@ flowchart LR
     F --> W[write_lit_mesh<br/>face colours]
 ```
 
-[Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
-with its flat fit.
-
 ## Against the paper
 
 The fit keeps the paper's<sup>[[1]](../../Citations.md#hasselgren-2021)</sup> method: a decimated start with
@@ -249,7 +276,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
@@ -257,6 +284,8 @@ and a learning rate decaying geometrically. It changes the rest:
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
 Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
+The same holds for a point the colour views rarely see: each sporadic gradient moves it a full step, and the
+weak terms that hold it barely pull back, so without the reach it can drift many edge lengths off the source.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can

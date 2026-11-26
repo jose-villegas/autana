@@ -34,9 +34,9 @@ again until a group no longer simplifies<sup>[[54]](../../Citations.md#karis-202
 
 ```mermaid
 flowchart TB
-    Root[cluster tree root] --> Oct[octree over level 0]
+    Root[tree root] --> Fine[level 0's tree]
     Root --> Runs[coarse clusters,<br/>one run per group]
-    Oct -. "cull walks it" .-> Cut[the cut]
+    Fine -. "cull walks it" .-> Cut[the cut]
     Runs -. "only the cut's groups" .-> Cut
 ```
 
@@ -54,7 +54,7 @@ flowchart TB
 | Rule | Effect |
 |---|---|
 | A cluster draws when its error ≤ tolerance < its group's error, each projected at the group's sphere | neighbours in a group switch together: no crack |
-| Coarse below `tolerance − hysteresis_px`, fine above `tolerance + hysteresis_px` | a still camera never flickers |
+| Coarse below `tolerance - hysteresis_px`, fine above `tolerance + hysteresis_px` | a still camera never flickers |
 | A group whose radius spans more than `coverage_permille` of the height stays fine | no large coarse patch shimmering under drift |
 | A coarse group's finer groups are coarse too; a closing pass fixes float rounding | the cut stays crack-free |
 | Each instance every `lod.pick_every` frames, all on a scene's first | the cull walk only reads the bits |
@@ -81,8 +81,8 @@ frame-to-frame change beyond the finest level's own; triangles are those submitt
 ```sh
 python launcher/tools/r3d/lod/coverage_table.py --script HOST_RENDER.sh \
     --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
-    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
-    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
+    --render Sponza "--scene sponza --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```
 
 **Gate:** at the levels a pose picks, no more hidden surface shows and the
@@ -199,6 +199,6 @@ every arm.
 ```sh
 python launcher/tools/r3d/lod/morph_table.py --script HOST_RENDER.sh \
     --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
-    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
-    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
+    --render Sponza "--scene sponza --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```

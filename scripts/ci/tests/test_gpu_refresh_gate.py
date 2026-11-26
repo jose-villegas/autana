@@ -12,8 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 class GpuRefreshGateTests(unittest.TestCase):
     def test_mismatch_current_and_changed_inputs(self):
         for fingerprint, current, render in [('gpu', 'true', None), ('hosted', 'true', 'false'),
-                                             ('hosted', 'false', 'true'), ('hosted', 'error', None),
-                                             ('hosted', 'obsolete: main moved to X', 'false')]:
+                                             ('hosted', 'false', 'true'), ('hosted', 'error', None)]:
             with self.subTest(fingerprint=fingerprint, current=current), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 env = dict(os.environ, FINGERPRINT='hosted', GPU_ENV=str(root / 'env'),
@@ -44,4 +43,4 @@ class GpuRefreshGateTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(output.read_text(), f'render={render}\n')
                     self.assertEqual((root / 'github-env').read_text(), f"GPU_ENV={env['GPU_ENV']}\n")
-                    self.assertEqual((root / 'lookup').read_text(), 'scripts/ci/inputs_recorded.py hosted --skip-obsolete\n')
+                    self.assertEqual((root / 'lookup').read_text(), 'scripts/ci/inputs_recorded.py hosted\n')

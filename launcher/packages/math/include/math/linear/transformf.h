@@ -7,12 +7,27 @@
 #pragma once
 
 #include "math/linear/mat4f.h"
-#include "math/linear/quatf.h"
+#include "math/linear/quatf_direction.h"
 #include "math/linear/transform_template.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
 
-MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, mathf)
+MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, quatf_looking)
+
+/* The (1-w)a + w*b form keeps pose-blend bits and gives exact position and
+ * scale at w = 1. The clamp passes NaN through, giving NaN position, rotation
+ * and scale components. The derived matrix is rebuilt on use. */
+static inline transformf_t
+transformf_blend(const transformf_t* a, const transformf_t* b, float weight) {
+    const float to = mathf_clamp(weight, 0.0F, 1.0F);
+    const float from = 1.0F - to;
+    return (transformf_t){
+        .position = vec3f_add(vec3f_scale(a->position, from), vec3f_scale(b->position, to)),
+        .rotation = quatf_nlerp(a->rotation, b->rotation, to),
+        .scale = vec3f_add(vec3f_scale(a->scale, from), vec3f_scale(b->scale, to)),
+        .cached = false,
+    };
+}
 
 /* Only for static-storage initializers, where C11 cannot call transformf_identity(). */
 #define TRANSFORMF_IDENTITY                                                                                            \

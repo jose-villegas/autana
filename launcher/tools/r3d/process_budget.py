@@ -18,7 +18,7 @@ GIB = 1024 ** 3
 WSL_MEMORY_REQUIRED_BYTES = 6 * GIB
 WINDOWS_MEMORY_REQUIRED_BYTES = 2 * GIB
 # Estimates are (WSL RSS, GPU reserved, cgroup bytes), re-derived from workers' logged peaks.
-# The prepare estimate covers the parent and, for a source without bounced light, its pose pool.
+# The prepare estimate covers the process that traces the reference poses.
 FLOORS = (GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
 PREPARE_BYTES = (21 * GIB // 4, 0, 21 * GIB // 4)

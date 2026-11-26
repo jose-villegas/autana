@@ -14,6 +14,7 @@
 #include "asset/asset_pack.h"
 #include "core/pending.h"
 #include "math/geometry/box3f.h"
+typedef struct sh_probes sh_probes_t;
 #include "scene/entity/entity.h"
 
 typedef enum {
@@ -67,3 +68,23 @@ box3f_t scene_bounds(entity_t entity);
 /* While paused nothing advances or draws, as if no camera were active, and
  * the camera stays where it was; for an app drawing its own full screen. */
 void scene_set_paused(bool paused);
+
+/* Borrowed until changed or unloaded; NULL restores flat ambient. Only a loaded root accepts it. */
+void scene_set_probes(entity_t root, const sh_probes_t* probes);
+
+#define SCENE_CONTACT_BLOB_STRENGTH_DEFAULT 0.75F
+
+typedef enum { SCENE_CONTACT_BLOB, SCENE_CONTACT_FEET, SCENE_CONTACT_SILHOUETTE } scene_contact_shape_t;
+
+typedef struct {
+    float ground_y;
+    float strength;
+    scene_contact_shape_t shape;
+    bool warp;
+} scene_contact_t;
+
+/* Ground-plane contact shadows for this renderer; zero strength disables them. Contact must be non-NULL. */
+void scene_set_contact(entity_t renderer, const scene_contact_t* contact);
+
+/* An entity without a renderer returns a disabled contact shadow. */
+scene_contact_t scene_contact_get(entity_t renderer);

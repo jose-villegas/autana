@@ -5,7 +5,11 @@ import pathlib
 import re
 import statistics
 
+from build.c_header import read_define
 from capture import quarter_row
+from device_report import read_capture_text
+
+LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
 
 REPORT_PREFIX = "ms/frame avg/worst:"
 MS_PER_SECOND = 1000
@@ -15,7 +19,10 @@ BRACKET = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
 TOTAL = re.compile(r"\| total ([\d.]+)")
 DROPPED = re.compile(r"\+(\d+) dropped")  # brackets or laps a report refused a slot
 EXTERNAL = re.compile(r"(\S+) ([\d.]+)/([\d.]+) ms/block n=(\d+)")
-LAPS_PREFIX = "ms/frame laps:"
+LAPS_PREFIX = read_define(LAUNCHER / "main/profile/frame_laps.h", "FRAME_LAPS_PREFIX")
+# A frame profile take's lap line: its row, then the shell's lap line (launcher/test/frame_profile.h).
+LAPS_TAKE = re.compile(re.escape(read_define(LAUNCHER / "test/frame_profile.h", "FRAME_PROFILE_LAPS"))
+                       .replace("%s", r"(\S+)") + re.escape(LAPS_PREFIX))
 LAP_COST = re.compile(r"lap (\d+) ns")
 LAP_CORE = re.compile(r"cpu(\d+)((?: \S+ [\d.]+/\d+)+)")
 LAP = re.compile(r"(\S+) ([\d.]+)/(\d+)")
@@ -43,7 +50,7 @@ def frame_cost_windows(path, text=None):
     if text is None:
         if path is None or not pathlib.Path(path).exists():
             return None
-        text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+        text = read_capture_text(path)
     windows = [[(quarter_row(name, line), str(values[0])) for name, values in window["brackets"].items()]
                for line in text.splitlines() if (window := frame_cost_window(line)) is not None]
     if not windows or not all(windows):
@@ -64,12 +71,23 @@ def frame_cost_means(path, text=None):
 
 
 def frame_laps_window(line):
-    """{core: {lap: (ms, laps' own ms)}} per frame of one lap line, None for
-    another line: each lap's time with its starts' own cost taken out, and
-    that cost apart. A window that dropped laps is refused, as a bracket
-    window is."""
-    if LAPS_PREFIX not in line:
+    """{core: {lap: (ms, laps' own ms)}} per frame of one shell lap line, None
+    for another line, a take's included: each lap's time with its starts' own
+    cost taken out, and that cost apart. A window that dropped laps is
+    refused, as a bracket window is."""
+    if LAPS_PREFIX not in line or LAPS_TAKE.search(line):
         return None
+    return lap_window(line)
+
+
+def frame_laps_take(line):
+    """(row with its quarter, window) of one frame profile take's lap line,
+    None for another line."""
+    take = LAPS_TAKE.search(line)
+    return (quarter_row(take[1], line), lap_window(line)) if take else None
+
+
+def lap_window(line):
     laps = line.split(LAPS_PREFIX, 1)[1]
     dropped = DROPPED.search(laps)
     if dropped:
@@ -87,10 +105,27 @@ def frame_laps_means(path):
     """{core: {lap: (mean ms, mean laps' own ms)}} per frame over every lap
     window, a lap missing from a window counting as 0, so a core's laps keep
     adding up."""
-    text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(path)
     windows = [window for line in text.splitlines() if (window := frame_laps_window(line)) is not None]
     if not windows:
         raise ValueError(f"{path}: no lap windows")
+    return laps_means(windows)
+
+
+def frame_laps_takes(path):
+    """{row with its quarter: frame_laps_means' shape} over a capture's frame
+    profile takes, each row and quarter averaged apart."""
+    text = read_capture_text(path)
+    rows = {}
+    for line in text.splitlines():
+        if (take := frame_laps_take(line)) is not None:
+            rows.setdefault(take[0], []).append(take[1])
+    if not rows:
+        raise ValueError(f"{path}: no take lap lines")
+    return {row: laps_means(windows) for row, windows in rows.items()}
+
+
+def laps_means(windows):
     names = {}
     for window in windows:
         for core, laps in window.items():

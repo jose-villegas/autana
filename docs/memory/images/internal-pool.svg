@@ -7,50 +7,50 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="16" y="40" text-anchor="start" class="title">Shared internal memory pool</text>
 <text x="16" y="64" text-anchor="start">Measured free floor and largest block; linked ranges in address order</text>
 <text x="188" y="113" text-anchor="end">release</text>
-<text x="840" y="113" text-anchor="end" class="title">linked heap 162.9 KB (not measured at runtime)</text>
-<rect x="200.00" y="124" width="104.02" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="80695"><title>ESP-IDF IRAM: 80695 B</title></rect>
+<text x="840" y="113" text-anchor="end" class="title">linked heap 158.8 KB (not measured at runtime)</text>
+<rect x="200.00" y="124" width="103.07" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="80703"><title>ESP-IDF IRAM: 80703 B</title></rect>
 <text x="206.00" y="141" text-anchor="start" class="inside">78.8 KB</text>
-<rect x="304.02" y="124" width="21.44" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="16632"><title>IRAM we place: 16632 B</title></rect>
-<rect x="325.47" y="124" width="0.27" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="209"><title>Split slack incl. pad: 209 B</title></rect>
-<rect x="325.73" y="124" width="99.75" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="77376"><title>DRAM data + BSS: 77376 B</title></rect>
-<text x="331.73" y="141" text-anchor="start" class="inside">75.6 KB</text>
-<rect x="425.48" y="124" width="215.09" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="166848"><title>Internal heap: 166848 B</title></rect>
-<text x="431.48" y="141" text-anchor="start" class="inside">Internal heap 162.9 KB</text>
+<rect x="303.07" y="124" width="25.80" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="20200"><title>IRAM we place: 20200 B</title></rect>
+<rect x="328.87" y="124" width="0.28" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="217"><title>Split slack incl. pad: 217 B</title></rect>
+<rect x="329.15" y="124" width="99.62" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="78000"><title>DRAM data + BSS: 78000 B</title></rect>
+<text x="335.15" y="141" text-anchor="start" class="inside">76.2 KB</text>
+<rect x="428.77" y="124" width="207.72" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="162640"><title>Internal heap: 162640 B</title></rect>
+<text x="434.77" y="141" text-anchor="start" class="inside">158.8 KB</text>
 <text x="200" y="158" text-anchor="start" class="note">not measured at runtime: release has no console, and its boot log is lost in the USB reset gap</text>
-<text x="200" y="182" text-anchor="start" class="note">IRAM left before the next 256 B split step: 193 B; past it, every byte comes from the heap (linked heap 162.9 KB)</text>
+<text x="200" y="182" text-anchor="start" class="note">IRAM left before the next 256 B split step: 201 B; past it, every byte comes from the heap (linked heap 158.8 KB)</text>
 <text x="188" y="225" text-anchor="end">dev</text>
 <text x="840" y="225" text-anchor="end" class="title">free 98.2 KB, largest 64 KB of 283.5 KB internal heap</text>
-<rect x="200.00" y="236" width="109.38" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="84848"><title>ESP-IDF IRAM: 84848 B</title></rect>
+<rect x="200.00" y="236" width="108.37" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="84855"><title>ESP-IDF IRAM: 84855 B</title></rect>
 <text x="206.00" y="253" text-anchor="start" class="inside">82.9 KB</text>
-<rect x="309.38" y="236" width="23.37" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="18127"><title>IRAM we place: 18127 B</title></rect>
-<rect x="332.75" y="236" width="0.25" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="193"><title>Split slack incl. pad: 193 B</title></rect>
-<rect x="332.99" y="236" width="125.82" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="97600"><title>DRAM data + BSS: 97600 B</title></rect>
-<text x="338.99" y="253" text-anchor="start" class="inside">95.3 KB</text>
-<rect x="458.81" y="236" width="181.75" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="140992"><title>Internal heap: 140992 B</title></rect>
-<rect x="640.57" y="236" width="192.52" height="24" fill="#2da44e" data-label="Heap outside the linked pool" data-bytes="149347"><title>Heap outside the linked pool: 149347 B</title></rect>
-<rect x="458.81" y="236" width="244.65" height="24" fill="#116329" data-label="In use at runtime (floor)" data-bytes="189784"><title>In use at runtime (floor): 189784 B</title></rect>
-<text x="464.81" y="253" text-anchor="start" class="overlay-inside">in use 185.3 KB</text>
-<text x="709.46" y="253" text-anchor="start" class="inside">free 98.2 KB</text>
+<rect x="308.37" y="236" width="27.24" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="21328"><title>IRAM we place: 21328 B</title></rect>
+<rect x="335.61" y="236" width="0.07" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="57"><title>Split slack incl. pad: 57 B</title></rect>
+<rect x="335.69" y="236" width="126.96" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="99408"><title>DRAM data + BSS: 99408 B</title></rect>
+<text x="341.69" y="253" text-anchor="start" class="inside">97.1 KB</text>
+<rect x="462.65" y="236" width="173.84" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="136112"><title>Internal heap: 136112 B</title></rect>
+<rect x="636.49" y="236" width="196.97" height="24" fill="#2da44e" data-label="Heap outside the linked pool" data-bytes="154227"><title>Heap outside the linked pool: 154227 B</title></rect>
+<rect x="462.65" y="236" width="242.39" height="24" fill="#116329" data-label="In use at runtime (floor)" data-bytes="189784"><title>In use at runtime (floor): 189784 B</title></rect>
+<text x="468.65" y="253" text-anchor="start" class="overlay-inside">in use 185.3 KB</text>
+<text x="711.03" y="253" text-anchor="start" class="inside">free 98.2 KB</text>
 <text x="200" y="270" text-anchor="start" class="note">after opening the app that leaves the least; capture from build e63d733d83ee-dev</text>
-<text x="200" y="294" text-anchor="start" class="note">IRAM left before the next 256 B split step: 177 B; past it, every byte comes from the heap (free 98.2 KB)</text>
+<text x="200" y="294" text-anchor="start" class="note">IRAM left before the next 256 B split step: 41 B; past it, every byte comes from the heap (free 98.2 KB)</text>
 <text x="188" y="337" text-anchor="end">diag</text>
 <text x="840" y="337" text-anchor="end" class="title">free 83.1 KB, largest 50 KB of 268.6 KB internal heap</text>
-<rect x="200.00" y="348" width="109.97" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="85304"><title>ESP-IDF IRAM: 85304 B</title></rect>
+<rect x="200.00" y="348" width="108.96" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="85311"><title>ESP-IDF IRAM: 85311 B</title></rect>
 <text x="206.00" y="365" text-anchor="start" class="inside">83.3 KB</text>
-<rect x="309.97" y="348" width="23.37" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="18127"><title>IRAM we place: 18127 B</title></rect>
-<rect x="333.33" y="348" width="0.32" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="249"><title>Split slack incl. pad: 249 B</title></rect>
-<rect x="333.65" y="348" width="151.83" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="117776"><title>DRAM data + BSS: 117776 B</title></rect>
-<text x="339.65" y="365" text-anchor="start" class="inside">115.0 KB</text>
-<rect x="485.48" y="348" width="155.08" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="120304"><title>Internal heap: 120304 B</title></rect>
-<rect x="640.57" y="348" width="199.43" height="24" fill="#2da44e" data-label="Heap outside the linked pool" data-bytes="154707"><title>Heap outside the linked pool: 154707 B</title></rect>
-<rect x="485.48" y="348" width="244.85" height="24" fill="#116329" data-label="In use at runtime (floor)" data-bytes="189940"><title>In use at runtime (floor): 189940 B</title></rect>
-<text x="491.48" y="365" text-anchor="start" class="overlay-inside">in use 185.5 KB</text>
-<text x="736.33" y="365" text-anchor="start" class="inside">83.1 KB</text>
+<rect x="308.96" y="348" width="27.24" height="24" fill="#e36209" data-label="IRAM we place" data-bytes="21328"><title>IRAM we place: 21328 B</title></rect>
+<rect x="336.20" y="348" width="0.14" height="24" fill="#b1bac4" data-label="Split slack incl. pad" data-bytes="113"><title>Split slack incl. pad: 113 B</title></rect>
+<rect x="336.34" y="348" width="152.42" height="24" fill="#4c8bf5" data-label="DRAM data + BSS" data-bytes="119344"><title>DRAM data + BSS: 119344 B</title></rect>
+<text x="342.34" y="365" text-anchor="start" class="inside">116.5 KB</text>
+<rect x="488.76" y="348" width="147.72" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="115664"><title>Internal heap: 115664 B</title></rect>
+<rect x="636.49" y="348" width="203.51" height="24" fill="#2da44e" data-label="Heap outside the linked pool" data-bytes="159347"><title>Heap outside the linked pool: 159347 B</title></rect>
+<rect x="488.76" y="348" width="242.59" height="24" fill="#116329" data-label="In use at runtime (floor)" data-bytes="189940"><title>In use at runtime (floor): 189940 B</title></rect>
+<text x="494.76" y="365" text-anchor="start" class="overlay-inside">in use 185.5 KB</text>
+<text x="737.35" y="365" text-anchor="start" class="inside">83.1 KB</text>
 <text x="200" y="382" text-anchor="start" class="note">after opening the app that leaves the least; capture from build df73e55eee0a-diag</text>
-<text x="200" y="406" text-anchor="start" class="note">IRAM left before the next 256 B split step: 233 B; past it, every byte comes from the heap (free 83.1 KB)</text>
+<text x="200" y="406" text-anchor="start" class="note">IRAM left before the next 256 B split step: 97 B; past it, every byte comes from the heap (free 83.1 KB)</text>
 <line x1="200" y1="432" x2="840" y2="432" stroke="#8c959f"/>
-<line x1="640.57" y1="432" x2="640.57" y2="435" stroke="#8c959f"/>
-<text x="640.57" y="480" text-anchor="end" class="note">pool end 0x3fcdb700, 333.8 KB</text>
+<line x1="636.49" y1="432" x2="636.49" y2="435" stroke="#8c959f"/>
+<text x="636.49" y="480" text-anchor="end" class="note">pool end 0x3fcdb700, 333.8 KB</text>
 <text x="200" y="456" text-anchor="start">0x3fc88000</text>
 <text x="840" y="456" text-anchor="end">measured heap total 283.5 KB</text>
 <text x="16" y="504" text-anchor="start">IRAM alias starts at 0x40378000; axis shows the DRAM alias</text>

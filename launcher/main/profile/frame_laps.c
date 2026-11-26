@@ -59,4 +59,9 @@ frame_laps_take_report(uint32_t frames, char* out, size_t out_size) {
                              names_dropped, out, out_size);
 }
 
+void
+frame_laps_take_forget(void) {
+    frame_laps_forget(frame_laps_cores, FRAME_LAPS_CORES);
+}
+
 #endif

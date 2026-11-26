@@ -1,0 +1,5 @@
+I (1) device_tests: PERF TARGET stress-stack portrait r3d.draw: measured 7864 us, goal 8000 us, distance -1%
+I (2) device_tests: PERF TARGET stress-stack portrait: measured 10750 us, goal 11000 us, distance -2%
+I (3) device_tests: PERF TARGET stress-new portrait: measured 900 us, goal not yet pegged
+:1:test_stress_stack:PASS
+PERF TARGET SUMMARY: 0 unmet

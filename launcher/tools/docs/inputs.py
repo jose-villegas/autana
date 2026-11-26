@@ -71,3 +71,4 @@ def bake_inputs(found, lock):
         row = lock.get(item.key)
         entries[f"bake {item.output}"] = f"{item.key} {row['sha256']}" if row else f"unlocked {item.key}"
     return entries
+

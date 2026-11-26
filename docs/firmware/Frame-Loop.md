@@ -41,10 +41,11 @@ render size keeps the census without a separate allocation.
 
 ## Console requests
 
-In development builds a console verb that needs the frame loop (OPEN, HOME, APPS,
-RUNSUITE, FRAMEWATCH, SOUND, SCREENSHOT, FREEZE, RESUME, STEP) only posts into its
-own slot (`console/console_frame_request.h`); the console task never draws. A slot
-with an answer is answered by the pass; one without is taken where the shell acts.
+In development builds a console verb that needs the frame loop (OPEN, HOME,
+APPS, RUNSUITE, FRAMEWATCH, SOUND, SCREENSHOT, FREEZE, RESUME, STEP, FRAMEREC)
+only posts into its own slot (`console/console_frame_request.h`); the console
+task never draws. A slot with an answer is answered by the pass; one without is
+taken where the shell acts.
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +57,7 @@ sequenceDiagram
     Shell->>Slot: take SCREENSHOT, then OPEN, HOME or APPS
     Note over Slot,Shell: what a capture depends on is<br/>taken after it, so applied first
     Shell->>Slot: answer every slot with an answer
-    Note over Slot,Shell: FREEZE, RESUME or STEP<br/>FRAMEWATCH, SOUND
+    Note over Slot,Shell: FREEZE, RESUME or STEP<br/>FRAMEWATCH, SOUND, FRAMEREC
     Shell->>Slot: take RUNSUITE, run it, report it done
     Note over Slot,Shell: apply OPEN, HOME or APPS
     alt frozen, no STEP credit

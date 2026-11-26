@@ -10,7 +10,8 @@
  * cost, a few cycles each, can be taken back out: a lap around a vertex or a
  * triangle is not free next to the work it times. Once a window the laps
  * join the console as ms per frame per core, on a line of their own under
- * frame_cost's.
+ * frame_cost's; a frame profile take logs its own frames' laps the same way
+ * (launcher/test/frame_profile.h).
  *
  * A fork across the cores keeps the caller's split lap running into the
  * job: the dispatch is the split's, and the caller's slice opens its own
@@ -29,6 +30,9 @@
 
 #include "build/build_variant.h"
 #include "collections/strbuf.h"
+
+/* What a lap report line starts with on the console, for its readers (launcher/tools/perf/frame_cost.py). */
+#define FRAME_LAPS_PREFIX     "ms/frame laps:"
 
 /* Distinct lap names, across every core. */
 #define FRAME_LAPS_NAMES      24
@@ -77,6 +81,22 @@ frame_laps_charge_since(frame_laps_core_t* core, uint32_t now, frame_laps_slot_t
     frame_laps_switch(core, now, 0);
 }
 
+/* Forgets every core's window, so the next report covers only what runs from here: each lap that ran, its
+ * cycles and starts. A lap that started and has not yet run any cycles keeps its start. A lap still running
+ * keeps running and charges its cycles since its start to the next window, so forget between frames, where
+ * every frame has ended its laps (FRAME_LAP_END()). */
+static inline void
+frame_laps_forget(frame_laps_core_t cores[], int core_count) {
+    for (int c = 0; c < core_count; c++) {
+        for (int i = 0; i < FRAME_LAPS_NAMES; i++) {
+            if (cores[c].cycles[i] != 0) {
+                cores[c].cycles[i] = 0;
+                cores[c].starts[i] = 0;
+            }
+        }
+    }
+}
+
 /* "lap N ns", one lap's own cost, then "cpuN name ms/starts ..." for each
  * core: its laps that ran, in ms per frame to the microsecond and starts per
  * frame, cores apart by " | ", and " +N dropped" for `dropped` lap call
@@ -105,10 +125,9 @@ frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const n
             const uint32_t starts = frames == 0 ? 0 : cores[c].starts[i] / frames;
             strbuf_appendf(&line, " %s %u.%03u/%u", names[i], (unsigned)(us / 1000), (unsigned)(us % 1000),
                            (unsigned)starts);
-            cores[c].cycles[i] = 0;
-            cores[c].starts[i] = 0;
         }
     }
+    frame_laps_forget(cores, core_count);
     if (any && dropped > 0) {
         strbuf_appendf(&line, " +%d dropped", dropped);
     }
@@ -133,6 +152,9 @@ frame_laps_slot_t frame_laps_slot(const char* name);
 /* The window's laps as ms per frame, from the frame task between frames,
  * while no other core runs a lap. Returns the line's length. */
 int frame_laps_take_report(uint32_t frames, char* out, size_t out_size);
+
+/* Forgets the window, from the frame task between frames, while no other core runs a lap. */
+void frame_laps_take_forget(void);
 
 static inline __attribute__((always_inline)) void
 frame_laps_to(frame_laps_slot_t next) {

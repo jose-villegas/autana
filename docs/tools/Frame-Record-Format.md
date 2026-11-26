@@ -259,7 +259,8 @@ keyframe; a generated frame warps the preceding drawn frame through its VIEW.
 | Resident copies | a scene that copies pack meshes into its own memory tells the asset store (`asset_store_copies_add()`), so the copies are named by the entries they copy |
 | Generated frames | a `FRAME` flagged `FRAME_RECORD_GENERATED` was warped from the last drawn frame and has no `MESH` |
 | Picture check | `CHECK` hashes the half picture or the framebuffer, whichever the compose wrote, rows top to bottom; a host redraw is compared against it, as apitrace compares replayed images with references<sup>[[124]](../Citations.md#apitrace-usage)</sup> |
-| Live drops | a board drops whole frames when its send ring is full and counts them, as target tracers count what their buffer lost<sup>[[125]](../Citations.md#segger-systemview)</sup>; while FREEZE holds the picture it waits instead |
+| Live drops | a board drops whole frames when its send ring is full and counts them, as target tracers count what their buffer lost<sup>[[125]](../Citations.md#segger-systemview)</sup>; while FREEZE holds the picture it waits up to `FRAMEREC_HELD_WAIT_MS` for room first |
+| Reading | a stream that does not open with a `HEADER` of its fixed length is refused from that first head, before any length it claims is waited on; a `HEADER` of another `FRAME_RECORD_VERSION` is refused too |
 | Builds | development and host builds only: in a release build every `frame_record_*` call is an empty inline |
 | Owners | type numbers, flags and sizes: [`frame_record_format.h`](../../launcher/main/render/record/frame_record_format.h); the interval and stage name: [`frame_record.h`](../../launcher/main/render/record/frame_record.h) |
 

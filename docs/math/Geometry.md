@@ -214,7 +214,7 @@ Integer edges end at `right-1` and `bottom-1`; real queries include the closure 
 
 ![Integer circles against a half-open cell rectangle and floating-point segment hits against a circle.](../images/math/circle-rect-queries.png)
 
-The integer touch reaches `right−1`; segment markers show the first hit, including an inside start.
+The integer touch reaches `right - 1`; segment markers show the first hit, including an inside start.
 
 ## iso_surface
 

@@ -138,9 +138,13 @@ with `CMAKE_CURRENT_LIST_DIR` paths.
   from a manifest fails at link.
 - **Release is untouched.** Both scope symbols sit under `LAUNCHER_SELFTEST`,
   itself under `LAUNCHER_DEVELOPMENT`.
+- **Its stack chain is checked on its own.** The scoped image links a different
+  call graph, so CI's perf-scope build job runs
+  `launcher/tools/quality/stack_chain_gate.py` on it, with and without frame
+  laps, on every pull request that changes one of its inputs.
 
 > [!WARNING]
-> A perf-scoped build is not a gate: it drops behaviour coverage on purpose.
+> A perf-scoped build is not a behaviour gate: it drops behaviour coverage on purpose.
 > Never take a merge decision from one, and never compare its numbers with an
 > unscoped capture's: different scope, different instruction-cache layout.
 

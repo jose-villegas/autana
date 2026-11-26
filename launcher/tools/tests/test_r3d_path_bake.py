@@ -12,30 +12,20 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
-    from r3d import mitsuba_reference, path_bake, ray_query
+    from r3d import mitsuba_reference, ray_query
     from r3d.geometry import corner_normals
-    from r3d.light import bounced_light, light
+    from r3d.light import bounced_light, light, rows, vectors
     from r3d.mitsuba_reference import ALBEDO_CEILING, boosted_albedo
     from r3d.path_bake import PathLight
+    from r3d.import_settings import LIGHT_MODES, LIGHT_MODE_BAKED
     from tests import soup
-    from tests.soup import SUN, corridor, path_light
+    from tests.soup import SUN, Open, corridor, path_light
 except ImportError:
     np = None
 
-from tests.r3d_env import HAVE_MITSUBA, needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
-
-def have_llvm():
-    if not HAVE_MITSUBA:
-        return False
-    import drjit as dr
-
-    return "llvm_ad_rgb" in mitsuba_reference.import_mitsuba().variants() and dr.has_backend(dr.JitBackend.LLVM)
-
-
-needs_llvm = unittest.skipIf(not have_llvm(), "the LLVM variant needs libLLVM")
-
-SKY = {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
+SKY = {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.5, "rays": 16}
 
 
 def floor_only():
@@ -54,13 +44,23 @@ def bounce_at_the_wall_foot(**kwargs):
     return bounce_at(path_light(**kwargs), [0.5])[0]
 
 
-@needs_mitsuba
+@needs_llvm
 class BounceTests(unittest.TestCase):
+    def test_the_same_scene_gives_the_same_bytes(self):
+        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
+
     def test_a_floor_beside_a_sunlit_wall_gets_half_the_walls_radiance(self):
         # The wall covers half of the floor point's cosine-weighted hemisphere, and sends back its albedo times the
         # sun's irradiance over pi: intensity * cos(angle to the wall normal) = 2 * 0.6 / |(0.6, 1, 0)|.
         cos_wall = 0.6 / np.linalg.norm([0.6, 1.0, 0.0])
         np.testing.assert_allclose(bounce_at_the_wall_foot(), [0.5 * 0.5 * 2.0 * cos_wall] * 3, rtol=0.08)
+
+    def test_surface_bounce_omits_realtime_and_preserves_baked_bytes(self):
+        baseline = bounce_at_the_wall_foot()
+        for mode in LIGHT_MODES:
+            got = bounce_at_the_wall_foot(lights=[dict(SUN, mode=mode)])
+            expected = baseline if mode == LIGHT_MODE_BAKED else np.zeros_like(baseline)
+            self.assertEqual(got.tobytes(), expected.tobytes())
 
     def test_a_plane_alone_bounces_nothing(self):
         np.testing.assert_array_equal(bounce_at_the_wall_foot(source=floor_only()), [0.0, 0.0, 0.0])
@@ -105,11 +105,8 @@ class BounceTests(unittest.TestCase):
         one, two = bounce_at_the_wall_foot(bounces=1), bounce_at_the_wall_foot(bounces=2)
         self.assertGreater(two[0], one[0])
 
-    def test_the_same_scene_gives_the_same_bytes(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
-
     def test_ambient_is_left_to_the_bake(self):
-        ambient = {"type": "ambient", "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+        ambient = {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 1.0}
         np.testing.assert_array_equal(bounce_at_the_wall_foot(lights=[ambient]), [0.0, 0.0, 0.0])
 
     def test_points_split_over_many_chunks_each_get_their_own_answer(self):
@@ -117,58 +114,71 @@ class BounceTests(unittest.TestCase):
         path = path_light(rays=32)
         alone = np.array([bounce_at(path, [x])[0] for x in xs])
         self.assertGreater(alone[0, 0], alone[-1, 0] * 1.1, "the points must differ for the test to mean anything")
-        original = path_bake.BATCH
-        path_bake.BATCH = 2 * 32
+        original = ray_query.LAUNCH
+        ray_query.LAUNCH = 2 * 32
         try:
             split = bounce_at(path, xs)
         finally:
-            path_bake.BATCH = original
+            ray_query.LAUNCH = original
         np.testing.assert_allclose(split, alone, rtol=1e-6)
 
     def test_copies_at_one_position_share_one_gather(self):
         path = path_light(rays=32)
         points = np.array([[0.5, 0.0, 0.0], [0.5, 0.0, 0.0], [100.0, 0.0, 0.0]])
         normals = np.array([[0.0, 1.0, 0.0], [-0.6, 0.8, 0.0], [0.0, 1.0, 0.0]])
-        got = bounced_light(path, points, normals, 0.01, np.array([0, 0, 1]))
+        got = device_bounced(path, points, normals, np.array([0, 0, 1]))
         self.assertEqual(got[0].tolist(), got[1].tolist())
         mean = np.array([[-0.3, 0.9, 0.0]]) / np.linalg.norm([-0.3, 0.9, 0.0])
         np.testing.assert_allclose(got[0], path.bounce(points[:1], mean, 0.01)[0], rtol=1e-12)
 
 
+def device_bounced(bounce, points, normals, groups):
+    """bounced_light on NumPy points and normals, as NumPy rows."""
+    mi = bounce.mi
+    got = bounced_light(bounce, vectors(mi.Point3f, points), vectors(mi.Vector3f, normals), 0.01, groups)
+    return rows(got, len(points))
+
+
+def llvm():
+    mi = mitsuba_reference.import_mitsuba()
+    mi.set_variant("llvm_ad_rgb")
+    return mi
+
+
 class RoofOverhead:
     """Ray queries without a mesh: a roof over the points blocks every ray that heads up."""
 
-    def blocked(self, origins, directions):
-        return directions[:, 1] > 0
+    def __init__(self):
+        self.mi = llvm()
 
-
-class Open:
-    def blocked(self, origins, directions):
-        return np.zeros(len(origins), bool)
+    def device_blocked(self, ray, active=True):
+        return ray.d.y > 0
 
 
 class SideBounce:
     """Bounced light that depends on the side asked for: `up` for normals facing +y, `down` for -y."""
 
     def __init__(self, up=(0.0, 0.0, 0.0), down=(0.0, 0.0, 0.0)):
-        self.up, self.down, self.calls = np.array(up), np.array(down), []
+        self.up, self.down, self.calls, self.mi = np.array(up), np.array(down), [], llvm()
 
-    def bounce(self, points, normals, ray_offset):
+    def device_bounce(self, points, normals, ray_offset, side, frame):
+        import drjit as dr
+
+        normals = rows(normals, dr.width(normals))
         self.calls.append(normals)
-        return np.where(normals[:, 1:2] > 0, self.up, self.down)
+        return vectors(self.mi.Color3f, np.where(normals[:, 1:2] > 0, self.up, self.down))
 
 
-SUN_UP = {"type": "directional", "direction": [0.0, 1.0, 0.0], "color": [1.0, 1.0, 1.0], "intensity": 1.0}
+SUN_UP = soup.sun([0.0, 1.0, 0.0], [1.0, 1.0, 1.0], 1.0)
 
 
 def lit(points, normals, double, intersector, lights, **kwargs):
-    count = len(points)
     return light(np.array(points, float), np.array(normals, float), np.array(double), intersector, lights, 0.01, **kwargs)
 
 
-@unittest.skipIf(np is None, "the r3d environment is not installed")
+@needs_llvm
 class LightPlumbingTests(unittest.TestCase):
-    """What `light()` hands to the bounce and which side it keeps, without Mitsuba."""
+    """What `light()` hands to the bounce and which side it keeps, with fake rays and bounce."""
 
     UP, DOWN = [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]
 
@@ -200,7 +210,7 @@ class LightPlumbingTests(unittest.TestCase):
 
     def test_groups_with_gaps_in_their_ids_gather_once_each(self):
         bounce = SideBounce(up=(1, 1, 1))
-        got = bounced_light(bounce, np.zeros((4, 3)), np.tile(self.UP, (4, 1)), 0.01, np.array([7, 7, 3, 9]))
+        got = device_bounced(bounce, np.zeros((4, 3)), np.tile(self.UP, (4, 1)), np.array([7, 7, 3, 9]))
         self.assertEqual(len(bounce.calls[0]), 3)
         np.testing.assert_allclose(got, np.ones((4, 3)))
 
@@ -226,48 +236,21 @@ class LightPlumbingTests(unittest.TestCase):
             self.assertEqual(recorder.calls[0].tolist(), [want])
 
 
-@needs_mitsuba
 @needs_llvm
-class LlvmBounceTests(unittest.TestCase):
-    def setUp(self):
-        ray_query.VARIANT = "llvm_ad_rgb"
-
-    def tearDown(self):
-        ray_query.VARIANT = "scalar_rgb"
-        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
-
+class VariantTests(unittest.TestCase):
     def test_a_path_light_traces_on_the_variant_it_is_given_whatever_the_bake_variant(self):
-        ray_query.VARIANT = "scalar_rgb"
-        scalar = bounce_at_the_wall_foot()
         source = corridor()
         path = PathLight(source, [SUN], set(), SimpleNamespace(bounces=1, rays=256), 1.0, "llvm_ad_rgb")
-        self.assertEqual((path.mi.variant(), path.scalar), ("llvm_ad_rgb", False))
-        np.testing.assert_allclose(bounce_at(path, [0.5])[0], scalar, rtol=1e-4)
+        self.assertEqual(path.mi.variant(), "llvm_ad_rgb")
+        np.testing.assert_allclose(bounce_at(path, [0.5])[0], bounce_at_the_wall_foot(), rtol=1e-4)
 
-    def test_the_wall_answer_holds_on_the_llvm_variant(self):
-        ray_query.VARIANT = "scalar_rgb"
-        scalar = bounce_at_the_wall_foot()
-        mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
-        ray_query.VARIANT = "llvm_ad_rgb"
-        np.testing.assert_allclose(bounce_at_the_wall_foot(), scalar, rtol=1e-4)
-
-    def test_colour_and_point_order_survive_the_llvm_output(self):
+    def test_colour_and_point_order_survive_the_device_output(self):
         kd = (0.9, 0.5, 0.15)
         path = path_light(source=corridor(wall_kd=kd), rays=32)
         xs = [0.5, 8.0, 90.0]
         alone = np.array([bounce_at(path, [x])[0] for x in xs])
         wall_albedo = np.array(kd) ** 2.2
         np.testing.assert_allclose(alone[0] / alone[0].sum(), wall_albedo / wall_albedo.sum(), rtol=0.08)
-        original = path_bake.BATCH
-        path_bake.BATCH = 2 * 32
-        try:
-            split = bounce_at(path, xs)
-        finally:
-            path_bake.BATCH = original
-        np.testing.assert_allclose(split, alone, rtol=1e-4)
-
-    def test_the_same_scene_gives_the_same_bytes_on_llvm(self):
-        self.assertEqual(bounce_at_the_wall_foot(bounces=2).tobytes(), bounce_at_the_wall_foot(bounces=2).tobytes())
 
 
 if __name__ == "__main__":

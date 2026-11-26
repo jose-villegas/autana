@@ -4,7 +4,6 @@ import pathlib
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import render_asset  # noqa: E402
@@ -12,10 +11,10 @@ from asset import table_asset  # noqa: E402
 
 
 class RenderAssetTests(unittest.TestCase):
-    def settings(self, text):
+    def settings(self, text, name="app.render.toml"):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
-        path = pathlib.Path(folder.name) / "app.render.toml"
+        path = pathlib.Path(folder.name) / name
         path.write_text(text, encoding="utf-8")
         return path
 
@@ -25,7 +24,7 @@ class RenderAssetTests(unittest.TestCase):
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
                           "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25}
                          | {key: value for key, value in render_asset.read(render_asset.DEFAULT).items()
-                            if key.startswith(("anim.", "texture."))})
+                            if key.startswith(("anim.", "texture.", "small_fill.", "settle."))})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -38,7 +37,7 @@ class RenderAssetTests(unittest.TestCase):
                                                   + [(key, [int(value * (1 << render_asset.FRAC_BITS))
                                                             if render_asset.fields()[key][0] == "float" else value])
                                                      for key, value in render_asset.read(render_asset.DEFAULT).items()
-                                                     if key.startswith(("anim.", "texture."))],
+                                                     if key.startswith(("anim.", "texture.", "small_fill.", "settle."))],
                                                  4))
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):
@@ -67,15 +66,64 @@ class RenderAssetTests(unittest.TestCase):
             with self.subTest(body=body), self.assertRaisesRegex(ValueError, "its own line"):
                 render_asset.fields(f"typedef struct {{\n    {body}\n}} render_settings_t;")
 
-    def test_generated_fields_carry_their_ranges(self):
+    def test_generated_fields_carry_the_interval_their_comment_gives(self):
         header = render_asset.header()
         self.assertIn("X(lod.blend, int, value >= 0 && value < RENDER_LOD_BLEND_COUNT)", header)
         self.assertIn("X(lod.blend_px, float, value > 0.0F && value <= RENDER_LOD_BLEND_PX_MAX)", header)
         self.assertIn("X(lod.tolerance_px, float, true)", header)
-        text = render_asset.DEFAULT.read_text(encoding="utf-8")
-        text += '\n[ranges."lod.tolerance_px"]\nmin = 1.0\nmax = 2.0\n'
-        with mock.patch.object(render_asset, "DEFAULT", self.settings(text)):
-            self.assertIn("X(lod.tolerance_px, float, value >= 1.0F && value <= 2.0F)", render_asset.header())
+        source = render_asset.HEADER.read_text(encoding="utf-8").replace(
+            "float tolerance_px;  /* basic:", "float tolerance_px;  /* basic [1.0, 2.5):")
+        self.assertEqual(render_asset.fields(source)["lod.tolerance_px"][3], "value >= 1.0F && value < 2.5F")
+
+    def test_an_interval_bound_must_be_a_number_or_a_c_constant(self):
+        for bound in ("max", "1.2.3"):  # each passes the tier comment's shape and fails BOUND
+            source = render_asset.HEADER.read_text(encoding="utf-8").replace(
+                "float tolerance_px;  /* basic:", f"float tolerance_px;  /* basic [0.0, {bound}]:")
+            with self.subTest(bound=bound), self.assertRaisesRegex(
+                    ValueError, f"tolerance_px's bound '{bound}' is not a number or a C constant"):
+                render_asset.fields(source)
+
+    def test_an_interval_is_the_c_test_its_brackets_and_bounds_give(self):
+        for kind, bounds, test in (("float", ("[", "-2", "-0.5", "]"), "value >= -2.0F && value <= -0.5F"),
+                                   ("float", ("(", "0", "8", ")"), "value > 0.0F && value < 8.0F"),
+                                   ("float", ("(", "0", "RANGE_MAX", "]"), "value > 0.0F && value <= RANGE_MAX"),
+                                   ("int", ("[", "-3", "4", ")"), "value >= -3 && value < 4"),
+                                   ("int", ("[", "0", "C_COUNT", ")"), "value >= 0 && value < C_COUNT"),
+                                   ("float", None, "true")):
+            with self.subTest(bounds=bounds):
+                self.assertEqual(render_asset.interval(kind, bounds, "field"), test)
+
+    def test_an_interval_that_cannot_hold_its_field_is_refused(self):
+        for kind, bounds, message in (("bool", ("[", "0", "1", "]"), "is a bool and takes no interval"),
+                                      ("int", ("[", "0", "1.5", "]"), "is an int and its bound 1.5 is not"),
+                                      ("float", ("[", "5", "2", "]"), "starts above its end"),
+                                      ("float", ("[", "-1", "-2.5", "]"), "starts above its end")):
+            with self.subTest(bounds=bounds), self.assertRaisesRegex(ValueError, message):
+                render_asset.interval(kind, bounds, "field")
+
+    def test_an_enum_member_counts_on_from_its_given_value(self):
+        text = "typedef enum {\n    A = 4, /* a, b */\n    B, // c,\n    C_COUNT\n} c_t;\n"
+        for name, value in (("A", 4), ("B", 5), ("C_COUNT", 6), ("D", None)):
+            with self.subTest(name=name):
+                self.assertEqual(render_asset.enum_member(text, name), value)
+
+    def test_a_bound_is_its_constants_c_value(self):
+        for bound, value in (("RENDER_LOD_BLEND_PX_MAX", 4.0), ("SMALL_FILL_STYLE_COUNT", 3.0),
+                             ("RENDER_LOD_BLEND_COUNT", 2.0), ("-2", -2.0)):
+            with self.subTest(bound=bound):
+                self.assertEqual(render_asset.constant(bound), value)
+        self.assertTrue(render_asset.within(2, ("[", "0", "SMALL_FILL_STYLE_COUNT", ")")))
+        self.assertFalse(render_asset.within(3, ("[", "0", "SMALL_FILL_STYLE_COUNT", ")")))
+        with self.assertRaisesRegex(ValueError, "NO_SUCH is not a numeric #define or an enum member"):
+            render_asset.constant("NO_SUCH")
+
+    def test_a_file_value_outside_its_fields_interval_is_refused(self):
+        path = self.settings("[lod]\nblend_px = 1000.0\n")
+        with self.assertRaisesRegex(ValueError, "lod.blend_px = 1000.0 is outside"):
+            render_asset.read(path)
+        with self.assertRaisesRegex(ValueError, "lod.blend_px = 0.0 is outside"):
+            render_asset.read(self.settings("[lod]\nblend_px = 0.0\n"))
+        self.assertEqual(render_asset.read(self.settings("[lod]\nblend_px = 0.5\n"))["lod.blend_px"], 0.5)
 
     def test_the_generated_default_matches_the_tree(self):
         header = render_asset.SETTINGS / "render_settings_default.h"

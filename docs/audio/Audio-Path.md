@@ -505,7 +505,7 @@ Noise floor is broadband RMS after settling; SNR is the median paired 1 kHz tone
 
 Each ES8311 EQ word stores six signed power-of-two (CSD) terms.
 The sum is the coefficient; feedback is added:
-`y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] + a1*y[n-1] + a2*y[n-2]`.
+$`y[n] = b_0 x[n] + b_1 x[n-1] + b_2 x[n-2] + a_1 y[n-1] + a_2 y[n-2]`$.
 
 ```mermaid
 ---
@@ -533,9 +533,9 @@ title EQ word, high byte first, diagram starts at bit 31
 
 | Rule | Detail |
 |---|---|
-| Field | Bit 4 is sign (1 = negative); bits 3:0 give shift `k`, term value `±2^-k` |
+| Field | Bit 4 is sign (1 = negative); bits 3:0 give shift `k`, term value $`\pm 2^{-k}`$ |
 | Value | Sum the terms; range -6 to +6, with resolution limited by the term budget |
-| Zero | Cancelling `+2^-15` and `-2^-15` pairs (fields 15 and 31); an all-zero word means +6 |
+| Zero | Cancelling $`+2^{-15}`$ and $`-2^{-15}`$ pairs (fields 15 and 31); an all-zero word means +6 |
 | Feedback | Stored `a` is minus the textbook denominator coefficient |
 | Design | `eq_encode()` selects the nearest representable six-term sum; nonfinite and out-of-range inputs raise |
 | Registers | `audio_codec_eq.h` owns coefficient locations and term constants |
@@ -545,7 +545,7 @@ Firia Labs CodeX publishes Everest's DAC bass words at B0/B1/A1 registers
 They cross-check the layout and feedback sign.<sup>[[109]](../Citations.md#firia-codex-codec)</sup>
 
 Decoded A1 falls monotonically from 0.906 to -0.869 and DC gain steps 1.0 dB
-per row. At G=0, A1 matches `exp(-2*pi*250/16000)`.
+per row. At G=0, A1 matches $`e^{-2\pi \cdot 250/16000}`$.
 
 The Q2.28 reading was wrong: the captured high-pass words decode to +0.8 dB
 at 50–150 Hz, +0.9 dB at 1 kHz and +2.2 dB at 4 kHz, matching measured
@@ -1209,5 +1209,5 @@ matched rates. Synthetic material comes from `generate_noise.py` (`pink` or
 `babble`, `--seconds`, `--seed`).
 
 `eq_design_biquad()` returns RBJ `[b0,b1,b2,a1,a2]` with normalized denominator
-`1 - a1*z^-1 - a2*z^-2`. `eq_encode()` packs signed power-of-two terms.
+$`1 - a_1 z^{-1} - a_2 z^{-2}`$. `eq_encode()` packs signed power-of-two terms.
 Synthetic material and speech-reference requirements are in [data](data/README.md).

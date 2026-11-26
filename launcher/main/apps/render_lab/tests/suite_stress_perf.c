@@ -21,10 +21,12 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/tune.h"
 #include "frame/test_frame.h"
+#include "frame_profile.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
 #include "scene/animator/animator.h"
+#include "scene/scene_anim_stages.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -39,11 +41,17 @@ static const lab_perf_quarter_t* quarter;
 
 static int size_step;
 
-/* r3d's stages, then the recorder's: a goal row's stage goals in this order. */
-enum { STRESS_PERF_STAGES = R3D_STAGE_COUNT + 1 };
+/* Goal rows store raster stages, the recorder and, for skinned presets, animation stages. */
+enum {
+    STRESS_PERF_STATIC_STAGES = R3D_STAGE_COUNT + 1,
+    STRESS_PERF_ANIMATION_STAGES = 3,
+    STRESS_PERF_STAGES = STRESS_PERF_STATIC_STAGES + STRESS_PERF_ANIMATION_STAGES,
+    STRESS_PERF_SAMPLED_STAGES = STRESS_PERF_STAGES + 1
+};
 
 static const char* const stress_perf_stages[STRESS_PERF_STAGES] = {
-    R3D_STAGE_CULL_NAME, R3D_STAGE_TRANSFORM_NAME, R3D_STAGE_DRAW_NAME, R3D_STAGE_UPSCALE_NAME, FRAME_RECORD_STAGE_NAME,
+    R3D_STAGE_CULL_NAME,     R3D_STAGE_TRANSFORM_NAME,   R3D_STAGE_DRAW_NAME,         R3D_STAGE_UPSCALE_NAME,
+    FRAME_RECORD_STAGE_NAME, SCENE_ANIM_STAGE_POSE_NAME, SCENE_ANIM_STAGE_LIGHT_NAME, SCENE_ANIM_STAGE_SKIN_NAME,
 };
 static int saved_filter;
 static int saved_layout;
@@ -100,10 +108,14 @@ static const stress_goal_t stress_goals[] = {
     {"stress-near", "landscape", "default", {410, 1580, 11130, 2440, 0}, {15490, 17820}},
     {"stress-few-copies", "portrait", "default", {260, 1090, 5290, 1990, 0}, {8600, 9890}},
     {"stress-few-copies", "landscape", "default", {260, 1080, 5720, 2050, 0}, {9080, 10450}},
+    {"stress-carved-near", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-near", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-far", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-far", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-textured", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
-    {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
-    {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
+    {"stress-textured-far", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-textured-far", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
     {"stress-foliage-near", "portrait", "default", {200, 200, 24720, 2430, 0}, {27520, 31650}},
     {"stress-foliage-near", "landscape", "default", {200, 190, 22430, 2410, 0}, {25200, 28980}},
     {"stress-foliage-near-opaque", "portrait", "default", {190, 220, 31020, 2420, 0}, {33800, 38870}},
@@ -112,10 +124,61 @@ static const stress_goal_t stress_goals[] = {
     {"stress-foliage-far", "landscape", "default", {350, 1790, 15260, 2250, 0}, {19610, 22560}},
     {"stress-foliage-far-opaque", "portrait", "default", {340, 1800, 18230, 2260, 0}, {22610, 26010}},
     {"stress-foliage-far-opaque", "landscape", "default", {340, 1790, 15130, 2260, 0}, {19510, 22440}},
+    /* Butterfly goals cover flapping wings across layout seeds; stress.flap stays unpegged. */
+    {"stress-butterflies", "portrait", "default", {580, 2510, 6490, 2200, 10}, {11740, 13510}},
+    {"stress-butterflies", "landscape", "default", {570, 2500, 6860, 2230, 10}, {12100, 13920}},
+    {"stress-few-butterflies", "portrait", "default", {190, 290, 1950, 2250, 10}, {4640, 5340}},
+    {"stress-few-butterflies", "landscape", "default", {200, 290, 2040, 2270, 10}, {4760, 5480}},
+    {"stress-record", "portrait", "default", {290, 1070, 9790, 2420, 1330}, {14810, 17040}},
+    {"stress-record", "landscape", "default", {290, 1070, 10620, 2420, 1320}, {15650, 18000}},
     {"stress-cull-setup", "portrait", "default", {150, 60, 1000, 2250, 0}, {3420, 3940}},
     {"stress-cull-setup", "landscape", "default", {140, 70, 980, 2250, 0}, {3410, 3930}},
     {"stress-baked-tree", "portrait", "default", {370, 580, 6090, 2200, 10}, {9150, 10530}},
     {"stress-baked-tree", "landscape", "default", {390, 650, 7230, 2310, 10}, {10550, 12140}},
+    {"stress-skinned-sh-blobs", "portrait", "default", {310, 1230, 7090, 2040, 10, 1530, 250, 2900}, {15260, 17550}},
+    {"stress-skinned-sh-blobs", "landscape", "default", {310, 1240, 7810, 2130, 10, 1530, 250, 2890}, {16060, 18470}},
+    {"stress-skinned-blob-warped", "portrait", "default", {310, 1230, 7220, 2030, 10, 1550, 250, 2900}, {15400, 17710}},
+    {"stress-skinned-blob-warped",
+     "landscape",
+     "default",
+     {310, 1210, 8080, 2140, 10, 1540, 250, 2920},
+     {16370, 18830}},
+    {"stress-contact-blobs", "portrait", "default", {190, 720, 4160, 2180, 10}, {7190, 8270}},
+    {"stress-contact-blobs", "landscape", "default", {200, 700, 7320, 2210, 10}, {10320, 11870}},
+    {"stress-skinned-feet-blobs", "portrait", "default", {320, 1240, 7680, 2020, 10, 1540, 250, 2880}, {15810, 18190}},
+    {"stress-skinned-feet-blobs", "landscape", "default", {310, 1230, 8940, 2110, 10, 1530, 250, 2900}, {17160, 19740}},
+    {"stress-skinned-silhouette-warped",
+     "portrait",
+     "default",
+     {310, 1230, 8250, 2090, 10, 1560, 250, 2900},
+     {16480, 18960}},
+    {"stress-skinned-silhouette-warped",
+     "landscape",
+     "default",
+     {310, 1240, 9170, 2150, 10, 1550, 260, 2900},
+     {17490, 20120}},
+    {"stress-skinned-silhouette-blobs",
+     "portrait",
+     "default",
+     {310, 1240, 7670, 2100, 10, 1550, 250, 2910},
+     {15900, 18290}},
+    {"stress-skinned-silhouette-blobs",
+     "landscape",
+     "default",
+     {320, 1230, 8460, 2170, 10, 1550, 260, 2890},
+     {16810, 19340}},
+    {"stress-small-grain", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-grain", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-dither", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-dither", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-off", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-small-off", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-stack-skip", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-stack-skip", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-settle", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-settle", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-blend", "portrait", "default", {0, 0, 0, 0, 0}, {0, 0}},
+    {"stress-carved-blend", "landscape", "default", {0, 0, 0, 0, 0}, {0, 0}},
 };
 
 static const char*
@@ -137,15 +200,15 @@ stress_goal(void) {
     return NULL;
 }
 
-static void
-report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], int poses) {
+static __attribute__((noinline)) void
+report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_SAMPLED_STAGES], int poses, int stages) {
     char row[LAB_PERF_ROW_NAME_SIZE];
-    const bool own_size = size_step == STRESS_PERF_NO_STEP;
+    const bool own_size = strcmp(goal->size, STRESS_PERF_DEFAULT_SIZE) == 0;
     int length = snprintf(row, sizeof row, "%s %s%s%s", goal->key, goal->quarter, own_size ? "" : " ",
                           own_size ? "" : goal->size);
     TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof row);
     int64_t total = 0;
-    for (int i = 0; i < STRESS_PERF_STAGES; i++) {
+    for (int i = 0; i < stages; i++) {
         char stage[LAB_PERF_ROW_NAME_SIZE];
         length = snprintf(stage, sizeof stage, "%s %s", row, stress_perf_stages[i]);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
@@ -154,6 +217,12 @@ report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_STAGES], 
         total += mean;
     }
     lab_perf_named_budget(row, total, total, &goal->sum, true);
+    if (((const stress_params_t*)preset->data)->surface == STRESS_SURFACE_HINGED) {
+        char stage[LAB_PERF_ROW_NAME_SIZE];
+        length = snprintf(stage, sizeof stage, "%s %s", row, STRESS_FLAP_STAGE_NAME);
+        TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof stage);
+        (void)perf_goal(stage, sums[STRESS_PERF_STAGES] / poses, 0);
+    }
 }
 
 /* The recorder's sink for a timed run: takes every frame and keeps nothing. */
@@ -165,8 +234,16 @@ discard_frame(void* sink, const uint8_t* bytes, size_t count) {
     return true;
 }
 
+static struct {
+    const char* sampled[STRESS_PERF_SAMPLED_STAGES];
+    int64_t sums[STRESS_PERF_SAMPLED_STAGES];
+    int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
+}* samples;
+
 static void
 release_fixture(void) {
+    memory_free(samples);
+    samples = NULL;
     frame_record_stop();
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
@@ -175,17 +252,15 @@ release_fixture(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), saved_layout));
 }
 
-static void
-test_stress_stages(void) {
-    const stress_goal_t* goal = stress_goal();
-    saved_filter = render_lab_upscale_selected();
-    saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
-    const stress_params_t* params = preset->data;
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), LAB_LAYOUT_FULL));
-    lab_test_enter(&saved, &render_lab, preset->key);
-    suite_set_test_cleanup(release_fixture);
-    test_hold_quarter(quarter->quarter);
-    (void)lab_test_frame_dt(0, false, NULL);
+static __attribute__((noinline)) entity_t
+stress_camera(void) {
+    const lab_path_t path = preset->path();
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
+    return path.entity;
+}
+
+static __attribute__((noinline)) void
+configure_stress(const stress_params_t* params) {
     if (size_step != STRESS_PERF_NO_STEP) {
         const resolution_step_t size = render_lab_ladder[size_step];
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
@@ -197,23 +272,45 @@ test_stress_stages(void) {
         TEST_ASSERT_TRUE_MESSAGE(frame_record_start(&discard, FRAME_RECORD_KEYFRAME_EVERY),
                                  "the recorder did not start");
     }
-    const lab_path_t path = preset->path();
-    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
-    const entity_t camera = path.entity;
+}
+
+static void
+test_stress_stages(void) {
+    const stress_goal_t* goal = stress_goal();
+    saved_filter = render_lab_upscale_selected();
+    saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
+    const stress_params_t* params = preset->data;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), LAB_LAYOUT_FULL));
+    lab_test_enter(&saved, &render_lab, preset->key);
+    suite_set_test_cleanup(release_fixture);
+    samples = memory_alloc(sizeof *samples, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(samples);
+    memset(samples, 0, sizeof *samples);
+    test_hold_quarter(quarter->quarter);
+    (void)lab_test_frame_dt(0, false, NULL);
+    configure_stress(params);
+    const entity_t camera = stress_camera();
     TEST_ASSERT_FALSE(handle_is_none(camera));
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
     const uint32_t duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
-    int64_t sums[STRESS_PERF_STAGES] = {0};
+    const bool animated = stress_skinned(params);
+    const int stages = animated ? STRESS_PERF_STAGES : STRESS_PERF_STATIC_STAGES;
+    const uint32_t dt_ms = animated ? LAB_TEST_FRAME_MS : 0;
+    memcpy(samples->sampled, stress_perf_stages, sizeof stress_perf_stages);
+    samples->sampled[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
+    const render_settings_t* settings = render_context_settings(render_context_main());
+    const int draws =
+        params->hold_camera ? settings->settle.hold_frames + RENDER_SETTLE_BANDS : FRAME_PROFILE_REPLAY_DRAWS;
     for (int i = 0; i < params->perf_poses; i++) {
-        int64_t stage_us[STRESS_PERF_STAGES];
-        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)((int64_t)duration_ms * i / params->perf_poses),
-                                    preset->key, quarter->name, stress_perf_stages, STRESS_PERF_STAGES, stage_us);
-        for (int stage = 0; stage < STRESS_PERF_STAGES; stage++) {
-            sums[stage] += stage_us[stage];
+        render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),
+                                    preset->key, quarter->name, samples->sampled, STRESS_PERF_SAMPLED_STAGES,
+                                    samples->stage_us, dt_ms, draws);
+        for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {
+            samples->sums[stage] += samples->stage_us[stage];
         }
     }
-    report_goals(goal, sums, params->perf_poses);
+    report_goals(goal, samples->sums, params->perf_poses, stages);
     release_fixture();
     suite_clear_test_cleanup();
 }

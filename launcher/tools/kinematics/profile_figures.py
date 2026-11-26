@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Plot a full and a short motion profile's place and speed for docs/kinematics/Profile.md; --cc CC --out DIR."""
 import pathlib
-import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
-from math_figures import PANEL_SIZE, ROOT
+from kinematics_figures import PANEL_SIZE, ROOT
 from docs.figures import probe_into_folder
 from docs.producer import Producer
 from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, subplots

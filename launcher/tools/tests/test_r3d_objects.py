@@ -23,16 +23,18 @@ from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
                                    source_objects)
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
-from soup import subdivided
+from soup import Soup, subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
 from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
+from tests.r3d_env import needs_llvm  # noqa: E402
 
-POINTS = np.array([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]])
-TRIANGLES = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+SHAPE = Soup([[0., 0., 0.], [3., 0., 0.], [0., 2., 0.], [0., 0., 1.]],
+             [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+POINTS, TRIANGLES = SHAPE.vertices, SHAPE.faces
 MATERIALS = np.array([0, 1, 0, 1])
 
 
@@ -240,22 +242,23 @@ class ObjectsTests(unittest.TestCase):
                                tri_o=np.repeat([0, 1], len(TRIANGLES)), object_names=['first', 'copy'],
                                textures=[Texture(path)])
 
-    def test_alpha_object_disappears(self):
+    def test_alpha_objects_keep_all_reference_triangles(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[len(TRIANGLES):] = 0
             objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
-        self.assertEqual([obj.name for obj in objects], ['first'])
-        np.testing.assert_array_equal(triangles, src.tri_v[:len(TRIANGLES)])
+        self.assertEqual([obj.name for obj in objects], ['first', 'copy'])
+        np.testing.assert_array_equal(triangles, src.tri_v)
+        self.assertEqual(src.alpha_test.keep_alpha, 0.5)
 
-    def test_alpha_partial_copy_no_longer_matches(self):
+    def test_alpha_copy_matching_uses_full_reference_geometry(self):
         with tempfile.TemporaryDirectory() as directory:
             src = self.alpha_source(directory)
             src.tri_t[-1] = 0
             objects, triangles = masked_objects(src, SimpleNamespace(alpha_keep=0.5))
-        self.assertEqual([len(obj.triangles) for obj in objects], [4, 3])
-        np.testing.assert_array_equal(triangles, src.tri_v[:-1])
-        self.assertEqual(len(match_instances(objects)), 2)
+        self.assertEqual([len(obj.triangles) for obj in objects], [4, 4])
+        np.testing.assert_array_equal(triangles, src.tri_v)
+        self.assertEqual(len(match_instances(objects)), 1)
 
     def test_alpha_none_keeps_everything(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -492,16 +495,18 @@ class InstancesFigureTests(unittest.TestCase):
             np.testing.assert_allclose(projected[0], [pixel % size[0] + 0.5, pixel // size[0] + 0.5])
             self.assertGreater(depth[0], 1.)
 
+    @needs_llvm
     def test_edge_occlusion_wall(self):
         from r3d.objects.instances_figure import edge_visibility
         from r3d.ray_query import RayQuery
 
         wall = np.array([[-5., -5., -5.], [5., -5., -5.], [5., 5., -5.], [-5., 5., -5.]])
-        query = RayQuery(wall, np.array([[0, 1, 2], [0, 2, 3]]), variant='scalar_rgb')
+        query = RayQuery(wall, np.array([[0, 1, 2], [0, 2, 3]]), variant='llvm_ad_rgb')
         for z, expected in ((-10., False), (-2., True)):
             _, visible = edge_visibility(query, np.zeros(3), np.array([-1., 0., z]), np.array([1., 0., z]), 0.001)
             self.assertTrue((visible == expected).all())
 
+    @needs_llvm
     def test_visible_segments_near_plane(self):
         from r3d.objects.instances_figure import edge_visibility, project_points, visible_segments
         from r3d.ray_query import RayQuery
@@ -509,7 +514,7 @@ class InstancesFigureTests(unittest.TestCase):
         pose, size, lens, near = np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1.
         edge = np.array([[0.2, 0.1, -0.5], [0.2, 0.1, -2.]])
         boxes = np.tile(edge, (1, 4, 1))
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)), \
                 patch('r3d.objects.instances_figure.edge_visibility', wraps=edge_visibility) as sampled:
             segments, owners = visible_segments(boxes, np.array([7]), pose, size, lens, near, query)
@@ -519,13 +524,14 @@ class InstancesFigureTests(unittest.TestCase):
         np.testing.assert_allclose(segments[-1, 1], expected[1])
         self.assertTrue((owners == 7).all())
 
+    @needs_llvm
     def test_visible_segments_picture_border(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
 
         size = (100, 80)
         boxes = np.tile(np.array([[0., 0., -2.], [10., 0., -2.]]), (1, 4, 1))
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         with patch('r3d.objects.instances_figure.BOX_EDGES', ((0, 1),)):
             segments, owners = visible_segments(boxes, np.array([3]), np.array([0., 0., 0., 0., 0., -1.]),
                                                size, 0.6, 1., query)
@@ -535,11 +541,12 @@ class InstancesFigureTests(unittest.TestCase):
         self.assertTrue((segments <= size).all())
         self.assertTrue((owners == 3).all())
 
+    @needs_llvm
     def test_visible_segments_offscreen_and_behind_eye(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
 
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         for offset in ([100., 0., -5.], [0., 0., 5.]):
             with self.subTest(offset=offset):
                 boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset])
@@ -548,13 +555,14 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertEqual(segments.shape, (0, 2, 2))
                 self.assertEqual(owners.shape, (0,))
 
+    @needs_llvm
     def test_visible_segments_owners_after_culling(self):
         from r3d.objects.instances_figure import visible_segments
         from r3d.ray_query import RayQuery
 
         boxes = np.array([np.array(list(product((-1., 1.), repeat=3))) + offset
                           for offset in ([100., 0., -5.], [-2., 0., -10.], [0., 0., 5.], [2., 0., -10.])])
-        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='scalar_rgb')
+        query = RayQuery(POINTS + [1000, 0, 0], TRIANGLES, variant='llvm_ad_rgb')
         segments, owners = visible_segments(boxes, np.array([11, 23, 37, 49]),
                                            np.array([0., 0., 0., 0., 0., -1.]), (100, 80), 0.6, 1., query)
         self.assertEqual(set(owners), {23, 49})
@@ -617,6 +625,7 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertEqual([call.args[2] for call in drawn.call_args_list], [label] * count + [overflow])
                 self.assertTrue(all(call.args[1][0] >= picture.width + PADDING for call in drawn.call_args_list))
 
+    @needs_llvm
     def test_generate_with_blank_host_image(self):
         from PIL import Image
         from r3d.objects.instances_figure import DOC_SIZE, generate
