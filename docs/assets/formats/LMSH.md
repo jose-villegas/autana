@@ -12,8 +12,8 @@ their morph targets an optional sibling [LMOR](LMOR.md) entry beside them.
 
 A double-sided cluster may carry back colours: what its triangles show seen from behind. The
 rasterizer picks front or back from the winding at triangle setup, as a fragment shader reads
-`gl_FrontFacing`<sup>[[147]](../../Citations.md#khronos-glsl-4-60)</sup> or `SV_IsFrontFace`<sup>[[148]](../../Citations.md#microsoft-hlsl-semantics)</sup>.
-A textured cluster keeps one texture on both sides, as glTF's `doubleSided`<sup>[[146]](../../Citations.md#khronos-gltf-double-sided)</sup> does; only its lighting differs.
+`gl_FrontFacing`<sup>[[150]](../../Citations.md#khronos-glsl-4-60)</sup> or `SV_IsFrontFace`<sup>[[151]](../../Citations.md#microsoft-hlsl-semantics)</sup>.
+A textured cluster keeps one texture on both sides, as glTF's `doubleSided`<sup>[[149]](../../Citations.md#khronos-gltf-double-sided)</sup> does; only its lighting differs.
 
 ```mermaid
 ---
@@ -42,7 +42,7 @@ title Header, 48 bytes (12 words) at 0, one cell a byte
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } g:nth-of-type(4) rect:nth-of-type(4) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100

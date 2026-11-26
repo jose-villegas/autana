@@ -80,9 +80,9 @@ normal, which the renderer picks by winding ([LMSH](../../assets/formats/LMSH.md
 normal alone. Cards keep one texture on both sides; only their light differs.
 
 Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import collapses it to
-one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[149]](../../Citations.md#rezayat-1996)</sup><sup>[[150]](../../Citations.md#ye-2026-gmidsurf)</sup>.
+one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[152]](../../Citations.md#rezayat-1996)</sup><sup>[[153]](../../Citations.md#ye-2026-gmidsurf)</sup>.
 Each face of the skin facing the region's centre casts a ray along its inward normal, as the shape diameter
-function measures thickness<sup>[[151]](../../Citations.md#shapira-2008)</sup>, and pairs with its own shell's far
+function measures thickness<sup>[[154]](../../Citations.md#shapira-2008)</sup>, and pairs with its own shell's far
 skin where that faces back within `REACH` times the shell's median thickness. Unpaired faces that reach the far
 skin through each other are the rim joining the skins and go, with the far skin; an unpaired patch inside the
 near skin stays. Each vertex of the sheet moves halfway along its own inward ray, or by half the median
