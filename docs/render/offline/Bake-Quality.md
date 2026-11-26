@@ -17,10 +17,10 @@ camera-path poses; the scores are defined in
 <details>
 <summary>Fidelity scores</summary>
 
-<!-- generated: sponza-fidelity sha256=3100630fd693d0f88f9158e41875070d65cf9dab0b803ee197959e850232bce9 -->
+<!-- generated: sponza-fidelity sha256=6cf96368fd35d912e60b750d15f0307c68892f147732ca7040fc8212382393f5 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| atrium_fitted_full | 6.781 | 20.984 | 0.6994 | 12.855 | 5.494 |
+| atrium_fitted_full | 6.771 | 20.915 | 0.7003 | 12.839 | 5.481 |
 <!-- /generated: sponza-fidelity -->
 
 </details>
@@ -89,11 +89,11 @@ the scene without its `[indirect]` table and occlusion.
 <details>
 <summary>Indirect light scores</summary>
 
-<!-- generated: sponza-indirect sha256=4ca2e05cfa2b9ed627c883b6d4104faf973299196e1e5ff1c971e7184a1f3fd2 -->
+<!-- generated: sponza-indirect sha256=729b7b8fd56435097e4d08c41790e45af2b2c1516fc1ef8dc390dfe21a8fba29 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| atrium_fitted_full, direct light | 10.697 | 27.113 | 0.6112 | 18.059 | 9.343 |
-| atrium_fitted_full, indirect light | 7.780 | 24.605 | 0.6730 | 16.619 | 6.152 |
+| atrium_fitted_full, direct light | 10.696 | 26.991 | 0.6104 | 18.107 | 9.335 |
+| atrium_fitted_full, indirect light | 7.819 | 24.694 | 0.6719 | 16.672 | 6.190 |
 <!-- /generated: sponza-indirect -->
 
 </details>
@@ -135,14 +135,14 @@ The sheet fits the standard mesh in each look, at the last held-out pose.
 <details>
 <summary>Look scores</summary>
 
-<!-- generated: sponza-indirect-look sha256=76f4b4fb79d3d50832a6b8592bc159045886c4542c016487b5740da058cfa1d2 -->
+<!-- generated: sponza-indirect-look sha256=9a4106c7ec59f9b718bc0705e689df995f883a3e07885ee09efe2e9ba7775e97 -->
 | Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |
 |---|---:|---:|---:|---:|
-| Direct light only | 10.697 | | 27.113 | 0.6112 |
-| intensity 1 | 7.780 | 7.780 | 24.605 | 0.6730 |
-| intensity 2 | 8.614 | 8.838 | 24.901 | 0.6570 |
-| intensity 3 | 10.517 | 9.759 | 27.177 | 0.6235 |
-| albedo boost 2 | 9.214 | 9.104 | 25.929 | 0.6465 |
+| Direct light only | 10.696 | | 26.991 | 0.6104 |
+| intensity 1 | 7.819 | 7.819 | 24.694 | 0.6719 |
+| intensity 2 | 8.622 | 8.848 | 24.943 | 0.6573 |
+| intensity 3 | 10.502 | 9.730 | 27.158 | 0.6236 |
+| albedo boost 2 | 9.222 | 9.089 | 25.950 | 0.6473 |
 <!-- /generated: sponza-indirect-look -->
 
 </details>
