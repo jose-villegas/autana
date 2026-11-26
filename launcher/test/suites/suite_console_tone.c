@@ -504,11 +504,13 @@ bool
 audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result) {
     TEST_ASSERT_EQUAL_UINT16(device.melody.enabled ? melody_note_hz(melody_notes[device.measures / 2]) : TEST_TARGET_HZ,
                              hz);
-    TEST_ASSERT_EQUAL_UINT16(device.melody.enabled ? CONSOLE_MELODY_CHECK_MS : TEST_DURATION_MS, ms);
+    const uint16_t tone_ms = device.pulse.capture.window_ms ? device.pulse.capture.window_ms : TEST_DURATION_MS;
+    TEST_ASSERT_EQUAL_UINT16(device.melody.enabled ? CONSOLE_MELODY_CHECK_MS : tone_ms, ms);
     if (device.internal) {
         TEST_ASSERT_TRUE(device.amp.held);
         TEST_ASSERT_TRUE(device.feedback.enabled);
     }
+    device.pulse.capture.settled_windows++;
     device.measures++;
     *db = device.measures % 2 ? -100.0F : -12.0F;
     if (result) {
@@ -550,7 +552,6 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, uint16_t settle_ms, fl
                                 audio_loopback_result_t* result, audio_loopback_observer_fn observer, void* context) {
     TEST_ASSERT_EQUAL_UINT16(TEST_TARGET_HZ, hz);
     TEST_ASSERT_EQUAL_UINT16(device.pulse.capture.window_ms, ms);
-    device.pulse.capture.settled_windows += settle_ms == AUDIO_LOOPBACK_SETTLE_MS;
     device.measures++;
     const int64_t start = device.pulse.capture.now_us;
     device.pulse.capture.onset_us = start;
@@ -564,6 +565,7 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, uint16_t settle_ms, fl
     if (!observer) {
         return true;
     }
+    TEST_ASSERT_EQUAL_UINT16(0, settle_ms);
     unsigned bursts = 0;
     while (device.pulse.capture.now_us - start < (int64_t)ms * MATH_US_PER_MS && bursts++ < TEST_PULSE_MAX_BURSTS) {
         device.pulse.capture.now_us += device.pulse.producer.cadence

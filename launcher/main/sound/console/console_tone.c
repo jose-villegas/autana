@@ -115,10 +115,7 @@ tone_pulse_collect_sample(tone_pulse_buffer_t* pulse, int index) {
         }
         pulse->result.lost_samples += pulse->fifo->lost_before[index];
     }
-    if (sample_us < 0) {
-        return true;
-    }
-    if (sample_us > pulse_us) {
+    if (sample_us < 0 || sample_us > pulse_us) {
         return true;
     }
     if (pulse->count == TONE_PULSE_SAMPLE_CAPACITY) {
@@ -172,7 +169,7 @@ static bool
 tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_result_t* result,
                    tone_pulse_buffer_t* pulse, imu_vibration_t* shake) {
     if (!pulse) {
-        return audio_loopback_measure_observed(args->hz, args->ms, AUDIO_LOOPBACK_SETTLE_MS, db, result, NULL, NULL);
+        return audio_loopback_measure(args->hz, args->ms, db, result);
     }
     pulse->result = (console_tone_pulse_result_t){0};
     pulse->count = 0;
