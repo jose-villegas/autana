@@ -94,13 +94,13 @@ typedef struct {
 /* Every SMALL_FILL_<name> preset, for a list that has to cover them all: X(name) each. */
 #define SMALL_FILL_PRESETS(X) X(SMOOTH) X(FAST) X(FAST_DITHER) X(FAST_GRAIN)
 
-/* settle: redrawing quiet rows with the texture shortcuts and small fill off (docs/render/frame/Settle.md). */
+/* settle: redrawing quiet rows at the finest quality (docs/render/frame/Settle.md). */
 #define RENDER_SETTLE_FRAME_US_MAX 32000 /* past any frame, and within a pack row */
 #define RENDER_SETTLE_HOLD_MIN     1
 #define RENDER_SETTLE_HOLD_MAX     255 /* a band's count of quiet frames fits a byte */
 
 typedef struct {
-    int frame_us; /* basic [0, RENDER_SETTLE_FRAME_US_MAX]: microseconds a held frame may spend redrawing quiet rows with the texture shortcuts and small fill off, at least one band once due; 0 never refines */
+    int frame_us; /* basic [0, RENDER_SETTLE_FRAME_US_MAX]: microseconds a held frame may spend redrawing quiet rows at the finest quality, at least one band once due; 0 never refines */
     int hold_frames; /* advanced [RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]: frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again */
 } render_settle_settings_t;
 

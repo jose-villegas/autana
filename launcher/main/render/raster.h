@@ -51,12 +51,15 @@ struct raster {
      * whatever size the picture is drawn at. A second view of the frame
      * leaves it off and draws the levels the frame picked. */
     bool picks_levels;
+    /* Selects the finest cut for a settle band. The lod quality fields tell
+     * render_settle_refines() whether a band can improve. */
+    bool finest_levels;
     int destination_width, destination_height;
     camera_present_t present;
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
     raster_split_t* split; /* optional feedback retained between continuous frames */
-    /* The frame's count, which share of the instances a spread pick takes;
-     * round 0, a scene's or view's first frame, picks every instance. */
+    /* Counts frames that made picks in a live draw or census. Round 0 picks
+     * every instance. Later rounds pick one share. */
     uint32_t pick_round;
     /* With lod.triangle_budget set, steers the pick's tolerance from round
      * to round; NULL picks at lod.tolerance_px. */
