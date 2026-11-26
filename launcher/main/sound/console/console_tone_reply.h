@@ -84,25 +84,14 @@ console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* si
     if (!end) {
         return false;
     }
-    size_t used = (size_t)(end - line);
-    const int length =
-        silence->samples && tone->samples
-            ? snprintf(line + used, capacity - used, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)",
-                       (double)tone->rms_mg, (double)tone->peak_mg, (double)silence->rms_mg)
-            : snprintf(line + used, capacity - used, ", shake n/a");
-    if (length < 0 || (size_t)length >= capacity - used) {
-        return false;
-    }
-    used += (size_t)length;
-    if (silence->samples) {
-        const int gravity_length = snprintf(line + used, capacity - used, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f",
-                                            (double)silence->gx_mg, (double)silence->gy_mg, (double)silence->gz_mg);
-        if (gravity_length < 0 || (size_t)gravity_length >= capacity - used) {
-            return false;
-        }
-        used += (size_t)gravity_length;
-    }
-    const int status_length = snprintf(line + used, capacity - used, ", imu_gaps %u%s%s", gaps,
-                                       reason ? ", shake_reason " : "", reason ? reason : "");
-    return status_length >= 0 && (size_t)status_length < capacity - used;
+    strbuf_t buffer = strbuf_at(line, capacity, (size_t)(end - line));
+    const bool shake_fits = silence->samples && tone->samples
+                                ? strbuf_appendf(&buffer, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)",
+                                                 (double)tone->rms_mg, (double)tone->peak_mg, (double)silence->rms_mg)
+                                : strbuf_appendf(&buffer, ", shake n/a");
+    return shake_fits
+           && (!silence->samples
+               || strbuf_appendf(&buffer, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f", (double)silence->gx_mg,
+                                 (double)silence->gy_mg, (double)silence->gz_mg))
+           && strbuf_appendf(&buffer, ", imu_gaps %u%s%s", gaps, reason ? ", shake_reason " : "", reason ? reason : "");
 }
