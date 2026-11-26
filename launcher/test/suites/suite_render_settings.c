@@ -424,7 +424,7 @@ test_a_packs_render_entry_reads_every_field(void) {
 }
 
 /* Rows by place: the lod blend pair, then the anim fields (mid_px, far_px, mid_every, far_every, hysteresis_px),
- * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style). */
+ * the texture fields (divide_px, affine_bend, affine_level, far_level), then the small fill (ceiling, gate, style), then settle (frame_us, hold_frames). */
 enum {
     SETTLE_ROWS = 2,
     SMALL_FILL_ROWS = 3,

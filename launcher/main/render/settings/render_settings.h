@@ -95,7 +95,7 @@ typedef struct {
 #define SMALL_FILL_PRESETS(X) X(SMOOTH) X(FAST) X(FAST_DITHER) X(FAST_GRAIN)
 
 /* settle: redrawing quiet rows with the texture shortcuts and small fill off (docs/render/frame/Settle.md). */
-#define RENDER_SETTLE_FRAME_US_MAX 100000 /* a tenth of a second: past any frame */
+#define RENDER_SETTLE_FRAME_US_MAX 32000 /* past any frame, and within a pack row */
 #define RENDER_SETTLE_HOLD_MIN     1
 #define RENDER_SETTLE_HOLD_MAX     255 /* a band's count of quiet frames fits a byte */
 

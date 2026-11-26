@@ -635,6 +635,7 @@ settle_finish(render_context_t* c, render_rows_t live, bool picks_levels, int32_
     render_settle_done(&c->settle, r->height, rows, cost_us);
     c->frame.settle_us = cost_us;
     c->frame.settled_rows = rows.end - rows.first;
+    c->settle_live_rows = mathi_max(live.end - live.first, 0);
     if (live.first < live.end) {
         rows.first = mathi_min(rows.first, live.first);
         rows.end = mathi_max(rows.end, live.end);
@@ -783,6 +784,18 @@ compose_rows(render_context_t* c, int height) {
     c->frame.rows_end = end * per;
 }
 
+/* The compose cost a held frame is judged on: under settle, only the live
+ * rows' share of the rows composed, so refining never hands the camera back. */
+static int32_t
+judged_upscale_us(const render_context_t* c) {
+    const raster_t* r = &c->raster;
+    const int composed = raster_drew_every_row(r) ? r->height : r->end_row - r->first_row;
+    if (c->frame.settled_rows <= 0 || composed <= 0) {
+        return c->frame.upscale_us;
+    }
+    return (int32_t)((int64_t)c->frame.upscale_us * mathi_min(c->settle_live_rows, composed) / composed);
+}
+
 /* A fixed-path frame's compose: only the rows it drew. A judged held frame
  * over the budget hands the held camera back to the policy. */
 static void
@@ -794,7 +807,7 @@ compose_fixed(render_context_t* c, uint16_t* destination, uint8_t* seams, resolu
     }
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->still_judged) {
-        c->still_over = c->frame.draw_us + c->frame.upscale_us > c->ladder.budget_us;
+        c->still_over = c->frame.draw_us + judged_upscale_us(c) > c->ladder.budget_us;
     }
 }
 

@@ -105,6 +105,7 @@ typedef struct {
     framegen_target_t framegen;
     render_settle_t settle;
     render_settings_t settle_settings;
+    int settle_live_rows;     /* a settling frame's live rows, the share of its compose a held frame is judged on */
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
     bool fixed_drawn;         /* the last drawn frame took the fixed path: no policy, or a held camera's */
     bool still_judged;        /* this frame is a held camera's over a kept picture of its size: its cost is judged */

@@ -46,9 +46,9 @@ if it exceeds the budget.
 | `settle.hold_frames` | Quiet frames before a band is due |
 
 Defaults and pack ranges are in [Render-Settings.md](../Render-Settings.md).
-The fixed-point cost estimate moves by `1 / RENDER_SETTLE_COST_WEIGHT_DIVISOR`
+The fixed-point cost estimate moves by `1 / SMOOTH_RTT_DIVISOR`
 of the difference to each sample and survives when the bands are forgotten.
 
-Refine time goes in `frame.settle_us`, not `frame.draw_us`, so the held-frame
+Refine time goes in `frame.settle_us`, not `frame.draw_us`, and the held-frame
 judgement in [Dynamic-Resolution.md](Dynamic-Resolution.md#a-held-camera)
-sees live work only.
+prices only the live rows' share of the compose, so it sees live work only.
