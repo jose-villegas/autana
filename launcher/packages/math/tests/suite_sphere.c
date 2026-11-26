@@ -151,29 +151,63 @@ test_spheres_ticks(void) {
 
 static void
 test_spheres_contains_ball_extremes(void) {
+    /* Zero room requires coincidence, and one tick of room includes touching. */
+    const int16_t extra_tick_margin = -1;
+    const spheres_t point = {{INT16_MAX, 0, 0}, 0};
+    const spheres_t one_tick_away = {{INT16_MAX - 1, 0, 0}, 0};
+    const spheres_t two_ticks_away = {{INT16_MAX - 2, 0, 0}, 0};
+    TEST_ASSERT_TRUE(spheres_contains_ball(point, one_tick_away, extra_tick_margin));
+    TEST_ASSERT_FALSE(spheres_contains_ball(point, two_ticks_away, extra_tick_margin));
+    TEST_ASSERT_TRUE(spheres_contains_ball(point, point, 0));
+    TEST_ASSERT_FALSE(spheres_contains_ball(point, one_tick_away, 0));
+
     /* Opposite corners require wide differences and squared distance. */
     TEST_ASSERT_FALSE(spheres_contains_ball((spheres_t){{INT16_MIN, INT16_MIN, INT16_MIN}, INT16_MAX},
                                             (spheres_t){{INT16_MAX, INT16_MAX, INT16_MAX}, 0}, 0));
 
-    /* A point at full radius touches even from the lowest tick. */
-    TEST_ASSERT_TRUE(spheres_contains_ball((spheres_t){{INT16_MIN, 0, 0}, INT16_MAX}, (spheres_t){{-1, 0, 0}, 0}, 0));
+    /* Touching and one tick over agree in both directions. */
+    const spheres_t west = {{INT16_MIN, 0, 0}, INT16_MAX};
+    const spheres_t east = {{INT16_MAX, 0, 0}, INT16_MAX};
+    const spheres_t midpoint = {{0, 0, 0}, 0};
+    const spheres_t west_of_midpoint = {{-1, 0, 0}, 0};
+    TEST_ASSERT_TRUE(spheres_contains_ball(east, midpoint, 0));
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, west_of_midpoint, 0));
+    TEST_ASSERT_TRUE(spheres_contains_ball(west, west_of_midpoint, 0));
+    TEST_ASSERT_FALSE(spheres_contains_ball(west, midpoint, 0));
+    const int16_t clearance_margin = 1;
+    const spheres_t east_of_midpoint = {{1, 0, 0}, 0};
+    TEST_ASSERT_TRUE(spheres_contains_ball(east, east_of_midpoint, clearance_margin));
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, midpoint, clearance_margin));
+
+    /* Saturating both squares hides the offset beyond the full x span. */
+    TEST_ASSERT_FALSE(spheres_contains_ball(west, (spheres_t){{INT16_MAX, 1, 0}, 0}, INT16_MIN));
+
+    /* The minimum margin admits a gap one tick above INT16_MAX. */
+    const spheres_t wide_touch = {{0, 0, 0}, INT16_MAX};
+    const spheres_t wide_miss = {{1, 0, 0}, INT16_MAX};
+    TEST_ASSERT_TRUE(spheres_contains_ball(west, wide_touch, INT16_MIN));
+    TEST_ASSERT_FALSE(spheres_contains_ball(west, wide_miss, INT16_MIN));
+
+    /* A z-only gap straddles room one tick short of the full span. */
+    const spheres_t low = {{0, 0, INT16_MIN}, INT16_MAX};
+    const spheres_t depth_inside = {{0, 0, INT16_MAX - 2}, 0};
+    const spheres_t depth_outside = {{0, 0, INT16_MAX}, 0};
+    const int16_t depth_margin = INT16_MIN + 1;
+    TEST_ASSERT_TRUE(spheres_contains_ball(low, depth_inside, depth_margin));
+    TEST_ASSERT_FALSE(spheres_contains_ball(low, depth_outside, depth_margin));
 
     /* The most negative room excludes even concentric balls. */
     TEST_ASSERT_FALSE(spheres_contains_ball((spheres_t){{0, 0, 0}, 0}, (spheres_t){{0, 0, 0}, INT16_MAX}, INT16_MAX));
-
-    /* The minimum margin leaves more room than an int16 can hold. */
-    TEST_ASSERT_TRUE(
-        spheres_contains_ball((spheres_t){{0, 0, 0}, INT16_MAX}, (spheres_t){{INT16_MAX, 0, 0}, INT16_MAX}, INT16_MIN));
-
-    /* Coincident point balls touch with zero room. */
-    TEST_ASSERT_TRUE(spheres_contains_ball((spheres_t){{0, 0, 0}, 0}, (spheres_t){{0, 0, 0}, 0}, 0));
 }
 
 static void
 test_sphere_contains_ball_depth(void) {
+    /* The z-only offset can fall inside, touch or exceed the room. */
     const spheref_t outer = {{2, -3, 4}, 10};
     const spheref_t touching = {{2, -3, 9}, 5};
+    const spheref_t inside = {{touching.centre.x, touching.centre.y, touching.centre.z - 1}, touching.radius};
     const spheref_t outside = {{2, -3, 10}, 5};
+    TEST_ASSERT_TRUE(spheref_contains_ball(outer, inside, 0));
     TEST_ASSERT_TRUE(spheref_contains_ball(outer, touching, 0));
     TEST_ASSERT_FALSE(spheref_contains_ball(outer, outside, 0));
     TEST_ASSERT_TRUE(spheref_contains_ball(outer, outside, -1));
