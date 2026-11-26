@@ -8,7 +8,9 @@ and active first-party IRAM attributes. The link map and loaded ROM scripts
 identify runtime targets in the ELF. The default build is launcher/build.
 
 Put `Library call: <reason>` in a comment on the call's source line or in
-the comment block ending directly above it. Empty and unused notes fail.
+the comment block ending directly above the statement or signature holding
+it, which the note covers through its closing `;` or `{`. Empty and unused
+notes fail.
 """
 
 import argparse
@@ -38,6 +40,8 @@ NAMED_TARGET = r"([\da-f]+)\s+<([^>]+)>"
 DIRECT_TARGET = re.compile(NAMED_TARGET)
 LITERAL_TARGET = re.compile(r"(a\d+),.*\(" + NAMED_TARGET + r"\)")
 ANNOTATION = "Library call:"
+# A note above a statement or signature covers it through the line ending it.
+STATEMENT_ENDS = (";", "{", "}")
 SOURCE_LOCATION = re.compile(r"(.+):(\d+)(?:\s.*)?$")
 
 
@@ -145,6 +149,17 @@ def linked_calls(objdump, elf, function, ranges, runtime):
             yield from ((name, callee, site) for name in names)
 
 
+def statement_lines(source, first):
+    """The lines from `first` through the one closing its statement or signature."""
+    lines = source.splitlines()
+    end = first
+    while end <= len(lines) and lines[end - 1].strip() and not lines[end - 1].rstrip().endswith(STATEMENT_ENDS):
+        end += 1
+    if end > len(lines) or not lines[end - 1].strip():
+        return range(first, first + 1)
+    return range(first, end + 1)
+
+
 def annotations(root):
     """Index first-party notes by covered source line and retain their locations for stale checks."""
     covered = {}
@@ -170,7 +185,8 @@ def annotations(root):
             end = comment.spans[-1][1]
             tail = source[end:].split("\n", 1)[0]
             if comment.own_line and not tail.strip():
-                covered.setdefault((path.resolve(), lines.stop), set()).add(comment)
+                for line in statement_lines(source, lines.stop):
+                    covered.setdefault((path.resolve(), line), set()).add(comment)
     return covered, notes
 
 

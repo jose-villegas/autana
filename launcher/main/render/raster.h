@@ -82,6 +82,7 @@ struct raster {
 /* What a draw uses: the raster's settings. */
 static inline render_settings_t
 raster_settings(const raster_t* raster) {
+    /* Library call: a settings struct copy; its hot caller runs once per frame. */
     return raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
 }
 

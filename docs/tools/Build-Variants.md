@@ -172,8 +172,8 @@ ten times a float's cost.
 | QEMU | `MATH_FPU_RECIP=n`, `MATH_FPU_FUSED_MADD=n` | QEMU lacks the reciprocal seeds and rounds the fused product |
 
 For a deliberate runtime call, write `Library call: <reason>` in a comment
-on its source line or in the comment block directly above. The gate rejects
-empty reasons, stale notes and calls without a source line.
+on its source line, or directly above the statement or signature holding it.
+The gate rejects empty reasons, stale notes and calls without a source line.
 
 - Code that needs a double on purpose casts it explicitly, in the function
   that logs it. A `%f` argument is a double by the language, hence the logging

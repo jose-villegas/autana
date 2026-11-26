@@ -114,6 +114,7 @@ build other.elf: LINK rule
                  ("hot", "memcpy", 0x4200002c), ("hot", "memcpy", 0x42000030)]
         locations = [f"{path}:{n}" for n in (1, 5, 6, 9)] + ["??:?", f"{path}:0"]
         bad = gate.violations(self.root, calls, locations)
+        self.assertNotIn(f"{name}:5: hot calls memcpy at 0x42000023", bad)
         self.assertIn(f"{name}:6: hot calls memset at 0x42000026", bad)
         self.assertIn(f"{name}:9: hot calls memcpy at 0x42000029", bad)
         self.assertIn("??:0: hot calls memcpy at 0x4200002c", bad)
@@ -121,3 +122,20 @@ build other.elf: LINK rule
         self.assertEqual(8, len(bad))
         for location in (f"{name}:6", f"{name}:7", f"{name}:10", f"{header}:1"):
             self.assertTrue(any(line.startswith(location + ":") and "Library call:" in line for line in bad))
+
+    def test_a_note_covers_the_whole_statement_or_signature_below_it(self):
+        name = "launcher/main/split.c"
+        path = self.write(name, """/* Library call: A signature the line table names. */
+static void
+boxed(int a,
+      int b) {
+    /* Library call: A statement split over lines. */
+    const int f =
+        a / b;
+    copy();
+}
+""")
+        calls = [("boxed", "memcpy", 0x42000020), ("boxed", "__divsi3", 0x42000023),
+                 ("boxed", "memcpy", 0x42000026)]
+        locations = [f"{path}:{n}" for n in (4, 7, 8)]
+        self.assertEqual([f"{name}:8: boxed calls memcpy at 0x42000026"], gate.violations(self.root, calls, locations))

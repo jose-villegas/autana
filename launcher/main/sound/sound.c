@@ -103,6 +103,7 @@ read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     if (sound->format == SOUND_PCM16) {
         const uint8_t* source = sound->data + (c->position * SOUND_PCM_BYTES);
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        /* Library call: one bulk copy per contiguous run, so one per read or two across a loop point. */
         memcpy(out, source, frames * sizeof *out);
 #else
         for (uint32_t i = 0; i < frames; i++) {

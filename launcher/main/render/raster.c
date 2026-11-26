@@ -528,6 +528,7 @@ raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance) {
  * its pixels per output pixel. */
 static float
 drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
+    /* Library call: one divide per frame, from the frame's cull setup. */
     return mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
 }
 
@@ -535,6 +536,7 @@ drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
  * has already steered the next pick. */
 static RENDER_IRAM_ATTR __attribute__((noinline)) render_lod_settings_t
 picture_lod_settings(const raster_t* raster, const render_lod_settings_t* configured, float drawn, bool picking) {
+    /* Library call: one settings copy per call, once per frame on the board. */
     render_lod_settings_t lod = *configured;
     if (raster->steer != NULL && lod.triangle_budget > 0) {
         r3d_lod_steer_t* steer = raster->steer;
@@ -638,10 +640,12 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
         if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
+        /* Library call: one divide per frame, in the frame's cull setup. */
         pick.steer->halves[0].unit = 1.0F / drawn;
         pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
     pick.lod = picture_lod_settings(raster, lod, drawn, pick.steer != NULL);
+    /* Library call: one struct copy per frame, in the frame's cull setup. */
     return pick;
 }
 
@@ -716,6 +720,7 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view)
     cull_job_t* job = &work->cull;
     job->raster = raster;
     job->view = view;
+    /* Library call: cull_begin() runs once per frame; its struct copies stay calls. */
     job->settings = raster_settings(raster);
     job->buffers = &work->buffers;
     picture_lens_t* picture = &work->picture;
@@ -726,6 +731,7 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view)
         expand_batches(raster, &job->world, &work->buffers);
     }
     job->drawn_count = raster_census_count(raster);
+    /* Library call: one struct copy per frame, as above. */
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
         job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}, false};

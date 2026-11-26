@@ -28,9 +28,11 @@
 
 RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
+    /* Library call: a divide and 64-byte matrix copies, about 7 lens setups per frame on the board. */
     const float ticks_to_units = 1.0F / (float)position_scale;
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
     const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
+    /* Library call: the matrix copy of the same lens setup, about 7 per frame. */
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->focal_x = view->lens.fx;
     lens->focal_y = view->lens.fy;
@@ -44,8 +46,11 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
 
 RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
+    /* Library call: a divide per axis and a matrix copy per refit, about 3 refits per frame on the board. */
     const float scale_x = (float)width / (float)lens->width;
+    /* Library call: the other axis' divide. */
     const float scale_y = (float)height / (float)lens->height;
+    /* Library call: the refit's matrix copy. */
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
     lens->focal_x *= scale_x;
     lens->focal_y *= scale_y;
@@ -519,6 +524,7 @@ static inline __attribute__((always_inline)) void
 transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lod_morph_t* morph,
                    const uint16_t* clusters, int count, r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows,
                    bool boxed) {
+    /* Library call: one matrix copy per transform call, at most about 61 per frame on the board. */
     const mat4f_t screen = mat4f_scale_rows(lens->m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
     const uint32_t lo_bits = mathf_bits(FAST_LO);
     const uint32_t hi_bits = mathf_bits(FAST_HI);
@@ -537,7 +543,8 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
     }
 }
 
-/* The transform of a view that skips hidden clusters, boxing each one. */
+/* The transform of a view that skips hidden clusters, boxing each one.
+ * Library call: transform_clusters()' one matrix copy per call. */
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 transform_boxed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {
