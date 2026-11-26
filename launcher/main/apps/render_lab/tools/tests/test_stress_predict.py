@@ -10,9 +10,11 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import stress_predict as predict
-from render.cull_counts import UPSCALE_HEADER, enum_value, upscale_counts
+from build.c_enum import read_enum
+from render.cull_counts import UPSCALE_HEADER, upscale_counts
 
-UPSCALE_MAPPED = enum_value("upscale_path_t", "UPSCALE_", "MAPPED", UPSCALE_HEADER)
+UPSCALE_VALUES = read_enum(UPSCALE_HEADER, "upscale_path_t")
+UPSCALE_MAPPED = UPSCALE_VALUES["UPSCALE_MAPPED"]
 
 
 def pose(x, y=0, row="scene", t=0):
@@ -82,8 +84,7 @@ class StressPredictTest(unittest.TestCase):
 
     def test_upscale_inputs_derive_from_dimensions_and_selected_path(self):
         for path in ("KEPT", "DOUBLED", "MAPPED", "BLOCKS"):
-            value = enum_value("upscale_path_t", "UPSCALE_", path,
-                               predict.ROOT / "launcher/main/render/upscale.h")
+            value = UPSCALE_VALUES["UPSCALE_" + path]
             counts = upscale_counts(dict(render_width=12, render_height=8, output_width=24,
                                          output_height=16, upscale_path=value, upscale_surface=path == "KEPT"))
             self.assertEqual(96, counts["render_pixels"])

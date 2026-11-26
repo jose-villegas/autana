@@ -471,6 +471,10 @@ off above on: a pixel-sized hole that shows the sky is sealed.
 
 ![seal_seams off against on](../images/import-seal-seams.png)
 
+Whether or not an import seals, the Bakes workflow's see-through test traces each
+scene's camera path through the source and the drawn bundles, and fails a scene
+whose bake lets the view past more of the source than its pegged ceiling.
+
 ### Geometry variants
 
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
