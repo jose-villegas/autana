@@ -17,14 +17,8 @@
 
 #include "input/input.h"
 
-/* How long the controller must report nothing before the finger counts as
- * lifted.
- *
- * The FT5x06's INT line signals "there is fresh data", not "a finger is
- * present", and it drops briefly during a touch. Treating the first quiet
- * sample as a release makes a held finger flicker between pressed and
- * released. Requiring a quiet period debounces that; the cost is a few
- * milliseconds of extra latency on release, which is imperceptible. */
+/* A lift flag without a contact releases immediately. Without a flag, the
+ * quiet window filters brief gaps in contact. */
 #define TOUCH_RELEASE_QUIET_US (60 * 1000)
 
 typedef struct {
@@ -38,9 +32,8 @@ typedef struct {
 
 void touch_fsm_init(touch_fsm_t* fsm);
 
-/* Feed one sample. `have_point` is whether the controller reported a contact;
- * point is only meaningful when it did. */
-void touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us);
+/* Feed one sample. A valid point takes precedence over the lift flag. */
+void touch_fsm_update(touch_fsm_t* fsm, bool have_point, bool lifted, vec2i_t point, int64_t now_us);
 
 /* Copy the current state out and consume the latched edges, so each press and
  * release is reported to exactly one caller. */

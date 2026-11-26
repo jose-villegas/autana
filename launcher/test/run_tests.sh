@@ -145,6 +145,7 @@ $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch/touch_fsm.c
+$MAIN_DIR/input/touch/touch_report.c
 $MAIN_DIR/input/motion/imu_rest.c
 $MAIN_DIR/input/motion/imu_calib.c
 $MAIN_DIR/input/touch/touch_calib.c

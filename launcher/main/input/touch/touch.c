@@ -2,6 +2,7 @@
 #include "input/touch/touch_calib.h"
 #include "input/touch/touch_fsm.h"
 #include "input/touch/touch_inject_fsm.h"
+#include "input/touch/touch_report.h"
 
 #include "build/build_variant.h"
 #include "core/memory.h"
@@ -12,6 +13,7 @@
 #include "board/board_panel.h"
 #include "driver/gpio.h"
 #include "esp_attr.h"
+#include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -37,9 +39,6 @@ static touch_calib_t calib;
 TUNE_OWNER(touch);
 TUNE(touch, calibrate, 1, 0, 1);
 
-/* All the interpretation lives in touch_fsm, which is hardware-free and
- * covered by host tests. This file is only responsible for getting samples out
- * of the controller and handing them over. */
 static touch_fsm_t fsm;
 
 /* Shared between the polling task and the render loop. A spinlock-guarded
@@ -124,15 +123,14 @@ static touch_inject_t injected_contact;
 static touch_inject_completion_t inject_completion;
 static touch_inject_completion_t completed_inject;
 
-/* Returns true when injection supplied this poll's result, including its
- * final no-contact sample. That lets touch_fsm see the lift before the panel
- * before the controller becomes the source again. */
+/* Give the FSM the injected lift before polling the controller again. */
 static bool
-poll_injected(int64_t now_us, bool* have_point, vec2i_t* point) {
+poll_injected(int64_t now_us, bool* have_point, bool* lifted, vec2i_t* point) {
     portENTER_CRITICAL(&lock);
     if (injected_release) {
         injected_release = false;
         *have_point = false;
+        *lifted = true;
         portEXIT_CRITICAL(&lock);
         return true;
     }
@@ -145,6 +143,7 @@ poll_injected(int64_t now_us, bool* have_point, vec2i_t* point) {
     if (injected_contact.active) {
         *have_point = touch_inject_step(&injected_contact, now_us, point);
         if (!*have_point) {
+            *lifted = true;
             completed_inject = inject_completion;
         }
         portEXIT_CRITICAL(&lock);
@@ -153,6 +152,7 @@ poll_injected(int64_t now_us, bool* have_point, vec2i_t* point) {
     portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_QEMU
     *have_point = false;
+    *lifted = false;
     return true;
 #else
     return false;
@@ -194,23 +194,23 @@ touch_inject_take_completion(touch_inject_completion_t* completion) {
 #endif
 
 static void
-poll_controller(bool* have_point, vec2i_t* point) {
+poll_controller(bool* have_point, bool* lifted, vec2i_t* point) {
     /* Only talk to the controller when it has something: a controller NACKs
      * register reads while idle, and each failed transaction costs a bus
      * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
     if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(panel->config.int_gpio_num) == 0)) {
+        uint8_t raw[TOUCH_REPORT_BYTES];
         const int64_t start_us = timing_now_us();
-        const esp_err_t read = esp_lcd_touch_read_data(panel);
+        const esp_err_t read = esp_lcd_panel_io_rx_param(panel->io, TOUCH_REPORT_REG, raw, TOUCH_REPORT_BYTES);
         count_read(timing_now_us() - start_us, read == ESP_OK);
         if (read == ESP_OK) {
-            esp_lcd_touch_point_data_t raw = {0};
-            uint8_t count = 0;
-            if (esp_lcd_touch_get_data(panel, &raw, &count, 1) == ESP_OK && count > 0) {
-                *have_point = true;
-                *point = (vec2i_t){raw.x, raw.y};
-            }
+            touch_report_t report;
+            touch_report_decode(raw, &report);
+            *have_point = touch_report_has_point(&report);
+            *lifted = touch_report_lifted(&report);
+            *point = report.point;
         }
     }
 }
@@ -218,16 +218,17 @@ poll_controller(bool* have_point, vec2i_t* point) {
 static void
 poll_once(void) {
     bool have_point = false;
+    bool lifted = false;
     vec2i_t point = vec2i_zero();
     const int64_t now_us = timing_now_us();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const bool injected = poll_injected(now_us, &have_point, &point);
+    const bool injected = poll_injected(now_us, &have_point, &lifted, &point);
     if (!injected) {
-        poll_controller(&have_point, &point);
+        poll_controller(&have_point, &lifted, &point);
     }
 #else
-    poll_controller(&have_point, &point);
+    poll_controller(&have_point, &lifted, &point);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
     touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, BOARD_PANEL_WIDTH, BOARD_PANEL_HEIGHT);
@@ -236,7 +237,7 @@ poll_once(void) {
 #endif
 
     portENTER_CRITICAL(&lock);
-    touch_fsm_update(&fsm, have_point, point, now_us);
+    touch_fsm_update(&fsm, have_point, lifted, point, now_us);
     was_touching = have_point;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

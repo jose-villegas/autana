@@ -8,7 +8,7 @@ touch_fsm_init(touch_fsm_t* fsm) {
 }
 
 void
-touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us) {
+touch_fsm_update(touch_fsm_t* fsm, bool have_point, bool lifted, vec2i_t point, int64_t now_us) {
     if (have_point) {
         if (!fsm->down) {
             /* First contact: latch a press and remember where it began, so a
@@ -22,9 +22,7 @@ touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_u
         return;
     }
 
-    /* No contact reported. Only treat that as a lift once the controller has
-     * been quiet long enough; a brief gap is a dropout, not a release. */
-    if (fsm->down && (now_us - fsm->last_contact_us) > TOUCH_RELEASE_QUIET_US) {
+    if (fsm->down && (lifted || (now_us - fsm->last_contact_us) > TOUCH_RELEASE_QUIET_US)) {
         fsm->down = false;
         fsm->released = true;
     }
