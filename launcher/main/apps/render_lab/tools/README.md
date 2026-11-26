@@ -646,6 +646,17 @@ sky pixel is not counted when the source mesh
 ([`sponza.obj`](../../../../demo/sponza/source/sponza.obj), from Git LFS)
 shows sky in any ray through it or through an enclosed pixel beside it.
 
+[`tests/test_see_through.py`](tests/test_see_through.py) checks every scene
+with a camera path for places where the source closes the view but the bake
+lets it past, such as a doorway decimation opened. It traces the source as the
+import keeps it and the drawn bundles at the same poses. A pixel counts where
+the bake hits nothing or lies beyond `BEHIND` times the source's distance, in a
+region wider than `OPENING` pixels.
+
+Each scene's pixels, summed over its path, stay within its `MOST_SEE_THROUGH`
+ceiling. Bakes that drop whole props under their budget count too, so a
+ceiling is that scene's measured sum.
+
 ## Sponza poses
 
 The flythrough is a glTF camera animation, `launcher/demo/sponza/flythrough.glb`,
