@@ -29,6 +29,7 @@ try:
     from r3d.appearance_simplify import start_mesh
     from r3d.fit.copies import joined, placed_copies
     from r3d.import_settings import flight_camera, load_scene
+    from r3d.leaks import BEHIND, OPENING
     from r3d.light import drop_masked
     from r3d.mesh_source import load_source
     from r3d.objects.instances import place
@@ -45,10 +46,6 @@ except ImportError:  # pragma: no cover - the tool tests' environment has them
 RENDER_SIZE = (224, 184)
 # The camera path's step, as a baked renderer's camera-path visibility samples it.
 EVERY_MS = 500
-# A bake hit this much farther than the source's is the view going past the surface, not the surface moved.
-BEHIND = 1.5
-# The square a see-through region must hold whole somewhere to count.
-OPENING = 3
 # Per scene, the most see-through pixels its bakes may show over the path: the measured sum plus PEG_MARGIN of it.
 MOST_SEE_THROUGH = {"bistro": 172068, "sponza": 2461}
 PEG_MARGIN = 0.01
