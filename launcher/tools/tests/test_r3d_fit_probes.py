@@ -51,7 +51,7 @@ class ClosureTests(unittest.TestCase):
         for name, value in dict(load_scene=SimpleNamespace(camera=SimpleNamespace(
                 component=SimpleNamespace(background=0))), start_mesh=mesh,
                 load_views=(views, self.SIZE), pose_views=(views, self.SIZE),
-                optimise=(mesh.points, mesh.rgb, [1.0]), delta_e_total=(10.0, 4),
+                optimise=(mesh.points, mesh.rgb, [1.0], None), delta_e_total=(10.0, 4),
                 stretch_report={
                     "small": dict(stretch=0, area_growth=0, moved=0),
                     "rest": dict(stretch=0, area_growth=0, moved=0),

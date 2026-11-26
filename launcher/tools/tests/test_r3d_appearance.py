@@ -1076,7 +1076,7 @@ class AppearanceFitTests(unittest.TestCase):
                         self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
                     with tempfile.TemporaryDirectory() as directory:
                         outputs = [pathlib.Path(directory) / name for name in ("first", "second")]
-                        for output, (positions, colours, _history) in zip(outputs, (first, second)):
+                        for output, (positions, colours, _history, _) in zip(outputs, (first, second)):
                             write_mesh(output, "card", mesh._replace(points=positions, rgb=colours))
                         self.assertEqual((outputs[0] / "card.bundle").read_bytes(), (outputs[1] / "card.bundle").read_bytes())
 
