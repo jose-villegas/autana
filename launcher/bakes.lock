@@ -48,6 +48,15 @@ run = 45722547059
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.texture.pack"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "7c28dad6be2df1c552eabf9fa489129dd0e472f40c67fc831d38aa986db05a8e"
+sha256 = "bf7ab4a3e7aa146204a579f0308c61308dc1239a47317774c222fe7564a3aa46"
+size = 321191
+run = 45767764729
+host = "Linux x86_64"
+
+[[bake]]
 output = "butterfly_body.bundle"
 source = "launcher/demo/butterfly/butterfly.scene.toml"
 key = "c26ac3a438fdd93b2daa56eb2d929d253125c52c059fe2a54df99f13a97ff5f9"
