@@ -37,7 +37,13 @@ ANIM_WRAPS = ("clamp", "loop")
 LIGHT_MODES = ("realtime", "baked")
 LIGHT_MODE_REALTIME, LIGHT_MODE_BAKED = LIGHT_MODES
 
-RESERVED_LIGHTS = ("point", "spot")
+# A point or spot light is placed at its object and fades by distance; a spot shines along the object's
+# -SCENE_LIGHT_AXIS. Both are bake-only: only directional lights light movers at runtime.
+LOCAL_LIGHTS = ("point", "spot")
+# The lights from one point, the sun included: one shadow ray each, and placed by an object.
+PUNCTUAL_LIGHTS = ("directional", *LOCAL_LIGHTS)
+# A spot's cone half-angles, in degrees as object rotations are: a cone is at most a hemisphere (KHR_lights_punctual).
+SPOT_MAX_ANGLE = 90.0
 
 # The mesh sources an import reads: an OBJ with its MTL and textures, a binary glTF, or an FBX; or a
 # Blender file, which the bake tool exports to a binary glTF (bake/bake.py) and the import then reads.
@@ -46,12 +52,16 @@ BLEND_SUFFIX = ".blend"
 SOURCE_SUFFIXES = (OBJ_SUFFIX, *ASSET_SUFFIXES, BLEND_SUFFIX)
 
 # The one declaration of each light type's fields; light.py pairs each with
-# the function that bakes it.
+# the function that bakes it. The placed fields come from the object's transform, not the table.
 LIGHT_FIELDS = {
     "directional": {"direction": "vector", "color": "vector", "intensity": "number"},
+    "point": {"position": "vector", "color": "vector", "intensity": "number", "range": "number"},
+    "spot": {"position": "vector", "axis": "vector", "color": "vector", "intensity": "number", "range": "number",
+             "inner_angle": "number", "outer_angle": "number"},
     "sky": {"color": "vector", "intensity": "number", "rays": "count"},
     "ambient": {"color": "vector", "intensity": "number"},
 }
+PLACED_LIGHT_FIELDS = ("direction", "position", "axis")
 
 
 def far_skin_region(settings, scene):
@@ -585,6 +595,10 @@ def light_values(light, where):
         raise SettingsError(f"{where}.color must be linear components in 0..1")
     if light["intensity"] < 0:
         raise SettingsError(f"{where}.intensity must be nonnegative")
+    if "range" in light and light["range"] <= 0:
+        raise SettingsError(f"{where}.range must be positive")
+    if "outer_angle" in light and not 0 <= light["inner_angle"] < light["outer_angle"] <= SPOT_MAX_ANGLE:
+        raise SettingsError(f"{where}: spot angles need 0 <= inner_angle < outer_angle <= {SPOT_MAX_ANGLE:g} degrees")
     return light
 
 
@@ -598,19 +612,28 @@ def load_environment_light(kind, table, where):
     return light_values(light, where)
 
 
-def load_light(component, rotation, where):
-    """A directional light; the direction toward it is the object's +Y axis, turned by its rotation."""
+def load_light(component, rotation, where, position=(0.0, 0.0, 0.0), parented=False):
+    """A light placed by its object: a directional light shines from the object's +Y axis turned by its rotation;
+    a point light sits at the object's position; a spot sits there and shines along -Y turned by the rotation."""
     kind = component.get("type") if isinstance(component, dict) else None
-    if kind in RESERVED_LIGHTS:
-        raise SettingsError(f"{where}.type {kind!r} is reserved for a later bake")
-    if kind != "directional":
-        raise SettingsError(f"{where}.type must be directional: sky and ambient are scene settings")
-    fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name != "direction"}
+    if kind not in PUNCTUAL_LIGHTS:
+        raise SettingsError(f"{where}.type must be directional, point or spot: sky and ambient are scene settings")
+    fields = {name: reader for name, reader in LIGHT_FIELDS[kind].items() if name not in PLACED_LIGHT_FIELDS}
     check_keys(component, ("type", *fields), where, optional=("mode",))
     mode = component.get("mode", LIGHT_MODE_REALTIME)
     if mode not in LIGHT_MODES:
         raise SettingsError(f"{where}.mode must be one of {', '.join(LIGHT_MODES)}")
-    light = {"type": kind, "mode": mode, "direction": rotate(rotation, LIGHT_AXIS)}
+    if kind in LOCAL_LIGHTS and mode != LIGHT_MODE_BAKED:
+        raise SettingsError(f"{where}: a {kind} light is baked only; give it mode = \"{LIGHT_MODE_BAKED}\"")
+    if kind in LOCAL_LIGHTS and parented:
+        raise SettingsError(f"{where}: a {kind} light is placed where its own transform puts it; give it no parent")
+    light = {"type": kind, "mode": mode}
+    if kind == "directional":
+        light["direction"] = rotate(rotation, LIGHT_AXIS)
+    else:
+        light["position"] = [float(x) for x in position]
+    if kind == "spot":
+        light["axis"] = [-x for x in rotate(rotation, LIGHT_AXIS)]
     for name, reader in fields.items():
         light[name] = READERS[reader](component[name], f"{where}.{name}")
     return light_values(light, where)
@@ -739,7 +762,7 @@ def load_object(value, base, where):
     elif kind == "mesh_renderer":
         obj.component = load_renderer(value[kind], base, spot)
     elif kind == "light":
-        obj.component = load_light(value[kind], obj.rotation, spot)
+        obj.component = load_light(value[kind], obj.rotation, spot, obj.position, obj.parent is not None)
     else:
         obj.component = load_camera(value[kind], base, spot)
     obj.animator = None
@@ -879,6 +902,9 @@ def load_scene(path):
         raise SettingsError("scene.tonemap_white must be nonnegative")
     if any(light["type"] == "sky" for light in lights) and not lit:
         raise SettingsError("scene sky is read by no placed mesh: only baked renderers read it")
+    if any(light["type"] in LOCAL_LIGHTS for light in lights) and not lit:
+        raise SettingsError("scene point and spot lights are read by no placed mesh: only baked renderers and "
+                            "their probes read them")
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:

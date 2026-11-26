@@ -9,6 +9,7 @@
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/texture/r3d_texture.h"
+#include "scene/scene.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -80,8 +81,10 @@ typedef struct {
     int perf_poses;    /* poses the stress perf suite replays; a held camera repeats its pose */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
-    bool hold_camera;  /* a fixed pose in the scene and every perf sample */
-    bool skip_hidden;  /* its camera skips clusters behind drawn depth, as a baked family's may */
+    scene_contact_shape_t contact_shape;
+    bool contact_warp;
+    bool hold_camera; /* a fixed pose in the scene and every perf sample */
+    bool skip_hidden; /* its camera skips clusters behind drawn depth, as a baked family's may */
     stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
 
@@ -114,6 +117,10 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
+    X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_SH_BLOBS)                                                      \
+    X(SKINNED_SILHOUETTE_WARPED, "skinned-silhouette-warped", SKINNED_SH_BLOBS)                                        \
+    X(SKINNED_SILHOUETTE_BLOBS, "skinned-silhouette-blobs", SKINNED_SH_BLOBS)                                          \
+    X(SKINNED_BLOB_WARPED, "skinned-blob-warped", SKINNED_SH_BLOBS)                                                    \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
     X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
     X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
