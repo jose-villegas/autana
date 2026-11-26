@@ -1,48 +1,48 @@
-BUILD_ID=b62e1d0be6e9-diag
-I (7073) console: RUNSUITE run_framegen_perf_suite
-I (7266) asset: pack bistro: 145 entries, 3839484 bytes
-I (9382) framegen: framegen: bistro-fitted-full 184x224 poses=24 frame_us=40805 present_us=2586 warp_us=10022/10348 fill_us=2109 compose_us=2759 holes_pct=2.84
-I (9383) framegen: framegen_profile: bistro-fitted-full 184x224 clear_us=796 offscreen_us=10426 same_view_us=10201 warp_us=10022
-I (9675) asset: pack bistro: 145 entries, 3839484 bytes
-I (11790) framegen: framegen: bistro-fitted-full 184x224 poses=24 frame_us=40787 present_us=2594 warp_us=10030/10311 fill_us=2120 compose_us=2752 holes_pct=2.84
-I (11791) framegen: framegen_profile: bistro-fitted-full 184x224 clear_us=775 offscreen_us=10413 same_view_us=10223 warp_us=10030
-./main/shell/shell.c:483:test_generated_frame_cost/bistro-fitted-full/184x224:PASS
-TEST_TIME name=test_generated_frame_cost/bistro-fitted-full/184x224 elapsed_ms=4716 stack_free_bytes=1264
-I (11984) asset: pack bistro: 145 entries, 3839484 bytes
-I (13793) framegen: framegen: bistro-fitted-full 184x179 poses=24 frame_us=37214 present_us=2252 warp_us=7704/7850 fill_us=1639 compose_us=2376 holes_pct=2.88
-I (13795) framegen: framegen_profile: bistro-fitted-full 184x179 clear_us=545 offscreen_us=7328 same_view_us=7729 warp_us=7704
-./main/shell/shell.c:483:test_generated_frame_cost/bistro-fitted-full/184x179:PASS
-TEST_TIME name=test_generated_frame_cost/bistro-fitted-full/184x179 elapsed_ms=2002 stack_free_bytes=1264
-I (13988) asset: pack bistro: 145 entries, 3839484 bytes
-I (15640) framegen: framegen: bistro-fitted-full 184x149 poses=24 frame_us=34940 present_us=2053 warp_us=6513/6647 fill_us=1383 compose_us=2123 holes_pct=2.66
-I (15641) framegen: framegen_profile: bistro-fitted-full 184x149 clear_us=445 offscreen_us=6113 same_view_us=6549 warp_us=6513
-./main/shell/shell.c:483:test_generated_frame_cost/bistro-fitted-full/184x149:PASS
-TEST_TIME name=test_generated_frame_cost/bistro-fitted-full/184x149 elapsed_ms=1845 stack_free_bytes=1264
-I (15834) asset: pack bistro: 145 entries, 3839484 bytes
-I (17284) framegen: framegen: bistro-fitted-full 184x112 poses=24 frame_us=32057 present_us=1778 warp_us=4845/4969 fill_us=1040 compose_us=1861 holes_pct=2.86
-I (17285) framegen: framegen_profile: bistro-fitted-full 184x112 clear_us=349 offscreen_us=4680 same_view_us=4922 warp_us=4845
-./main/shell/shell.c:483:test_generated_frame_cost/bistro-fitted-full/184x112:PASS
-TEST_TIME name=test_generated_frame_cost/bistro-fitted-full/184x112 elapsed_ms=1643 stack_free_bytes=1264
-I (17410) asset: pack sponza: 327 entries, 2402712 bytes
-I (19811) framegen: framegen: sponza-fitted-full 184x224 poses=24 frame_us=49538 present_us=2744 warp_us=10068/10353 fill_us=1873 compose_us=2629 holes_pct=2.07
-I (19813) framegen: framegen_profile: sponza-fitted-full 184x224 clear_us=779 offscreen_us=10437 same_view_us=9876 warp_us=10068
-./main/shell/shell.c:483:test_generated_frame_cost/sponza-fitted-full/184x224:PASS
-TEST_TIME name=test_generated_frame_cost/sponza-fitted-full/184x224 elapsed_ms=2526 stack_free_bytes=1264
-I (19937) asset: pack sponza: 327 entries, 2402712 bytes
-I (22036) framegen: framegen: sponza-fitted-full 184x179 poses=24 frame_us=45150 present_us=2369 warp_us=7939/8085 fill_us=1537 compose_us=2338 holes_pct=2.03
-I (22038) framegen: framegen_profile: sponza-fitted-full 184x179 clear_us=542 offscreen_us=7411 same_view_us=7890 warp_us=7939
-./main/shell/shell.c:483:test_generated_frame_cost/sponza-fitted-full/184x179:PASS
-TEST_TIME name=test_generated_frame_cost/sponza-fitted-full/184x179 elapsed_ms=2223 stack_free_bytes=1264
-I (22162) asset: pack sponza: 327 entries, 2402712 bytes
-I (24084) framegen: framegen: sponza-fitted-full 184x149 poses=24 frame_us=42125 present_us=2117 warp_us=6619/6773 fill_us=1249 compose_us=2115 holes_pct=2.05
-I (24086) framegen: framegen_profile: sponza-fitted-full 184x149 clear_us=448 offscreen_us=6309 same_view_us=6725 warp_us=6619
-./main/shell/shell.c:483:test_generated_frame_cost/sponza-fitted-full/184x149:PASS
-TEST_TIME name=test_generated_frame_cost/sponza-fitted-full/184x149 elapsed_ms=2047 stack_free_bytes=1264
-I (24211) asset: pack sponza: 327 entries, 2402712 bytes
-I (25896) framegen: framegen: sponza-fitted-full 184x112 poses=24 frame_us=38313 present_us=1850 warp_us=4892/5087 fill_us=943 compose_us=1830 holes_pct=2.04
-I (25898) framegen: framegen_profile: sponza-fitted-full 184x112 clear_us=348 offscreen_us=4716 same_view_us=4902 warp_us=4892
-./main/shell/shell.c:483:test_generated_frame_cost/sponza-fitted-full/184x112:PASS
-TEST_TIME name=test_generated_frame_cost/sponza-fitted-full/184x112 elapsed_ms=1810 stack_free_bytes=1264
+BUILD_ID=6f04e71b63a6-diag
+I (7209) console: RUNSUITE run_framegen_perf_suite
+I (7288) asset: pack bistro: 87 entries, 1455436 bytes
+I (9443) framegen: framegen: bistro 184x224 poses=24 frame_us=47996 present_us=2565 warp_us=10015/10249 fill_us=2141 compose_us=2763 holes_pct=2.90
+I (9444) framegen: framegen_profile: bistro 184x224 clear_us=783 offscreen_us=10401 same_view_us=9988 warp_us=10015
+I (9622) asset: pack bistro: 87 entries, 1455436 bytes
+I (11776) framegen: framegen: bistro 184x224 poses=24 frame_us=47975 present_us=2573 warp_us=10019/10304 fill_us=2144 compose_us=2758 holes_pct=2.90
+I (11777) framegen: framegen_profile: bistro 184x224 clear_us=775 offscreen_us=10417 same_view_us=9978 warp_us=10019
+./main/shell/shell.c:488:test_generated_frame_cost/bistro/184x224:PASS
+TEST_TIME name=test_generated_frame_cost/bistro/184x224 elapsed_ms=4565 stack_free_bytes=1264
+I (11855) asset: pack bistro: 87 entries, 1455436 bytes
+I (13727) framegen: framegen: bistro 184x179 poses=24 frame_us=44067 present_us=2263 warp_us=8048/8258 fill_us=1804 compose_us=2430 holes_pct=2.92
+I (13729) framegen: framegen_profile: bistro 184x179 clear_us=563 offscreen_us=7442 same_view_us=8126 warp_us=8048
+./main/shell/shell.c:488:test_generated_frame_cost/bistro/184x179:PASS
+TEST_TIME name=test_generated_frame_cost/bistro/184x179 elapsed_ms=1951 stack_free_bytes=1264
+I (13807) asset: pack bistro: 87 entries, 1455436 bytes
+I (15492) framegen: framegen: bistro 184x149 poses=24 frame_us=41410 present_us=2048 warp_us=6571/6766 fill_us=1450 compose_us=2162 holes_pct=2.71
+I (15494) framegen: framegen_profile: bistro 184x149 clear_us=446 offscreen_us=6177 same_view_us=6582 warp_us=6571
+./main/shell/shell.c:488:test_generated_frame_cost/bistro/184x149:PASS
+TEST_TIME name=test_generated_frame_cost/bistro/184x149 elapsed_ms=1763 stack_free_bytes=1264
+I (15572) asset: pack bistro: 87 entries, 1455436 bytes
+I (17039) framegen: framegen: bistro 184x112 poses=24 frame_us=38175 present_us=1787 warp_us=4842/5067 fill_us=1080 compose_us=1884 holes_pct=2.91
+I (17041) framegen: framegen_profile: bistro 184x112 clear_us=346 offscreen_us=4662 same_view_us=4859 warp_us=4842
+./main/shell/shell.c:488:test_generated_frame_cost/bistro/184x112:PASS
+TEST_TIME name=test_generated_frame_cost/bistro/184x112 elapsed_ms=1546 stack_free_bytes=1264
+I (17087) asset: pack sponza: 90 entries, 780312 bytes
+I (19442) framegen: framegen: sponza 184x224 poses=24 frame_us=56473 present_us=2726 warp_us=10175/10458 fill_us=1891 compose_us=2724 holes_pct=2.09
+I (19444) framegen: framegen_profile: sponza 184x224 clear_us=780 offscreen_us=10524 same_view_us=9989 warp_us=10175
+./main/shell/shell.c:488:test_generated_frame_cost/sponza/184x224:PASS
+TEST_TIME name=test_generated_frame_cost/sponza/184x224 elapsed_ms=2402 stack_free_bytes=1264
+I (19490) asset: pack sponza: 90 entries, 780312 bytes
+I (21498) framegen: framegen: sponza 184x179 poses=24 frame_us=51106 present_us=2349 warp_us=7755/8003 fill_us=1434 compose_us=2367 holes_pct=2.04
+I (21500) framegen: framegen_profile: sponza 184x179 clear_us=540 offscreen_us=7423 same_view_us=7754 warp_us=7755
+./main/shell/shell.c:488:test_generated_frame_cost/sponza/184x179:PASS
+TEST_TIME name=test_generated_frame_cost/sponza/184x179 elapsed_ms=2055 stack_free_bytes=1264
+I (21546) asset: pack sponza: 90 entries, 780312 bytes
+I (23378) framegen: framegen: sponza 184x149 poses=24 frame_us=47562 present_us=2108 warp_us=6721/6848 fill_us=1294 compose_us=2129 holes_pct=2.08
+I (23379) framegen: framegen_profile: sponza 184x149 clear_us=444 offscreen_us=6274 same_view_us=6753 warp_us=6721
+./main/shell/shell.c:488:test_generated_frame_cost/sponza/184x149:PASS
+TEST_TIME name=test_generated_frame_cost/sponza/184x149 elapsed_ms=1878 stack_free_bytes=1264
+I (23425) asset: pack sponza: 90 entries, 780312 bytes
+I (25004) framegen: framegen: sponza 184x112 poses=24 frame_us=43179 present_us=1846 warp_us=4890/5114 fill_us=948 compose_us=1831 holes_pct=2.06
+I (25005) framegen: framegen_profile: sponza 184x112 clear_us=340 offscreen_us=4758 same_view_us=4912 warp_us=4890
+./main/shell/shell.c:488:test_generated_frame_cost/sponza/184x112:PASS
+TEST_TIME name=test_generated_frame_cost/sponza/184x112 elapsed_ms=1625 stack_free_bytes=1264
 FRAME_WATCH judged 8 of 8 tests
 
 -----------------------
@@ -50,153 +50,153 @@ FRAME_WATCH judged 8 of 8 tests
 OK
 
 RUNSUITE_COMPLETE name=run_framegen_perf_suite found=1 selected=8 unmatched=0
-I (25940) shell: 2.4 fps, 0.1 drawn/s, touch 0.0 points/s 0.0 moved/s, reads 0 failed 0 read_p95_us 0 read_max_us 0
-I (25941) shell: ms/frame avg/worst: ui.build 0.39/0.5  ridge.layers 3.20/2.3  ridge.paint 7.40/14.2  ui.paint 2.49/5.0  present 0.49/10.0  frame.rest 255.70/11495.2  anim.pose 0.57/0.1  anim.light 0.65/0.1  r3d.cull 6.99/3.1  r3d.transform 13.63/9.1  r3d.draw 119.00/42.3  r3d.upscale 22.07/2.8 | total 432.63 || sound_mix 0.002/0.041 ms/block n=4255
-I (26821) console: RUNSUITE run_framegen_modes_suite
-I (27017) asset: pack bistro: 145 entries, 3839484 bytes
-I (159595) framegen: framegen_modes: bistro-fitted-full framegen=0 budget_ms=0 frames=3665 drawn=3665 mean_us=36043 p95_us=53732 mean_height=224
-I (159599) framegen: framegen_worst: bistro-fitted-full framegen=0 budget_ms=0 share=all frames=3665 generated=0 frame_us=36043 height=224 warp=0 fill=0 cull=1113 transform=2316 draw=19699 upscale=2500 anim=117 other=10298
-I (159609) framegen: framegen_worst: bistro-fitted-full framegen=0 budget_ms=0 share=worst5 frames=184 generated=0 frame_us=55756 height=224 warp=0 fill=0 cull=1695 transform=4515 draw=36407 upscale=2549 anim=119 other=10471
-I (159611) device_tests: PERF TARGET framegen bistro-fitted-full plain: measured 36043 us, goal not yet pegged
-I (159612) device_tests: framegen bistro-fitted-full plain: ceiling not yet pegged (measured_us=53732)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/plain:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/plain elapsed_ms=132786 stack_free_bytes=1264
-I (159804) asset: pack bistro: 145 entries, 3839484 bytes
-I (292386) framegen: framegen_modes: bistro-fitted-full framegen=1 budget_ms=0 frames=4289 drawn=2382 mean_us=30800 p95_us=49136 mean_height=224
-I (292390) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=0 share=all frames=4289 generated=1907 frame_us=30800 height=224 warp=4410 fill=1005 cull=605 transform=1248 draw=10717 upscale=2585 anim=108 other=10122
-I (292402) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=0 share=worst5 frames=215 generated=0 frame_us=53742 height=224 warp=0 fill=0 cull=1667 transform=4309 draw=34707 upscale=2539 anim=96 other=10424
-I (292404) device_tests: PERF TARGET framegen bistro-fitted-full framegen: measured 30800 us, goal not yet pegged
-I (292405) device_tests: framegen bistro-fitted-full framegen: ceiling not yet pegged (measured_us=49136)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/framegen:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/framegen elapsed_ms=132791 stack_free_bytes=1264
-I (292597) asset: pack bistro: 145 entries, 3839484 bytes
-I (425203) framegen: framegen_modes: bistro-fitted-full framegen=0 budget_ms=23 frames=4189 drawn=4189 mean_us=31535 p95_us=42141 mean_height=154
-I (425207) framegen: framegen_worst: bistro-fitted-full framegen=0 budget_ms=23 share=all frames=4189 generated=0 frame_us=31535 height=154 warp=0 fill=0 cull=0 transform=2455 draw=15379 upscale=2063 anim=120 other=11518
-I (425219) framegen: framegen_worst: bistro-fitted-full framegen=0 budget_ms=23 share=worst5 frames=210 generated=0 frame_us=43308 height=112 warp=0 fill=0 cull=0 transform=4519 draw=24661 upscale=1761 anim=124 other=12243
-I (425221) device_tests: PERF TARGET framegen bistro-fitted-full dynres: measured 31535 us, goal not yet pegged
-I (425222) device_tests: framegen bistro-fitted-full dynres: ceiling not yet pegged (measured_us=42141)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/dynres:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/dynres elapsed_ms=132815 stack_free_bytes=1264
-I (425414) asset: pack bistro: 145 entries, 3839484 bytes
-I (558028) framegen: framegen_modes: bistro-fitted-full framegen=1 budget_ms=23 frames=5064 drawn=2771 mean_us=26084 p95_us=39163 mean_height=157
-I (558033) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=23 share=all frames=5064 generated=2293 frame_us=26084 height=150 warp=2871 fill=617 cull=0 transform=1320 draw=8321 upscale=2068 anim=109 other=10778
-I (558047) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=23 share=worst5 frames=254 generated=0 frame_us=42153 height=112 warp=0 fill=0 cull=0 transform=4341 draw=23797 upscale=1769 anim=99 other=12147
-I (558049) device_tests: PERF TARGET framegen bistro-fitted-full framegen-dynres: measured 26084 us, goal not yet pegged
-I (558050) device_tests: framegen bistro-fitted-full framegen-dynres: ceiling not yet pegged (measured_us=39163)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/framegen-dynres:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/framegen-dynres elapsed_ms=132827 stack_free_bytes=1264
-I (558242) asset: pack bistro: 145 entries, 3839484 bytes
-I (690888) framegen: framegen_modes: bistro-fitted-full framegen=1 budget_ms=17 frames=5344 drawn=2916 mean_us=24721 p95_us=38928 mean_height=138
-I (690893) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=17 share=all frames=5344 generated=2428 frame_us=24721 height=130 warp=2432 fill=506 cull=0 transform=1290 draw=7700 upscale=1915 anim=110 other=10768
-I (690908) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=17 share=worst5 frames=268 generated=0 frame_us=41994 height=112 warp=0 fill=0 cull=0 transform=4331 draw=23648 upscale=1765 anim=100 other=12150
-I (690910) device_tests: PERF TARGET framegen bistro-fitted-full framegen-dynres-3q: measured 24721 us, goal not yet pegged
-I (690911) device_tests: framegen bistro-fitted-full framegen-dynres-3q: ceiling not yet pegged (measured_us=38928)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/framegen-dynres-3q:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/framegen-dynres-3q elapsed_ms=132859 stack_free_bytes=1264
-I (691103) asset: pack bistro: 145 entries, 3839484 bytes
-I (823753) framegen: framegen_modes: bistro-fitted-full framegen=1 budget_ms=11 frames=5573 drawn=2888 mean_us=23704 p95_us=38809 mean_height=115
-I (823758) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=11 share=all frames=5573 generated=2685 frame_us=23704 height=113 warp=2395 fill=488 cull=0 transform=1238 draw=6940 upscale=1802 anim=110 other=10731
-I (823773) framegen: framegen_worst: bistro-fitted-full framegen=1 budget_ms=11 share=worst5 frames=279 generated=0 frame_us=41876 height=112 warp=0 fill=0 cull=0 transform=4320 draw=23538 upscale=1765 anim=99 other=12154
-I (823775) device_tests: PERF TARGET framegen bistro-fitted-full framegen-dynres-half: measured 23704 us, goal not yet pegged
-I (823776) device_tests: framegen bistro-fitted-full framegen-dynres-half: ceiling not yet pegged (measured_us=38809)
-./main/shell/shell.c:500:test_mode/bistro-fitted-full/framegen-dynres-half:PASS
-TEST_TIME name=test_mode/bistro-fitted-full/framegen-dynres-half elapsed_ms=132864 stack_free_bytes=1264
-I (823901) asset: pack sponza: 327 entries, 2402712 bytes
-I (860665) framegen: framegen_modes: sponza-fitted-full framegen=0 budget_ms=0 frames=764 drawn=764 mean_us=47542 p95_us=58247 mean_height=224
-I (860667) framegen: framegen_worst: sponza-fitted-full framegen=0 budget_ms=0 share=all frames=764 generated=0 frame_us=47542 height=224 warp=0 fill=0 cull=1050 transform=1963 draw=31224 upscale=2674 anim=181 other=10450
-I (860670) framegen: framegen_worst: sponza-fitted-full framegen=0 budget_ms=0 share=worst5 frames=39 generated=0 frame_us=58478 height=224 warp=0 fill=0 cull=1243 transform=3210 draw=40628 upscale=2632 anim=178 other=10587
-I (860672) device_tests: PERF TARGET framegen sponza-fitted-full plain: measured 47542 us, goal not yet pegged
-I (860673) device_tests: framegen sponza-fitted-full plain: ceiling not yet pegged (measured_us=58247)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/plain:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/plain elapsed_ms=36895 stack_free_bytes=1264
-I (860797) asset: pack sponza: 327 entries, 2402712 bytes
-I (897520) framegen: framegen_modes: sponza-fitted-full framegen=1 budget_ms=0 frames=994 drawn=497 mean_us=36526 p95_us=57864 mean_height=224
-I (897522) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=0 share=all frames=994 generated=497 frame_us=36526 height=224 warp=5112 fill=1070 cull=525 transform=1001 draw=15801 upscale=2657 anim=169 other=10191
-I (897526) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=0 share=worst5 frames=50 generated=0 frame_us=58297 height=224 warp=0 fill=0 cull=1238 transform=3236 draw=40512 upscale=2633 anim=154 other=10524
-I (897528) device_tests: PERF TARGET framegen sponza-fitted-full framegen: measured 36526 us, goal not yet pegged
-I (897529) device_tests: framegen sponza-fitted-full framegen: ceiling not yet pegged (measured_us=57864)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/framegen:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/framegen elapsed_ms=36855 stack_free_bytes=1264
-I (897654) asset: pack sponza: 327 entries, 2402712 bytes
-I (934420) framegen: framegen_modes: sponza-fitted-full framegen=0 budget_ms=23 frames=978 drawn=978 mean_us=37143 p95_us=44910 mean_height=115
-I (934422) framegen: framegen_worst: sponza-fitted-full framegen=0 budget_ms=23 share=all frames=978 generated=0 frame_us=37143 height=115 warp=0 fill=0 cull=0 transform=1958 draw=21611 upscale=1846 anim=186 other=11542
-I (934426) framegen: framegen_worst: sponza-fitted-full framegen=0 budget_ms=23 share=worst5 frames=49 generated=0 frame_us=45116 height=112 warp=0 fill=0 cull=0 transform=3211 draw=28057 upscale=1792 anim=184 other=11872
-I (934428) device_tests: PERF TARGET framegen sponza-fitted-full dynres: measured 37143 us, goal not yet pegged
-I (934429) device_tests: framegen sponza-fitted-full dynres: ceiling not yet pegged (measured_us=44910)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/dynres:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/dynres elapsed_ms=36898 stack_free_bytes=1264
-I (934553) asset: pack sponza: 327 entries, 2402712 bytes
-I (971304) framegen: framegen_modes: sponza-fitted-full framegen=1 budget_ms=23 frames=1308 drawn=654 mean_us=27766 p95_us=44532 mean_height=115
-I (971306) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=23 share=all frames=1308 generated=654 frame_us=27766 height=115 warp=2561 fill=515 cull=0 transform=994 draw=10918 upscale=1850 anim=177 other=10751
-I (971311) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=23 share=worst5 frames=66 generated=0 frame_us=44916 height=112 warp=0 fill=0 cull=0 transform=3199 draw=27944 upscale=1811 anim=164 other=11798
-I (971313) device_tests: PERF TARGET framegen sponza-fitted-full framegen-dynres: measured 27766 us, goal not yet pegged
-I (971314) device_tests: framegen sponza-fitted-full framegen-dynres: ceiling not yet pegged (measured_us=44532)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/framegen-dynres:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/framegen-dynres elapsed_ms=36884 stack_free_bytes=1264
-I (971439) asset: pack sponza: 327 entries, 2402712 bytes
-I (1008178) framegen: framegen_modes: sponza-fitted-full framegen=1 budget_ms=17 frames=1320 drawn=660 mean_us=27506 p95_us=44552 mean_height=112
-I (1008180) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=17 share=all frames=1320 generated=660 frame_us=27506 height=112 warp=2487 fill=497 cull=0 transform=990 draw=10778 upscale=1822 anim=177 other=10755
-I (1008186) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=17 share=worst5 frames=66 generated=0 frame_us=44909 height=112 warp=0 fill=0 cull=0 transform=3204 draw=27926 upscale=1810 anim=163 other=11806
-I (1008188) device_tests: PERF TARGET framegen sponza-fitted-full framegen-dynres-3q: measured 27506 us, goal not yet pegged
-I (1008189) device_tests: framegen sponza-fitted-full framegen-dynres-3q: ceiling not yet pegged (measured_us=44552)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/framegen-dynres-3q:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/framegen-dynres-3q elapsed_ms=36873 stack_free_bytes=1264
-I (1008313) asset: pack sponza: 327 entries, 2402712 bytes
-I (1045048) framegen: framegen_modes: sponza-fitted-full framegen=1 budget_ms=11 frames=1320 drawn=660 mean_us=27501 p95_us=44573 mean_height=112
-I (1045050) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=11 share=all frames=1320 generated=660 frame_us=27501 height=112 warp=2487 fill=496 cull=0 transform=989 draw=10778 upscale=1823 anim=177 other=10751
-I (1045055) framegen: framegen_worst: sponza-fitted-full framegen=1 budget_ms=11 share=worst5 frames=66 generated=0 frame_us=44899 height=112 warp=0 fill=0 cull=0 transform=3210 draw=27916 upscale=1808 anim=163 other=11802
-I (1045057) device_tests: PERF TARGET framegen sponza-fitted-full framegen-dynres-half: measured 27501 us, goal not yet pegged
-I (1045059) device_tests: framegen sponza-fitted-full framegen-dynres-half: ceiling not yet pegged (measured_us=44573)
-./main/shell/shell.c:500:test_mode/sponza-fitted-full/framegen-dynres-half:PASS
-TEST_TIME name=test_mode/sponza-fitted-full/framegen-dynres-half elapsed_ms=36868 stack_free_bytes=1264
-I (1045183) asset: pack sponza: 327 entries, 2402712 bytes
-I (1045479) asset: pack capybara: 12 entries, 314028 bytes
-I (1063946) framegen: framegen_modes: capybara-sponza framegen=0 budget_ms=0 frames=524 drawn=524 mean_us=35018 p95_us=45926 mean_height=224
-I (1063947) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=0 share=all frames=524 generated=0 frame_us=35018 height=224 warp=0 fill=0 cull=833 transform=1183 draw=17635 upscale=2609 anim=2075 other=10683
-I (1063950) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=0 share=worst5 frames=27 generated=0 frame_us=46099 height=224 warp=0 fill=0 cull=1115 transform=2115 draw=27096 upscale=2590 anim=2339 other=10844
-I (1063952) device_tests: PERF TARGET framegen capybara-sponza plain: measured 35018 us, goal 35240 us, distance +0%
-./main/shell/shell.c:500:test_mode/capybara-sponza/plain:PASS
-TEST_TIME name=test_mode/capybara-sponza/plain elapsed_ms=18892 stack_free_bytes=1232
-I (1064076) asset: pack sponza: 327 entries, 2402712 bytes
-I (1064372) asset: pack capybara: 12 entries, 314028 bytes
-I (1082841) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=0 frames=587 drawn=294 mean_us=31267 p95_us=45796 mean_height=224
-I (1082842) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=0 share=all frames=587 generated=293 frame_us=31267 height=224 warp=5228 fill=889 cull=419 transform=609 draw=9016 upscale=2568 anim=2059 other=10479
-I (1082846) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=0 share=worst5 frames=30 generated=0 frame_us=45954 height=224 warp=0 fill=0 cull=1102 transform=2081 draw=27118 upscale=2594 anim=2235 other=10824
-I (1082848) device_tests: PERF TARGET framegen capybara-sponza framegen: measured 31267 us, goal 31420 us, distance +0%
-./main/shell/shell.c:500:test_mode/capybara-sponza/framegen:PASS
-TEST_TIME name=test_mode/capybara-sponza/framegen elapsed_ms=18894 stack_free_bytes=1232
-I (1082972) asset: pack sponza: 327 entries, 2402712 bytes
-I (1083267) asset: pack capybara: 12 entries, 314028 bytes
-I (1101723) framegen: framegen_modes: capybara-sponza framegen=0 budget_ms=23 frames=554 drawn=554 mean_us=33096 p95_us=36705 mean_height=193
-I (1101724) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=23 share=all frames=554 generated=0 frame_us=33096 height=193 warp=0 fill=0 cull=0 transform=1226 draw=15842 upscale=2384 anim=2083 other=11561
-I (1101727) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=23 share=worst5 frames=28 generated=0 frame_us=36948 height=112 warp=0 fill=0 cull=0 transform=2062 draw=18588 upscale=1820 anim=2459 other=12019
-I (1101729) device_tests: PERF TARGET framegen capybara-sponza dynres: measured 33096 us, goal 33340 us, distance +0%
-./main/shell/shell.c:500:test_mode/capybara-sponza/dynres:PASS
-TEST_TIME name=test_mode/capybara-sponza/dynres elapsed_ms=18880 stack_free_bytes=1232
-I (1101854) asset: pack sponza: 327 entries, 2402712 bytes
-I (1102149) asset: pack capybara: 12 entries, 314028 bytes
-I (1120605) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=23 frames=631 drawn=316 mean_us=29062 p95_us=36593 mean_height=189
-I (1120607) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=23 share=all frames=631 generated=315 frame_us=29062 height=189 warp=4294 fill=773 cull=0 transform=635 draw=8023 upscale=2353 anim=2077 other=10907
-I (1120610) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=23 share=worst5 frames=32 generated=0 frame_us=36835 height=112 warp=0 fill=0 cull=0 transform=2126 draw=18627 upscale=1816 anim=2310 other=11956
-I (1120612) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres: measured 29062 us, goal 30750 us, distance -5%
-./main/shell/shell.c:500:test_mode/capybara-sponza/framegen-dynres:PASS
-TEST_TIME name=test_mode/capybara-sponza/framegen-dynres elapsed_ms=18882 stack_free_bytes=1232
-I (1120737) asset: pack sponza: 327 entries, 2402712 bytes
-I (1121032) asset: pack capybara: 12 entries, 314028 bytes
-I (1139465) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=17 frames=711 drawn=370 mean_us=25754 p95_us=36560 mean_height=133
-I (1139467) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=17 share=all frames=711 generated=341 frame_us=25754 height=133 warp=2912 fill=523 cull=0 transform=635 draw=6704 upscale=1983 anim=2073 other=10924
-I (1139470) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=17 share=worst5 frames=36 generated=0 frame_us=36765 height=112 warp=0 fill=0 cull=0 transform=2103 draw=18589 upscale=1827 anim=2286 other=11960
-I (1139472) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres-3q: measured 25754 us, goal 27690 us, distance -6%
-./main/shell/shell.c:500:test_mode/capybara-sponza/framegen-dynres-3q:PASS
-TEST_TIME name=test_mode/capybara-sponza/framegen-dynres-3q elapsed_ms=18859 stack_free_bytes=1232
-I (1139597) asset: pack sponza: 327 entries, 2402712 bytes
-I (1139893) asset: pack capybara: 12 entries, 314028 bytes
-I (1158358) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=11 frames=750 drawn=390 mean_us=24455 p95_us=36559 mean_height=112
-I (1158360) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=11 share=all frames=750 generated=360 frame_us=24455 height=112 warp=2435 fill=423 cull=0 transform=625 draw=6144 upscale=1823 anim=2077 other=10928
-I (1158363) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=11 share=worst5 frames=38 generated=0 frame_us=36745 height=112 warp=0 fill=0 cull=0 transform=2084 draw=18620 upscale=1817 anim=2276 other=11948
-I (1158365) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres-half: measured 24455 us, goal 24560 us, distance +0%
-./main/shell/shell.c:500:test_mode/capybara-sponza/framegen-dynres-half:PASS
-TEST_TIME name=test_mode/capybara-sponza/framegen-dynres-half elapsed_ms=18891 stack_free_bytes=1232
+I (25060) shell: 2.4 fps, 0.1 drawn/s, touch 0.0 points/s 0.0 moved/s, reads 0 failed 0 read_p95_us 0 read_max_us 0
+I (25062) shell: ms/frame avg/worst: ui.build 0.41/0.5  ridge.layers 2.91/2.3  ridge.paint 5.88/14.2  ui.paint 7.52/20.8  present 0.50/10.0  frame.rest 208.20/9147.7  anim.pose 0.54/0.1  anim.light 0.31/0.0  r3d.cull 10.42/3.9  r3d.transform 19.20/7.9  r3d.draw 143.40/45.9  r3d.upscale 22.71/2.9 | total 422.05 || sound_mix 0.002/0.045 ms/block n=4091
+I (25844) console: RUNSUITE run_framegen_modes_suite
+I (25920) asset: pack bistro: 87 entries, 1455436 bytes
+I (158366) framegen: framegen_modes: bistro framegen=0 budget_ms=0 partial_redraw=0 frames=3157 drawn=3157 mean_us=41844 p95_us=63463 mean_height=224 unscaled_us=0
+I (158369) framegen: framegen_worst: bistro framegen=0 budget_ms=0 share=all frames=3157 generated=0 frame_us=41844 height=224 warp=0 fill=0 cull=1666 transform=3663 draw=23319 upscale=2436 anim=92 other=10668
+I (158379) framegen: framegen_worst: bistro framegen=0 budget_ms=0 share=worst5 frames=158 generated=0 frame_us=65166 height=224 warp=0 fill=0 cull=2812 transform=7538 draw=41095 upscale=2491 anim=94 other=11136
+I (158380) device_tests: PERF TARGET framegen bistro plain: measured 41844 us, goal not yet pegged
+I (158381) device_tests: framegen bistro plain: ceiling not yet pegged (measured_us=63463)
+./main/shell/shell.c:505:test_mode/bistro/plain:PASS
+TEST_TIME name=test_mode/bistro/plain elapsed_ms=132537 stack_free_bytes=1072
+I (158459) asset: pack bistro: 87 entries, 1455436 bytes
+I (290909) framegen: framegen_modes: bistro framegen=1 budget_ms=0 partial_redraw=0 frames=3874 drawn=2026 mean_us=34106 p95_us=58666 mean_height=224 unscaled_us=0
+I (290914) framegen: framegen_worst: bistro framegen=1 budget_ms=0 share=all frames=3874 generated=1848 frame_us=34106 height=224 warp=4821 fill=1149 cull=884 transform=1964 draw=12357 upscale=2531 anim=83 other=10317
+I (290925) framegen: framegen_worst: bistro framegen=1 budget_ms=0 share=worst5 frames=194 generated=0 frame_us=63398 height=224 warp=0 fill=0 cull=2733 transform=7245 draw=39794 upscale=2499 anim=71 other=11056
+I (290926) device_tests: PERF TARGET framegen bistro framegen: measured 34106 us, goal not yet pegged
+I (290927) device_tests: framegen bistro framegen: ceiling not yet pegged (measured_us=58666)
+./main/shell/shell.c:505:test_mode/bistro/framegen:PASS
+TEST_TIME name=test_mode/bistro/framegen elapsed_ms=132545 stack_free_bytes=1072
+I (291005) asset: pack bistro: 87 entries, 1455436 bytes
+I (423489) framegen: framegen_modes: bistro framegen=0 budget_ms=33 partial_redraw=0 frames=3506 drawn=3506 mean_us=37687 p95_us=50765 mean_height=166 unscaled_us=768
+I (423493) framegen: framegen_worst: bistro framegen=0 budget_ms=33 share=all frames=3506 generated=0 frame_us=37687 height=166 warp=0 fill=0 cull=1734 transform=3864 draw=19149 upscale=2104 anim=97 other=10739
+I (423503) framegen: framegen_worst: bistro framegen=0 budget_ms=33 share=worst5 frames=176 generated=0 frame_us=51846 height=112 warp=0 fill=0 cull=2829 transform=7566 draw=28367 upscale=1798 anim=103 other=11183
+I (423505) device_tests: PERF TARGET framegen bistro dynres: measured 37687 us, goal not yet pegged
+I (423506) device_tests: framegen bistro dynres: ceiling not yet pegged (measured_us=50765)
+./main/shell/shell.c:505:test_mode/bistro/dynres:PASS
+TEST_TIME name=test_mode/bistro/dynres elapsed_ms=132577 stack_free_bytes=1072
+I (423584) asset: pack bistro: 87 entries, 1455436 bytes
+I (556037) framegen: framegen_modes: bistro framegen=1 budget_ms=33 partial_redraw=0 frames=4423 drawn=2295 mean_us=29867 p95_us=47888 mean_height=163 unscaled_us=765
+I (556042) framegen: framegen_worst: bistro framegen=1 budget_ms=33 share=all frames=4423 generated=2128 frame_us=29867 height=161 warp=3466 fill=789 cull=919 transform=2075 draw=10025 upscale=2153 anim=87 other=10353
+I (556054) framegen: framegen_worst: bistro framegen=1 budget_ms=33 share=worst5 frames=222 generated=0 frame_us=50793 height=112 warp=0 fill=0 cull=2769 transform=7286 draw=27784 upscale=1805 anim=75 other=11074
+I (556056) device_tests: PERF TARGET framegen bistro framegen-dynres: measured 29867 us, goal not yet pegged
+I (556057) device_tests: framegen bistro framegen-dynres: ceiling not yet pegged (measured_us=47888)
+./main/shell/shell.c:505:test_mode/bistro/framegen-dynres:PASS
+TEST_TIME name=test_mode/bistro/framegen-dynres elapsed_ms=132550 stack_free_bytes=1072
+I (556135) asset: pack bistro: 87 entries, 1455436 bytes
+I (688619) framegen: framegen_modes: bistro framegen=1 budget_ms=24 partial_redraw=0 frames=4690 drawn=2431 mean_us=28171 p95_us=47433 mean_height=140 unscaled_us=755
+I (688624) framegen: framegen_worst: bistro framegen=1 budget_ms=24 share=all frames=4690 generated=2259 frame_us=28171 height=137 warp=2946 fill=654 cull=908 transform=2046 draw=9187 upscale=1991 anim=88 other=10351
+I (688637) framegen: framegen_worst: bistro framegen=1 budget_ms=24 share=worst5 frames=235 generated=0 frame_us=50605 height=112 warp=0 fill=0 cull=2750 transform=7268 draw=27625 upscale=1804 anim=75 other=11083
+I (688639) device_tests: PERF TARGET framegen bistro framegen-dynres-3q: measured 28171 us, goal not yet pegged
+I (688640) device_tests: framegen bistro framegen-dynres-3q: ceiling not yet pegged (measured_us=47433)
+./main/shell/shell.c:505:test_mode/bistro/framegen-dynres-3q:PASS
+TEST_TIME name=test_mode/bistro/framegen-dynres-3q elapsed_ms=132582 stack_free_bytes=1072
+I (688718) asset: pack bistro: 87 entries, 1455436 bytes
+I (821197) framegen: framegen_modes: bistro framegen=1 budget_ms=16 partial_redraw=0 frames=4945 drawn=2478 mean_us=26715 p95_us=47174 mean_height=118 unscaled_us=767
+I (821202) framegen: framegen_worst: bistro framegen=1 budget_ms=16 share=all frames=4945 generated=2467 frame_us=26715 height=117 warp=2674 fill=575 cull=871 transform=1958 draw=8352 upscale=1858 anim=88 other=10339
+I (821215) framegen: framegen_worst: bistro framegen=1 budget_ms=16 share=worst5 frames=248 generated=0 frame_us=50450 height=112 warp=0 fill=0 cull=2740 transform=7237 draw=27512 upscale=1804 anim=76 other=11081
+I (821217) device_tests: PERF TARGET framegen bistro framegen-dynres-half: measured 26715 us, goal not yet pegged
+I (821218) device_tests: framegen bistro framegen-dynres-half: ceiling not yet pegged (measured_us=47174)
+./main/shell/shell.c:505:test_mode/bistro/framegen-dynres-half:PASS
+TEST_TIME name=test_mode/bistro/framegen-dynres-half elapsed_ms=132577 stack_free_bytes=1072
+I (821264) asset: pack sponza: 90 entries, 780312 bytes
+I (857854) framegen: framegen_modes: sponza framegen=0 budget_ms=0 partial_redraw=0 frames=673 drawn=673 mean_us=54032 p95_us=65263 mean_height=224 unscaled_us=0
+I (857856) framegen: framegen_worst: sponza framegen=0 budget_ms=0 share=all frames=673 generated=0 frame_us=54032 height=224 warp=0 fill=0 cull=1377 transform=2414 draw=36640 upscale=2821 anim=124 other=10656
+I (857859) framegen: framegen_worst: sponza framegen=0 budget_ms=0 share=worst5 frames=34 generated=0 frame_us=65481 height=224 warp=0 fill=0 cull=1773 transform=3664 draw=46216 upscale=2842 anim=117 other=10869
+I (857861) device_tests: PERF TARGET framegen sponza plain: measured 54032 us, goal not yet pegged
+I (857861) device_tests: framegen sponza plain: ceiling not yet pegged (measured_us=65263)
+./main/shell/shell.c:505:test_mode/sponza/plain:PASS
+TEST_TIME name=test_mode/sponza/plain elapsed_ms=36642 stack_free_bytes=1040
+I (857907) asset: pack sponza: 90 entries, 780312 bytes
+I (894451) framegen: framegen_modes: sponza framegen=1 budget_ms=0 partial_redraw=0 frames=913 drawn=457 mean_us=39818 p95_us=64763 mean_height=224 unscaled_us=0
+I (894454) framegen: framegen_worst: sponza framegen=1 budget_ms=0 share=all frames=913 generated=456 frame_us=39818 height=224 warp=5105 fill=1139 cull=692 transform=1223 draw=18519 upscale=2734 anim=113 other=10293
+I (894457) framegen: framegen_worst: sponza framegen=1 budget_ms=0 share=worst5 frames=46 generated=0 frame_us=65310 height=224 warp=0 fill=0 cull=1760 transform=3669 draw=46116 upscale=2850 anim=95 other=10820
+I (894459) device_tests: PERF TARGET framegen sponza framegen: measured 39818 us, goal not yet pegged
+I (894460) device_tests: framegen sponza framegen: ceiling not yet pegged (measured_us=64763)
+./main/shell/shell.c:505:test_mode/sponza/framegen:PASS
+TEST_TIME name=test_mode/sponza/framegen elapsed_ms=36597 stack_free_bytes=1040
+I (894505) asset: pack sponza: 90 entries, 780312 bytes
+I (931041) framegen: framegen_modes: sponza framegen=0 budget_ms=33 partial_redraw=0 frames=849 drawn=849 mean_us=42775 p95_us=50317 mean_height=123 unscaled_us=791
+I (931043) framegen: framegen_worst: sponza framegen=0 budget_ms=33 share=all frames=849 generated=0 frame_us=42775 height=123 warp=0 fill=0 cull=1386 transform=2426 draw=26197 upscale=1906 anim=133 other=10727
+I (931046) framegen: framegen_worst: sponza framegen=0 budget_ms=33 share=worst5 frames=43 generated=0 frame_us=50631 height=112 warp=0 fill=0 cull=1729 transform=3577 draw=32443 upscale=1828 anim=129 other=10925
+I (931048) device_tests: PERF TARGET framegen sponza dynres: measured 42775 us, goal not yet pegged
+I (931049) device_tests: framegen sponza dynres: ceiling not yet pegged (measured_us=50317)
+./main/shell/shell.c:505:test_mode/sponza/dynres:PASS
+TEST_TIME name=test_mode/sponza/dynres elapsed_ms=36588 stack_free_bytes=1040
+I (931094) asset: pack sponza: 90 entries, 780312 bytes
+I (967617) framegen: framegen_modes: sponza framegen=1 budget_ms=33 partial_redraw=0 frames=1176 drawn=588 mean_us=30885 p95_us=49913 mean_height=123 unscaled_us=778
+I (967620) framegen: framegen_worst: sponza framegen=1 budget_ms=33 share=all frames=1176 generated=588 frame_us=30885 height=123 warp=2792 fill=590 cull=694 transform=1221 draw=13223 upscale=1915 anim=118 other=10332
+I (967623) framegen: framegen_worst: sponza framegen=1 budget_ms=33 share=worst5 frames=59 generated=0 frame_us=50358 height=112 warp=0 fill=0 cull=1750 transform=3614 draw=32172 upscale=1829 anim=98 other=10895
+I (967625) device_tests: PERF TARGET framegen sponza framegen-dynres: measured 30885 us, goal not yet pegged
+I (967626) device_tests: framegen sponza framegen-dynres: ceiling not yet pegged (measured_us=49913)
+./main/shell/shell.c:505:test_mode/sponza/framegen-dynres:PASS
+TEST_TIME name=test_mode/sponza/framegen-dynres elapsed_ms=36577 stack_free_bytes=1040
+I (967672) asset: pack sponza: 90 entries, 780312 bytes
+I (1004211) framegen: framegen_modes: sponza framegen=1 budget_ms=24 partial_redraw=0 frames=1216 drawn=608 mean_us=29881 p95_us=49895 mean_height=112 unscaled_us=801
+I (1004214) framegen: framegen_worst: sponza framegen=1 budget_ms=24 share=all frames=1216 generated=608 frame_us=29881 height=112 warp=2544 fill=531 cull=689 transform=1209 draw=12622 upscale=1833 anim=118 other=10335
+I (1004217) framegen: framegen_worst: sponza framegen=1 budget_ms=24 share=worst5 frames=61 generated=0 frame_us=50354 height=112 warp=0 fill=0 cull=1743 transform=3623 draw=32160 upscale=1824 anim=99 other=10905
+I (1004219) device_tests: PERF TARGET framegen sponza framegen-dynres-3q: measured 29881 us, goal not yet pegged
+I (1004220) device_tests: framegen sponza framegen-dynres-3q: ceiling not yet pegged (measured_us=49895)
+./main/shell/shell.c:505:test_mode/sponza/framegen-dynres-3q:PASS
+TEST_TIME name=test_mode/sponza/framegen-dynres-3q elapsed_ms=36593 stack_free_bytes=1040
+I (1004266) asset: pack sponza: 90 entries, 780312 bytes
+I (1040768) framegen: framegen_modes: sponza framegen=1 budget_ms=16 partial_redraw=0 frames=1216 drawn=608 mean_us=29850 p95_us=49900 mean_height=112 unscaled_us=781
+I (1040771) framegen: framegen_worst: sponza framegen=1 budget_ms=16 share=all frames=1216 generated=608 frame_us=29850 height=112 warp=2538 fill=531 cull=689 transform=1207 draw=12599 upscale=1830 anim=119 other=10337
+I (1040775) framegen: framegen_worst: sponza framegen=1 budget_ms=16 share=worst5 frames=61 generated=0 frame_us=50343 height=112 warp=0 fill=0 cull=1746 transform=3605 draw=32174 upscale=1827 anim=100 other=10891
+I (1040776) device_tests: PERF TARGET framegen sponza framegen-dynres-half: measured 29850 us, goal not yet pegged
+I (1040777) device_tests: framegen sponza framegen-dynres-half: ceiling not yet pegged (measured_us=49900)
+./main/shell/shell.c:505:test_mode/sponza/framegen-dynres-half:PASS
+TEST_TIME name=test_mode/sponza/framegen-dynres-half elapsed_ms=36556 stack_free_bytes=1040
+I (1040823) asset: pack sponza: 90 entries, 780312 bytes
+I (1040868) asset: pack capybara: 14 entries, 341164 bytes
+I (1059364) framegen: framegen_modes: capybara-sponza framegen=0 budget_ms=0 partial_redraw=0 frames=468 drawn=468 mean_us=39194 p95_us=49673 mean_height=224 unscaled_us=0
+I (1059366) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=0 share=all frames=468 generated=0 frame_us=39194 height=224 warp=0 fill=0 cull=1009 transform=1218 draw=21481 upscale=2654 anim=2023 other=10809
+I (1059369) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=0 share=worst5 frames=24 generated=0 frame_us=49840 height=224 warp=0 fill=0 cull=1390 transform=2105 draw=30337 upscale=2655 anim=2291 other=11062
+I (1059370) device_tests: PERF TARGET framegen capybara-sponza plain: measured 39194 us, goal 36610 us, distance +7%
+./main/shell/shell.c:505:test_mode/capybara-sponza/plain:PASS
+TEST_TIME name=test_mode/capybara-sponza/plain elapsed_ms=18592 stack_free_bytes=1040
+I (1059416) asset: pack sponza: 90 entries, 780312 bytes
+I (1059461) asset: pack capybara: 14 entries, 341164 bytes
+I (1077956) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=0 partial_redraw=0 frames=551 drawn=276 mean_us=33300 p95_us=49372 mean_height=224 unscaled_us=0
+I (1077958) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=0 share=all frames=551 generated=275 frame_us=33300 height=224 warp=5096 fill=925 cull=508 transform=628 draw=10913 upscale=2638 anim=2017 other=10575
+I (1077960) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=0 share=worst5 frames=28 generated=0 frame_us=49613 height=224 warp=0 fill=0 cull=1371 transform=2140 draw=30199 upscale=2653 anim=2211 other=11039
+I (1077962) device_tests: PERF TARGET framegen capybara-sponza framegen: measured 33300 us, goal 32240 us, distance +3%
+./main/shell/shell.c:505:test_mode/capybara-sponza/framegen:PASS
+TEST_TIME name=test_mode/capybara-sponza/framegen elapsed_ms=18591 stack_free_bytes=1040
+I (1078008) asset: pack sponza: 90 entries, 780312 bytes
+I (1078053) asset: pack capybara: 14 entries, 341164 bytes
+I (1096535) framegen: framegen_modes: capybara-sponza framegen=0 budget_ms=33 partial_redraw=0 frames=492 drawn=492 mean_us=37248 p95_us=40815 mean_height=195 unscaled_us=3059
+I (1096536) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=33 share=all frames=492 generated=0 frame_us=37248 height=195 warp=0 fill=0 cull=1028 transform=1288 draw=19594 upscale=2433 anim=2031 other=10874
+I (1096539) framegen: framegen_worst: capybara-sponza framegen=0 budget_ms=33 share=worst5 frames=25 generated=0 frame_us=41668 height=174 warp=0 fill=0 cull=1290 transform=1826 draw=23232 upscale=2280 anim=2033 other=11007
+I (1096541) device_tests: PERF TARGET framegen capybara-sponza dynres: measured 37248 us, goal 37670 us, distance -1%
+./main/shell/shell.c:505:test_mode/capybara-sponza/dynres:PASS
+TEST_TIME name=test_mode/capybara-sponza/dynres elapsed_ms=18577 stack_free_bytes=1040
+I (1096587) asset: pack sponza: 90 entries, 780312 bytes
+I (1096631) asset: pack capybara: 14 entries, 341164 bytes
+I (1115118) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=33 partial_redraw=0 frames=583 drawn=292 mean_us=31454 p95_us=40156 mean_height=193 unscaled_us=3058
+I (1115120) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=33 share=all frames=583 generated=291 frame_us=31454 height=194 warp=4550 fill=823 cull=519 transform=657 draw=9877 upscale=2382 anim=2028 other=10618
+I (1115123) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=33 share=worst5 frames=30 generated=0 frame_us=41676 height=170 warp=0 fill=0 cull=1287 transform=1838 draw=23228 upscale=2236 anim=2095 other=10992
+I (1115125) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres: measured 31454 us, goal 31760 us, distance +0%
+./main/shell/shell.c:505:test_mode/capybara-sponza/framegen-dynres:PASS
+TEST_TIME name=test_mode/capybara-sponza/framegen-dynres elapsed_ms=18583 stack_free_bytes=1040
+I (1115171) asset: pack sponza: 90 entries, 780312 bytes
+I (1115216) asset: pack capybara: 14 entries, 341164 bytes
+I (1133692) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=24 partial_redraw=0 frames=664 drawn=332 mean_us=27596 p95_us=39146 mean_height=141 unscaled_us=3062
+I (1133695) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=24 share=all frames=664 generated=332 frame_us=27596 height=141 warp=3228 fill=581 cull=515 transform=642 draw=7960 upscale=2024 anim=2032 other=10614
+I (1133697) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=24 share=worst5 frames=34 generated=0 frame_us=39416 height=112 warp=0 fill=0 cull=1393 transform=2150 draw=20753 upscale=1813 anim=2228 other=11079
+I (1133699) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres-3q: measured 27596 us, goal 28320 us, distance -2%
+./main/shell/shell.c:505:test_mode/capybara-sponza/framegen-dynres-3q:PASS
+TEST_TIME name=test_mode/capybara-sponza/framegen-dynres-3q elapsed_ms=18573 stack_free_bytes=1040
+I (1133746) asset: pack sponza: 90 entries, 780312 bytes
+I (1133790) asset: pack capybara: 14 entries, 341164 bytes
+I (1152291) framegen: framegen_modes: capybara-sponza framegen=1 budget_ms=16 partial_redraw=0 frames=715 drawn=358 mean_us=25657 p95_us=39116 mean_height=112 unscaled_us=3085
+I (1152293) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=16 share=all frames=715 generated=357 frame_us=25657 height=112 warp=2600 fill=454 cull=509 transform=632 draw=7016 upscale=1801 anim=2031 other=10614
+I (1152296) framegen: framegen_worst: capybara-sponza framegen=1 budget_ms=16 share=worst5 frames=36 generated=0 frame_us=39314 height=112 warp=0 fill=0 cull=1408 transform=2163 draw=20641 upscale=1812 anim=2213 other=11077
+I (1152298) device_tests: PERF TARGET framegen capybara-sponza framegen-dynres-half: measured 25657 us, goal 25980 us, distance -1%
+./main/shell/shell.c:505:test_mode/capybara-sponza/framegen-dynres-half:PASS
+TEST_TIME name=test_mode/capybara-sponza/framegen-dynres-half elapsed_ms=18597 stack_free_bytes=1040
 FRAME_WATCH judged 18 of 18 tests
 
 -----------------------
@@ -204,5 +204,5 @@ FRAME_WATCH judged 18 of 18 tests
 OK
 
 RUNSUITE_COMPLETE name=run_framegen_modes_suite found=1 selected=18 unmatched=0
-I (1158427) shell: 0.2 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s, reads 0 failed 0 read_p95_us 0 read_max_us 0
-I (1158429) shell: ms/frame avg/worst: ui.build 0.00/0.4  ridge.layers 0.02/2.2  ridge.paint 0.09/12.6  ui.paint 0.05/5.2  present 0.10/10.0 | total 0.27 || sound_mix 0.002/0.004 ms/block n=12
+I (1152370) shell: 0.2 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s, reads 0 failed 0 read_p95_us 0 read_max_us 0
+I (1152371) shell: ms/frame avg/worst: ui.build 0.00/0.3  ridge.layers 0.02/2.3  ridge.paint 0.09/12.7  ui.paint 0.11/18.4  present 0.10/9.9 | total 0.33 || sound_mix 0.002/0.008 ms/block n=14
