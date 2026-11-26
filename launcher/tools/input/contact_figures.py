@@ -68,7 +68,7 @@ def touch_figure(data, us_per_ms, render, out):
     panel.plot(x[samples], y[samples], ".", color=SLOTS[2], markersize=CONTACT_DOT_SIZE, label="Controller sample")
     styles = (PRESS, RELEASE, SWIPE)
     event_markers(panel, x, y, events, styles)
-    style_axes(panel, "RANDOM touch page")
+    style_axes(panel, "Touch screen")
     panel.set_axis_off()
 
     binary_traces((raw, fsm), time, contact, down, ("Controller contact", "Touch FSM · down"), ("No point", "Point"),
@@ -118,10 +118,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--random-tap", type=Path, required=True)
+    parser.add_argument("--tap", metavar="X,Y", required=True, help="tap point in screen pixels")
     parser.add_argument("--touch", type=Path, required=True)
     parser.add_argument("--button", type=Path, required=True)
     args = parser.parse_args()
-    data = run_probe(args.cc, SOURCES)
+    try:
+        x, y = map(int, args.tap.split(","))
+    except ValueError:
+        parser.error("--tap must be two integers separated by a comma")
+    data = run_probe(args.cc, SOURCES, x, y)
     touch_figure(data["touch"], data["us_per_ms"], args.random_tap, args.touch)
     button_figure(data["button"], data["us_per_ms"], args.button)
 

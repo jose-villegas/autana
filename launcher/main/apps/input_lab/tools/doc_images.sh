@@ -30,8 +30,10 @@ for page in motion:motion-page motion-results:motion-results; do
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/${page%%:*}.bmp" "$OUT/${page#*:}.png" --quarter "$quarter"
 done
 
+tap=$(sed -n 's/^#define INPUT_LAB_RENDER_TAP_POINT *{ *\([0-9][0-9]*\) *, *\([0-9][0-9]*\) *}.*/\1,\2/p' \
+    "$APP/tools/input_lab_render_tap.h")
 cc=$(find_cc) || exit 2
-run "$PYTHON" launcher/tools/input/contact_figures.py --cc "$cc" --random-tap "$W/random-tap.bmp" \
+run "$PYTHON" launcher/tools/input/contact_figures.py --cc "$cc" --random-tap "$W/random-tap.bmp" --tap "$tap" \
     --touch "$OUT/touch-trace.png" --button "$OUT/button-timeline.png"
 
 samples=$W/shake-mixed.txt

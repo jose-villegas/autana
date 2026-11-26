@@ -9,7 +9,7 @@ The two buttons are different kinds of device.
 
 ![BOOT raw and debounced levels during a scripted tap and hold](../images/input/button-timeline.png)
 
-The BOOT tap emits a press and release, while the long press emits a press and one hold event.
+Contact chatter shorter than the debounce window never reaches the debounced level; the tap emits a press and a release, and the long press a press and one hold, with no release.
 
 [power/](../../launcher/main/power/README.md) owns the PMU handle and key
 interrupts. The input polling task calls `power_poll()` at `POLL_HZ`,

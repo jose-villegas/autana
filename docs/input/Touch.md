@@ -33,7 +33,7 @@ touch_example(touch_example_t* s, const input_t* input) {
 
 ![Touch sample positions and the timeline of a scripted tap and home swipe](../images/input/touch-trace.png)
 
-Brief contact gaps leave the touch down, and the home swipe fires during the drag.
+A one-poll dropout leaves the touch down; it releases only after the quiet interval with no sample, and the home swipe fires while the drag is still in progress.
 
 | Rule | Owner |
 |---|---|
