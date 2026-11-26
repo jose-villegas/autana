@@ -22,6 +22,31 @@ sys.path.insert(0, str(ROOT / "launcher/demo/bistro"))
 
 
 @unittest.skipIf(texture_figures is None, "needs NumPy and Pillow")
+class SquareBoxTests(unittest.TestCase):
+    """Every divide sheet square is one cell: a cluster of any shape crops as a square inside the picture."""
+    PICTURE = (240, 320)
+
+    @staticmethod
+    def cluster(x0, y0, x1, y1):
+        return SimpleNamespace(x0=x0, y0=y0, x1=x1, y1=y1)
+
+    def test_a_tall_cluster_crops_a_square_centred_on_it(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(100, 100, 110, 140), self.PICTURE),
+                         (85, 100, 125, 140))
+
+    def test_a_cluster_at_the_edge_is_moved_inside_the_picture(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(230, 300, 240, 320), self.PICTURE),
+                         (220, 300, 240, 320))
+
+    def test_a_wide_cluster_crops_a_square_centred_on_it(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(100, 100, 140, 110), self.PICTURE),
+                         (100, 85, 140, 125))
+
+    def test_a_cluster_larger_than_the_picture_crops_the_picture_s_shorter_side(self):
+        self.assertEqual(texture_figures.square_box(self.cluster(0, 0, 240, 320), self.PICTURE), (0, 40, 240, 280))
+
+
+@unittest.skipIf(texture_figures is None, "needs NumPy and Pillow")
 class ReferenceMemberTests(unittest.TestCase):
     FIT = SimpleNamespace(train_every_ms=1000, held_out_every_ms=5000)
 
