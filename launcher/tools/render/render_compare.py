@@ -505,7 +505,7 @@ def _rect(xs, ys, weight, margin, max_side):
     return max(0, x0 - margin), max(0, y0 - margin), min(width, x1 + margin), min(height, y1 + margin)
 
 
-def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=64):
+def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=64, crop=None):
     """The count most telling clusters of changed pixels between a and b.
 
     A pixel changed if any channel moved by more than threshold, or it is a
@@ -514,6 +514,11 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
     then the rest by total difference. Each rect is the changed pixels'
     bounding box plus margin, clamped to the image; a cluster larger than
     max_side is cut to its strongest max_side window.
+
+    The clusters are exclusive: one whose crop overlaps a stronger one's is
+    dropped and the next taken, so no two crops show the same pixels. A
+    cluster's crop is its rect, or crop(cluster) for a sheet that cuts a
+    different box around it.
     """
     _same_size(a, b)
     pa, pb = _pixels(a), _pixels(b)
@@ -535,7 +540,21 @@ def find_clusters(a, b, clear, count=4, margin=8, threshold=8, grow=3, max_side=
         x0, y0, x1, y1 = _rect(cx, cy, weight, margin, max_side)
         clusters.append(Cluster(x0, y0, x1, y1, int(holes[cy, cx].sum()), int(pick.sum()), int(diff[cy, cx].sum())))
     clusters.sort(key=lambda c: (c.holes, c.strength), reverse=True)
-    return clusters[:count]
+    crop = crop or (lambda c: (c.x0, c.y0, c.x1, c.y1))
+    kept, boxes = [], []
+    for cluster in clusters:
+        box = crop(cluster)
+        if not any(_overlap(box, other) for other in boxes):
+            kept.append(cluster)
+            boxes.append(box)
+        if len(kept) == count:
+            break
+    return kept
+
+
+def _overlap(a, b):
+    """Whether boxes a and b, each (x0, y0, x1, y1) with x1 and y1 exclusive, share a pixel."""
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
 def crop_sheet(entries, labels, zoom=ZOOM):

@@ -78,11 +78,12 @@ typedef struct {
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
     const char* camera;
-    int perf_poses;    /* poses the stress perf suite replays along the swing */
+    int perf_poses;    /* poses the stress perf suite replays; a held camera repeats its pose */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
     scene_contact_shape_t contact_shape;
     bool contact_warp;
+    bool hold_camera; /* a fixed pose in the scene and every perf sample */
     bool skip_hidden; /* its camera skips clusters behind drawn depth, as a baked family's may */
     stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
@@ -130,7 +131,8 @@ typedef struct {
     X(SMALL_DITHER, "small-dither", NOISY)                                                                             \
     X(SMALL_OFF, "small-off", BANDED)                                                                                  \
     X(STACK_SKIP, "stack-skip", BANDED)                                                                                \
-    X(CARVED_BLEND, "carved-blend", CARVED)
+    X(CARVED_BLEND, "carved-blend", CARVED)                                                                            \
+    X(SETTLE, "settle", TEXTURED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

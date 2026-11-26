@@ -55,10 +55,12 @@ that field's table in the asset.
 | `texture.divide_px` | `16` | `[0, RENDER_TEXTURE_DIVIDE_PX_MAX]` | basic | fewest pixels between divides by depth, fewer cost more; 0 is affine, near surfaces bend |
 | `texture.affine_bend` | `1.0` | `[0.0, RENDER_TEXTURE_BEND_MAX]` | advanced | texels a triangle may bend and still step affine; larger is faster, bends more |
 | `texture.affine_level` | `1` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | advanced | first mip level that steps affine, its pattern shifting rather than bending; 0 lets every level divide |
-| `texture.far_level` | `3` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | basic | first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level |
+| `texture.far_level` | `4` | `[0, RENDER_TEXTURE_LEVEL_MAX]` | basic | first mip level drawn untextured, one colour a triangle; lower is faster; 0 textures every level |
 | `small_fill.ceiling` | `4` | `[0, SMALL_FILL_CEILING_MAX]` | basic | largest bounding-box side in pixel centres filled in one colour; 0 is off; more saves, blurs small detail |
 | `small_fill.gate` | `0` | `[0, SMALL_FILL_GATE_MAX]` | advanced | RGB565 per-channel spread, in packed channel units, a box at the ceiling may span and still fill; 0 lets any |
 | `small_fill.style` | `0` | `[0, SMALL_FILL_STYLE_COUNT)` | advanced | 0 flat, 1 grain, 2 dither (a small_fill_style_t): how a filled box above the always-flat side is coloured |
+| `settle.frame_us` | `4000` | `[0, RENDER_SETTLE_FRAME_US_MAX]` | basic | microseconds a held frame may spend redrawing quiet rows with the texture shortcuts and small fill off, at least one band once due; 0 never refines |
+| `settle.hold_frames` | `6` | `[RENDER_SETTLE_HOLD_MIN, RENDER_SETTLE_HOLD_MAX]` | advanced | frames a band's rows stay unchanged before they refine; fewer refines sooner, redraws rows that move again |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -129,9 +131,12 @@ Off is only for measuring.
 ## partial_redraw
 
 While the camera holds still, a frame redraws only the rows the changed
-objects cover, and the picture is the one a full redraw gives
-([how](frame/Partial-Redraw.md)). It applies at the fixed scale with frame
-generation off, and costs nothing when it does not apply.
+objects cover ([Partial-Redraw.md](frame/Partial-Redraw.md)). Quiet rows can
+[settle](frame/Settle.md) at refined quality.
+
+A held view draws at the fixed scale or dynamic resolution's top step,
+and is never generated. Partial redraw costs nothing on timed and generated
+paths, which skip it.
 
 ## lod
 
@@ -164,6 +169,12 @@ reports as its triangles.
 | Clusters and instances the cull drops | no |
 | Anything drawn that is not a lit-mesh cluster | no |
 | The import's [`[[variants]].triangles`](offline/Mesh-Import.md#variants-triangles) | no: a ceiling on the detail a mesh holds, not a frame's cost |
+
+## settle
+
+A held view refines quiet rows with the live texture shortcuts and small fill
+off ([Settle.md](frame/Settle.md)). `frame_us` budgets each refine pass;
+`hold_frames` delays a band until its rows have stayed quiet long enough.
 
 ## The render asset
 

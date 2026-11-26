@@ -3843,6 +3843,10 @@ expanded_fixture(void) {
     fixture();
     TEST_ASSERT_TRUE(gfx_init());
     show("test_pair");
+    render_context_t* context = render_context_main();
+    render_settings_t settings = *render_context_settings(context);
+    settings.settle.frame_us = 0; /* The two compose paths must start from identical scene pixels. */
+    render_context_set_settings(context, &settings);
     memory_free(fx.pixels);
     memory_free(fx.held);
     fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);

@@ -1,4 +1,4 @@
-/* scene_stress: a pool of static or generated copies, or a pack's own baked mesh, before a moving camera. */
+/* scene_stress: a pool of static or generated copies, or a pack's own baked mesh, before a moving or held camera. */
 
 #include "apps/render_lab/stress/scene_stress.h"
 
@@ -460,6 +460,9 @@ scene_stress_enter(const lab_scene_t* self) {
     place_copies();
     for (int i = 0; i < mathi_min(shown->copies, pool); i++) {
         copy_extras(i);
+    }
+    if (shown->hold_camera) {
+        (void)animator_set_paused(viewer, ANIMATOR_CURRENT, true);
     }
     apply_settings();
 }

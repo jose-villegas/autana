@@ -148,12 +148,12 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family shows a generated primitive or a static pack mesh in copies,
-or a baked mesh of its own pack, before a moving camera. Each preset ties down
-one behaviour with its own pegged goal. The presets are the per-PR perf check
-for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
-scene regression with no preset moving is a coverage gap and becomes a new
-preset.
+The Stress family draws generated or baked meshes before a moving or held
+camera. Each preset isolates a renderer cost and owns its perf goals.
+
+The presets are the per-PR perf check for r3d work. Scenes run nightly,
+on request, and for bake and fit changes. A scene regression with no
+preset moving becomes a new preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
@@ -198,6 +198,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-small-dither` | ![Stress small dither: a wall of coarse noisy planes, dithered](../../../../../docs/images/overview/render-lab-stress-small-dither.png) | the same wall, its corners far apart in colour, under the dither style | the small fill's dither kernel, which only that setting selects |
 | `stress-small-off` | ![Stress small off: many small spheres, the small fill off](../../../../../docs/images/overview/render-lab-stress-small-off.png) | `stress-tiny-copies` with the small fill off | the row walk's flat fill, which the small fill otherwise takes first |
 | `stress-stack-skip` | ![Stress stack skip: planes one behind another, hidden clusters skipped](../../../../../docs/images/overview/render-lab-stress-stack-skip.png) | `stress-stack`, its camera skipping clusters behind drawn depth as Bistro's does | the capped row walk, every fill's depth held under its cluster's |
+| `stress-settle` | ![Live and settled comparison](../../../../../docs/images/render/settle.png) | a held wall of tessellated textured planes | quiet-band refinement, with partial redraw enabled by the preset |
 | `stress-carved-blend` | ![Stress carved blend: bumpy balls close up, changing level through dither masks](../../../../../docs/images/overview/render-lab-stress-carved-blend.png) | `stress-carved-near` with `lod.blend` on | the dithered blend's masked fill as a group moves between levels |
 
 ![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
@@ -258,7 +259,7 @@ traverses the stacked surfaces. Their sweeps are claims of
 | Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
 The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
-preset's swing. `stress_presets[].perf_poses` owns sampling density.
+preset's swing or held pose. `stress_presets[].perf_poses` owns sampling density.
 Uniform presets also replay the full and half-height render_lab ladder steps.
 
 Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
@@ -281,9 +282,26 @@ perf board, plus the script's margins. Regenerate it with:
 python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
 ```
 
-Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
-measured frames. The pose counts and size loops in the suite own its frame
-budget.
+Each pose draws one counted frame and one warm frame before measurement.
+Swinging presets measure `FRAME_PROFILE_REPLAY_DRAWS` frames; held presets
+measure the default settle hold plus `RENDER_SETTLE_BANDS` frames.
+
+The settle preset pauses its camera and samples the same pose throughout.
+Its `render.partial_redraw` setting enables kept rows even in the perf suite.
+The comparison shows its first live frame and its held picture after refinement.
+
+![Live and settled textured planes, with amplified difference](../../../../../docs/images/render/settle.png)
+
+![Texture detail before and after settling](../../../../../docs/images/render/settle.crops.png)
+
+```sh
+launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/settle
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 1 -o /tmp/settle/live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 -o /tmp/settle/settled.ppm
+python launcher/tools/render/render_compare.py --out /tmp/settle/compare.png \
+    --row 'Held textured view' /tmp/settle/live.ppm /tmp/settle/settled.ppm \
+    --label-a Live --label-b Settled --crops 2
+```
 
 Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
 Dynamic copies also use PSRAM and the same packed-int16 transform loop;
