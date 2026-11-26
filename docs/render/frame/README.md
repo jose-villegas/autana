@@ -47,6 +47,7 @@ flowchart LR
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: the stepped controller and the predictor |
 | [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose, shown between renders |
 | [Partial-Redraw.md](Partial-Redraw.md) | A still camera redrawing only the rows where something changed |
+| [Settle.md](Settle.md) | Quiet rows of a held picture refining with live styles off |
 | [Light-Probes.md](Light-Probes.md) | Dynamic GI: baked SH light probes for skinned meshes, from placement and the bake to the blend, the shading, cost and limits |
 | [Contact-Shadows.md](Contact-Shadows.md) | The dithered disc under a skinned mover: placement, drawing, cost and limits |
 
