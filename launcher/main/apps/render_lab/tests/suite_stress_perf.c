@@ -200,7 +200,7 @@ stress_goal(void) {
     return NULL;
 }
 
-static void
+static __attribute__((noinline)) void
 report_goals(const stress_goal_t* goal, const int64_t sums[STRESS_PERF_SAMPLED_STAGES], int poses, int stages) {
     char row[LAB_PERF_ROW_NAME_SIZE];
     const bool own_size = strcmp(goal->size, STRESS_PERF_DEFAULT_SIZE) == 0;
@@ -234,8 +234,16 @@ discard_frame(void* sink, const uint8_t* bytes, size_t count) {
     return true;
 }
 
+static struct {
+    const char* sampled[STRESS_PERF_SAMPLED_STAGES];
+    int64_t sums[STRESS_PERF_SAMPLED_STAGES];
+    int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
+}* samples;
+
 static void
 release_fixture(void) {
+    memory_free(samples);
+    samples = NULL;
     frame_record_stop();
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
@@ -244,17 +252,15 @@ release_fixture(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), saved_layout));
 }
 
-static void
-test_stress_stages(void) {
-    const stress_goal_t* goal = stress_goal();
-    saved_filter = render_lab_upscale_selected();
-    saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
-    const stress_params_t* params = preset->data;
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), LAB_LAYOUT_FULL));
-    lab_test_enter(&saved, &render_lab, preset->key);
-    suite_set_test_cleanup(release_fixture);
-    test_hold_quarter(quarter->quarter);
-    (void)lab_test_frame_dt(0, false, NULL);
+static __attribute__((noinline)) entity_t
+stress_camera(void) {
+    const lab_path_t path = preset->path();
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
+    return path.entity;
+}
+
+static __attribute__((noinline)) void
+configure_stress(const stress_params_t* params) {
     if (size_step != STRESS_PERF_NO_STEP) {
         const resolution_step_t size = render_lab_ladder[size_step];
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
@@ -266,9 +272,24 @@ test_stress_stages(void) {
         TEST_ASSERT_TRUE_MESSAGE(frame_record_start(&discard, FRAME_RECORD_KEYFRAME_EVERY),
                                  "the recorder did not start");
     }
-    const lab_path_t path = preset->path();
-    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
-    const entity_t camera = path.entity;
+}
+
+static void
+test_stress_stages(void) {
+    const stress_goal_t* goal = stress_goal();
+    saved_filter = render_lab_upscale_selected();
+    saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
+    const stress_params_t* params = preset->data;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), LAB_LAYOUT_FULL));
+    lab_test_enter(&saved, &render_lab, preset->key);
+    suite_set_test_cleanup(release_fixture);
+    samples = memory_alloc(sizeof *samples, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(samples);
+    memset(samples, 0, sizeof *samples);
+    test_hold_quarter(quarter->quarter);
+    (void)lab_test_frame_dt(0, false, NULL);
+    configure_stress(params);
+    const entity_t camera = stress_camera();
     TEST_ASSERT_FALSE(handle_is_none(camera));
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
     const uint32_t duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));
@@ -276,23 +297,20 @@ test_stress_stages(void) {
     const bool animated = stress_skinned(params);
     const int stages = animated ? STRESS_PERF_STAGES : STRESS_PERF_STATIC_STAGES;
     const uint32_t dt_ms = animated ? LAB_TEST_FRAME_MS : 0;
-    const char* sampled[STRESS_PERF_SAMPLED_STAGES];
-    memcpy(sampled, stress_perf_stages, sizeof stress_perf_stages);
-    sampled[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
-    int64_t sums[STRESS_PERF_SAMPLED_STAGES] = {0};
+    memcpy(samples->sampled, stress_perf_stages, sizeof stress_perf_stages);
+    samples->sampled[STRESS_PERF_STAGES] = STRESS_FLAP_STAGE_NAME;
     const render_settings_t* settings = render_context_settings(render_context_main());
     const int draws =
         params->hold_camera ? settings->settle.hold_frames + RENDER_SETTLE_BANDS : FRAME_PROFILE_REPLAY_DRAWS;
     for (int i = 0; i < params->perf_poses; i++) {
-        int64_t stage_us[STRESS_PERF_SAMPLED_STAGES];
         render_lab_test_replay_pose(TAG, camera, duration_ms, (int32_t)stress_pose_ms(params, duration_ms, i),
-                                    preset->key, quarter->name, sampled, STRESS_PERF_SAMPLED_STAGES, stage_us, dt_ms,
-                                    draws);
+                                    preset->key, quarter->name, samples->sampled, STRESS_PERF_SAMPLED_STAGES,
+                                    samples->stage_us, dt_ms, draws);
         for (int stage = 0; stage < STRESS_PERF_SAMPLED_STAGES; stage++) {
-            sums[stage] += stage_us[stage];
+            samples->sums[stage] += samples->stage_us[stage];
         }
     }
-    report_goals(goal, sums, params->perf_poses, stages);
+    report_goals(goal, samples->sums, params->perf_poses, stages);
     release_fixture();
     suite_clear_test_cleanup();
 }

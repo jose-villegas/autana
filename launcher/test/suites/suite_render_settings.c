@@ -125,9 +125,8 @@ test_the_default_far_level_is_four(void) {
     TEST_ASSERT_EQUAL_INT(SHIPPED_FAR_LEVEL, RENDER_SETTINGS_DEFAULT.texture.far_level);
 }
 
-static void
-test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
-    raster_rig_t* r = open_rig();
+static __attribute__((noinline)) void
+assert_default_settings(const render_context_t* c, const raster_rig_t* r) {
     /* Before settings, the raster always culled, fitted depth and batched;
      * partial redraw draws the same picture; LOD switches at once, as it did. */
     const render_settings_t on = {.cull = true,
@@ -153,8 +152,14 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
+    assert_settings(&on, render_context_settings(c));
+}
+
+static void
+test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
+    raster_rig_t* r = open_rig();
     render_context_t* c = open_contexts();
-    assert_settings(&on, render_context_settings(&c[0]));
+    assert_default_settings(&c[0], r);
     /* Culled: the card behind the camera keeps nothing. */
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
 }

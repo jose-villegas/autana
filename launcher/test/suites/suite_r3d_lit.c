@@ -1389,16 +1389,23 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lens_t lens = r3d_pixel_lens(W, H);
+    struct {
+        r3d_lens_t lens;
+        r3d_span_target_t target;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
+    work->lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
-    r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows, false);
+    r3d_pipeline_transform(mesh, &work->lens, visible, 1, cs, rows, false);
     (void)fixture();
-    const r3d_span_target_t top = fixture_rows(0, split);
-    const r3d_span_target_t bottom = fixture_rows(split, H);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top, pipeline_work());
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom, pipeline_work());
+    work->target = fixture_rows(0, split);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
+    work->target = fixture_rows(split, H);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
+    free(work);
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -2634,6 +2641,12 @@ enum { BATCH_COPIES = 6 };
  * as one fork/join per instance (render.batched off). */
 static void
 test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
+    struct {
+        raster_t raster;
+        render_view_t view;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
     parts_t* const wall = parts_buffer(&shared_parts);
     build_wall_and_stack(wall);
     parts_t* const card = parts_buffer(&other_parts);
@@ -2649,30 +2662,31 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
         models[i] = transformf_compute_matrix(&pose);
         instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i], NULL, NULL};
     }
-    raster_t raster = census_raster(instances, 1 + BATCH_COPIES);
+    work->raster = census_raster(instances, 1 + BATCH_COPIES);
     uint16_t* const want = frame_held.color = malloc(sizeof(*want) * 2 * W * H);
     TEST_ASSERT_NOT_NULL(want);
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    work->view = render_view_fixture(&camera, &work->raster, 0);
     render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
     one_at_a_time.batched = false;
-    raster.settings = &one_at_a_time;
-    (void)raster_census(&raster, &view); /* batches run over its drawn list */
-    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
-    raster_draw(&raster, &view);
-    memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
-    memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
-    raster.settings = NULL;
+    work->raster.settings = &one_at_a_time;
+    (void)raster_census(&work->raster, &work->view); /* batches run over its drawn list */
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&work->raster));
+    raster_draw(&work->raster, &work->view);
+    memcpy(want, raster_color(&work->raster), sizeof(*want) * W * H);
+    memcpy(want + (W * H), raster_depth(&work->raster), sizeof(*want) * W * H);
+    work->raster.settings = NULL;
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
-    TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
-    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
-    raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&work->raster, 1));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&work->raster));
+    raster_draw(&work->raster, &work->view);
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster, false);
-    TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
+    raster_cull_frame_compose(&frame, &work->raster, false);
+    TEST_ASSERT_EQUAL_INT(raster_batch_count(&work->raster), frame.transform_batches);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&work->raster), W * H);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&work->raster), W * H);
+    free(work);
 }
 
 static void

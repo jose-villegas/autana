@@ -237,7 +237,13 @@ ui_set_transform(affine2x_t t) {
  * ui_transform_is_axis_preserving(); see ui_set_transform() above. */
 affine2x_t
 ui_effective_transform(void) {
-    return transform_valid ? transform : affine2x_identity();
+    return *ui_effective_transform_ref();
+}
+
+const affine2x_t*
+ui_effective_transform_ref(void) {
+    static const affine2x_t identity = {{MATHX_ONE, 0}, {0, MATHX_ONE}, {0, 0}};
+    return transform_valid ? &transform : &identity;
 }
 
 mu_Context*

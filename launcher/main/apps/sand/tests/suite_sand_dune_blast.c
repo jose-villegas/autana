@@ -745,21 +745,25 @@ test_the_wood_floor_scene_catches_fire(void) {
     const int n = (int)(sizeof seeds / sizeof seeds[0]);
     int lit_boards = 0;
     int total_burning = 0;
-    char why[280];
+
+    enum { WHY_BYTES = 280 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
 
     for (int i = 0; i < n; i++) {
         bool settled = false;
         int wood_before = 0;
         const int burning = dune_over_wood_burning(seeds[i], &settled, &wood_before);
 
-        snprintf(why, sizeof why,
+        snprintf(why, WHY_BYTES,
                  "the dune over its wood floor must stop moving within the "
                  "settle budget before anything is measured against it - "
                  "seed %u",
                  (unsigned)seeds[i]);
         TEST_ASSERT_TRUE_MESSAGE(settled, why);
 
-        snprintf(why, sizeof why,
+        snprintf(why, WHY_BYTES,
                  "the wood floor must have survived settling - if sand "
                  "displaced all of it before the blast even happens, this "
                  "proves nothing - seed %u, %d wood",
@@ -772,7 +776,7 @@ test_the_wood_floor_scene_catches_fire(void) {
         }
     }
 
-    snprintf(why, sizeof why,
+    snprintf(why, WHY_BYTES,
              "a blast detonated against a wood floor must leave some of it "
              "burning on at least one of %d boards - the core's own fire "
              "reaching nearby fuel exactly as painted fire already would, "
@@ -780,6 +784,7 @@ test_the_wood_floor_scene_catches_fire(void) {
              "cells",
              n, lit_boards, total_burning);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, lit_boards, why);
+    free(why);
 }
 
 /* Three bands of decreasing radius with real settling time between them,
