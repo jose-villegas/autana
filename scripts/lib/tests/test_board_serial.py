@@ -9,13 +9,9 @@ import board_serial
 
 
 class ReadReadyTests(unittest.TestCase):
-    def test_read_requests_available_bytes_up_to_the_limit_or_one_when_empty(self):
-        for waiting, expected, kwargs in (
-                (0, 1, {}),
-                (5, 5, {}),
-                (8192, 4096, {}),
-                (5, 2, {"limit": 2})):
-            with self.subTest(waiting=waiting, **kwargs):
+    def test_a_read_asks_for_what_is_waiting_at_least_one_byte_at_most_the_cap(self):
+        for waiting, expected in ((0, 1), (5, 5), (board_serial.READ_BYTES * 2, board_serial.READ_BYTES)):
+            with self.subTest(waiting=waiting):
                 connection = Mock(in_waiting=waiting)
-                self.assertIs(board_serial.read_ready(connection, **kwargs), connection.read.return_value)
+                self.assertIs(board_serial.read_ready(connection), connection.read.return_value)
                 connection.read.assert_called_once_with(expected)

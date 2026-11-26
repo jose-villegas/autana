@@ -5,12 +5,12 @@ import os
 READ_BYTES = 4096
 
 
-def read_ready(connection, limit=READ_BYTES):
-    """Read available bytes up to limit, or wait for one byte if empty.
-
-    Requesting more bytes than are available can stall until the read timeout.
-    """
-    return connection.read(min(max(connection.in_waiting, 1), limit))
+def read_ready(connection):
+    """What the port holds now, up to READ_BYTES, or the first byte to arrive
+    within the read timeout. pyserial returns a short read only when the
+    timeout runs out, so asking for more than is waiting holds every read
+    for the whole timeout while a board sends less than that."""
+    return connection.read(min(max(connection.in_waiting, 1), READ_BYTES))
 
 
 def before_open(connection):
