@@ -1,10 +1,11 @@
-"""Sky a simplified mesh shows through its walls, and the source vertices that close it.
+"""Where a simplified mesh lets the view past a surface its source closes, and the source vertices that close it.
 
 A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
 at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
 probes spread through the camera's region (views/probes.py's placement), each through six cube faces, and from
-`path` views when given. In a view, the pixels where a simplified mesh shows sky form connected
-regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
+`path` views when given. In a view, a pixel is open where the simplified mesh shows sky the source covers, or where
+the source hits and the mesh hits nothing or lies beyond BEHIND times the source's distance, in a region that holds
+an OPENING square whole. Open pixels form connected regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
 to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
 the farthest-point step of Douglas and Peucker's line reduction, taken on a surface and only where sky shows.
 simplify.py locks the pins and simplifies again until no view has a hole, ROUNDS run out or the locks would
@@ -21,7 +22,11 @@ from r3d.ray_query import LAUNCH, RayQuery
 
 # The seed of the probes' jitter.
 PROBE_SEED = 1
-# Sky pixels touching at a corner are one region.
+# A mesh hit this much farther than the source's is the view going past the surface, not the surface moved.
+BEHIND = 1.5
+# The square a region of pixels past the source must hold whole somewhere to count: silhouettes a pixel wide do not.
+OPENING = 3
+# Open pixels touching at a corner are one region.
 CONNECTED = np.ones((3, 3), dtype=int)
 # Most times a pass is simplified again; a pass that still leaks after these keeps its last accepted run.
 ROUNDS = 24
@@ -42,7 +47,7 @@ class LeakProbes:
         if path is not None:
             width, height, lens, poses = path
             self.views += [(width, height, lens, pose) for pose in poses]
-        self.source_sky = [~self.query.first_hits(origins, directions)[0] for _, origins, directions in self._batches()]
+        self.source_hits = [self.query.first_hits(origins, directions)[:2] for _, origins, directions in self._batches()]
         self.source = np.ones(len(self.tris), dtype=bool)
         self.finished = []
 
@@ -62,17 +67,20 @@ class LeakProbes:
         """Per hole a mesh shows, the source triangles seen through it."""
         result = RayQuery(positions, tris)
         holes = []
-        for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):
-            sky = ~result.blocked(origins, directions)
-            if not np.any(sky & ~source_sky):
+        for (views, origins, directions), (source_hit, source_distance) in zip(self._batches(), self.source_hits):
+            hit, distance, _ = result.first_hits(origins, directions)
+            past = source_hit & (~hit | (distance > BEHIND * np.where(source_hit, source_distance, 0.0)))
+            if not np.any(past):
                 continue
             at = 0
             for width, height, _, _ in views:
                 rows = slice(at, at + width * height)
                 at += width * height
-                if not np.any(sky[rows] & ~source_sky[rows]):
+                if not np.any(past[rows]):
                     continue
-                masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width))
+                shape = (height, width)
+                masks = view_holes(open_pixels((~hit[rows]).reshape(shape), past[rows].reshape(shape)),
+                                   (~source_hit[rows]).reshape(shape))
                 if masks:
                     _, _, seen = self.query.first_hits(origins[rows], directions[rows])
                     holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
@@ -102,11 +110,18 @@ class LeakProbes:
         return len(holes), pins(self.positions, self.tris, holes, result_positions, result_tris, free)
 
 
-def view_holes(sky, source_sky):
-    """The holes of one view, a mask each: the connected regions of `sky` (pixels where a mesh shows sky) that
-    hold no pixel of `source_sky` (where the source shows it too). A region that reaches the source's sky is the
-    mesh's outline moving, not a hole."""
-    label, regions = ndimage.label(sky, CONNECTED)
+def open_pixels(sky, past):
+    """A view's open pixels: where a mesh shows sky the source covers (`past` and `sky`), any of them, and the rest
+    of `past` (where the source hits and the mesh misses or lies beyond BEHIND times it) that an OPENING square
+    covers whole."""
+    return (sky & past) | ndimage.binary_opening(past, np.ones((OPENING, OPENING), dtype=bool))
+
+
+def view_holes(open_mask, source_sky):
+    """The holes of one view, a mask each: the connected regions of `open_mask` (open pixels) that hold no pixel
+    of `source_sky` (where the source shows sky). A region that reaches the source's sky is the mesh's outline
+    moving, not a hole."""
+    label, regions = ndimage.label(open_mask | source_sky, CONNECTED)
     return [label == region for region in np.setdiff1d(np.arange(1, regions + 1), label[source_sky])]
 
 

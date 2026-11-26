@@ -98,8 +98,8 @@ class Allocation:
     shade_shared: object = None
     report: object = None
     shapes: object = None
-    # With seal_seams, where the probes that look for sky through walls stand: (camera region or None, near plane),
-    # then optionally the camera path's views, as leaks.LeakProbes takes them.
+    # Where the probes that look for views past a surface the source closes stand: (camera region or None, near
+    # plane), then optionally the camera path's views, as leaks.LeakProbes takes them; None runs no probes.
     camera: object = None
     detail: object = None
     split: object = None
@@ -142,7 +142,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     locks[tris[held]] = True
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     probes = None
-    if seal_seams and allocation.camera is not None:
+    if allocation.camera is not None:
         from .leaks import LeakProbes
 
         probes = LeakProbes(pos, tris, *allocation.camera)
