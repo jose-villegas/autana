@@ -22,8 +22,11 @@ from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define  # noqa: E402
 from r3d.bake_fidelity import build_host  # noqa: E402
 from r3d.obj import write_obj as write_obj_file  # noqa: E402
+
+ASSET_DIR_ENV = read_define(ROOT / "launcher/main/asset/asset_store.h", "ASSET_STORE_DIR_ENV")
 
 FIGURE_NAME = "light-point-spot.png"
 SCENE_ID = "lights"
@@ -160,7 +163,7 @@ def main(argv=None):
         host = build_host(ROOT / "launcher/tools/render/scene_viewer.sh", folder / "host", scene)
         frame = folder / "frame.bmp"
         run([host, "--quarter", "0", "--scene", SCENE_ID, "--frames", "1", "-o", frame], folder / "render.log",
-            env={**os.environ, "AUTANA_ASSET_DIR": str(host.parent / "assets")})
+            env={**os.environ, ASSET_DIR_ENV: str(host.parent / "assets")})
         Image.open(frame).convert("RGB").save(args.out / FIGURE_NAME, optimize=True)
     print(f"wrote {args.out / FIGURE_NAME}")
 
