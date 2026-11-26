@@ -13,7 +13,7 @@ import numpy as np
 from r3d import lcol_asset, mesh_bundle
 from r3d.texture import texture_asset, uv_transfer
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import filled_back, finest, read_bundle_mesh, rgb888
+from r3d.lit_mesh import RGB_CHANNELS, both_sides, filled_back, finest, read_bundle_mesh, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -49,11 +49,11 @@ def hidden_materials(entries, rows):
     return {row["match"]["material"] for row in masked_copies(entries, rows)}
 
 
-def placed_copies(bundle, flat, backs=False):
+def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
-    vertex, or per triangle when `flat`, and with `backs` the back colours of its set beside them, as the rest's
-    (lit_mesh.both_sides()). None when the bundle has no copies. No weld by value, so a copy's
+    vertex, or per triangle when `flat`, and the back colours of its set beside them where any copy mesh has
+    some (lit_mesh.both_sides(), same_sides()). None when the bundle has no copies. No weld by value, so a copy's
     vertices and triangles are the ones a mesh without levels holds."""
     from r3d.appearance_simplify import FitMesh
 
@@ -84,10 +84,9 @@ def placed_copies(bundle, flat, backs=False):
                 else np.frombuffer(sets[row["colour_set"]], "u1").reshape(-1, 3)
             front = stored[:count]
             colours = front[faces] if flat else front[vertices]
-            if backs:
-                back = filled_back(mesh.clusters, front, stored[count:count + back_count], not flat) if back_count \
-                    else front
-                colours = np.concatenate([colours, back[faces] if flat else back[vertices]], axis=1)
+            if back_count:
+                back = filled_back(mesh.clusters, front, stored[count:count + back_count], not flat)
+                colours = both_sides(colours, back[faces] if flat else back[vertices])
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
             rgb.append(colours / 255.0)
             tris.append(renumber[mesh.tris[faces]] + vertex_count)
@@ -95,13 +94,30 @@ def placed_copies(bundle, flat, backs=False):
             vertex_point.append(welded + point_count)
             point_count += len(local)
             vertex_count += len(welded)
-    return FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
-                   np.concatenate(vertex_point), flat)
+    return FitMesh(np.concatenate(points), np.concatenate(same_sides(*rgb)), np.concatenate(tris),
+                   np.concatenate(double), 1, np.concatenate(vertex_point), flat)
+
+
+def same_sides(*colours):
+    """`colours` arrays, each widened to back colours beside its front (lit_mesh.both_sides()) when any has them:
+    the front again, which a mesh without back colours shows from behind."""
+    if all(np.shape(rgb)[-1] == RGB_CHANNELS for rgb in colours):
+        return list(colours)
+    return [both_sides(rgb, rgb) if np.shape(rgb)[-1] == RGB_CHANNELS else rgb for rgb in colours]
+
+
+def matched(rest, copies):
+    """(rest, copies) with colours of one width (same_sides()), so the fit trains and draws them as one mesh."""
+    if copies is None:
+        return rest, copies
+    rest_rgb, copy_rgb = same_sides(rest.rgb, copies.rgb)
+    return rest._replace(rgb=rest_rgb), copies._replace(rgb=copy_rgb)
 
 def joined(rest, copies):
     """The rest and the copies as one mesh to raster, the rest's triangles first."""
     if copies is None:
         return rest
+    rest, copies = matched(rest, copies)
     return rest._replace(points=np.concatenate([rest.points, copies.points]),
                          rgb=np.concatenate([rest.rgb, copies.rgb]),
                          tris=np.concatenate([rest.tris, copies.tris + len(rest.vertex_point)]),

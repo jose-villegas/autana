@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, corner_edges, triangle_areas  # noqa: E402
-from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, matched, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import RGB_CHANNELS, finest_triangles, read_bundle_mesh  # noqa: E402
@@ -370,11 +370,6 @@ def vertex_normals(points, tris, vertex_point):
     return torch.nn.functional.normalize(around, dim=1)[vertex_point]
 
 
-def sided(rgb):
-    """Whether colours hold back colours beside the front ones (lit_mesh.both_sides())."""
-    return np.shape(rgb)[-1] > RGB_CHANNELS
-
-
 class Renderer:
     """Draws the mesh as the device does: Gouraud vertex colours, or with
     `flat` one colour per triangle, single-sided triangles culled when they
@@ -414,13 +409,17 @@ class Renderer:
         import torch
 
         with torch.no_grad():
-            return self.double | (self.screen_area(clip) > 0) | (clip[self.tris.long()][..., 3] <= 0).any(dim=1)
+            return self.double | (self.winding(clip) > 0) | (clip[self.tris.long()][..., 3] <= 0).any(dim=1)
 
-    def screen_area(self, clip):
-        """Each triangle's signed area on screen, positive where its corners wind counter-clockwise."""
-        corners = clip[self.tris.long()]
-        xy = corners[..., :2] / corners[..., 3:].clamp_min(1e-6)
-        return (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
+    def winding(self, clip):
+        """Each triangle's winding on screen, positive where its corners turn counter-clockwise: the determinant
+        of its corners' (x, y, w). With every w positive it is their product times the signed screen area; for a
+        triangle crossing the eye plane it keeps the sign of the part in front, as the device's clipped polygon
+        does."""
+        import torch
+
+        corners = clip[self.tris.long()][..., [0, 1, 3]]
+        return torch.linalg.det(corners)
 
     @staticmethod
     def pixel_triangles(rast, keep):
@@ -566,7 +565,7 @@ class Renderer:
 
         with torch.no_grad():
             shown = self.pixel_triangles(rast, keep)
-            return (self.screen_area(clip)[shown.clamp_min(0)] > 0) | (shown < 0)
+            return (self.winding(clip)[shown.clamp_min(0)] > 0) | (shown < 0)
 
     def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch
@@ -1112,7 +1111,7 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat, sided(mesh.rgb))
+    mesh, copies = matched(mesh, None if args.copies is None else placed_copies(args.copies, mesh.flat))
     if copies is not None:
         log(f"copies: {len(copies.tris)} triangles drawn with the start")
     pairs = list(zip(args.poses, args.reference))

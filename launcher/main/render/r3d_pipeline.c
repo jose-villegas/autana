@@ -916,7 +916,7 @@ side_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t
  * planes and projected into work->clip.projected: its corner count, 0 when
  * nothing is left or it faces away. The cut learns which way it faces only
  * once projected, so one seen from behind that shows back colours is rebuilt
- * again from them, and `face` becomes its back face colour. */
+ * again from them, or, flat, `face` becomes its back face colour. */
 static inline __attribute__((always_inline)) int
 rebuilt_polygon(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t* face, const r3d_lit_cluster_t* c,
                 r3d_pipeline_work_t* work, int cluster, int weight, int chart) {
@@ -926,8 +926,12 @@ rebuilt_polygon(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint3
     if (n == 0 || !back || !shows_back(mesh, c)) {
         return n;
     }
+    if (*face != R3D_SPAN_FACE_NONE) {
+        /* A flat triangle draws its face colour alone: the polygon stands. */
+        *face = side_face(mesh, c, t, *face);
+        return n;
+    }
     side_corners(mesh, lens, t, *face, work, cluster, weight, chart, c);
-    *face = side_face(mesh, c, t, *face);
     return projected_polygon(lens, true, work, &back);
 }
 

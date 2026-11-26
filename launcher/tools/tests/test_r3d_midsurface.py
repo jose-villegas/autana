@@ -1,6 +1,6 @@
 """Checks the midsurface collapse (r3d/source/midsurface.py): a closed thin slab becomes one sheet halfway between
-its skins, its rim and far skin gone, and the sheet reads what it shows from behind off the far skin. Traces rays:
-needs the pinned r3d environment with LLVM."""
+its skins, its rim and far skin gone, and the sheet reads what it shows from behind off its own far skin. Traces
+rays: needs the pinned r3d environment with LLVM."""
 
 import pathlib
 import sys
@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
+    from r3d.procedural.wave_sheet import BACK, sheet
     from r3d.ray_query import RayQuery
     from r3d.source import midsurface
 except ImportError:
@@ -20,39 +21,32 @@ from tests.r3d_env import needs_llvm  # noqa: E402
 
 SLAB_CELLS = 6
 SLAB_THICKNESS = 0.1
+# A second slab beside the first, farther than its reach, so no ray may pair across.
+BESIDE = (2.0, 0.0, 0.0)
 
 
-def grid(cells, z, up):
-    """A unit square at height z cut into cells x cells quads, facing +z when `up`: (points, tris)."""
-    axis = np.linspace(0.0, 1.0, cells + 1)
-    x, y = np.meshgrid(axis, axis, indexing="ij")
-    points = np.column_stack([x.ravel(), y.ravel(), np.full(x.size, z)])
-    tris = []
-    for i in range(cells):
-        for j in range(cells):
-            a, b, c, d = i * (cells + 1) + j, (i + 1) * (cells + 1) + j, (i + 1) * (cells + 1) + j + 1, i * (cells + 1) + j + 1
-            tris += [[a, b, c], [a, c, d]] if up else [[a, c, b], [a, d, c]]
-    return points, np.array(tris)
+def slab(offset=(0.0, 0.0, 0.0)):
+    """A closed unit slab centred on (0.5, 0.5, 0) + offset: the wave sheet's two layers, the top facing +z and the
+    bottom SLAB_THICKNESS below, joined by the hem. (points, tris, far): far marks the bottom skin."""
+    cloth = sheet(SLAB_CELLS, centre=(0.5 + offset[0], 0.5 + offset[1]), layers=2, thickness=SLAB_THICKNESS,
+                  z=SLAB_THICKNESS / 2 + offset[2])
+    return cloth.positions, cloth.tris, cloth.layer == BACK
 
 
-def slab(cells=SLAB_CELLS, thickness=SLAB_THICKNESS):
-    """A closed slab: a top skin facing +z, a bottom one facing -z `thickness` below, and the walls joining their
-    borders. (points, tris, far): far marks the bottom skin."""
-    top, top_tris = grid(cells, thickness / 2, True)
-    bottom, bottom_tris = grid(cells, -thickness / 2, False)
-    points = np.concatenate([top, bottom])
-    bottom_tris = bottom_tris + len(top)
-    n = cells + 1
-    ring = ([i * n for i in range(cells)] + [cells * n + j for j in range(cells)]
-            + [(cells - i) * n + cells for i in range(cells)] + [cells - j for j in range(cells)])
-    walls = []
-    for k in range(len(ring)):
-        a, b = ring[k], ring[(k + 1) % len(ring)]
-        walls += [[a, b + len(top), b], [a, a + len(top), b + len(top)]]
-    tris = np.concatenate([top_tris, bottom_tris, np.array(walls)])
-    far = np.zeros(len(tris), dtype=bool)
-    far[len(top_tris):len(top_tris) + len(bottom_tris)] = True
-    return points, tris, far
+def two_slabs():
+    """slab() and another BESIDE it, as one mesh: (points, tris, far, piece)."""
+    p1, t1, f1 = slab()
+    p2, t2, f2 = slab(BESIDE)
+    piece = np.repeat([0, 1], [len(t1), len(t2)])
+    return np.concatenate([p1, p2]), np.concatenate([t1, t2 + len(p1)]), np.concatenate([f1, f2]), piece
+
+
+def far_skin(collapsed, tris, piece):
+    """The FarSkin of a collapse, as the import builds it."""
+    far_rows, sheet_rows = np.flatnonzero(collapsed.far), np.flatnonzero(collapsed.sheet)
+    points = collapsed.points
+    return midsurface.FarSkin(RayQuery(points, tris[far_rows]), points[tris[far_rows]], piece[far_rows],
+                              points[collapsed.tri_v[sheet_rows]], piece[sheet_rows], collapsed.thickness[sheet_rows])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -60,63 +54,84 @@ def slab(cells=SLAB_CELLS, thickness=SLAB_THICKNESS):
 class MidsurfaceTests(unittest.TestCase):
     def test_a_closed_slab_collapses_to_one_sheet_halfway_between_its_skins(self):
         points, tris, far = slab()
-        sheet = midsurface.collapse(points, tris, far, np.zeros(len(tris), dtype=int), RayQuery)
-        drawn = sheet.tri_v[sheet.drawn]
-        # The whole top skin stays, moved to the middle, its border too; the walls joining the skins are the rim.
+        collapsed = midsurface.collapse(points, tris, far, np.zeros(len(tris), dtype=int), RayQuery)
+        drawn = collapsed.tri_v[collapsed.drawn]
+        # The whole top skin stays, moved to the middle, its border too; the hem joining the skins is the rim.
         self.assertEqual(len(drawn), 2 * SLAB_CELLS ** 2)
-        np.testing.assert_allclose(sheet.points[drawn][..., 2], 0.0, atol=1e-6)
-        self.assertTrue(np.array_equal(sheet.far, far), "a triangle of the top skin was taken for the far skin")
-        self.assertAlmostEqual(sheet.reach, midsurface.REACH * SLAB_THICKNESS, places=6)
+        self.assertEqual(int(collapsed.sheet.sum()), 2 * SLAB_CELLS ** 2)
+        np.testing.assert_allclose(collapsed.points[drawn][..., 2], 0.0, atol=1e-6)
+        self.assertTrue(np.array_equal(collapsed.far, far), "a triangle of the top skin was taken for the far skin")
+        np.testing.assert_allclose(collapsed.thickness[collapsed.sheet], SLAB_THICKNESS, rtol=1e-6)
         # Every drawn triangle still faces the top skin's way, and nothing else of the slab is drawn.
-        normals = np.cross(sheet.points[drawn[:, 1]] - sheet.points[drawn[:, 0]],
-                           sheet.points[drawn[:, 2]] - sheet.points[drawn[:, 0]])
+        normals = np.cross(collapsed.points[drawn[:, 1]] - collapsed.points[drawn[:, 0]],
+                           collapsed.points[drawn[:, 2]] - collapsed.points[drawn[:, 0]])
         self.assertTrue((normals[:, 2] > 0).all())
-        np.testing.assert_array_equal(sheet.points[:len(points)], points)
+        np.testing.assert_array_equal(collapsed.points[:len(points)], points)
+        # Each moved point names the source point it came from, at the same x and y.
+        np.testing.assert_array_equal(collapsed.source[:len(points)], np.arange(len(points)))
+        np.testing.assert_allclose(collapsed.points[len(points):, :2], points[collapsed.source[len(points):], :2])
 
     def test_a_piece_that_is_not_a_shell_stays_as_it_was(self):
         points, tris, far = slab()
-        piece = np.full(len(tris), -1)
-        sheet = midsurface.collapse(points, tris, np.zeros(len(tris), dtype=bool), piece, RayQuery)
-        self.assertTrue(sheet.drawn.all())
-        np.testing.assert_array_equal(sheet.tri_v, tris)
+        collapsed = midsurface.collapse(points, tris, np.zeros(len(tris), dtype=bool), np.full(len(tris), -1), RayQuery)
+        self.assertTrue(collapsed.drawn.all())
+        np.testing.assert_array_equal(collapsed.tri_v, tris)
 
-    def test_a_pair_farther_than_the_reach_or_skins_not_facing_pairs_nothing(self):
+    def test_a_shell_whose_collapse_would_hole_the_sheet_keeps_both_skins(self):
         points, tris, far = slab()
-        # Push one inside vertex of the bottom skin far down: the faces above it now meet the bottom skin past
-        # REACH times the median thickness, or turned away, and join the rim.
-        centre = (SLAB_CELLS + 1) * (SLAB_CELLS // 2) + SLAB_CELLS // 2
+        # Push the bottom skin's middle point far down: the faces above it meet the far skin past the reach, turned
+        # away, and would leave a hole inside the sheet; the shell stays as it was instead.
+        bottom = np.unique(tris[far])
+        centre = bottom[np.argmin(np.linalg.norm(points[bottom, :2] - 0.5, axis=1))]
         moved = points.copy()
-        moved[len(points) // 2 + centre, 2] -= 10 * SLAB_THICKNESS
-        sheet = midsurface.collapse(moved, tris, far, np.zeros(len(tris), dtype=int), RayQuery)
-        top_of_centre = np.any(tris == centre, axis=1)
-        self.assertFalse(sheet.drawn[top_of_centre].any(), "a face reached past the reach")
-        self.assertLess(int(sheet.drawn.sum()), 2 * SLAB_CELLS ** 2)
+        moved[np.all(np.isclose(points, points[centre]), axis=1), 2] -= 10 * SLAB_THICKNESS
+        collapsed = midsurface.collapse(moved, tris, far, np.zeros(len(tris), dtype=int), RayQuery)
+        self.assertTrue(collapsed.drawn.all())
+        self.assertFalse(collapsed.far.any() or collapsed.sheet.any())
+        np.testing.assert_array_equal(collapsed.tri_v, tris)
 
-    def test_the_sheet_reads_its_back_off_the_far_skin_within_reach_else_its_front(self):
-        """Along its ray where that meets the far skin, else at the far skin's nearest point, within reach."""
-        points, tris, far = slab()
-        far_query = RayQuery(points, tris[far])
-        at = np.array([[0.5, 0.5, 0.0], [0.5, 0.5, 0.0], [5.0, 5.0, 0.0]])
-        normals = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
-        front = np.full((3, 3), 0.25)
+    def test_each_shell_pairs_with_its_own_far_skin_alone(self):
+        points, tris, far, piece = two_slabs()
+        collapsed = midsurface.collapse(points, tris, far, piece, RayQuery)
+        self.assertEqual(int(collapsed.sheet.sum()), 4 * SLAB_CELLS ** 2)
+        np.testing.assert_allclose(collapsed.points[collapsed.tri_v[collapsed.sheet]][..., 2], 0.0, atol=1e-6)
+        # A ray onto another shell's far skin pairs nothing, however well it faces back and however near.
+        far_rows = np.flatnonzero(far)
+        query = RayQuery(points, tris[far_rows])
+        origin, normal = np.array([[0.5, 0.5, SLAB_THICKNESS / 2]]), np.array([[0.0, 0.0, 1.0]])
+        far_normals = np.tile([0.0, 0.0, -1.0], (len(far_rows), 1))
+        own, _ = midsurface.inward_hits(query, far_normals, piece[far_rows], origin, normal, np.array([0]))
+        other, _ = midsurface.inward_hits(query, far_normals, piece[far_rows], origin, normal, np.array([1]))
+        self.assertTrue(own[0])
+        self.assertFalse(other[0], "a ray paired with another shell's far skin")
+
+    def test_the_sheet_reads_its_back_off_its_own_far_skin_within_reach_else_its_front(self):
+        """Along its ray where that meets its shell's far skin, else at that skin's nearest point, within reach."""
+        points, tris, far, piece = two_slabs()
+        collapsed = midsurface.collapse(points, tris, far, piece, RayQuery)
+        skin = far_skin(collapsed, tris, piece)
+        at = np.array([[0.5, 0.5, 0.0], [0.5, 0.5, 0.0], [5.0, 5.0, 0.0], [2.5, 0.5, 0.0], [0.5, 0.5, 0.08]])
+        normals = np.array([[0, 0, 1.0], [0, 0, -1.0], [0, 0, 1.0], [0, 0, 1.0], [0, 0, 1.0]])
+        front = np.full((len(at), 3), 0.25)
         seen = []
 
         def at_hit(hits, rows, hit):
-            seen.append(hits)
+            seen.append((hits, skin.piece[rows]))
             return np.full((len(hits), 3), 0.75)
 
-        corners = points[tris[far]]
-        back = midsurface.back_albedo(at, normals, front, far_query, corners, SLAB_THICKNESS, at_hit)
-        # The first looks at the far skin, the second looks away but stands within reach of it, and the third
-        # is off the slab.
-        np.testing.assert_allclose(back, [[0.75] * 3, [0.75] * 3, [0.25] * 3])
-        np.testing.assert_allclose(seen[0], [[0.5, 0.5, -SLAB_THICKNESS / 2]] * 2, atol=1e-6)
-        np.testing.assert_allclose(midsurface.back_albedo(at, normals, front, far_query, corners, SLAB_THICKNESS / 4,
-                                                          at_hit), front, err_msg="a far skin beyond the reach was read")
-        np.testing.assert_allclose(midsurface.back_albedo(at, normals, front, None, corners, 1.0, at_hit), front)
+        back = midsurface.back_albedo(at, normals, front, skin, at_hit)
+        # The first looks at its far skin, the second looks away but stands within reach of it, the fourth is on
+        # the second slab; the third is off both slabs and the fifth stands above the first slab, farther from its
+        # sheet than half its thickness: an open sheet there is not the slab's and reads its front.
+        np.testing.assert_allclose(back, [[0.75] * 3, [0.75] * 3, [0.25] * 3, [0.75] * 3, [0.25] * 3])
+        hits = np.concatenate([h for h, _ in seen])
+        np.testing.assert_allclose(hits[:, 2], -SLAB_THICKNESS / 2, atol=1e-6)
+        shells = np.concatenate([s for _, s in seen])
+        np.testing.assert_array_equal(np.sort(shells), [0, 0, 1])
+        np.testing.assert_allclose(midsurface.back_albedo(at, normals, front, None, at_hit), front)
         # Without normals, the nearest point alone.
-        np.testing.assert_allclose(midsurface.back_albedo(at, None, front, far_query, corners, SLAB_THICKNESS, at_hit),
-                                   [[0.75] * 3, [0.75] * 3, [0.25] * 3])
+        np.testing.assert_allclose(midsurface.back_albedo(at, None, front, skin, at_hit),
+                                   [[0.75] * 3, [0.75] * 3, [0.25] * 3, [0.75] * 3, [0.25] * 3])
 
 
 if __name__ == "__main__":

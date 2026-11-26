@@ -983,6 +983,28 @@ class AppearanceFitTests(unittest.TestCase):
         cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
         self.assertGreater(float(cosine), 0.999)
 
+    def test_a_triangle_crossing_the_eye_plane_winds_as_its_part_in_front_does(self):
+        """The side test reads the homogeneous winding: a corner behind the eye flips the projected area's sign,
+        but not that of the clipped polygon the device draws."""
+        from r3d.appearance_simplify import Renderer
+
+        tris = torch.tensor([[0, 1, 2]])
+        # (x, y, z, w): two corners in front, one behind the eye.
+        crossing = torch.tensor([[-0.7, -0.7, 0.0, 1.0], [0.7, -0.7, 0.0, 1.0], [0.0, 0.1, 0.0, -1.0]])
+        # The part in front, clipped at w = 0.5: the corner behind moved along both edges onto that plane.
+        t = (1.0 - 0.5) / (1.0 - -1.0)
+        a, b, c = crossing[0, [0, 1, 3]], crossing[1, [0, 1, 3]], crossing[2, [0, 1, 3]]
+        clipped = torch.stack([a, b, b + (c - b) * t, a + (c - a) * t])
+        xy = clipped[:, :2] / clipped[:, 2:]
+        area = sum(xy[k, 0] * xy[(k + 1) % 4, 1] - xy[(k + 1) % 4, 0] * xy[k, 1] for k in range(4)) / 2
+        renderer = SimpleNamespace(tris=tris)
+        self.assertLess(float(area), 0.0)
+        self.assertLess(float(Renderer.winding(renderer, crossing)[0]), 0.0)
+        # In front of the eye, the winding keeps the screen area's sign.
+        ahead = crossing.clone()
+        ahead[2, 3] = 1.0
+        self.assertGreater(float(Renderer.winding(renderer, ahead)[0]), 0.0)
+
     def test_a_double_sided_triangle_seen_from_behind_shows_its_back_colours_and_trains_only_them(self):
         """Six-channel colours hold the back beside the front: the side the winding faces on screen picks
         which one a pixel shows, and only that half takes the pixel's gradient, flat or smooth."""

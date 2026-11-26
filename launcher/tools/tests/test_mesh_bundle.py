@@ -434,7 +434,9 @@ class FitCopiesTests(unittest.TestCase):
         self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
 
     def test_a_double_sided_copy_keeps_its_back_colours_in_its_set_and_the_fit_draws_them_beside_its_front(self):
-        from r3d.fit.copies import placed_copies
+        """The copies load their back colours whatever the rest holds, and a rest with only fronts is widened to
+        match, its front again behind, as a mesh without back colours draws."""
+        from r3d.fit.copies import joined, matched, placed_copies
 
         with tempfile.TemporaryDirectory() as directory:
             data, copies, _geometry, _job, _scene = bundle_fixture(directory, materials=(1, 1, 1), back=200)
@@ -442,13 +444,20 @@ class FitCopiesTests(unittest.TestCase):
             sets = [(name, lcol_asset.decode(blob)) for name, kind, blob in entries if kind == lcol_asset.TYPE]
             start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
             start.write_bytes(data)
-            sided, plain = placed_copies(start, False, backs=True), placed_copies(start, False)
+            sided = placed_copies(start, False)
         self.assertTrue(sets and all(count == back for _, (_, count, back, _) in sets),
                         "a double-sided copy's set does not hold a back colour per vertex")
-        self.assertEqual((sided.rgb.shape[1], plain.rgb.shape[1]), (6, 3))
-        np.testing.assert_array_equal(sided.rgb[:, :3], plain.rgb)
+        self.assertEqual(sided.rgb.shape[1], 6)
         backs = {tuple(np.rint(row * 255)) for row in sided.rgb[:, 3:]}
         self.assertEqual(backs, {(200 + k,) * 3 for k in range(len(copies))})
+        self.assertFalse(np.array_equal(sided.rgb[:, 3:], sided.rgb[:, :3]))
+        rest = sided._replace(rgb=np.full((len(sided.rgb), 3), 0.5))
+        widened, kept = matched(rest, sided)
+        np.testing.assert_array_equal(widened.rgb, np.full((len(sided.rgb), 6), 0.5))
+        np.testing.assert_array_equal(kept.rgb, sided.rgb)
+        drawn = joined(rest, sided)
+        self.assertEqual(drawn.rgb.shape, (2 * len(sided.rgb), 6))
+        np.testing.assert_array_equal(drawn.rgb[len(sided.rgb):], sided.rgb)
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies

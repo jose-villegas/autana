@@ -101,7 +101,7 @@ def back_albedo_at(src, points, normals, front, spacing):
             out[mine] = albedo_at(far.src, hits[mine], spacing_at[mine], material)
         return out
 
-    return midsurface.back_albedo(points, normals, front, far.query, far.src.p[far.src.tri_v], far.reach, at_hit)
+    return midsurface.back_albedo(points, normals, front, far.skin, at_hit)
 
 
 def sided_light(points, normals, double, front_albedo, back_albedo, intersector, scene, job, **options):
@@ -308,9 +308,13 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                 f"{', '.join(sorted({src.names[m] for m in tri_m[shell]}))}: {len(far_rows)} far skin and {rim} rim "
                 f"dropped, the rest moved halfway to the far skin")
             src.p = sheet.points
+            # A glTF source colours its points: the moved ones take their source point's colour.
+            src.colors = None if src.colors is None else src.colors[sheet.source]
             far_src = with_triangles(src, tri_v[far_rows], tri_t[far_rows], tri_m[far_rows])
-            src.far_skin = SimpleNamespace(src=far_src, reach=sheet.reach,
-                                           query=RayQuery(src.p, far_src.tri_v) if len(far_rows) else None)
+            sheet_rows = np.flatnonzero(sheet.sheet)
+            src.far_skin = SimpleNamespace(src=far_src, skin=midsurface.FarSkin(
+                RayQuery(src.p, far_src.tri_v) if len(far_rows) else None, src.p[far_src.tri_v], piece[far_rows],
+                src.p[sheet.tri_v[sheet_rows]], piece[sheet_rows], sheet.thickness[sheet_rows]))
             keep = sheet.drawn
             tri_v, tri_t, tri_m = sheet.tri_v[keep], tri_t[keep], tri_m[keep]
             src.tri_o = src.tri_o[keep]

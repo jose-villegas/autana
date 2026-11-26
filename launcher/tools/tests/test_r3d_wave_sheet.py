@@ -249,6 +249,36 @@ class WaveSheetTests(unittest.TestCase):
         self.assertTrue((facing(bare) < -SIDE_COS).any(), "with no camera to face, both skins are kept")
 
     @needs_llvm
+    def test_a_source_that_colours_its_points_colours_the_moved_ones_from_theirs(self):
+        """A glTF source colours points, not corners: the collapse appends the moved points, and each takes the
+        colour of the point it moved from."""
+        from unittest import mock
+
+        from r3d import mesh_import
+
+        cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
+        load, counted = mesh_import.load_source, []
+
+        def coloured(settings, *args, **kwargs):
+            src = load(settings, *args, **kwargs)
+            counted.append(len(src.p))
+            src.colors = np.column_stack([np.arange(len(src.p), dtype=np.float64)] * 3) / len(src.p)
+            return src
+
+        with mock.patch.object(mesh_import, "load_source", coloured):
+            placed = imported(cloth, every_material(cloth)[:-1])
+        source_count = counted[0]
+        self.assertEqual(len(placed.src.colors), len(placed.src.p))
+        self.assertGreater(len(placed.src.p), source_count, "nothing moved")
+        # Each moved point keeps a source point's colour, and that point is the one it moved from: halfway across
+        # the cloth, so within its thickness.
+        moved = placed.src.colors[source_count:, 0] * source_count
+        np.testing.assert_allclose(moved, np.round(moved))
+        from_point = np.round(moved).astype(int)
+        apart = np.linalg.norm(placed.src.p[source_count:] - placed.src.p[from_point], axis=1)
+        self.assertLessEqual(apart.max(), CLOTH_THICKNESS)
+
+    @needs_llvm
     def test_the_far_skin_leaves_the_light_too_where_the_sheet_casts_it(self):
         from unittest import mock
 
