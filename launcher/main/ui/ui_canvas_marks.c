@@ -22,7 +22,10 @@ ui_canvas_marks_take_vanished(ui_canvas_marks_t* marks, const bool present[MU_CO
     int n = 0;
     for (int slot = 0; slot < MU_CONTAINERPOOL_SIZE && n < max; slot++) {
         if (marks->painted[slot] && !present[slot]) {
-            out[n++] = marks->rect[slot];
+            if (out != NULL) {
+                out[n] = marks->rect[slot];
+            }
+            n++;
             marks->painted[slot] = false;
         }
     }

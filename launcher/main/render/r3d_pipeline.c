@@ -1,5 +1,5 @@
 #include "render/r3d_pipeline.h"
-#include "render/texture/r3d_texture.h"
+#include "render/texture/r3d_span_textured_internal.h"
 
 #include "render/r3d_span_internal.h"
 
@@ -93,6 +93,8 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
+            r3d_span_texture_setup_t texture;
+            vec2f_t uv[R3D_SPAN_CORNERS];
 
             /* The cluster a blended draw is on: its index, its morph weight and its
              * dither screen, held here so they take no registers across the draw. */
@@ -942,23 +944,24 @@ draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint1
 
 /* A triangle wholly in front of the near plane, textured with chart
  * `chart` of its cluster. */
-static void
+static __attribute__((noinline)) void
 draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target) {
+                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target,
+                    r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)
         || facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
-    r3d_span_vertex_t s[3];
-    vec2f_t uv[3];
+    r3d_span_vertex_t* const s = work->clip.projected;
+    vec2f_t* const uv = work->clip.uv;
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
         s[k] = span_corner(v[k], rgb);
         uv[k] = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
     }
     FRAME_LAP("r3d.draw.set_up");
-    r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
+    r3d_span_textured_triangle_with(target, &s[0], &s[1], &s[2], uv, texture, &work->clip.texture);
     FRAME_LAP("r3d.draw.cluster");
 }
 
@@ -978,9 +981,12 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     const int n = projected_polygon(lens, double_sided, work);
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
-        const vec2f_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        vec2f_t* const uv = work->clip.uv;
+        uv[0] = (vec2f_t){poly[0].u, poly[0].v};
+        uv[1] = (vec2f_t){poly[i].u, poly[i].v};
+        uv[2] = (vec2f_t){poly[i + 1].u, poly[i + 1].v};
         FRAME_LAP("r3d.draw.set_up");
-        r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
+        r3d_span_textured_triangle_with(target, &s[0], &s[i], &s[i + 1], uv, texture, &work->clip.texture);
         FRAME_LAP("r3d.draw.cluster");
     }
 }
@@ -993,7 +999,7 @@ draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipe
               const uint16_t* tri, int cluster, int chart, bool double_sided, bool bounded,
               const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     if (bounded || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target);
+        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target, work);
     } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
         draw_textured_cut(mesh, lens, tri, cluster, chart, double_sided, target, work);
     }

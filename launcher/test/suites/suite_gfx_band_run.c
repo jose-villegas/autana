@@ -99,13 +99,15 @@ test_dirty_bands_are_drawn_then_overlaid_and_submitted(void) {
     TEST_ASSERT_EQUAL_INT(2 * GFX_BAND_HEIGHT, probe->row0[0]);
     TEST_ASSERT_EQUAL_INT(3 * GFX_BAND_HEIGHT, probe->row1[0]);
 
-    gfx_color_t row[GFX_WIDTH];
+    gfx_color_t* const row = malloc(GFX_WIDTH * sizeof *row);
+    TEST_ASSERT_NOT_NULL(row);
     gfx_read_panel_row(2 * GFX_BAND_HEIGHT, row);
     TEST_ASSERT_EQUAL_HEX16(0x1111, row[0]);
 
     probe_free(probe);
     gfx_readback_end();
     gfx_mode_exit();
+    free(row);
 }
 
 static void

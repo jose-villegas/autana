@@ -42,6 +42,10 @@ typedef struct {
     int32_t cpu_cycles[PERF_SAMPLES];
     void* positions;
     size_t position_bytes;
+    char command[ASSET_NAME_MAX];
+    bench_stats_t playing_render, paused_render, playing, paused;
+    raster_split_t split;
+    int64_t stage_means[R3D_SPAN_STOP_AFTER_CARRY + 1];
 } fixture_t;
 
 static fixture_t* active;
@@ -85,7 +89,7 @@ fixture(void) {
     return active;
 }
 
-static void
+static __attribute__((noinline)) void
 assert_skin_changes(fixture_t* f) {
     const r3d_lit_mesh_t* mesh = renderer_mesh(f->subject);
     memcpy(f->positions, mesh->positions, f->position_bytes);
@@ -139,7 +143,7 @@ step(void* ctx) {
     scene_animation_step(r->scene, LAB_TEST_FRAME_MS);
 }
 
-static void
+static __attribute__((noinline)) void
 report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split, const char* cores) {
     const int half = count / 2;
     range_t a = {f->columns, 0, split ? half : count};
@@ -214,46 +218,55 @@ frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* q
     return stats;
 }
 
+static __attribute__((noinline)) void
+sample_stage_split(fixture_t* f, render_context_t* context) {
+    for (int i = -1; i < PERF_SAMPLES; i++) {
+        context->split = f->split;
+        const int64_t us = lab_test_frame(false, NULL);
+        if (i >= 0) {
+            f->render_us[i] = (int32_t)us;
+        }
+    }
+}
+
+static __attribute__((noinline)) void
+log_split_totals(const fixture_t* f, const char* quarter) {
+    ESP_LOGI(TAG,
+             "stage_split: capybara both cores us/frame to_setup %lld edges %lld carry %lld fill "
+             "%lld" LAB_PERF_QUARTER_FORMAT,
+             (long long)f->stage_means[1], (long long)(f->stage_means[2] - f->stage_means[1]),
+             (long long)(f->stage_means[3] - f->stage_means[2]), (long long)(f->stage_means[0] - f->stage_means[3]),
+             quarter);
+}
+
 /* The paused frame's render with the span stopped after each stage
  * (r3d_span_stop_after; 0 runs every stage), both cores: the differences
  * are the rows, the attribute carry and the fill; the first stop also
  * holds everything outside the draw. */
-static void
+static __attribute__((noinline)) void
 report_stage_split(fixture_t* f, const char* quarter) {
     static const char* const names[4] = {"whole", "setup", "edges", "carry"};
     (void)animator_set_paused(f->subject, ANIMATOR_CURRENT, true);
     (void)animator_set_paused(f->subject, ANIMATOR_PREVIOUS, true);
     render_context_t* context = render_context_main();
-    const raster_split_t split = context->split;
-    int64_t mean[4];
+    f->split = context->split;
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
-        for (int i = -1; i < PERF_SAMPLES; i++) {
-            context->split = split;
-            const int64_t us = lab_test_frame(false, NULL);
-            if (i >= 0) {
-                f->render_us[i] = (int32_t)us;
-            }
-        }
+        sample_stage_split(f, context);
         r3d_span_stop_after = 0;
-        mean[stop] = bench_stats_compute(f->render_us, PERF_SAMPLES).avg;
+        f->stage_means[stop] = bench_stats_compute(f->render_us, PERF_SAMPLES).avg;
         ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld" LAB_PERF_QUARTER_FORMAT, names[stop],
-                 (long long)mean[stop], quarter);
+                 (long long)f->stage_means[stop], quarter);
     }
-    context->split = split;
-    ESP_LOGI(TAG,
-             "stage_split: capybara both cores us/frame to_setup %lld edges %lld carry %lld fill "
-             "%lld" LAB_PERF_QUARTER_FORMAT,
-             (long long)mean[1], (long long)(mean[2] - mean[1]), (long long)(mean[3] - mean[2]),
-             (long long)(mean[0] - mean[3]), quarter);
+    context->split = f->split;
+    log_split_totals(f, quarter);
 }
 
 static void
 test_animation_and_frame_cost(void) {
     fixture_t* f = fixture();
-    char command[ASSET_NAME_MAX];
-    TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS) >= 0);
-    TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+    TEST_ASSERT_TRUE(snprintf(f->command, sizeof f->command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS) >= 0);
+    TEST_ASSERT_TRUE(app_render_lab.console->handle(f->command));
     assert_skin_changes(f);
     heap_report(SKIN_PERF_PHASE_PLAYING);
     const int clusters = renderer_mesh(f->subject)->cluster_count;
@@ -269,21 +282,20 @@ test_animation_and_frame_cost(void) {
         ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, size.width, size.height,
                  lab_view_present(&render_lab_view_tunables), quarter->name);
         test_hold_quarter(quarter->quarter);
-        bench_stats_t playing_render;
-        bench_stats_t paused_render;
-        const bench_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);
-        const bench_stats_t paused = frame_cost(f, true, &paused_render, quarter->name);
+        f->playing = frame_cost(f, false, &f->playing_render, quarter->name);
+        f->paused = frame_cost(f, true, &f->paused_render, quarter->name);
         report_stage_split(f, quarter->name);
         const int joints = f->columns->animators[f->subject_row].skeleton.joint_count;
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA
                                   " joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
-                 joints, (long long)(playing_render.avg - paused_render.avg),
-                 (long long)(playing_render.p95 - paused_render.p95), quarter->name);
+                 joints, (long long)(f->playing_render.avg - f->paused_render.avg),
+                 (long long)(f->playing_render.p95 - f->paused_render.p95), quarter->name);
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME_DELTA
                                   " joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
-                 joints, (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95), quarter->name);
+                 joints, (long long)(f->playing.avg - f->paused.avg), (long long)(f->playing.p95 - f->paused.p95),
+                 quarter->name);
     }
 }
 #endif
