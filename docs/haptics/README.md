@@ -41,6 +41,6 @@ Remove these pieces together:
 
 | Piece | Location |
 |---|---|
-| Pulse module and development verb | `launcher/main/haptics/` and its CMake and host source entries |
+| Pulse module and development verb | `launcher/main/haptics/`, its CMake entry and `suite_haptics.c` |
 | Built-in bus | `SOUND_BUS_HAPTIC`, built-in count and name in `launcher/main/sound/` |
 | Registration and verification | haptics layer entry, host tests and documentation links |
