@@ -23,6 +23,9 @@ DUMP = """
 4200003c: ffff71 l32r a7, 4200001c <hot-0x4> (7fff <absolute+0x7eff>)
 """
 
+CODE_SECTIONS = {".flash.text"}
+IDF_DIR = "idf"
+
 MAP = """
 .flash.text 0x42000200 0x30
  .text.floorf 0x42000200 0x10 toolchain/libc.a(libm_math_sf_floor.c.o)
@@ -47,7 +50,7 @@ class HotCallsGate(unittest.TestCase):
         return path
 
     def test_linked_runtime_calls_include_tail_and_literal_targets(self):
-        scripts = "idf/components/esp_rom/esp32s3/ld/"
+        scripts = IDF_DIR + "/components/esp_rom/esp32s3/ld/"
         self.write(scripts + "esp32s3.rom.libc.ld", "memset = 0x400011e8;\n")
         self.write(scripts + "esp32s3.rom.libc_unused.ld", "local = 0x42000220;\n")
         ninja = """build launcher.elf: LINK rule
@@ -55,7 +58,7 @@ class HotCallsGate(unittest.TestCase):
 build other.elf: LINK rule
   LINK_FLAGS = -T esp32s3.rom.libc_unused.ld
 """
-        runtime = gate.runtime_ranges(MAP, ninja, self.root / "idf", "esp32s3", {".flash.text"})
+        runtime = gate.runtime_ranges(MAP, ninja, self.root / IDF_DIR, "esp32s3", CODE_SECTIONS)
         decoded = gate.code_layout.skip_pools(gate.code_layout.parse_objdump(DUMP))
         self.assertEqual(
             [(address, name) for address, target, name in gate.callees(decoded) if runtime(target)],
