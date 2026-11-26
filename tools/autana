@@ -8,14 +8,15 @@
 unset _AUTANA_CALLER_PID
 # With the pinned minor on PATH, nothing here starts a process before the
 # exec: on a loaded Windows machine each one costs a second. The checkout's
-# folder comes from $0 (a Windows program may pass backslashes), made
-# physical by cd -P and read back from $PWD, then the caller's folder again.
+# folder comes from $0 (a Windows program may pass backslashes): entered as
+# named, so a symlinked tools/ still means this checkout, then made physical
+# by cd -P . and read back from $PWD, then the caller's folder again.
 case "$0" in
     *[/\\]*) here=${0%[/\\]*}/.. ;;
     *) here=.. ;;
 esac
 caller=$PWD
-cd -P "$here" && here=$PWD && cd "$caller" || exit 1
+CDPATH= cd "$here" && cd -P . && here=$PWD && cd "$caller" || exit 1
 # Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that
 # ran this; PPID 1 means a Windows program started bash, so autana.py finds
 # the caller itself.
