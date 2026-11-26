@@ -5,8 +5,9 @@ name: Bakes
 # once it is the branch's turn to lock, `gh workflow run bakes.yml --ref <branch>`. In that run the CPU job bakes
 # every mesh, fit's levels and sound the lock has no row for, and the reference job traces and packs every missing
 # reference set in one job; both upload the files; the author runs `bake.py lock --from-run N` with that run and
-# commits the lock. A run that makes levels runs the sky-through-walls flythrough on them in the CPU job, so a fit
-# that opens holes fails before it is locked. A mesh's bytes differ between CPU models and a reference set's, traced
+# commits the lock. A run that makes levels runs the sky-through-walls flythrough and the see-through check against
+# the source on them in the CPU job, so a bake that opens holes fails before it is locked. A mesh's bytes differ
+# between CPU models and a reference set's, traced
 # on the CUDA GPU, between GPU models, so every job that makes a bake runs on the one self-hosted runner that makes
 # the fits, gpu-legion (docs/assets/Bakes.md), where these jobs and the fits queue behind each other. A push never
 # queues there: the bake jobs it skips report success, so a branch that bakes nothing passes at once. No pull request starts this workflow: a self-hosted runner
@@ -169,6 +170,10 @@ jobs:
         if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
+      - name: Check this run's levels for see-through where the source is closed
+        if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
+        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py
+
   # Every missing reference set in one job: it selects each set's probe faces on the CPU, traces all its poses on
   # Mitsuba's CUDA variant, in worker processes side by side, and packs it on the CPU.
   reference:
@@ -273,15 +278,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python launcher/tools/bake/bake.py fetch
 
-      # The sky-through-walls test traces rays into the source mesh, a Git LFS file the checkout skips.
-      - name: Fetch the Sponza source mesh
-        run: git lfs pull --exclude="" --include="launcher/demo/sponza/source/sponza.obj"
+      # Both flythrough tests trace rays into the scenes' source meshes, Git LFS files the checkout skips; the
+      # see-through test also reads their textures, for the triangles an alpha mask drops.
+      - name: Fetch the scenes' source meshes
+        run: git lfs pull --exclude="" --include="launcher/demo/*/source/**"
 
       - name: Install the r3d requirements
         run: pip install -r launcher/tools/r3d/requirements.txt
 
       - name: Check the full camera flythrough for enclosed sky
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
+
+      - name: Check the camera paths for see-through where the source is closed
+        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}
