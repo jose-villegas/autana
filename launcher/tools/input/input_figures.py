@@ -9,11 +9,11 @@ sys.path.insert(0, str(TOOLS))
 from docs.figures import run_probe
 
 
-def probe_data(script, motion_source, description):
+def probe_data(script, motion_sources, description, *arguments):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--cc", default="cc")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     probe = Path(script).with_name(Path(script).stem + "_probe.c")
-    sources = (probe,) + ((ROOT / "launcher/main/input/motion" / motion_source,) if motion_source else ())
-    return run_probe(args.cc, sources), args.out, args.cc
+    sources = (probe, *(ROOT / "launcher/main/input/motion" / source for source in motion_sources))
+    return run_probe(args.cc, sources, *arguments), args.out, args.cc

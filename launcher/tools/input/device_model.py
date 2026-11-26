@@ -10,10 +10,11 @@ from pathlib import Path
 
 import numpy as np
 from matplotlib.lines import Line2D
+from matplotlib.transforms import offset_copy
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from build.c_header import read_define
-from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif
+from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif, style_axes
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 
@@ -53,6 +54,11 @@ BESIDE_SHARE = 0.1
 SCENE = (0, 0.08, 0.62, 0.84)
 PLOTS = (0.68, 0.2, 0.3, 0.64)
 PLOT_GAP = 0.1
+CENTRED_SCENE = (0, 0.06, 0.51, 0.86)
+CENTRED_SCREEN_LABEL_OFFSET = (11, 4)  # points clear of the centred vectors
+TITLED_PLOTS = (0.56, 0.18, 0.41, 0.58)
+TITLED_PLOT_GAP = 0.16
+PLOT_TITLE_Y = 1.27
 TITLE_Y = 0.94
 LEGEND_Y = 0.02
 LEGEND_COLUMNS = 6
@@ -135,8 +141,8 @@ class DeviceModel:
         """A vector in the code's screen axes as a device vector."""
         return np.asarray(screen_vector) @ self.screen_axes
 
-    def draw(self, axis, pose, chip_axes=True, screen_axes=True):
-        """Draw the posed device into a 3D axis made with computed_zorder=False, so arrows stay over the faces."""
+    def draw(self, axis, pose, chip_axes=True, screen_axes=True, *, screen_label_offset=None):
+        """Draw the posed device with computed_zorder=False and an optional screen label offset in points."""
         pose = np.asarray(pose)
         axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.body], facecolor=BODY,
                                                edgecolor="none", alpha=BODY_ALPHA))
@@ -151,13 +157,16 @@ class DeviceModel:
                                                facecolor=BODY, edgecolor=MUTED, linewidth=EDGE_WIDTH,
                                                alpha=FEATURE_ALPHA))
         length = AXIS_SHARE * self.height
-        sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
-                (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES))
-        for shown, origin, vectors, names, colour in sets:
+        sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES, None),
+                (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES, screen_label_offset))
+        for shown, origin, vectors, names, colour, label_offset in sets:
             for vector, name in zip(vectors if shown else (), names):
                 arrow = pose @ vector * length
                 axis.quiver(*origin, *arrow, color=colour, arrow_length_ratio=ARROW_RATIO)
-                axis.text(*(origin + arrow * LABEL_PAST), name, color=colour, fontsize=LABEL_SIZE, ha="center")
+                label = axis.text(*(origin + arrow * LABEL_PAST), name, color=colour, fontsize=LABEL_SIZE, ha="center")
+                if label_offset is not None:
+                    x, y = label_offset
+                    label.set_transform(offset_copy(axis.transData, fig=axis.figure, x=x, y=y, units="points"))
 
 
 def legend_handles(*, chip_axes=True, screen_axes=True):
@@ -197,23 +206,33 @@ class DeviceAnimation:
 
     Fill and style each of `plots` (top first) before saving; `frame` redraws the scene and moves every plot's
     time cursor. Vectors are (start, vector, colour, width) in world axes, millimetres.
+    For centred vectors, vector_units is the longest vector in multiples of unit. Supply plot_titles for
+    titled plots with room for a legend above each.
     """
 
-    def __init__(self, model, plots=1):
+    def __init__(self, model, plots=1, *, centred=False, vector_units=1, plot_titles=()):
         self.model = model
+        self.screen_label_offset = CENTRED_SCREEN_LABEL_OFFSET if centred else None
         self.fig = figure(ANIMATION_SIZE)
         self.fig.set_layout_engine(None)
         # Arrows draw over the translucent device in call order, not depth order, so their colours stay true.
-        self.scene = self.fig.add_axes(SCENE, projection="3d", computed_zorder=False)
-        left, bottom, width, height = PLOTS
-        each = (height - PLOT_GAP * (plots - 1)) / plots
-        self.plots = [self.fig.add_axes((left, bottom + (plots - 1 - row) * (each + PLOT_GAP), width, each))
+        self.scene = self.fig.add_axes(CENTRED_SCENE if centred else SCENE, projection="3d", computed_zorder=False)
+        if plot_titles:
+            plots = len(plot_titles)
+        left, bottom, width, height = TITLED_PLOTS if plot_titles else PLOTS
+        gap = TITLED_PLOT_GAP if plot_titles else PLOT_GAP
+        each = (height - gap * (plots - 1)) / plots
+        self.plots = [self.fig.add_axes((left, bottom + (plots - 1 - row) * (each + gap), width, each))
                       for row in range(plots)]
+        for plot, title in zip(self.plots, plot_titles):
+            style_axes(plot, title)
+            plot.set_title(title, y=PLOT_TITLE_Y)
         self.cursors = [plot.axvline(0, color=INK, linewidth=1) for plot in self.plots]
         self.title = self.fig.text(0.5, TITLE_Y, "", ha="center", fontsize=TITLE_SIZE, color=INK)
         self.unit = VECTOR_SHARE * model.height
         away = model.radius + BESIDE_SHARE * model.height
-        self.extent = away + self.unit + MARGIN_SHARE * model.height
+        reach = max(model.radius, self.unit * vector_units) if centred else away + self.unit
+        self.extent = reach + MARGIN_SHARE * model.height
         right = np.radians(VIEW_AZIMUTH + 90)
         right = away * np.array([np.cos(right), np.sin(right), 0.0])
         # World down is drawn on the right, centred on the device's height; the device's own motion on the left.
@@ -233,7 +252,7 @@ class DeviceAnimation:
             setter(-extent, extent)
         scene.set_box_aspect((1, 1, 1), zoom=SCENE_ZOOM)
         scene.view_init(elev=VIEW_ELEVATION, azim=azimuth)
-        self.model.draw(scene, pose, **axes)
+        self.model.draw(scene, pose, screen_label_offset=self.screen_label_offset, **axes)
         for start, vector, colour, width in vectors:
             scene.quiver(*start, *vector, color=colour, arrow_length_ratio=ARROW_RATIO, linewidth=width)
         self.title.set_text(title)

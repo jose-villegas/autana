@@ -15,6 +15,16 @@ its default state, not a fitted round.
 
 ## Calibration round
 
+```sh
+python launcher/tools/input/motion_calibration_figures.py --cc cc --out docs/images/input
+```
+
+Neither figure is a recording. A host probe adds scripted per-axis offset
+and scale to six ideal poses and feeds them through the motion reader's
+[rest windows][imu-rest] and [`imu_calib_fit`][imu-fit].
+
+![Six accelerometer poses with true down, measured acceleration, and error arrows, next to traces of the rest windows and fitted offsets](../images/input/motion-calibration-round.gif)
+
 An unplugged round runs on battery, so USB cannot disturb the readings:
 
 ```mermaid
@@ -99,6 +109,8 @@ offset during a round.
 
 ## The fit
 
+![Number lines marking the two pose means, midpoint offset, and half-span scale for each axis, with fitted and scripted values side by side](../images/input/motion-calibration-fit.png)
+
 For each axis, the positive and negative gravity windows give the diagonal
 six-position model of STMicroelectronics AN4508
 <sup>[[67]](../Citations.md#st-an4508)</sup>:
@@ -109,8 +121,11 @@ six-position model of STMicroelectronics AN4508
 ```
 
 It measures offset and sensitivity, not cross-axis misalignment.
-`input/motion/imu_calib.c` owns the fit. The gyro zero-rate estimate averages
-corrected samples across all pose windows, reporting the residual offset.
+The gyro zero-rate estimate averages corrected samples across all pose
+windows to report the residual offset.
+
+[imu-rest]: ../../launcher/main/input/motion/imu_rest.c
+[imu-fit]: ../../launcher/main/input/motion/imu_calib.c
 
 ## Offset storage
 
