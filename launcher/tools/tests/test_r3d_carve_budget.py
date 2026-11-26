@@ -13,8 +13,9 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from r3d import mesh_bundle, mesh_import, simplify
+from r3d import lcol_asset, mesh_bundle, mesh_import, simplify
 from r3d.fit import stage
+from r3d.fit.copies import drawn_copies
 from r3d.import_settings import SettingsError
 from r3d.objects import carve, detail, objects_report
 from test_mesh_bundle import bundle_fixture
@@ -175,22 +176,27 @@ class FitCeilingTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         work = pathlib.Path(directory.name)
         recipe = NS(budget=2, steps=1, batch=1, laplacian=0, normal_weight=0, surface_weight=0, surface_margin=0)
-        blob, copies, geometry, job, scene = bundle_fixture(work, fit=recipe)
+        blob, _, geometry, job, scene = bundle_fixture(work, fit=recipe)
         job.renderer.variant = NS(name='start', triangles=2, ceiling=ceiling)
         (work / 'start.bundle').write_bytes(blob)
         calls = []
         def fake_fit(command):
             calls.append(command)
-            out = work / 'fitted'
+            out = pathlib.Path(command[command.index('--out') + 1])
             out.mkdir()
-            fitted = (work / (job.asset_name + '.bundle')).read_bytes()
+            rest = pathlib.Path(command[command.index('--start') + 1])
+            fitted, rows = mesh_bundle.decode(rest.read_bytes())
             if output_extra:
                 from r3d.lit_mesh import build_lit_mesh, bundle_entries
                 positions = np.concatenate([geometry.positions + [i * 8, 0, 0] for i in range(3)])
                 triangles = np.concatenate([geometry.tris + i * len(geometry.positions) for i in range(3)])
                 mesh = build_lit_mesh(positions, np.tile(geometry.rgb, (3, 1)), triangles, np.zeros(3, dtype=int))
-                fitted = mesh_bundle.encode(bundle_entries(job.asset_name, mesh), [])
-            (out / (job.asset_name + '.bundle')).write_bytes(fitted)
+                fitted = bundle_entries(job.asset_name, mesh)
+            source = pathlib.Path(command[command.index('--copies') + 1])
+            entries, copies = mesh_bundle.decode(source.read_bytes())
+            colours = {lcol_asset.name_for_mesh(row['mesh']) for row in drawn_copies(entries, copies)}
+            fitted.extend(entry for entry in entries if entry[1] == lcol_asset.TYPE and entry[0] in colours)
+            (out / rest.name).write_bytes(mesh_bundle.encode(fitted, rows))
         with patch('r3d.appearance_simplify.main', side_effect=fake_fit):
             stage.fit('scene', scene, job, work)
         return calls
