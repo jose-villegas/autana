@@ -2,7 +2,10 @@
 #
 # find_python [module ...] prefers the minor pinned in .python-version,
 # then the first interpreter on PATH meeting scripts/lib/python-min-version
-# and importing every named module. Fallback tries python3, python, py, then
+# and importing every named module. The pinned minor's own name says its
+# version, so with no module named it is taken without starting it.
+# pick_python is the same search, its pick in PYTHON_PICKED, for a caller
+# that starts nothing else (tools/autana). Fallback tries python3, python, py, then
 # versioned python3.N names newest first in each directory.
 #
 #   PYTHON=$(find_python PIL) || exit 2
@@ -46,11 +49,24 @@ for name in sys.argv[2:]:
     __import__(name)' "$PYTHON_MIN_VERSION" "$@" >/dev/null 2>&1
 }
 
-find_python() {
-    if [ -n "$PYTHON_PINNED_MINOR" ]; then
-        _fp_pinned=$(command -v "python$PYTHON_PINNED_MINOR") || _fp_pinned=""
-        if [ -n "$_fp_pinned" ] && python_meets_minimum "$_fp_pinned" "$@"; then
-            printf '%s\n' "$_fp_pinned"
+# The first executable named $1 on PATH, in PYTHON_PICKED; walked with
+# builtins, so finding it starts nothing.
+_on_path() {
+    _op_rest="$PATH:"
+    while [ -n "$_op_rest" ]; do
+        _op_dir=${_op_rest%%:*}
+        _op_rest=${_op_rest#*:}
+        if [ -n "$_op_dir" ] && [ -x "$_op_dir/$1" ] && [ ! -d "$_op_dir/$1" ]; then
+            PYTHON_PICKED=$_op_dir/$1
+            return 0
+        fi
+    done
+    return 1
+}
+
+pick_python() {
+    if [ -n "$PYTHON_PINNED_MINOR" ] && _on_path "python$PYTHON_PINNED_MINOR"; then
+        if [ "$#" -eq 0 ] || python_meets_minimum "$PYTHON_PICKED" "$@"; then
             return 0
         fi
     fi
@@ -72,13 +88,17 @@ find_python() {
             _fp_candidate="$_fp_dir/$_fp_name"
             [ -x "$_fp_candidate" ] && [ ! -d "$_fp_candidate" ] || continue
             if python_meets_minimum "$_fp_candidate" "$@"; then
-                printf '%s\n' "$_fp_candidate"
+                PYTHON_PICKED=$_fp_candidate
                 return 0
             fi
         done
     done
     echo "no Python >= $PYTHON_MIN_VERSION${*:+ with $*} found on PATH; install Python >= $PYTHON_MIN_VERSION (Windows: py launcher or ESP-IDF venv)." >&2
     return 1
+}
+
+find_python() {
+    pick_python "$@" && printf '%s\n' "$PYTHON_PICKED"
 }
 
 # find_r3d_python <repo-root> prints the interpreter that has the r3d tools'

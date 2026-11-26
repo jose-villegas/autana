@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
 #
 # autana - the terminal command. scripts/autana/autana.py is all of it; this
-# finds a Python to start it with, and autana.py starts device.py under it;
+# finds a Python to start it with. autana.py runs device.py's status and
+# lock verbs in its own process and starts device.py under it for the rest;
 # device.py re-runs itself under ESP-IDF's own when this one lacks pyserial.
 # scripts/add-tools-to-path.sh puts this folder on PATH.
 unset _AUTANA_CALLER_PID
-# Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that ran
-# this; PPID 1 means a Windows program started bash, so autana.py finds the
-# caller itself.
-here=$(cd "$(dirname "$0")/.." && pwd -P)
-. "$here/scripts/lib/process_pid.sh"
-if [ -r "/proc/$PPID/winpid" ] || [ "$PPID" != 1 ]; then
-    export _AUTANA_CALLER_PID=$(host_pid "$PPID")
+# With the pinned minor on PATH, nothing here starts a process before the
+# exec: on a loaded Windows machine each one costs a second. Under Git Bash,
+# /proc/<ppid>/winpid is the Windows pid of the shell that ran this; PPID 1
+# means a Windows program started bash, so autana.py finds the caller itself.
+if [ -r "/proc/$PPID/winpid" ]; then
+    read -r _AUTANA_CALLER_PID < "/proc/$PPID/winpid"
+    export _AUTANA_CALLER_PID
+elif [ "$PPID" != 1 ]; then
+    export _AUTANA_CALLER_PID=$PPID
 fi
+# This file's folder, from $0 (a Windows program may pass backslashes).
+case "$0" in
+    *[/\\]*) here=${0%[/\\]*}/.. ;;
+    *) here=.. ;;
+esac
 # shellcheck source=../scripts/lib/python.sh
 . "$here/scripts/lib/python.sh"
-if python=$(find_python 2>/dev/null); then
-    exec "$python" "$here/scripts/autana/autana.py" "$@"
+if pick_python 2>/dev/null; then
+    exec "$PYTHON_PICKED" "$here/scripts/autana/autana.py" "$@"
 fi
 # Bootstrapping must not need Python to locate ESP-IDF's Python, so this
 # globs the default tools roots itself (espressif.py owns the full search).

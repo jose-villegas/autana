@@ -479,7 +479,9 @@ directly only for what `autana` does not offer: a
 holds the lock and the open port until its standard input ends, writing each
 line to the board as it arrives and printing every line the board writes: a
 desktop tool steering the board live pipes into it. It needs pyserial: an
-interpreter without it re-runs it under ESP-IDF's Python. On
+interpreter without it re-runs it under ESP-IDF's Python. When autana's own
+Python has pyserial, `status`, `devices`, `lock release` and `lock wait` run
+device.py in autana's process, starting no second one. On
 Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
 `flash_image.sh` with Git for Windows' own `bash.exe`, never whatever `bash`
 comes first on `PATH`, which from a native shell is WSL's launcher.

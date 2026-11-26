@@ -16,6 +16,8 @@ file; docs/cli/ shows it, written by scripts/autana/cli_reference.py.
 import contextlib
 import gzip
 import importlib
+import importlib.util
+import io
 import json
 import math
 import os
@@ -207,11 +209,50 @@ def device_command(*args, wait=None):
     `wait` when it gives one (send()'s short fail-fast window, used only
     without a global `--wait`), else the global `--wait` (WAIT_ENV), else
     left to device.py's own 600 s default."""
-    command = [sys.executable, "-u", str(device_tool()), "--owner", owner()]
+    return [sys.executable, "-u", str(device_tool()), *device_argv(*args, wait=wait)]
+
+
+def device_argv(*args, wait=None):
+    """device.py's arguments for `args`, its top-level flags first (device_command)."""
+    argv = ["--owner", owner()]
     wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
-        command += ["--wait", str(wait)]
-    return command + list(args)
+        argv += ["--wait", str(wait)]
+    return argv + list(args)
+
+
+# device.py's verbs that only read or write the lock store and list the
+# ports, run in this process by call_device and capture_device.
+IN_PROCESS_VERBS = ("status", "devices", "release", "wait-free")
+# device.py's top-level flags, each with its value, before the verb.
+DEVICE_FLAGS = ("--owner", "--wait", "--board", "-b")
+
+
+def device_here(command, capture=False):
+    """`command` (device_command()) run in this process when it is one of
+    IN_PROCESS_VERBS, so it starts no second Python: its exit status, and
+    with `capture` what it printed. None for any other verb, or when this
+    Python lacks pyserial; device.py then runs as a child, which re-runs
+    itself under ESP-IDF's. device.py's main() sets the global --wait in the
+    environment for its children; this process's own is put back after it."""
+    argv = command[3:]
+    at = 0
+    while at < len(argv) and argv[at] in DEVICE_FLAGS:
+        at += 2
+    if (command[:3] != [sys.executable, "-u", str(device_tool())] or at >= len(argv)
+            or argv[at] not in IN_PROCESS_VERBS or importlib.util.find_spec("serial") is None):
+        return None
+    printed = io.StringIO()
+    saved = dict(os.environ)
+    try:
+        with contextlib.redirect_stdout(printed) if capture else contextlib.nullcontext():
+            status = device_module().main(argv)
+    except SystemExit as error:
+        status = error.code if isinstance(error.code, int) else 1
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    return status, printed.getvalue()
 
 
 @contextlib.contextmanager
@@ -234,11 +275,18 @@ def device_process(command, **options):
 
 
 def call_device(command):
+    done = device_here(command)
+    if done is not None:
+        return done[0]
     with device_process(command) as process:
         return process.wait()
 
 
 def capture_device(command, **options):
+    done = device_here(command, capture=True)
+    if done is not None:
+        printed = done[1] if options.get("text") else done[1].encode()
+        return subprocess.CompletedProcess(command, done[0], printed, "" if options.get("text") else b"")
     with device_process(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         **options) as process:
         stdout, stderr = process.communicate()

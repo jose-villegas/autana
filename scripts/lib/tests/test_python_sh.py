@@ -87,7 +87,8 @@ class FindPythonTests(unittest.TestCase):
                 candidate.chmod(0o755)
             script = f'. "{(LIB / "python.sh").as_posix()}"; find_python "$@"'
             for case, modules, available, expected, count in (
-                    ("preferred", [], True, pinned, 1),
+                    # The pinned name says its version: taken without being started.
+                    ("preferred", [], True, pinned, 0),
                     ("module fallback", ["venv_only_marker"], True, older, 2),
                     ("absent", [], False, older, 1)):
                 with self.subTest(case=case):
@@ -149,7 +150,7 @@ exec "{Path(sys.executable).as_posix()}" -c 'import sys; sys.version_info = (3, 
     def test_bootstrap_skips_an_older_idf_python(self):
         root = Path(self.temp.name) / "bootstrap"
         for relative in ("tools/autana", "scripts/lib/python.sh",
-                         "scripts/lib/python-min-version", "scripts/lib/process_pid.sh"):
+                         "scripts/lib/python-min-version"):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(LIB.parents[1] / relative, target)
@@ -158,9 +159,6 @@ exec "{Path(sys.executable).as_posix()}" -c 'import sys; sys.version_info = (3, 
         app.write_text('import sys; print(sys.version_info[:2])\n')
         binary = root / "bin"
         binary.mkdir()
-        dirname = binary / "dirname"
-        dirname.write_text(f'#!/bin/sh\nprintf "%s\\n" "{root.as_posix()}/tools"\n')
-        dirname.chmod(0o755)
         for name, code in (("idf_a_old_env", "import sys; sys.version_info = (3, 9, 0); "),
                            ("idf_b_matching_env", "")):
             python = root / "idf/python_env" / name / "Scripts/python.exe"

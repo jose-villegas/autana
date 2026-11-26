@@ -566,36 +566,73 @@ class DeviceCommandTests(unittest.TestCase):
 
 
 class BoardCommandSpawnTests(unittest.TestCase):
-    """A command that never builds or flashes starts device.py and nothing
-    else: finding ESP-IDF's Python costs a dozen git calls, a second or more
-    each on a loaded Windows machine, and listing boards waited on them."""
+    """A command that never builds or flashes starts no process when this
+    Python has pyserial: device.py's verb runs in this one. Without pyserial
+    it starts device.py alone, never ESP-IDF's lookup, a dozen git calls, a
+    second or more each on a loaded Windows machine."""
 
-    def spawns(self, run):
-        """What `run` started: device.py children, then every other process."""
+    BOARD_COMMANDS = (["devices", "--json"], ["status", "--json"], ["status"], ["lock", "release", "token"],
+                      ["lock", "wait"])
+
+    def spawns(self, run, pyserial):
+        """What `run` started (device.py children, then every other process)
+        and the device.py verbs it ran in this process."""
         device = mock.Mock()
         device.return_value.wait.return_value = 0
         device.return_value.poll.return_value = 0
         device.return_value.returncode = 0
         device.return_value.communicate.return_value = (json.dumps({"boards": []}), "")
+        here = mock.Mock()
+        here.main.side_effect = lambda argv: print(json.dumps({"boards": []})) or 0
+        spec = mock.Mock() if pyserial else None
         with mock.patch.object(autana, "launch_process_tree", device), \
              mock.patch.object(autana, "close_process_tree"), \
+             mock.patch.object(autana, "device_module", return_value=here), \
+             mock.patch.object(autana.importlib.util, "find_spec", return_value=spec), \
              mock.patch("subprocess.Popen", side_effect=OSError("no other process")) as other, \
              mock.patch("builtins.print"):
             run()
-        return device.call_args_list, other.call_args_list
+        return device.call_args_list, other.call_args_list, [call.args[0] for call in here.main.call_args_list]
 
-    def test_board_commands_start_device_py_alone(self):
-        for argv in (["devices", "--json"], ["status", "--json"], ["lock", "release", "token"]):
-            with self.subTest(argv=argv), mock.patch.object(autana.sys, "argv", ["autana", *argv]):
-                device, other = self.spawns(lambda: self.assertRaises(SystemExit, autana.main))
-            self.assertEqual(len(device), 1)
-            self.assertEqual(device[0].args[0][0], autana.sys.executable)
-            self.assertEqual(other, [])
+    def main_spawns(self, argv, pyserial):
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            return self.spawns(lambda: self.assertRaises(SystemExit, autana.main), pyserial)
 
-    def test_records_busy_check_starts_device_py_alone(self):
-        with without_environment(autana.WAIT_ENV):
-            device, other = self.spawns(autana.refused_as_busy)
-        self.assertEqual((len(device), other), (1, []))
+    def test_board_commands_start_no_process_with_pyserial(self):
+        for argv in self.BOARD_COMMANDS:
+            with self.subTest(argv=argv):
+                device, other, ran = self.main_spawns(argv, pyserial=True)
+                self.assertEqual((device, other), ([], []))
+                self.assertEqual(len(ran), 1)
+                self.assertEqual(ran[0][:2], ["--owner", autana.owner()])
+
+    def test_board_commands_start_device_py_alone_without_pyserial(self):
+        for argv in self.BOARD_COMMANDS:
+            with self.subTest(argv=argv):
+                device, other, ran = self.main_spawns(argv, pyserial=False)
+                self.assertEqual((len(device), other, ran), (1, [], []))
+                self.assertEqual(device[0].args[0][0], autana.sys.executable)
+
+    def test_records_busy_check_starts_no_process(self):
+        for pyserial, children in ((True, 0), (False, 1)):
+            with self.subTest(pyserial=pyserial), without_environment(autana.WAIT_ENV):
+                device, other, ran = self.spawns(autana.refused_as_busy, pyserial)
+                self.assertEqual((len(device), other, len(ran)), (children, [], 1 - children))
+
+    def test_a_verb_run_here_leaves_this_environment_as_it_was(self):
+        here = mock.Mock()
+
+        def main(argv):
+            autana.os.environ[autana.WAIT_ENV] = "600"
+            print("printed")
+            return 3
+
+        here.main.side_effect = main
+        with without_environment(autana.WAIT_ENV), \
+             mock.patch.object(autana, "device_module", return_value=here), \
+             mock.patch.object(autana.importlib.util, "find_spec", return_value=mock.Mock()):
+            self.assertEqual(autana.device_here(autana.device_command("status"), capture=True), (3, "printed\n"))
+            self.assertNotIn(autana.WAIT_ENV, autana.os.environ)
 
 
 def make_project(root):
