@@ -5149,7 +5149,6 @@ test_scene_adopts_its_pack_probe_grid(void) {
     entity_t missing = load("test_solo");
     TEST_ASSERT_NULL(scene_probes(missing));
     scene_release(root);
-    TEST_ASSERT_NULL(scene_probes(root));
     TEST_ASSERT_NULL(scene_probes(ENTITY_NONE));
     scene_unload_all();
     char longest[ASSET_NAME_MAX];

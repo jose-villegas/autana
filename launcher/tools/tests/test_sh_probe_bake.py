@@ -106,7 +106,7 @@ class ProbeTests(unittest.TestCase):
             points = np.array([[0., 0., CARD_Z / 2]])
             settings = SimpleNamespace(seed=0, alpha_keep=KEEP_ALPHA, double_sided={'card'})
             requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
-            job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2, rays=1)))
+            job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=SimpleNamespace(bounces=2, rays=1)))
             colour = np.array([0.4, 0.6, 1.0])
             scene = SimpleNamespace(path=None,
                                     lights=[dict(type='sky', mode=LIGHT_MODE_BAKED, color=colour.tolist(), intensity=1.0)],
