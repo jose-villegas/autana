@@ -989,6 +989,34 @@ morphed_vertices(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* back, cons
     }
 }
 
+/* Triangle `t`'s corners and fill, coloured by the side `back` names
+ * (side_colour()). */
+static inline __attribute__((always_inline)) void
+fill_side(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], int t, uint32_t face,
+          const r3d_lit_cluster_t* back, const r3d_span_target_t* target, draw_mode_t mode, int weight,
+          uint16_t screen) {
+    const uint16_t* tri = mesh->triangles[t];
+    r3d_span_vertex_t s[3];
+    if (weight != 0 && face == R3D_SPAN_FACE_NONE) {
+        morphed_vertices(mesh, back, v, tri, weight, s);
+    } else {
+        for (int k = 0; k < 3; k++) {
+            const uint8_t* rgb =
+                face == R3D_SPAN_FACE_NONE ? side_colour(mesh, back, tri[k]) : (const uint8_t[3]){0, 0, 0};
+            s[k] = span_corner(v[k], rgb);
+        }
+    }
+    fill_triangle(target, &s[0], &s[1], &s[2], side_face(mesh, back, t, face), mode, screen);
+}
+
+/* A triangle of double-sided cluster `c` seen from behind, in its back
+ * colours: kept out of the draws' IRAM, whose front faces stay as tight. */
+static __attribute__((noinline)) void
+fill_back(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], int t, uint32_t face,
+          const r3d_lit_cluster_t* c, const r3d_span_target_t* target, draw_mode_t mode, int weight, uint16_t screen) {
+    fill_side(mesh, v, t, face, c, target, mode, weight, screen);
+}
+
 /* Triangle `t` of cluster `c`, wholly in front of the near plane: seen from
  * behind, a double-sided one shows its back colours when the mesh has them,
  * picked here once a triangle by the winding, the side a fragment shader
@@ -1012,20 +1040,13 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
         return;
     }
     FRAME_LAP("r3d.draw.vertices");
-    /* Past facing_away(), a triangle seen from behind is double-sided. */
-    const r3d_lit_cluster_t* back = area2 >= 0 && shows_back(mesh, c) ? c : NULL;
-    const uint16_t* tri = mesh->triangles[t];
-    r3d_span_vertex_t s[3];
-    if (weight != 0 && face == R3D_SPAN_FACE_NONE) {
-        morphed_vertices(mesh, back, v, tri, weight, s);
-    } else {
-        for (int k = 0; k < 3; k++) {
-            const uint8_t* rgb =
-                face == R3D_SPAN_FACE_NONE ? side_colour(mesh, back, tri[k]) : (const uint8_t[3]){0, 0, 0};
-            s[k] = span_corner(v[k], rgb);
-        }
+    /* Past facing_away(), a triangle seen from behind is double-sided, and
+     * a mesh has back colours (back_count) only for such clusters. */
+    if (area2 >= 0 && mesh->back_count != 0) {
+        fill_back(mesh, v, t, face, c, target, mode, weight, screen);
+        return;
     }
-    fill_triangle(target, &s[0], &s[1], &s[2], side_face(mesh, back, t, face), mode, screen);
+    fill_side(mesh, v, t, face, NULL, target, mode, weight, screen);
 }
 
 /* A triangle wholly in front of the near plane; `blends` is a literal, so

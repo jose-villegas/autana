@@ -313,6 +313,29 @@ r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
     return ASSET_OK;
 }
 
+/* Back colours, in the mesh's own encoding, cover every double-sided
+ * cluster or none (front colours both ways); a colourless mesh takes them
+ * from its colour set. */
+static asset_status_t
+read_backs(const asset_view_t* asset, uint32_t back_at, r3d_lit_mesh_t* mesh) {
+    if (back_at == 0) {
+        return ASSET_OK;
+    }
+    const bool per_vertex = mesh->colors != NULL;
+    const int backs = per_vertex || mesh->face_colors != NULL ? back_entries(mesh, per_vertex) : 0;
+    if (backs <= 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    const void* back = array_at(asset, back_at, (uint32_t)backs, per_vertex ? 3U : 2U);
+    if (back == NULL) {
+        return ASSET_ERR_BOUNDS;
+    }
+    mesh->back_colors = per_vertex ? back : NULL;
+    mesh->back_face_colors = per_vertex ? NULL : back;
+    mesh->back_count = backs;
+    return ASSET_OK;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -357,22 +380,9 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (!clusters_tile(&built)) {
         return ASSET_ERR_FORMAT;
     }
-    /* Back colours, in the mesh's own encoding, cover every double-sided
-     * cluster or none (front colours both ways); a colourless mesh takes
-     * them from its colour set. */
-    const bool coloured = colors_at != 0 || face_at != 0;
-    const int backs = back_at != 0 && coloured ? back_entries(&built, face_at == 0) : 0;
-    if (back_at != 0 && backs <= 0) {
-        return ASSET_ERR_FORMAT;
-    }
-    if (back_at != 0) {
-        const void* back = array_at(asset, back_at, (uint32_t)backs, face_at == 0 ? 3U : 2U);
-        if (back == NULL) {
-            return ASSET_ERR_BOUNDS;
-        }
-        built.back_colors = face_at == 0 ? back : NULL;
-        built.back_face_colors = face_at == 0 ? NULL : back;
-        built.back_count = backs;
+    const asset_status_t backs = read_backs(asset, back_at, &built);
+    if (backs != ASSET_OK) {
+        return backs;
     }
     *mesh = built;
     return ASSET_OK;
