@@ -1811,8 +1811,9 @@ model_of(entity_t root, const char* name) {
 }
 
 /* Two placements agree in their top three rows: with positive scales, the
- * same position, rotation and scale. */
-static void
+ * same position, rotation and scale. Its own frame, so the two matrices stay
+ * off the stack of the test that calls it. */
+static __attribute__((noinline)) void
 assert_same_placement(mat4f_t want, mat4f_t got, float tolerance) {
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 4; c++) {
