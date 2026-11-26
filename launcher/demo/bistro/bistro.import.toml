@@ -22,5 +22,5 @@ probes = {}
 # rest plus every stored copy prototype.
 [[variants]]
 name = "bistro_fitted_full"
-triangles = 18678
+triangles = 28450
 ceiling = 34500
