@@ -134,7 +134,7 @@ class RayQuery:
         return wa, wb, 1.0 - wa - wb
 
     def device_hits(self, ray, active=True, passes=None):
-        """The first solid hit along each ray (a DeviceHit). With a `hit_filter`, or a `passes(prim, where, ray,
+        """The first solid hit along each ray nearer than its `maxt` (a DeviceHit). With a `hit_filter`, or a `passes(prim, where, ray,
         active)` that returns the hits a caller looks through, a ray steps past every other hit by the larger of
         `STEP` and its coordinate-scaled `STEP_RELATIVE`, up to `MAX_HITS` hits; rays still crossing then are cut off
         and reported on stderr."""
@@ -151,9 +151,13 @@ class RayQuery:
             return DeviceHit(valid, hit.t, hit.prim_index, ray(hit.t))
         d = mi.Vector3f(ray.d)
         o0 = mi.Point3f(ray.o)
+        maxt = mi.Float(ray.maxt)
 
         def body(o, alive, found, prim, where, rounds):
-            hit = self.scene.ray_intersect_preliminary(mi.Ray3f(o, d), active=alive)
+            # Each step keeps the reach left of the ray's maxt, so a ray stops stepping at it.
+            step_ray = mi.Ray3f(o, d)
+            step_ray.maxt = maxt - dr.dot(o - o0, d) / dr.squared_norm(d)
+            hit = self.scene.ray_intersect_preliminary(step_ray, active=alive)
             valid = alive & hit.is_valid()
             at = o + d * hit.t
             keep = valid
@@ -184,7 +188,8 @@ class RayQuery:
         return DeviceHit(found, t, prim, where)
 
     def device_blocked(self, ray, active=True):
-        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
+        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`) nearer than its
+        `maxt`."""
         self._check_variant()
         if not self.dr.width(ray.d):
             return self.dr.zeros(self.mi.Bool, 0)
@@ -216,13 +221,17 @@ class RayQuery:
         ray = np.flatnonzero(hit)
         return origins[ray] + directions[ray] * distance[ray, None], ray, tri[ray]
 
-    def blocked(self, origins, directions):
-        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`)."""
+    def blocked(self, origins, directions, reach=None):
+        """True for each ray that hits a solid part of the mesh (every hit without a `hit_filter`); with `reach`, one
+        distance per ray along unit directions, only a hit nearer than it blocks."""
         origins, directions = np.asarray(origins), np.asarray(directions)
         blocked = np.zeros(len(origins), bool)
         for start, size in chunks(len(origins), LAUNCH):
             part = slice(start, start + size)
-            mask = self.device_blocked(self.rays(origins[part], directions[part]))
+            ray = self.rays(origins[part], directions[part])
+            if reach is not None:
+                ray.maxt = self.mi.Float(np.asarray(reach, np.float32)[part])
+            mask = self.device_blocked(ray)
             self.dr.eval(mask)
             blocked[part] = np.array(mask, bool)
         return blocked

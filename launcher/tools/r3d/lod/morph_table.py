@@ -39,7 +39,9 @@ import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parents[1]))
 sys.path.insert(0, str(HERE.parents[1] / "render"))
+from build.c_enum import read_enum  # noqa: E402
 from check_avi import read_video  # noqa: E402
 from coverage_table import ROOT, build, scored  # noqa: E402
 from generated_blocks import replace_block  # noqa: E402
@@ -53,9 +55,8 @@ BLEND_PREFIX = "RENDER_LOD_BLEND_"
 
 def blends():
     """render_lod_blend_t's values by lower-case name, read from its header."""
-    body = re.search(r"typedef enum \{(.*?)\} render_lod_blend_t;", SETTINGS_HEADER.read_text(), re.S).group(1)
-    names = re.findall(BLEND_PREFIX + r"(\w+)", body)
-    return {name.lower(): value for value, name in enumerate(names)}
+    return {name.removeprefix(BLEND_PREFIX).lower(): value
+            for name, value in read_enum(SETTINGS_HEADER, "render_lod_blend_t").items()}
 
 
 BLEND = blends()

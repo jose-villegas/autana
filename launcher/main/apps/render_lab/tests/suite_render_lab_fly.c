@@ -3,6 +3,7 @@
  * on the device the lines fly the drawn camera, and every way a flight ends
  * puts the camera back where it began and its clip as it was.
  */
+#include <stdlib.h>
 #include "suites.h"
 
 #include "testkit/suite.h"
@@ -81,20 +82,25 @@ test_a_flight_crosses_its_scene_in_the_same_time_whatever_its_units(void) {
 /* Frames for a playing clip to carry the camera off its pose. */
 #define PLAY_FRAMES   8
 
-static lab_test_t saved;
+static struct {
+    lab_test_t saved;
+    transformf_t home;
+}* flight;
 
-static void
-release_fixture(void) {
-    (void)app_render_lab.console->handle("fly release");
-    lab_test_exit(&saved);
-}
-
-static bool
+static __attribute__((noinline)) bool
 console(const char* line) {
     return app_render_lab.console->handle(line);
 }
 
 static void
+release_fixture(void) {
+    (void)console("fly release");
+    lab_test_exit(&flight->saved);
+    free(flight);
+    flight = NULL;
+}
+
+static __attribute__((noinline)) void
 frames(int count) {
     for (int i = 0; i < count; i++) {
         lab_test_frame(false, NULL);
@@ -108,18 +114,28 @@ drawn_camera(void) {
     return camera;
 }
 
-static transformf_t
+static __attribute__((noinline)) transformf_t
 camera_now(void) {
     return transform_world(drawn_camera());
 }
 
-static bool
+static __attribute__((noinline)) vec3f_t
+camera_position(void) {
+    return camera_now().position;
+}
+
+static __attribute__((noinline)) quatf_t
+camera_rotation(void) {
+    return camera_now().rotation;
+}
+
+static __attribute__((noinline)) bool
 clip_paused(void) {
     return animator_paused(drawn_camera(), ANIMATOR_CURRENT);
 }
 
 /* How far one fixture frame flies at the start speed. */
-static float
+static __attribute__((noinline)) float
 stride(void) {
     return render_lab_fly_start_speed(scene_bounds(drawn_camera())) * (float)LAB_TEST_FRAME_MS / (float)MATH_MS_PER_S;
 }
@@ -129,27 +145,40 @@ distance(vec3f_t a, vec3f_t b) {
     return vec3f_length(vec3f_sub(a, b));
 }
 
-/* Sponza, a frame drawn, and where its camera stands before any flight. */
-static transformf_t
-fixture(void) {
-    lab_test_enter(&saved, &render_lab, "sponza");
+static void
+enter_fixture(void) {
+    flight = malloc(sizeof *flight);
+    TEST_ASSERT_NOT_NULL(flight);
+    lab_test_enter(&flight->saved, &render_lab, "sponza");
     suite_set_test_cleanup(release_fixture);
-    lab_test_frame(false, NULL);
-    return camera_now();
 }
 
-/* The same, with the camera's clip held by "render pose", so nothing but a
- * flight moves it. */
-static transformf_t
+static __attribute__((noinline)) const transformf_t*
+remember_home(void) {
+    flight->home = camera_now();
+    return &flight->home;
+}
+
+static const transformf_t*
+fixture(void) {
+    enter_fixture();
+    lab_test_frame(false, NULL);
+    return remember_home();
+}
+
+static const transformf_t*
 held_fixture(void) {
-    (void)fixture();
+    enter_fixture();
+    lab_test_frame(false, NULL);
+    /* The unheld fixture verifies a camera is active before sending commands. */
+    (void)drawn_camera();
     TEST_ASSERT_TRUE(console("pose 0"));
     TEST_ASSERT_TRUE(clip_paused());
     lab_test_frame(false, NULL);
-    return camera_now();
+    return remember_home();
 }
 
-static void
+static __attribute__((noinline)) void
 expect_at(vec3f_t expected, vec3f_t actual) {
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, expected.x, actual.x);
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, expected.y, actual.y);
@@ -158,55 +187,55 @@ expect_at(vec3f_t expected, vec3f_t actual) {
 
 static void
 test_forward_flies_the_drawn_camera_and_release_puts_it_back(void) {
-    const transformf_t home = fixture();
+    const transformf_t* home = fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
     lab_test_frame(false, NULL);
-    const vec3f_t ahead = quatf_rotate(home.rotation, vec3f_forward());
-    expect_at(vec3f_add(home.position, vec3f_scale(ahead, stride())), camera_now().position);
+    const vec3f_t ahead = quatf_rotate(home->rotation, vec3f_forward());
+    expect_at(vec3f_add(home->position, vec3f_scale(ahead, stride())), camera_position());
 
     /* The camera's clip is paused: a frame with the keys let go leaves it still. */
     TEST_ASSERT_TRUE(console(STILL_LINE));
-    const vec3f_t flown = camera_now().position;
+    const vec3f_t flown = camera_position();
     lab_test_frame(false, NULL);
-    expect_at(flown, camera_now().position);
+    expect_at(flown, camera_position());
 
     TEST_ASSERT_TRUE(console("fly release"));
-    expect_at(home.position, camera_now().position);
+    expect_at(home->position, camera_position());
 }
 
 /* A line's keys stay held, frame after frame, until the next line. */
 static void
 test_held_keys_fly_every_frame_until_the_next_line(void) {
-    const transformf_t home = held_fixture();
+    const transformf_t* home = held_fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
     frames(2);
-    TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, 2.0F * stride(), distance(home.position, camera_now().position));
+    TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, 2.0F * stride(), distance(home->position, camera_position()));
 }
 
 /* A drag turns once, on the frame after it; the frames after leave the turn. */
 static void
 test_a_drag_turns_the_drawn_camera_once(void) {
-    const transformf_t home = held_fixture();
-    const vec3f_t before = quatf_rotate(home.rotation, vec3f_forward());
+    const transformf_t* home = held_fixture();
+    const vec3f_t before = quatf_rotate(home->rotation, vec3f_forward());
     TEST_ASSERT_TRUE(console(DRAG_LINE));
     lab_test_frame(false, NULL);
-    const quatf_t turned = camera_now().rotation;
+    const quatf_t turned = camera_rotation();
     const vec3f_t after = quatf_rotate(turned, vec3f_forward());
     TEST_ASSERT_TRUE(vec3f_dot(before, after) < cosf(0.5F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel));
-    expect_at(home.position, camera_now().position);
+    expect_at(home->position, camera_position());
     lab_test_frame(false, NULL);
-    expect_at(after, quatf_rotate(camera_now().rotation, vec3f_forward()));
+    expect_at(after, quatf_rotate(camera_rotation(), vec3f_forward()));
 }
 
 /* Two lines' drags before one frame turn as far as one line with both. */
 static void
 test_drags_between_frames_add_up(void) {
-    const transformf_t home = held_fixture();
-    const vec3f_t before = quatf_rotate(home.rotation, vec3f_forward());
+    const transformf_t* home = held_fixture();
+    const vec3f_t before = quatf_rotate(home->rotation, vec3f_forward());
     TEST_ASSERT_TRUE(console(DRAG_LINE));
     TEST_ASSERT_TRUE(console(DRAG_LINE));
     lab_test_frame(false, NULL);
-    const vec3f_t after = quatf_rotate(camera_now().rotation, vec3f_forward());
+    const vec3f_t after = quatf_rotate(camera_rotation(), vec3f_forward());
     /* A level yaw of twice the drag, whatever the pitch: the heading turns that far. */
     const float yaw = 2.0F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel;
     const vec3f_t level_before = vec3f_normalize((vec3f_t){before.x, 0.0F, before.z});
@@ -217,42 +246,42 @@ test_drags_between_frames_add_up(void) {
 /* The wheel scales the speed from the frame it arrives on. */
 static void
 test_the_wheel_speeds_the_flight(void) {
-    const transformf_t home = held_fixture();
+    const transformf_t* home = held_fixture();
     TEST_ASSERT_TRUE(console(FASTER_LINE));
     lab_test_frame(false, NULL);
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, FLY_MOTION_TUNING_DEFAULT.speed_step * stride(),
-                             distance(home.position, camera_now().position));
+                             distance(home->position, camera_position()));
 }
 
 /* With no line for the idle limit, the camera goes home and its clip stays
  * as "render pose" held it. */
 static void
 test_a_flight_with_no_lines_ends_where_it_began(void) {
-    const transformf_t home = held_fixture();
+    const transformf_t* home = held_fixture();
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
     lab_test_frame(false, NULL);
-    TEST_ASSERT_TRUE(distance(home.position, camera_now().position) > 0.5F * stride());
+    TEST_ASSERT_TRUE(distance(home->position, camera_position()) > 0.5F * stride());
     frames(IDLE_FRAMES);
-    expect_at(home.position, camera_now().position);
+    expect_at(home->position, camera_position());
     TEST_ASSERT_TRUE(clip_paused());
 }
 
 /* A line every frame keeps the flight going past the idle limit. */
 static void
 test_lines_keep_a_flight_past_the_idle_limit(void) {
-    const transformf_t home = held_fixture();
+    const transformf_t* home = held_fixture();
     for (int i = 0; i < IDLE_FRAMES; i++) {
         TEST_ASSERT_TRUE(console(FORWARD_LINE));
         lab_test_frame(false, NULL);
     }
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE * IDLE_FRAMES, (float)IDLE_FRAMES * stride(),
-                             distance(home.position, camera_now().position));
+                             distance(home->position, camera_position()));
 }
 
 /* A clip that played before the flight plays again after it. */
 static void
 test_release_lets_a_playing_clip_move_the_camera_again(void) {
-    const transformf_t home = fixture();
+    const transformf_t* home = fixture();
     TEST_ASSERT_FALSE(clip_paused());
     TEST_ASSERT_TRUE(console(FORWARD_LINE));
     lab_test_frame(false, NULL);
@@ -260,7 +289,7 @@ test_release_lets_a_playing_clip_move_the_camera_again(void) {
     TEST_ASSERT_TRUE(console("fly release"));
     TEST_ASSERT_FALSE(clip_paused());
     frames(PLAY_FRAMES);
-    TEST_ASSERT_TRUE(distance(home.position, camera_now().position) > FLY_TOLERANCE);
+    TEST_ASSERT_TRUE(distance(home->position, camera_position()) > FLY_TOLERANCE);
 }
 
 /* A scene switch ends the flight: the keys held fly nothing in the new scene. */
@@ -274,7 +303,7 @@ test_a_scene_switch_ends_the_flight(void) {
     TEST_ASSERT_EQUAL_STRING(OTHER_SCENE, render_lab.start_key);
     const transformf_t there = camera_now();
     lab_test_frame(false, NULL);
-    expect_at(there.position, camera_now().position);
+    expect_at(there.position, camera_position());
 }
 
 #endif

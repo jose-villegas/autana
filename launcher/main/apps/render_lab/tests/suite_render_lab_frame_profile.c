@@ -281,6 +281,14 @@ log_step_frames(const step_frame_t* frames, int count, resolution_step_t size) {
     memory_free(line);
 }
 
+/* The last frame's record, read off the frame call's stack chain. */
+static __attribute__((noinline)) step_frame_t
+pinned_step_frame(int32_t whole_us) {
+    const render_context_frame_t f = render_context_frame(render_context_main());
+    TEST_ASSERT_EQUAL_INT(0, f.step);
+    return (step_frame_t){whole_us, f.draw_us, f.upscale_us, f.stats.triangles};
+}
+
 /* The path at one ladder step held for every frame, at a fixed frame step so
  * every step draws the same poses: what dynamic resolution would pay for
  * each frame at each step, for launcher/tools/r3d/dynres_replay.py. */
@@ -298,10 +306,7 @@ test_dynres_steps(void) {
     for (int i = 0; i < frames; i++) {
         const int64_t start = timing_now_us();
         (void)lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
-        const int32_t whole_us = (int32_t)(timing_now_us() - start);
-        const render_context_frame_t f = render_context_frame(render_context_main());
-        TEST_ASSERT_EQUAL_INT(0, f.step);
-        records[i] = (step_frame_t){whole_us, f.draw_us, f.upscale_us, f.stats.triangles};
+        records[i] = pinned_step_frame((int32_t)(timing_now_us() - start));
     }
     log_step_frames(records, frames, size);
     memory_free(records);

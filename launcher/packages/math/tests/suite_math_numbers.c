@@ -722,8 +722,8 @@ test_fixed_affine_product_applies_the_right_matrix_first(void) {
 /* A swizzle family as rows of name and function, built by the template's own
  * iterator. The source holds 10, 20 and 30, so the letters in a name alone say
  * what the result holds; the row count catches an iterator that skips one. */
-#define SWIZZLE_ROW2(D, S, a, b)    {#a #b, S##_##a##b},
-#define SWIZZLE_ROW3(D, S, a, b, c) {#a #b #c, S##_##a##b##c},
+#define SWIZZLE_ROW2(D, S, a, b)    {#a #b, S##_##a##b(v)},
+#define SWIZZLE_ROW3(D, S, a, b, c) {#a #b #c, S##_##a##b##c(v)},
 #define SWIZZLE_GOT2(r)             {(int)(r).x, (int)(r).y}
 #define SWIZZLE_GOT3(r)             {(int)(r).x, (int)(r).y, (int)(r).z}
 
@@ -732,12 +732,12 @@ test_fixed_affine_product_applies_the_right_matrix_first(void) {
         const S##_t v = {__VA_ARGS__};                                                                                 \
         const struct {                                                                                                 \
             const char* name;                                                                                          \
-            D##_t (*fn)(S##_t);                                                                                        \
+            D##_t value;                                                                                               \
         } rows[] = {MATH_SWIZZLE_EACH##K(N, SWIZZLE_ROW##K, D, S)};                                                    \
         const int count = (int)(sizeof rows / sizeof rows[0]);                                                         \
         TEST_ASSERT_EQUAL_INT(K == 2 ? N * N : N * N * N, count);                                                      \
         for (int i = 0; i < count; i++) {                                                                              \
-            const D##_t r = rows[i].fn(v);                                                                             \
+            const D##_t r = rows[i].value;                                                                             \
             const int got[] = SWIZZLE_GOT##K(r);                                                                       \
             for (int c = 0; c < K; c++) {                                                                              \
                 TEST_ASSERT_EQUAL_INT_MESSAGE(10 * (rows[i].name[c] - 'w'), got[c], rows[i].name);                     \

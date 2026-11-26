@@ -1244,7 +1244,7 @@ def main(argv=None):
         fit_start = fitted
         # The start's leak probes stand where the object's import sealed its seams, for snap_back after the fit.
         sealed = next(item for item in scene.renderers if args.object in (None, item.object.name))
-        probes = seal.start_probes(fit_start, copies, seal_camera(scene, sealed.renderer))
+        probes = seal.start_probes(fit_start, copies, seal_camera(scene))
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,

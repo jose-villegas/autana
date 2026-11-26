@@ -145,10 +145,11 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
-    sand_t s;
-    build(&s, cells, seed);
-    sand_enable_sleeping(&s, blocks);
-    void* scratch = lane_scratch_open(&s);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    build(s, cells, seed);
+    sand_enable_sleeping(s, blocks);
+    void* scratch = lane_scratch_open(s);
 
     static const int gx[] = {0, 0, 1000, -1000, 700};
     static const int gy[] = {1000, -1000, 700, 700, -700};
@@ -159,7 +160,7 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     sand_set_two_core_step(two_core);
     for (int i = 0; i < steps; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
-        sand_step(&s, gx[arm], gy[arm], 0);
+        sand_step(s, gx[arm], gy[arm], 0);
     }
     sand_set_two_core_step(false);
     (void)sand_chunk_share_for_test(share);
@@ -172,6 +173,7 @@ tc_run_scene_and_hash(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed,
     free(scratch);
     free(cells);
     free(blocks);
+    free(s);
     return h;
 }
 
@@ -189,10 +191,11 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
-    sand_t s;
-    sand_init(&s, cells, w, h, seed);
-    sand_enable_sleeping(&s, blocks);
-    void* scratch = lane_scratch_open(&s);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    sand_init(s, cells, w, h, seed);
+    sand_enable_sleeping(s, blocks);
+    void* scratch = lane_scratch_open(s);
 
     rng_t r;
     rng_seed(&r, seed ^ 0xA5A5A5A5U);
@@ -200,7 +203,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             if (rng_below(&r, 3) == 0) {
-                sand_set(&s, x, y, picks[rng_below(&r, (int)(sizeof picks / sizeof picks[0]))]);
+                sand_set(s, x, y, picks[rng_below(&r, (int)(sizeof picks / sizeof picks[0]))]);
             }
         }
     }
@@ -214,7 +217,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     sand_set_two_core_step(two_core);
     for (int i = 0; i < 40; i++) {
         const int arm = i % (int)(sizeof gx / sizeof gx[0]);
-        sand_step(&s, gx[arm], gy[arm], 0);
+        sand_step(s, gx[arm], gy[arm], 0);
     }
     sand_set_two_core_step(false);
     (void)sand_chunk_share_for_test(share);
@@ -225,6 +228,7 @@ tc_run_quality_and_hash(int w, int h, uint32_t seed, bool two_core) {
     free(scratch);
     free(cells);
     free(blocks);
+    free(s);
     return result;
 }
 
@@ -582,10 +586,11 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     TEST_ASSERT_NOT_NULL(cells);
     TEST_ASSERT_NOT_NULL(blocks);
 
-    sand_t s;
-    tc_build_scattered_scene(&s, cells, 17U);
-    sand_enable_sleeping(&s, blocks);
-    void* scratch = lane_scratch_open(&s);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    tc_build_scattered_scene(s, cells, 17U);
+    sand_enable_sleeping(s, blocks);
+    void* scratch = lane_scratch_open(s);
 
     long before = 0;
     for (int i = 0; i < TC_W * TC_H; i++) {
@@ -597,7 +602,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
     const unsigned swept_before = sand_split_dispatches[SAND_SPLIT_SLOT_SWEEP];
     const split_passes_scope_t split = split_passes_scope_begin(0U);
     sand_set_two_core_step(true);
-    run_steps(&s, 60, 0, 1000);
+    run_steps(s, 60, 0, 1000);
     sand_set_two_core_step(false);
     split_passes_scope_end(split);
     tc_assert_split_arm_swept_split(swept_before, true);
@@ -623,6 +628,7 @@ test_two_core_step_does_not_leak_or_fabricate_mass(void) {
      * is what this guards against, so the bar is "still the same order of
      * magnitude", not exact conservation. */
     TEST_ASSERT_GREATER_THAN_MESSAGE(before / 2, after, why);
+    free(s);
 }
 
 /* Fills occupied[0..h) with each row's non-empty cell count on grid g. */
@@ -677,26 +683,25 @@ static void
 test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
     uint8_t* cells;
     uint8_t* blocks;
-    sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 9U);
+    sand_t* const s = sand_test_grid_open(&cells, &blocks, TC_W, TC_H, 9U);
 
-    sand_fill_box(&s, 0, TC_H - 1, TC_W, TC_H, STONE);
-    sand_fill_box(&s, 2, 4, TC_W - 2, TC_H / 2, SAND);
+    sand_fill_box(s, 0, TC_H - 1, TC_W, TC_H, STONE);
+    sand_fill_box(s, 2, 4, TC_W - 2, TC_H / 2, SAND);
 
     sand_set_two_core_step(true);
-    run_steps(&s, 400, 0, 1000);
+    run_steps(s, 400, 0, 1000);
     sand_set_two_core_step(false);
 
     int* occupied = malloc(sizeof(int) * (size_t)TC_H);
     TEST_ASSERT_NOT_NULL(occupied);
-    count_occupied_per_row(&s, TC_W, TC_H, occupied);
+    count_occupied_per_row(s, TC_W, TC_H, occupied);
 
     /* Interior baseline: the largest row-to-row change anywhere OUTSIDE a
      * one-row margin of every chunk boundary - the pile's own surface,
      * which is not flat, sets this. */
     int interior_worst = 0;
     int boundary_worst = 0;
-    worst_row_deltas(occupied, TC_H, sand_chunk_side_y(&s, SAND_CHUNK_TRAVEL_OTHER), &interior_worst, &boundary_worst);
+    worst_row_deltas(occupied, TC_H, sand_chunk_side_y(s, SAND_CHUNK_TRAVEL_OTHER), &interior_worst, &boundary_worst);
 
     free(occupied);
     free(cells);
@@ -713,6 +718,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
      * near its edges. The claim is only that a boundary is not a special,
      * repeatable outlier. */
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + (TC_W / 10), boundary_worst, why);
+    free(s);
 }
 
 /* A free-fall step advances the phase without touching a cell, so the next
@@ -958,35 +964,26 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
 
     for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
         for (int offset = 0; offset <= SAND_BLOCK_H / 2; offset += SAND_BLOCK_H / 2) {
-            uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
-            uint8_t* two_core_cells = malloc((size_t)TC_W * (size_t)TC_H);
-            uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-            uint8_t* two_core_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-            TEST_ASSERT_NOT_NULL(serial_cells);
-            TEST_ASSERT_NOT_NULL(two_core_cells);
-            TEST_ASSERT_NOT_NULL(serial_blocks);
-            TEST_ASSERT_NOT_NULL(two_core_blocks);
-
-            sand_t serial_s;
-            sand_t two_core_s;
-            sand_init(&serial_s, serial_cells, TC_W, TC_H, 1U);
-            sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1U);
-            sand_enable_sleeping(&serial_s, serial_blocks);
-            sand_enable_sleeping(&two_core_s, two_core_blocks);
-            void* scratch = lane_scratch_open(&two_core_s);
-            sand_set_scatter(&serial_s, 0);
-            sand_set_scatter(&two_core_s, 0);
-            tc_prime_phase(&serial_s, offset);
-            tc_prime_phase(&two_core_s, offset);
+            uint8_t* serial_cells;
+            uint8_t* two_core_cells;
+            uint8_t* serial_blocks;
+            uint8_t* two_core_blocks;
+            sand_t* const serial_s = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 1U);
+            sand_t* const two_core_s = sand_test_grid_open(&two_core_cells, &two_core_blocks, TC_W, TC_H, 1U);
+            void* scratch = lane_scratch_open(two_core_s);
+            sand_set_scatter(serial_s, 0);
+            sand_set_scatter(two_core_s, 0);
+            tc_prime_phase(serial_s, offset);
+            tc_prime_phase(two_core_s, offset);
 
             const int start_x = TC_W / 2;
-            sand_set(&serial_s, start_x, boundary, SAND);
-            sand_set(&two_core_s, start_x, boundary, SAND);
+            sand_set(serial_s, start_x, boundary, SAND);
+            sand_set(two_core_s, start_x, boundary, SAND);
 
             sand_set_two_core_step(false);
-            sand_step(&serial_s, gxs[g], gys[g], 0);
+            sand_step(serial_s, gxs[g], gys[g], 0);
             sand_set_two_core_step(true);
-            sand_step(&two_core_s, gxs[g], gys[g], 0);
+            sand_step(two_core_s, gxs[g], gys[g], 0);
             sand_set_two_core_step(false);
 
             const uint32_t serial_hash = name_hash_n(serial_cells, (size_t)TC_W * (size_t)TC_H);
@@ -1004,6 +1001,8 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
                      "seam moved differently under two-core stepping",
                      gxs[g], gys[g], offset);
             TEST_ASSERT_EQUAL_HEX32_MESSAGE(serial_hash, two_core_hash, why);
+            free(two_core_s);
+            free(serial_s);
         }
     }
 }
@@ -1324,22 +1323,24 @@ tc_fuse_blast_impulses(bool two_core) {
     impulse_t* buf = malloc((size_t)TC_FUSE_IMPULSE_MAX * sizeof *buf);
     TEST_ASSERT_NOT_NULL(buf);
 
-    sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 5U);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
-    sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    sand_init(s, cells, TC_W, TC_H, 5U);
+    sand_set_decay(s, SAND_DECAY_PER_MATERIAL);
+    sand_enable_impulses(s, buf, TC_FUSE_IMPULSE_MAX);
 
-    sand_fill_box(&s, 0, TC_H - 1, TC_W, TC_H, STONE);
-    boxed_lit_square(&s);
+    sand_fill_box(s, 0, TC_H - 1, TC_W, TC_H, STONE);
+    boxed_lit_square(s);
 
     sand_set_two_core_step(two_core);
-    const bool burned = step_until_square_burns(&s, 200);
-    const int impulses = s.impulse_count;
+    const bool burned = step_until_square_burns(s, 200);
+    const int impulses = s->impulse_count;
     sand_set_two_core_step(false);
 
     free(cells);
     free(buf);
     TEST_ASSERT_TRUE_MESSAGE(burned, "setup: a corner of the lit 2x2 must burn out within the budget");
+    free(s);
     return impulses;
 }
 
@@ -1354,30 +1355,32 @@ tc_lava_burst_impulses(bool two_core) {
     impulse_t* buf = malloc((size_t)TC_FUSE_IMPULSE_MAX * sizeof *buf);
     TEST_ASSERT_NOT_NULL(buf);
 
-    sand_t s;
-    sand_init(&s, cells, TC_W, TC_H, 9U);
-    sand_set_decay(&s, SAND_DECAY_PER_MATERIAL);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    sand_init(s, cells, TC_W, TC_H, 9U);
+    sand_set_decay(s, SAND_DECAY_PER_MATERIAL);
     /* The NATURAL burst chance on purpose: forcing it certain would make
      * every candidate a winner and hide the thing this guards, which is that
      * a rare roll must be offered to every lava cell rather than to however
      * many fit in the deferred queue. */
-    sand_enable_impulses(&s, buf, TC_FUSE_IMPULSE_MAX);
+    sand_enable_impulses(s, buf, TC_FUSE_IMPULSE_MAX);
 
-    sand_fill_box(&s, 0, TC_H - 40, TC_W, TC_H, STONE);
-    sand_fill_box(&s, 4, TC_H - 36, TC_W - 4, TC_H - 6, CELL_MAKE(MAT_LAVA, MASS_MAX));
+    sand_fill_box(s, 0, TC_H - 40, TC_W, TC_H, STONE);
+    sand_fill_box(s, 4, TC_H - 36, TC_W - 4, TC_H - 6, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     sand_set_two_core_step(two_core);
     int peak = 0;
     for (int i = 0; i < 20; i++) {
-        sand_step(&s, 0, 1000, 0);
-        if (s.impulse_count > peak) {
-            peak = s.impulse_count;
+        sand_step(s, 0, 1000, 0);
+        if (s->impulse_count > peak) {
+            peak = s->impulse_count;
         }
     }
     sand_set_two_core_step(false);
 
     free(cells);
     free(buf);
+    free(s);
     return peak;
 }
 
@@ -1473,15 +1476,14 @@ static uint32_t
 tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int offset, bool two_core, int* out_n) {
     uint8_t* cells;
     uint8_t* blocks;
-    sand_t s;
-    sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 1U);
-    void* scratch = lane_scratch_open(&s);
-    sand_set_scatter(&s, 0);
-    tc_prime_phase(&s, offset);
-    build(&s);
+    sand_t* const s = sand_test_grid_open(&cells, &blocks, TC_W, TC_H, 1U);
+    void* scratch = lane_scratch_open(s);
+    sand_set_scatter(s, 0);
+    tc_prime_phase(s, offset);
+    build(s);
 
     sand_set_two_core_step(two_core);
-    run_steps(&s, steps, gx, gy);
+    run_steps(s, steps, gx, gy);
     sand_set_two_core_step(false);
     tc_collect_core1();
 
@@ -1501,6 +1503,7 @@ tc_run_zero_rng_and_hash(void (*build)(sand_t*), int steps, int gx, int gy, int 
     free(scratch);
     free(cells);
     free(blocks);
+    free(s);
     return h;
 }
 
@@ -1564,26 +1567,17 @@ tc_water_column_mass(const sand_t* s, int x) {
 
 static void
 test_landscape_water_column_has_no_line_mass_lag(void) {
-    uint8_t* serial_cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* split_cells = malloc((size_t)TC_W * (size_t)TC_H);
-    uint8_t* serial_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    uint8_t* split_blocks = malloc(sand_sleep_block_bytes(TC_W, TC_H));
-    TEST_ASSERT_NOT_NULL(serial_cells);
-    TEST_ASSERT_NOT_NULL(split_cells);
-    TEST_ASSERT_NOT_NULL(serial_blocks);
-    TEST_ASSERT_NOT_NULL(split_blocks);
-
-    sand_t serial;
-    sand_t split;
-    sand_init(&serial, serial_cells, TC_W, TC_H, 7U);
-    sand_init(&split, split_cells, TC_W, TC_H, 7U);
-    sand_enable_sleeping(&serial, serial_blocks);
-    sand_enable_sleeping(&split, split_blocks);
-    void* scratch = lane_scratch_open(&split);
+    uint8_t* serial_cells;
+    uint8_t* split_cells;
+    uint8_t* serial_blocks;
+    uint8_t* split_blocks;
+    sand_t* const serial = sand_test_grid_open(&serial_cells, &serial_blocks, TC_W, TC_H, 7U);
+    sand_t* const split = sand_test_grid_open(&split_cells, &split_blocks, TC_W, TC_H, 7U);
+    void* scratch = lane_scratch_open(split);
     for (int y = 0; y < TC_H / 2; y++) {
         for (int x = (TC_W / 2) - 6; x < (TC_W / 2) + 6; x++) {
-            sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
-            sand_set(&split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
 
@@ -1592,15 +1586,15 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     for (int step = 0; step < 40; step++) {
         memcpy(split_cells, serial_cells, (size_t)TC_W * (size_t)TC_H);
         memcpy(split_blocks, serial_blocks, sand_sleep_block_bytes(TC_W, TC_H));
-        split.step_phase = serial.step_phase;
+        split->step_phase = serial->step_phase;
 
         sand_set_two_core_step(true);
-        sand_step(&split, 1000, 0, 0);
+        sand_step(split, 1000, 0, 0);
         sand_set_two_core_step(false);
-        sand_step(&serial, 1000, 0, 0);
+        sand_step(serial, 1000, 0, 0);
 
         for (int x = 0; x < TC_W; x++) {
-            const int difference = tc_water_column_mass(&split, x) - tc_water_column_mass(&serial, x);
+            const int difference = tc_water_column_mass(split, x) - tc_water_column_mass(serial, x);
             const int line_mass = difference < 0 ? -difference : difference;
             if (line_mass > worst_line_mass) {
                 worst_line_mass = line_mass;
@@ -1618,6 +1612,8 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, worst_line_mass,
                                   "the split landscape water column left liquid mass in a different column "
                                   "than serial");
+    free(split);
+    free(serial);
 }
 
 static int
@@ -1655,19 +1651,21 @@ test_split_gas_equalise_keeps_seam_order(void) {
         TEST_ASSERT_NOT_NULL(serial_cells);
         TEST_ASSERT_NOT_NULL(split_cells);
 
-        sand_t serial;
-        sand_t split;
-        sand_init(&serial, serial_cells, TC_W, TC_H, 1U);
-        sand_init(&split, split_cells, TC_W, TC_H, 1U);
-        void* scratch = lane_scratch_open(&split);
-        serial.step_phase = split.step_phase = (uint16_t)phase;
-        const int boundary = tc_first_gas_equalise_boundary(&serial);
+        sand_t* const serial = malloc(sizeof *serial);
+        TEST_ASSERT_NOT_NULL(serial);
+        sand_t* const split = malloc(sizeof *split);
+        TEST_ASSERT_NOT_NULL(split);
+        sand_init(serial, serial_cells, TC_W, TC_H, 1U);
+        sand_init(split, split_cells, TC_W, TC_H, 1U);
+        void* scratch = lane_scratch_open(split);
+        serial->step_phase = split->step_phase = (uint16_t)phase;
+        const int boundary = tc_first_gas_equalise_boundary(serial);
         TEST_ASSERT_TRUE(boundary < TC_H);
-        tc_build_gas_equalise_seam(&serial, boundary);
-        tc_build_gas_equalise_seam(&split, boundary);
+        tc_build_gas_equalise_seam(serial, boundary);
+        tc_build_gas_equalise_seam(split, boundary);
 
-        tc_step_gas_equalise(&serial, false);
-        tc_step_gas_equalise(&split, true);
+        tc_step_gas_equalise(serial, false);
+        tc_step_gas_equalise(split, true);
 
         char why[160];
         const bool cells_match = memcmp(serial_cells, split_cells, (size_t)TC_W * (size_t)TC_H) == 0;
@@ -1676,6 +1674,8 @@ test_split_gas_equalise_keeps_seam_order(void) {
         free(serial_cells);
         free(split_cells);
         TEST_ASSERT_TRUE_MESSAGE(cells_match, why);
+        free(split);
+        free(serial);
     }
     TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0, sand_gas_equalise_runs,
                                           "portrait gas equalise did not enter its split passes");
@@ -2307,15 +2307,16 @@ tc_chunks_swept_at(int side_x, int side_y) {
     uint8_t* cells = malloc((size_t)TC_W * (size_t)TC_H);
     TEST_ASSERT_NOT_NULL(cells);
 
-    sand_t s;
-    tc_build_scattered_scene(&s, cells, 5U);
-    void* scratch = lane_scratch_open(&s);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    tc_build_scattered_scene(s, cells, 5U);
+    void* scratch = lane_scratch_open(s);
 
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side_x, side_y), "a side at or over the minimum must be taken");
     const unsigned before = sand_sweep_chunks_swept;
     const sand_chunk_share_t share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS);
     sand_set_two_core_step(true);
-    sand_step(&s, 0, 1000, 0);
+    sand_step(s, 0, 1000, 0);
     sand_set_two_core_step(false);
     (void)sand_chunk_share_for_test(share);
     tc_collect_core1();
@@ -2323,6 +2324,7 @@ tc_chunks_swept_at(int side_x, int side_y) {
 
     free(scratch);
     free(cells);
+    free(s);
     return sand_sweep_chunks_swept - before;
 }
 
@@ -2714,22 +2716,23 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
     TEST_ASSERT_NOT_NULL(blocks);
     TEST_ASSERT_NOT_NULL(stamps);
 
-    sand_t s;
-    build(&s, cells, seed);
-    sand_enable_sleeping(&s, blocks);
-    sand_enable_step_stamps(&s, stamps);
-    void* scratch = lane_scratch_open(&s);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    build(s, cells, seed);
+    sand_enable_sleeping(s, blocks);
+    sand_enable_step_stamps(s, stamps);
+    void* scratch = lane_scratch_open(s);
 
     tc_dispatch_t out = {0};
     const two_core_scope_t core = two_core_scope_begin(true);
-    run_steps(&s, settle_steps, gx, gy);
+    run_steps(s, settle_steps, gx, gy);
     memset(sand_split_dispatches, 0, sizeof sand_split_dispatches);
-    sand_step(&s, gx, gy, 0);
+    sand_step(s, gx, gy, 0);
     for (int slot = 0; slot < SAND_SPLIT_SLOTS; slot++) {
         out.per_pass[slot] = sand_split_dispatches[slot];
         out.total += sand_split_dispatches[slot];
     }
-    out.awake_blocks = count_awake_blocks(&s);
+    out.awake_blocks = count_awake_blocks(s);
     two_core_scope_end(core);
     tc_collect_core1();
 
@@ -2737,6 +2740,7 @@ tc_dispatches_for(void (*build)(sand_t*, uint8_t*, uint32_t), uint32_t seed, int
     free(stamps);
     free(blocks);
     free(cells);
+    free(s);
     return out;
 }
 

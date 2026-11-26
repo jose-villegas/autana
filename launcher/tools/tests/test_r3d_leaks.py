@@ -4,6 +4,7 @@ that lock a vertex per hole: an arch covered by a separate sheet behind it stays
 import pathlib
 import sys
 import unittest
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest import mock
 
@@ -12,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
-    from r3d import leaks, mesh_import
+    from r3d import leaks
     from r3d import simplify as simplify_module
     from r3d.meshopt import PERMISSIVE, REGULARIZE_LIGHT
     from r3d.repair import repair, seal_tolerance
@@ -36,10 +37,8 @@ BUDGET = 24
 SHEET_ALONE_BUDGET = 24
 # A budget for the wall and the half disc simplified as two passes, and the half disc's share of it.
 TWO_PASS_BUDGET, SHEET_SHARE = 96, 0.5
-# A path view straight at the wall, its size unlike a probe face's, and a batch too small for two probe faces.
-PATH_VIEW = (192, 128, 0.25)
-PATH_EYE = (150.0, 150.0, 150.0)
-SMALL_BATCH = 50000
+# One cube face per batch.
+SMALL_BATCH = leaks.probes.PROBE_FACE ** 2 if np is not None else None
 # Quantisation steps per source unit, which sets the join step's tolerance.
 POSITION_SCALE = 8
 # The half disc carved out as a mesh of its own, at too few triangles to stay round.
@@ -69,6 +68,18 @@ def arch():
     backward = np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])[:, 0] < 0
     tris[backward] = tris[backward][:, ::-1]
     return pos, tris
+
+
+@contextmanager
+def opening_camera():
+    # Isolate the arch from the outer silhouette with a probe face aimed head-on.
+    half_height = OPENING_RADIUS / 2
+    eye_x = OPENING_RADIUS
+    pose = (eye_x, half_height, 0, -1, 0, 0)
+    lens = half_height / (eye_x + SHEET_BEHIND)
+    with mock.patch.object(leaks.probes, "region_poses", return_value=([pose], None)), \
+         mock.patch.object(leaks.probes, "FACE_LENS", lens):
+        yield CAMERA
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -102,6 +113,55 @@ class PinTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ViewHoleTests(unittest.TestCase):
+    def test_joined_sky_is_a_hole_only_past_the_reach(self):
+        first_hole = leaks.REACH + 1
+        source_sky = np.zeros((first_hole + 2, first_hole + 2), dtype=bool)
+        source_sky[0, 0] = True
+        sky = source_sky.copy()
+        np.fill_diagonal(sky, True)
+        expected = np.zeros_like(sky)
+        np.fill_diagonal(expected[first_hole:, first_hole:], True)
+
+        holes = leaks.view_holes(sky, source_sky)
+        self.assertEqual(len(holes), 1)
+        np.testing.assert_array_equal(holes[0], expected)
+
+    def test_outline_movement_at_or_below_the_reach_is_allowed(self):
+        source_sky = np.zeros((leaks.REACH + 1, 2), dtype=bool)
+        source_sky[0] = True
+        sky = source_sky.copy()
+        sky[1:, 0] = True
+
+        for reach in (leaks.REACH, leaks.REACH + 1):
+            with self.subTest(reach=reach):
+                self.assertEqual(leaks.view_holes(sky, source_sky, reach=reach), [])
+
+    def test_outline_shrinking_inward_past_the_reach_leaves_a_hole(self):
+        first_hole = leaks.REACH + 1
+        source_sky = np.zeros((first_hole + 2, 2), dtype=bool)
+        source_sky[0] = True
+        sky = source_sky.copy()
+        sky[:first_hole + 1] = True
+        expected = np.zeros_like(sky)
+        expected[first_hole] = True
+
+        holes = leaks.view_holes(sky, source_sky)
+        self.assertEqual(len(holes), 1)
+        np.testing.assert_array_equal(holes[0], expected)
+
+    def test_enclosed_pixel_is_a_hole_at_any_reach(self):
+        source_sky = np.zeros((3, 3), dtype=bool)
+        source_sky[0, 0] = True
+        expected = np.zeros_like(source_sky)
+        expected[-1, -1] = True
+        sky = source_sky | expected
+
+        for reach in (0, leaks.REACH):
+            with self.subTest(reach=reach):
+                holes = leaks.view_holes(sky, source_sky, reach=reach)
+                self.assertEqual(len(holes), 1)
+                np.testing.assert_array_equal(holes[0], expected)
+
     def test_sky_enclosed_by_wall_is_a_hole_and_sky_that_reaches_the_sources_sky_is_not(self):
         source_sky = np.zeros((6, 8), dtype=bool)
         source_sky[0] = True  # the source's own sky along the top
@@ -147,19 +207,21 @@ class LeakProbeTests(unittest.TestCase):
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
     def test_the_sheet_behind_an_opening_keeps_it_covered_at_the_same_budget(self):
-        p, t = self.simplified(Allocation())
-        self.assertGreater(len(self.probes.holes(p, t)), 0, "the fixture does not leak without the probes")
-        p, t = self.simplified(Allocation(camera=CAMERA))
-        self.assertEqual(self.probes.holes(p, t), [])
-        self.assertLessEqual(len(t), BUDGET)
+        with opening_camera() as camera:
+            probes = leaks.LeakProbes(self.pos, self.tris, *camera)
+            p, t = self.simplified(Allocation())
+            self.assertGreater(len(probes.holes(p, t)), 0, "the fixture does not leak without the probes")
+            p, t = self.simplified(Allocation(camera=camera))
+            self.assertEqual(probes.holes(p, t), [])
+            self.assertLessEqual(len(t), BUDGET)
 
-    def one_pass(self, budget, rows=None):
+    def one_pass(self, budget, rows=None, *, camera=CAMERA):
         """(result triangles, the pass's leak record) of the fixture's triangles `rows`, all of them without any,
         as one probed pass."""
         record = {}
         pos, rgb, tris, labels = self.joined
         rows = np.arange(len(tris)) if rows is None else rows
-        probes = leaks.LeakProbes(pos, tris, *CAMERA)
+        probes = leaks.LeakProbes(pos, tris, *camera)
         _, _, t, _ = simplify_module._run_pass(pos, rgb, tris[rows], labels[rows], budget, 1.0, REGULARIZE_LIGHT | PERMISSIVE,
                                                leaks=(probes, rows), record=record)
         return t, record
@@ -175,7 +237,8 @@ class LeakProbeTests(unittest.TestCase):
             self.assertGreater(self.one_pass(SHEET_ALONE_BUDGET, sheet)[1]["leak_holes"], record["leak_holes"])
 
     def test_a_sealed_pass_records_its_rounds_and_locks(self):
-        t, record = self.one_pass(BUDGET)
+        with opening_camera() as camera:
+            _, record = self.one_pass(BUDGET, camera=camera)
         self.assertEqual(record["leak_holes"], 0)
         self.assertGreater(record["leak_rounds"], 0)
         self.assertGreater(record["leak_locks"], 0)
@@ -236,20 +299,13 @@ class LeakProbeTests(unittest.TestCase):
                      position_scale=POSITION_SCALE, allocation=Allocation(camera=CAMERA))
             self.simplified(Allocation())
 
-    def test_a_path_view_finds_a_hole_of_its_own_across_small_batches(self):
+    def test_region_probes_find_the_same_holes_across_small_batches(self):
         inside = 2 * (ARC_SEGMENTS + ARC_SEGMENTS // 2)
         holed = self.pos, np.delete(self.tris, inside, axis=0)
-        target = self.pos[self.tris[inside]].mean(axis=0)
-        eye = np.array(PATH_EYE)
-        pose = np.concatenate([eye, (target - eye) / np.linalg.norm(target - eye)])
         whole_batches = len(self.probes.holes(*holed))
         with mock.patch.object(leaks, "LAUNCH", SMALL_BATCH):
-            without = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
-            with_path = leaks.LeakProbes(self.pos, self.tris, *CAMERA, path=(*PATH_VIEW, [pose]))
-            self.assertEqual(len(with_path.views), len(without.views) + 1)
-            self.assertEqual(with_path.holes(self.pos, self.tris), [])
-            self.assertEqual(len(without.holes(*holed)), whole_batches, "a batch edge lost a view")
-            self.assertGreater(len(with_path.holes(*holed)), len(without.holes(*holed)))
+            probes = leaks.LeakProbes(self.pos, self.tris, *CAMERA)
+            self.assertEqual(len(probes.holes(*holed)), whole_batches, "a batch edge lost a view")
 
     def test_a_region_left_out_falls_back_to_the_sources_bounds(self):
         probes = leaks.LeakProbes(self.pos, self.tris, None, CAMERA[1])
@@ -261,28 +317,15 @@ class LeakProbeTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SealCameraTests(unittest.TestCase):
     def scene(self, camera=True):
-        # The scene camera stands anywhere, on no path; the flight is a second camera.
-        component = SimpleNamespace(near_z=2.0, path=None)
-        flight = SimpleNamespace(kind="camera", component=SimpleNamespace(near_z=2.0, path="the flight"))
-        return SimpleNamespace(region="the region", camera=SimpleNamespace(component=component) if camera else None,
-                               objects=[SimpleNamespace(kind="camera", component=component), flight])
+        component = SimpleNamespace(near_z=CAMERA[1])
+        return SimpleNamespace(region=CAMERA[0], camera=SimpleNamespace(component=component) if camera else None)
 
     def test_no_scene_or_no_camera_gives_none(self):
-        renderer = SimpleNamespace(seal_views=None)
-        self.assertIsNone(leaks.seal_camera(None, renderer))
-        self.assertIsNone(leaks.seal_camera(self.scene(camera=False), renderer))
+        self.assertIsNone(leaks.seal_camera(None))
+        self.assertIsNone(leaks.seal_camera(self.scene(camera=False)))
 
-    def test_the_region_and_near_plane_come_alone_without_seal_views(self):
-        self.assertEqual(leaks.seal_camera(self.scene(), SimpleNamespace(seal_views=None)), ("the region", 2.0))
-        self.assertEqual(leaks.seal_camera(self.scene(), SimpleNamespace()), ("the region", 2.0))
-
-    def test_seal_views_add_the_paths_views_at_their_size_and_lens(self):
-        views = SimpleNamespace(every_ms=33, size=(8, 6))
-        with mock.patch("r3d.poses.path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
-            camera = leaks.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
-        self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
-        self.assertEqual(sampled.call_args.args[0].path, "the flight")
-        self.assertEqual(sampled.call_args.args[1:], ((8, 6), 33))
+    def test_the_seal_uses_the_scenes_region_and_near_plane(self):
+        self.assertEqual(leaks.seal_camera(self.scene()), CAMERA)
 
 
 if __name__ == "__main__":

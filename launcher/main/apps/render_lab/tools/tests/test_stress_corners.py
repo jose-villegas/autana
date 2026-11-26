@@ -165,7 +165,7 @@ class StressCorners(unittest.TestCase):
         # Empty-depth colour is scratch; the upscaler supplies the background.
         frames = []
         for index in range(7):
-            colour, depth = read_dump(self.out / "path-replay" / ("%04d.raw" % index))
+            colour, depth, _ = read_dump(self.out / "path-replay" / ("%04d.raw" % index))
             frames.append((depth.tobytes(), colour[depth != R3D_DEPTH_EMPTY].tobytes()))
         # The host composes before its provider runs the console command.
         self.assertNotEqual(frames[1], frames[2])

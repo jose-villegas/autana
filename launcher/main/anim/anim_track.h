@@ -13,9 +13,10 @@
 
 #include <stdint.h>
 
-#define ANIM_WIDTH_MAX 4
+#define ANIM_WIDTH_MAX    4
+#define ANIM_VALUE_WIDTHS {1, 2, 3, 4, 3}
 
-/* The entry's type byte; tracks_asset.py mirrors this order. */
+/* The TRCK type byte indexes ANIM_VALUE_WIDTHS. */
 typedef enum {
     ANIM_VALUE_FLOAT,
     ANIM_VALUE_VEC2,

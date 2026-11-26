@@ -112,14 +112,16 @@ spin(void* unused) {
  * is put back, and its own watch, which the nested run ended, starts again. */
 static void
 run_trapped(void (*body)(void)) {
-    jmp_buf outer;
-    memcpy(outer, Unity.AbortFrame, sizeof outer);
+    jmp_buf* const outer = malloc(sizeof *outer);
+    TEST_ASSERT_NOT_NULL(outer);
+    memcpy(*outer, Unity.AbortFrame, sizeof *outer);
     escaped = true;
     if (TEST_PROTECT()) {
         suite_run_body(body, &verdict);
         escaped = false;
     }
-    memcpy(Unity.AbortFrame, outer, sizeof outer);
+    memcpy(Unity.AbortFrame, *outer, sizeof *outer);
+    free(outer);
     frame_watch_test_begin();
 }
 

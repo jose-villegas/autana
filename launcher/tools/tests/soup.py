@@ -69,6 +69,15 @@ def sun(direction=(0, 1, 0), color=(1, 1, 1), intensity=1):
     return light
 
 
+def lamp(position, range_, cone=None, rotation=(0, 0, 0), color=(1, 1, 1), intensity=1):
+    """A baked point light, or with `cone` (inner, outer degrees) a spot shining down -Y turned by `rotation`."""
+    fields = dict(type="point" if cone is None else "spot", mode=LIGHT_MODE_BAKED, color=list(color),
+                  intensity=intensity, range=range_)
+    if cone is not None:
+        fields.update(inner_angle=cone[0], outer_angle=cone[1])
+    return load_light(fields, list(rotation), "test light", position)
+
+
 # The bounce scene: a large floor facing +y at y = 0 and a large wall at x = 0 facing it, lit by a sun on the wall's
 # side. Its bounced light is known in closed form at the wall's foot.
 BIG = 400.0

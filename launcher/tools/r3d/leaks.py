@@ -2,10 +2,10 @@
 
 A source built from pieces that only overlap is not one surface: wherever a simplified piece moves off its source,
 at a border or across a curve, the piece behind may no longer cover the gap. `LeakProbes` looks at the source from
-probes spread through the camera's region (views/probes.py's placement), each through six cube faces, and from
-`path` views when given. In a view, the pixels where a simplified mesh shows sky form connected
-regions; a region with no pixel of the source's own sky is a hole. `pins` answers each hole with one source vertex
-to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
+probes spread through the camera's region (views/probes.py's placement), each through six cube faces.
+Holes are connected regions of flagged sky pixels. A sky pixel is flagged if its region
+holds no source sky or it lies more than REACH probe pixels from the source's sky. `pins` answers each hole with one
+source vertex to lock: the vertex of the source triangles seen through the hole that lies farthest from the simplified surface,
 the farthest-point step of Douglas and Peucker's line reduction, taken on a surface and only where sky shows.
 simplify.py locks the pins and simplifies again until no view has a hole, ROUNDS run out or the locks would
 break the pass's budget.
@@ -23,15 +23,17 @@ from r3d.ray_query import LAUNCH, RayQuery
 PROBE_SEED = 1
 # Sky pixels touching at a corner are one region.
 CONNECTED = np.ones((3, 3), dtype=int)
+# Simplification can move an outline by this many probe pixels.
+# Sky beyond that reach is a hole even if it joins the source's sky.
+REACH = 3
 # Most times a pass is simplified again; a pass that still leaks after these keeps its last accepted run.
 ROUNDS = 24
 
 
 class LeakProbes:
-    """Views of a source mesh: cube faces from probes in `region` ((lo, hi), or the source's bounds when None),
-    then the `path` views ((width, height, lens, poses) as views/probes.py's select takes them, or None)."""
+    """Cube faces from probes in `region` ((lo, hi), or the source's bounds when None)."""
 
-    def __init__(self, positions, tris, region, near, path=None):
+    def __init__(self, positions, tris, region, near):
         self.positions, self.tris = np.asarray(positions, dtype=float), np.asarray(tris)
         lo, hi = region if region is not None else (self.positions.min(axis=0), self.positions.max(axis=0))
         self.query = RayQuery(self.positions, self.tris)
@@ -39,9 +41,6 @@ class LeakProbes:
                                        probes.spacing_for(lo, hi, None, near), near, PROBE_SEED)
         face = probes.PROBE_FACE
         self.views = [(face, face, probes.FACE_LENS, pose) for pose in poses]
-        if path is not None:
-            width, height, lens, poses = path
-            self.views += [(width, height, lens, pose) for pose in poses]
         self.source_sky = [~self.query.first_hits(origins, directions)[0] for _, origins, directions in self._batches()]
         self.source = np.ones(len(self.tris), dtype=bool)
         self.finished = []
@@ -117,12 +116,19 @@ class LeakProbes:
         return len(holes), pins(self.positions, self.tris, holes, result_positions, result_tris, free)
 
 
-def view_holes(sky, source_sky):
-    """The holes of one view, a mask each: the connected regions of `sky` (pixels where a mesh shows sky) that
-    hold no pixel of `source_sky` (where the source shows it too). A region that reaches the source's sky is the
-    mesh's outline moving, not a hole."""
+def view_holes(sky, source_sky, reach=REACH):
+    """One mask per connected hole in a view. Combine sky regions holding no source sky with sky pixels
+    whose chessboard distance from the nearest source sky pixel exceeds `reach`."""
     label, regions = ndimage.label(sky, CONNECTED)
-    return [label == region for region in np.setdiff1d(np.arange(1, regions + 1), label[source_sky])]
+    isolated = np.ones(regions + 1, dtype=bool)
+    isolated[0] = False
+    isolated[label[source_sky]] = False
+    holes = isolated[label]
+    if source_sky.any():
+        distance = ndimage.distance_transform_cdt(~source_sky, metric="chessboard")
+        holes |= sky & (distance > reach)
+    label, regions = ndimage.label(holes, CONNECTED)
+    return [label == region for region in range(1, regions + 1)]
 
 
 def pins(positions, tris, holes, result_positions, result_tris, free):
@@ -140,16 +146,9 @@ def pins(positions, tris, holes, result_positions, result_tris, free):
     return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)
 
 
-def seal_camera(scene, renderer):
-    """Where LeakProbes stand for an object's `renderer`: a sealed import's (simplify's Allocation.camera) and a fit's (fit/seal.py): the scene camera's region and near
-    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
+def seal_camera(scene):
+    """Where LeakProbes stand for a sealed import (simplify's Allocation.camera) and a fit (fit/seal.py): the scene
+    camera's region and near plane. None without a scene camera."""
     if scene is None or scene.camera is None:
         return None
-    camera = (scene.region, scene.camera.component.near_z)
-    views = getattr(renderer, "seal_views", None)
-    if views is None:
-        return camera
-    from r3d.poses import flight_camera, path_poses
-
-    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
-    return (*camera, (width, height, lens, poses))
+    return scene.region, scene.camera.component.near_z

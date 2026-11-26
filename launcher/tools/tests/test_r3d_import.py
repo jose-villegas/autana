@@ -61,7 +61,6 @@ INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
 PATH = 'visibility = { source = "camera_path", every_ms = 100, size = [8, 6], margin = 2 }\n'
-SEAL_VIEWS = 'seal_views = { every_ms = 33, size = [8, 6] }\n'
 CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\nusemtl m\n"
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
 
@@ -102,6 +101,13 @@ def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
             + (f'mode = "{mode}"\n' if mode is not None else '')
             + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
+
+
+def lamp_object(kind, rotation="[0.0, 0.0, 0.0]"):
+    """A baked point or spot light at [1, 2, 3] with a range of 4; a spot's cone is 20 to 30 degrees."""
+    cone = 'inner_angle = 20.0\nouter_angle = 30.0\n' if kind == "spot" else ''
+    return (f'[[objects]]\nname = "{kind}"\nposition = [1.0, 2.0, 3.0]\nrotation = {rotation}\n[objects.light]\n'
+            f'type = "{kind}"\nmode = "baked"\ncolor = [1.0, 0.5, 0.25]\nintensity = 2.0\nrange = 4.0\n' + cone)
 
 
 def camera(path=False, region=True, name="camera", clip="fly.anim.toml"):
@@ -404,24 +410,8 @@ class SceneTests(unittest.TestCase):
         self.lit_rejects("camera path is required", PATH, objects=camera(region=False))
         self.lit_rejects("camera region is read by no placed mesh", PATH, objects=camera(path=True))
 
-    def test_seal_views_read_and_need_a_sealed_import_a_bake_and_the_camera_path(self):
-        sealed = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
-        extra = 'variant = "mesh"\n' + REGION + SEAL_VIEWS
-        scene = load_scene(self.lit(extra, objects=camera(path=True), **sealed))
-        views = scene.renderers[0].renderer.seal_views
-        self.assertEqual((views.every_ms, views.size), (33, (8, 6)))
-        unviewed = load_scene(self.lit('variant = "mesh"\n' + REGION, objects=camera(), **sealed))
-        self.assertIsNone(unviewed.renderers[0].renderer.seal_views)
-        self.lit_rejects("camera path is required: a placed mesh seals", extra, objects=camera(), **sealed)
-        self.lit_rejects("seal_views is read by no step", extra, objects=camera(path=True), output=VARIANT_OUTPUT,
-                         body=SIMPLIFY.replace("seal_seams = true", "seal_seams = false") + VARIANT)
-        self.lit_rejects("seal_views is read by no step", REGION + SEAL_VIEWS, objects=camera(path=True))
-        self.lit_rejects(r"seal_views", extra.replace("every_ms = 33, ", ""), objects=camera(path=True), **sealed)
-        self.lit_rejects(r"seal_views.size", extra.replace("[8, 6]", "[8]"), objects=camera(path=True), **sealed)
-        with tempfile.TemporaryDirectory() as directory:
-            write_import(directory, **sealed)
-            with self.assertRaisesRegex(SettingsError, "bake = true is required"):
-                load_scene(write_scene(directory, renderer(extra='variant = "mesh"\n' + SEAL_VIEWS) + camera(path=True)))
+    def test_seal_views_is_an_unknown_renderer_setting(self):
+        self.lit_rejects(r"mesh_renderer\.seal_views is not a known setting", REGION + 'seal_views = { every_ms = 33, size = [8, 6] }\n')
 
     def test_each_renderer_of_one_import_has_its_own_visibility(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -596,9 +586,31 @@ class SceneTests(unittest.TestCase):
         self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("intensity = 1.0\n", "intensity = 1.0\ntypo = 1\n"))
         self.lit_rejects("typo", head=HEAD + "[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\ntypo = 1\n")
 
-    def test_a_reserved_light_type_is_rejected(self):
-        point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
-        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
+    def test_a_point_light_sits_at_its_object_and_a_spot_shines_down_its_rotation(self):
+        lights = load_scene(self.lit(objects=lamp_object("point") + lamp_object("spot", "[90.0, 0.0, 0.0]"))).lights
+        point, spot = lights[1], lights[2]
+        self.assertEqual((point["type"], point["position"], point["range"]), ("point", [1.0, 2.0, 3.0], 4.0))
+        self.assertEqual((spot["inner_angle"], spot["outer_angle"]), (20.0, 30.0))
+        np.testing.assert_allclose(spot["axis"], [0.0, 0.0, -1.0], atol=1e-12)
+        straight = load_scene(self.lit(objects=lamp_object("spot"))).lights[1]["axis"]
+        np.testing.assert_allclose(straight, [0.0, -1.0, 0.0], atol=1e-12)
+
+    def test_a_point_or_spot_light_outside_its_rules_is_rejected(self):
+        for kind, change, pattern in (
+                ("point", ('mode = "baked"\n', ''), "baked only"),
+                ("spot", ('mode = "baked"\n', 'mode = "realtime"\n'), "baked only"),
+                ("point", ("range = 4.0", "range = 0.0"), "range must be positive"),
+                ("spot", ("inner_angle = 20.0", "inner_angle = 30.0"), "inner_angle < outer_angle"),
+                ("spot", ("outer_angle = 30.0", "outer_angle = 91.0"), "outer_angle <= 90"),
+                ("spot", ("outer_angle = 30.0\n", ""), "outer_angle is required"),
+                ("point", ("range = 4.0\n", "range = 4.0\ninner_angle = 1.0\n"), "not a known setting"),
+                ("point", ('name = "point"\n', 'name = "point"\nparent = "mesh"\n'), "no parent")):
+            with self.subTest(kind=kind, pattern=pattern):
+                self.lit_rejects(pattern, objects=lamp_object(kind).replace(*change))
+
+    def test_point_and_spot_lights_need_a_baked_renderer(self):
+        self.rejects("point and spot lights are read by no placed mesh", self.plain_import,
+                     renderer() + lamp_object("point"), TONEMAP + AMBIENT)
 
     def test_sky_and_ambient_are_not_light_objects(self):
         sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'

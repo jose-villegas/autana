@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 49 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 131 | 27 | 0 |
+| [render](#render) | 132 | 27 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -278,6 +278,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/gpu/bake-steps.png"><img src="../images/render/gpu/bake-steps.png" width="160" alt=""></a> | Bake steps | [render/offline/README](../render/offline/README.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
+| <a href="../images/render/light-point-spot.png"><img src="../images/render/light-point-spot.png" width="160" alt=""></a> | A floor, a box and a pillar baked under a warm point light and a cool spot: each casts a hard shadow, the spot inside its cone | [render/Lighting](../render/Lighting.md), [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/light-probe-blend.png"><img src="../images/render/light-probe-blend.png" width="160" alt=""></a> | A 4x1x3 grid from above: each probe coloured by its constant band, the blended constant band between and past them, and one point's four corner weights | [render/frame/Light-Probes](../render/frame/Light-Probes.md) | [light_probe_figures.py](../../launcher/demo/light_probe_figures.py) |
 | <a href="../images/render/light-probe-sphere.png"><img src="../images/render/light-probe-sphere.png" width="160" alt=""></a> | One probe projected from a sky with a sun: the sky, then a white diffuse sphere lit by the exact irradiance, by the probe's L1 evaluation and by its constant band alone, with a meridian of all three below | [render/frame/Light-Probes](../render/frame/Light-Probes.md) | [light_probe_figures.py](../../launcher/demo/light_probe_figures.py) |
 | <a href="../images/render/light-probe-sponza-spheres.png"><img src="../images/render/light-probe-sponza-spheres.png" width="160" alt=""></a> | A white diffuse sphere in Sponza: the scene's flat ambient, then the grid at the brightest, median and darkest probe of the first layer above the floor | [render/frame/Light-Probes](../render/frame/Light-Probes.md) | [light_probe_figures.py](../../launcher/demo/light_probe_figures.py) |

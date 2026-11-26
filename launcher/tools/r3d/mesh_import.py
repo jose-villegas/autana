@@ -314,7 +314,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes,
                                                                          held=np.concatenate(all_held),
-                                                                         camera=seal_camera(scene, renderer) if steps.seal_seams else None),
+                                                                         camera=seal_camera(scene) if steps.seal_seams else None),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
                                                               steps.props_share)],
                                                    colour_deviation=steps.colour_deviation, seal_seams=steps.seal_seams, **scale)

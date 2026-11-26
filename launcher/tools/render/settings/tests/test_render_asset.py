@@ -101,12 +101,6 @@ class RenderAssetTests(unittest.TestCase):
             with self.subTest(bounds=bounds), self.assertRaisesRegex(ValueError, message):
                 render_asset.interval(kind, bounds, "field")
 
-    def test_an_enum_member_counts_on_from_its_given_value(self):
-        text = "typedef enum {\n    A = 4, /* a, b */\n    B, // c,\n    C_COUNT\n} c_t;\n"
-        for name, value in (("A", 4), ("B", 5), ("C_COUNT", 6), ("D", None)):
-            with self.subTest(name=name):
-                self.assertEqual(render_asset.enum_member(text, name), value)
-
     def test_a_bound_is_its_constants_c_value(self):
         for bound, value in (("RENDER_LOD_BLEND_PX_MAX", 4.0), ("SMALL_FILL_STYLE_COUNT", 3.0),
                              ("RENDER_LOD_BLEND_COUNT", 2.0), ("-2", -2.0)):
