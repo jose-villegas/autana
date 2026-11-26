@@ -19,9 +19,9 @@ its default state, not a fitted round.
 python launcher/tools/input/motion_calibration_figures.py --cc cc --out docs/images/input
 ```
 
-Neither figure is a recording. A host probe adds scripted per-axis offset
-and scale to six ideal poses and feeds them through the motion reader's
-[rest windows][imu-rest] and [`imu_calib_fit`][imu-fit].
+These figures are not recordings. A host probe adds offset and scale to six ideal
+poses and runs [rest windows][imu-rest] and [`imu_calib_fit`][imu-fit].
+The plot shows each axis's offset once its pose pair is measured.
 
 ![Six accelerometer poses with true down, measured acceleration, and error arrows, next to traces of the rest windows and fitted offsets](../images/input/motion-calibration-round.gif)
 

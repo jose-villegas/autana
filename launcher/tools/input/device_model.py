@@ -207,26 +207,31 @@ class DeviceAnimation:
     Fill and style each of `plots` (top first) before saving; `frame` redraws the scene and moves every plot's
     time cursor. Vectors are (start, vector, colour, width) in world axes, millimetres.
     For centred vectors, vector_units is the longest vector in multiples of unit. Supply plot_titles for
-    titled plots with room for a legend above each.
+    one plot per title with room for a legend above each. Without titles, the default is one plot.
     """
 
-    def __init__(self, model, plots=1, *, centred=False, vector_units=1, plot_titles=()):
+    def __init__(self, model, plots=None, *, centred=False, vector_units=1, plot_titles=None):
+        if plot_titles is not None:
+            if plots is not None and plots != len(plot_titles):
+                raise ValueError("plots must match the number of plot titles")
+            plots = len(plot_titles)
+        elif plots is None:
+            plots = 1
+        if plots < 1:
+            raise ValueError("DeviceAnimation needs at least one plot")
         self.model = model
         self.screen_label_offset = CENTRED_SCREEN_LABEL_OFFSET if centred else None
         self.fig = figure(ANIMATION_SIZE)
         self.fig.set_layout_engine(None)
         # Arrows draw over the translucent device in call order, not depth order, so their colours stay true.
         self.scene = self.fig.add_axes(CENTRED_SCENE if centred else SCENE, projection="3d", computed_zorder=False)
-        if plot_titles:
-            plots = len(plot_titles)
         left, bottom, width, height = TITLED_PLOTS if plot_titles else PLOTS
         gap = TITLED_PLOT_GAP if plot_titles else PLOT_GAP
         each = (height - gap * (plots - 1)) / plots
         self.plots = [self.fig.add_axes((left, bottom + (plots - 1 - row) * (each + gap), width, each))
                       for row in range(plots)]
-        for plot, title in zip(self.plots, plot_titles):
-            style_axes(plot, title)
-            plot.set_title(title, y=PLOT_TITLE_Y)
+        for plot, title in zip(self.plots, plot_titles or ()):
+            style_axes(plot, title, title_y=PLOT_TITLE_Y)
         self.cursors = [plot.axvline(0, color=INK, linewidth=1) for plot in self.plots]
         self.title = self.fig.text(0.5, TITLE_Y, "", ha="center", fontsize=TITLE_SIZE, color=INK)
         self.unit = VECTOR_SHARE * model.height
