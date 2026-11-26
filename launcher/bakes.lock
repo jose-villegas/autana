@@ -10,50 +10,22 @@ run = 45590273257
 host = "Linux x86_64"
 
 [[bake]]
-output = "bistro.street_fitted_full.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "53e513c2bef6140672f5620ade67b0cc307be953fc67f67096b0963da5a4ddf6"
-sha256 = "505720815efd5e7423894a87bda22074f158bcf8ff9ca18cd82268152d941f14"
-size = 1153523
-run = 45650349688
-host = "Linux x86_64"
-
-[[bake]]
-output = "bistro.street_fitted_full.fit.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "3f5f07f5e7f584d6a124b61fc569da725a16b6a9d0b5d4b9eb6e749e4d95d27b"
-sha256 = "61a63ea8765ee37be57ddf76862fe073eee188d3a11a91e0902bf024172799c7"
-size = 897155
-run = 45648590840
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
-
-[[bake]]
 output = "bistro.street_fitted_full.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "d7a203b8eba147dd50f42520bf8001618bcc1d3a7adf98dc504c61b27063c27a"
+key = "eb57842b33ba671a16017fc39290ee7adf43db75927369eafd92167efced8ef2"
 sha256 = "3ac72d5fbfabf598c0c3cfea555a1ecaec27037f719742ca2c843d188b72523a"
 size = 71673532
-run = 45590273257
+run = 45711505863
 host = "Linux x86_64"
 gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "bistro.street_fitted_full.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
-key = "4373b62b35f3e5e7c4271392513a81930f33d29c6eb6d8a47187ad4abbd42008"
-sha256 = "2c74c2dc6257149d4bf12d69bc89721656d04f71aec08304c0164966c3d0cef8"
-size = 942531
-run = 45590273257
-host = "Linux x86_64"
-
-[[bake]]
-output = "bistro.street_fitted_full.texture.pack"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "5cb9bdedfa0d87553246d8f5e7ab49cca8ecd12d725c356ff6ad3bc0885a335d"
-sha256 = "f18a2d3406d3aa1f3fe3359b15499630a88fdc839fae9c81749a92d2aafadea8"
-size = 321754
-run = 45650349688
+key = "ecfbb8575325855e30409efaa4eaffab01784dde43cc58c8347ed61090b0d4e6"
+sha256 = "5edefbabce6079f2cb548e806c54a9f136a2f517a6ef647ffeae946fa7ac2737"
+size = 1026147
+run = 45711505863
 host = "Linux x86_64"
 
 [[bake]]
