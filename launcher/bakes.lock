@@ -10,6 +10,16 @@ run = 45590273257
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "5b0c417bef88d0512ad2e4ca5859e1e5162be83c7a97d5265e5196335fbcdc53"
+sha256 = "8735f567331067600e6c4e7af2632b722526134ba2fee92b21c1e09391154e78"
+size = 948563
+run = 45736447722
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+
+[[bake]]
 output = "bistro.street_fitted_full.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "eb57842b33ba671a16017fc39290ee7adf43db75927369eafd92167efced8ef2"
