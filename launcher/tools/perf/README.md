@@ -77,7 +77,19 @@ launcher/tools/perf/perf_compare.sh A A -o calibration \
 ```
 
 `--send-a LINE` and `--send-b LINE` send console setup before every capture.
-Each side's sequence should be idempotent: stop voices before starting a loop.
+Use an idempotent sequence, such as stopping voices before starting a loop.
+
+`--set-a NAME=VALUE` and `--set-b NAME=VALUE` set tunables before each capture
+on the chosen side. Repeat for multiple tunables. Both sides build with
+`--hot-tunables` when either side has assignments.
+
+`plan.json` records the shared build flag, and the summary lists both sides'
+assignments. The board must echo each value. The comparison stops at the first
+refusal.
+
+Setup accepts one line per `--send-a` or `--send-b`, and rejects tunable commands
+before flashing. Each revision's tunable registry supplies the valid ranges.
+
 Use the same revision on both sides to measure runtime setup alone:
 
 ```sh
@@ -261,20 +273,15 @@ rows. Single-viewport render documentation readers select portrait by default;
 sequenceDiagram
     participant Marker as Hosted marker
     participant Wait as Hosted wait legs
-    participant GPU as GPU stage
-    participant Heavy as Heavy lock
     participant Plan as Board plan
     participant Night as Board night
     participant Lanes as Board lanes
+    participant GPU as GPU doc render
+    participant Heavy as Heavy lock
     Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
-    Wait->>GPU: Start work with a fresh token
-    GPU->>GPU: Wait for board locks to clear
-    GPU->>Heavy: Take heavy
-    GPU->>GPU: Render to completion
-    GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
-    Plan->>Plan: Wait for two GPU idle polls
+    Plan->>Plan: Wait for two GPU idle polls (a dispatched render)
     Plan->>Night: Deal the night queue to the free boards, maybe none, and record it
     Night->>Lanes: Start the planned lanes
     loop Every minute until BOARD_LAST_START
@@ -283,9 +290,14 @@ sequenceDiagram
     Night->>Lanes: Stop each lane still running at BOARD_END
     Lanes-->>Night: Lane outcomes and timestamps
     Night->>Night: Record timeline and host free time
+    Night-->>GPU: Scheduled run completes (workflow_run)
+    GPU->>GPU: Wait for board locks to clear
+    GPU->>Heavy: Take heavy
+    GPU->>GPU: Render to completion
+    GPU->>Heavy: Release heavy
 ```
 
-GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
+The board night starts at `vars.BOARD_START`; the GPU doc render follows the night.
 It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
 A lane is given only the new steps that fit before `vars.BOARD_END` on that date.
 Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value
@@ -306,7 +318,7 @@ checks the step fits, and the night stops a lane still running there.
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
 
-Both workflows schedule at 20:17Z. The trigger is the latest daily UTC cron slot,
+The nightly schedules at 20:17Z. The trigger is the latest daily UTC cron slot,
 including when GitHub starts it late. Other events use the current time.
 A passed marker starts immediately. Each date uses the configured zone's UTC offset.
 
@@ -315,10 +327,10 @@ legs sleep within `HOSTED_WAIT_SECONDS` in `scripts/lib/local_schedule.py`.
 The work jobs depend on both jobs and start after the marker passes.
 
 The GPU stage yields green when bakes are queued or running.
-Every Bakes GPU completion triggers a fresh image check.
+The doc-images GPU workflow starts when the nightly completes, so a scheduled render never holds the plan.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
-`gpu` in the doc-images GPU workflow. Bakes GPU fits run beside the board night. Hosted jobs waiting for a later marker do not count.
+`gpu` in the doc-images GPU workflow, which only a dispatch during the night can start. Bakes GPU fits run beside the board night.
 At the night's `BOARD_LAST_START` it warns and plans anyway; board builds still wait
 for the heavy lock a GPU stage holds.
 

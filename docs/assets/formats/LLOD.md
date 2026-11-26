@@ -51,8 +51,8 @@ title Levels: LOD group, 12 bytes a group after cluster records
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | `LLOD_HEADER_SIZE` bytes |
-| Cluster records | `LLOD_HEADER_SIZE` | `cluster_count × sizeof(r3d_lit_cluster_lod_t)` |
-| Group records | after cluster records | `group_count × sizeof(r3d_lit_lod_group_t)` |
+| Cluster records | `LLOD_HEADER_SIZE` | `cluster_count * sizeof(r3d_lit_cluster_lod_t)` |
+| Group records | after cluster records | `group_count * sizeof(r3d_lit_lod_group_t)` |
 
 | Rule | Detail |
 |---|---|

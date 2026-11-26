@@ -1518,15 +1518,9 @@ repaint_rig_open(repaint_rig_t* r, sand_t* g, int w, int h) {
     memset(r->displayed, -1, n * sizeof(int8_t));
 }
 
-/* One frame: steps under (gx, gy), marks rows - occupancy changes, and
- * every row wake_row() picks when the wake tick fires - then repaints each
- * marked row through mirror_ray_walk_row() capped at `ceiling`. An empty
- * cell reads -1 (never painted) when empty_unpainted. */
-static void
-repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, int y), unsigned ceiling,
-                  bool empty_unpainted) {
-    sand_step(r->g, gx, gy, 0);
-
+static __attribute__((noinline)) void
+repaint_rig_rows(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, int y), unsigned ceiling,
+                 bool empty_unpainted) {
     bool vdom;
     bool vrev;
     bool hrev;
@@ -1563,6 +1557,17 @@ repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, 
     }
 
     local_depth_snapshot_occupancy(r->g, r->w, r->h, r->prev_occupied);
+}
+
+/* One frame: steps under (gx, gy), marks rows - occupancy changes, and
+ * every row wake_row() picks when the wake tick fires - then repaints each
+ * marked row through mirror_ray_walk_row() capped at `ceiling`. An empty
+ * cell reads -1 (never painted) when empty_unpainted. */
+static void
+repaint_rig_frame(repaint_rig_t* r, int gx, int gy, bool (*wake_row)(sand_t* g, int y), unsigned ceiling,
+                  bool empty_unpainted) {
+    sand_step(r->g, gx, gy, 0);
+    repaint_rig_rows(r, gx, gy, wake_row, ceiling, empty_unpainted);
 }
 
 /* Mean DISPLAYED interior depth this frame - interior only ((mask &
@@ -1655,8 +1660,11 @@ static void
 test_a_settled_edge_does_not_flicker_stale_to_fresh(void) {
     const double worst_swing = wake_test_run(3000);
 
-    char why[640];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 640 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "worst single-frame swing in mean displayed interior depth was "
              "%.2f (of a %d-cell saturating range) - the reported bug is a "
              "settled pool's mean collapsing from 23.671 to 1.958 in one "
@@ -1669,6 +1677,7 @@ test_a_settled_edge_does_not_flicker_stale_to_fresh(void) {
              "flicker between rim and interior",
              worst_swing, (int)MATERIAL_LIQUID_DEPTH_BAND);
     TEST_ASSERT_TRUE_MESSAGE(worst_swing < WAKE_TEST_MAX_SWING, why);
+    free(why);
 }
 
 /*
@@ -1970,8 +1979,11 @@ static void
 test_a_sparse_repaint_does_not_band_a_tall_liquid_column(void) {
     const int worst = band_test_run();
 
-    char why[900];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 900 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "%d pairs of vertically adjacent interior liquid cells rendered "
              "depths more than half the %d-cell saturating range apart in "
              "one frame - gravity points along x in this scene, so the true "
@@ -1986,6 +1998,7 @@ test_a_sparse_repaint_does_not_band_a_tall_liquid_column(void) {
              "needs no raise, unlike the two-walk design this replaced",
              worst, (int)MATERIAL_LIQUID_DEPTH_BAND);
     TEST_ASSERT_TRUE_MESSAGE(worst < BAND_TEST_MAX_JUMPS, why);
+    free(why);
 }
 
 /*
@@ -2271,8 +2284,11 @@ test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body(void) {
      * scene has drifted and the test is no longer about the bug. */
     const int unguarded = flash_test_run(false, true);
 
-    char why[1000];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 1000 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "turning a settled 40%%-full pool from portrait to landscape "
              "made %d interior liquid cells cross a full %d-cell shade step "
              "in a single frame, with the simulation frozen so not one of "
@@ -2285,6 +2301,7 @@ test_turning_a_settled_pool_to_landscape_does_not_flash_the_whole_body(void) {
              guarded, (int)FLASH_TEST_SHADE_STEP, unguarded);
     TEST_ASSERT_TRUE_MESSAGE(guarded < FLASH_TEST_MAX_CELLS, why);
     TEST_ASSERT_TRUE_MESSAGE(unguarded > FLASH_TEST_MAX_CELLS, why);
+    free(why);
 }
 
 /*
@@ -2379,8 +2396,11 @@ test_axis_lock_tremor_does_not_wipe_the_depth_debounce(void) {
     int ungated_changed = 0;
     tremor_test_run(false, &ungated_resets, &ungated_changed);
 
-    char why[1000];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 1000 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "%d of %d frames of hand tremor on a gravity component that is "
              "already sitting on zero fired a full wipe of the local-depth "
              "walk state, and %d interior cells' displayed depth moved as a "
@@ -2397,6 +2417,7 @@ test_axis_lock_tremor_does_not_wipe_the_depth_debounce(void) {
      * rather than because the gate is working. */
     TEST_ASSERT_TRUE_MESSAGE(ungated_resets > TREMOR_TEST_FRAMES / 2, why);
     TEST_ASSERT_TRUE_MESSAGE(ungated_changed > 0, why);
+    free(why);
 }
 
 /*
@@ -2443,7 +2464,7 @@ static const struct {
 /* isolates WALK's steady-state shape, uses
  * test_the_blend_has_no_jump_crossing_45_degrees logic, writes depth to
  * `depth_out` */
-static void
+static __attribute__((noinline)) void
 shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
     bool vdom;
     bool vrev;
@@ -2453,18 +2474,20 @@ shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
     unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
-    ray_walk_state_t st;
-    ray_walk_state_reset(&st);
+    ray_walk_state_t* const st = malloc(sizeof *st);
+    TEST_ASSERT_NOT_NULL(st);
+    ray_walk_state_reset(st);
     const bool asc = !vrev;
     for (int r = 0; r < SHADOW_TEST_H; r++) {
         const int cy = asc ? r : (SHADOW_TEST_H - 1 - r);
         unsigned row_depth[RAY_WALK_STATE_W];
         mirror_ray_walk_row(&fx.shadow_test_grid, cy, SHADOW_TEST_W, SHADOW_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
-                            MATERIAL_LIQUID_DEPTH_BAND, &st, row_depth);
+                            MATERIAL_LIQUID_DEPTH_BAND, st, row_depth);
         for (int x = 0; x < SHADOW_TEST_W; x++) {
             depth_out[(cy * SHADOW_TEST_W) + x] = row_depth[x];
         }
     }
+    free(st);
 }
 
 typedef struct {
@@ -2615,8 +2638,11 @@ test_a_submerged_obstacle_casts_a_gravity_aligned_shadow(void) {
     free(depth);
     free(shadow_test_cells);
 
-    char why[400];
-    snprintf(why, sizeof why,
+    enum { WHY_BYTES = 400 };
+
+    char* const why = malloc(WHY_BYTES);
+    TEST_ASSERT_NOT_NULL(why);
+    snprintf(why, WHY_BYTES,
              "shadow bearing was off from true gravity by %.1f degrees at "
              "gravity (%d, %d) - more than %.1f degrees, the shadow behind a "
              "submerged obstacle must lie along the gravity ray, not along "
@@ -2624,6 +2650,7 @@ test_a_submerged_obstacle_casts_a_gravity_aligned_shadow(void) {
              "six-tilt table this test checks against)",
              worst_off_by, SHADOW_SWEEP[worst_i].gx, SHADOW_SWEEP[worst_i].gy, SHADOW_TEST_MAX_BEARING_OFF_BY_DEG);
     TEST_ASSERT_TRUE_MESSAGE(worst_off_by <= SHADOW_TEST_MAX_BEARING_OFF_BY_DEG, why);
+    free(why);
 }
 
 /*

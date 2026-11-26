@@ -106,7 +106,7 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 #if FRAME_LAPS_ENABLED
         static char laps[FRAME_LAPS_REPORT_MAX];
         if (frame_laps_take_report(*frames, laps, sizeof laps) > 0) {
-            ESP_LOGI(TAG, "ms/frame laps: %s", laps);
+            ESP_LOGI(TAG, FRAME_LAPS_PREFIX " %s", laps);
         }
 #endif
         *frames = 0;
@@ -180,6 +180,13 @@ shell_check_console_prefixes(void) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
+/* Out of run_pending_selftest_suite(), whose frame sits under every suite:
+ * the log's arguments would grow it. */
+static __attribute__((noinline)) void
+log_missing_suite(const suite_run_t* run) {
+    ESP_LOGE(TAG, "no suite named '%.*s' is registered", run->name_length, run->name);
+}
+
 /* See console/console.c for framebuffer contention explanation. */
 static __attribute__((noinline)) void
 run_pending_selftest_suite(void) {
@@ -192,7 +199,7 @@ run_pending_selftest_suite(void) {
     UNITY_BEGIN();
     suites_run_request(request->suite, &run);
     if (!run.found) {
-        ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
+        log_missing_suite(&run);
     }
     suite_report_frame_watch();
     (void)UNITY_END();

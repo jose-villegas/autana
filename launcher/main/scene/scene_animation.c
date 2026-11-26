@@ -13,6 +13,15 @@
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
+/* The pose interval of tier `tier` under `s`. */
+static int
+tier_every(int tier, const render_anim_settings_t* s) {
+    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
+                         [SCENE_ANIM_TIER_MID] = s->mid_every,
+                         [SCENE_ANIM_TIER_FAR] = s->far_every};
+    return every[tier];
+}
+
 /* Keep a tier inside its band so camera jitter does not alternate pose rates:
  * each boundary moves away from the current tier by the band. */
 static int
@@ -22,10 +31,7 @@ animation_interval(scene_animator_t* a, const render_anim_settings_t* s) {
     const float far = a->tier == SCENE_ANIM_TIER_FAR ? s->far_px + band : s->far_px - band;
     const float px = a->drawn_radius_px;
     a->tier = px < far ? SCENE_ANIM_TIER_FAR : px < mid ? SCENE_ANIM_TIER_MID : SCENE_ANIM_TIER_NEAR;
-    const int every[] = {[SCENE_ANIM_TIER_NEAR] = RENDER_ANIM_EVERY_MIN,
-                         [SCENE_ANIM_TIER_MID] = s->mid_every,
-                         [SCENE_ANIM_TIER_FAR] = s->far_every};
-    a->interval = every[a->tier];
+    a->interval = tier_every(a->tier, s);
     return a->interval;
 }
 
@@ -74,6 +80,19 @@ paced(const scene_t* scene, scene_row_t e) {
            && (scene->flags[e] & SCENE_FLAG_ACTIVE);
 }
 
+/* Whether copy `e` poses this step. A bound copy's tier changes only on the
+ * frames the draw measured it for, and its interval follows the settings
+ * every step; a copy with no skin bound poses every step. */
+static bool
+pose_due(const scene_t* scene, scene_row_t e, const render_anim_settings_t* settings) {
+    if (!scene->skinned_renderers[e].bound) {
+        return true;
+    }
+    scene_animator_t* a = &scene->animators[e];
+    a->interval = scene_animator_due(scene, a) ? animation_interval(a, settings) : tier_every(a->tier, settings);
+    return scene_animator_due(scene, a);
+}
+
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const render_anim_settings_t* settings) {
     for (int i = first; i < first + count; i++) {
@@ -83,10 +102,8 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms, const 
         if (!paced(scene, e)) {
             continue;
         }
-        const int interval =
-            scene->skinned_renderers[e].bound ? animation_interval(a, settings) : RENDER_ANIM_EVERY_MIN;
         const bool force = a->dirty;
-        const bool due = (scene->animation_frame + a->phase) % (uint32_t)interval == 0;
+        const bool due = pose_due(scene, e, settings);
         /* A zero-time repose belongs to its dirty copy; others keep their debt. */
         if (!force && (dt_ms == 0 || !due)) {
             a->owed_ms += dt_ms;
@@ -141,8 +158,19 @@ scene_skin_range(scene_t* scene, int first, int count) {
         const int start = mathi_clamp(first - offset, 0, clusters);
         const int end = mathi_clamp(first + count - offset, 0, clusters);
         if (scene->light_transfer != NULL && skin->lighting_valid) {
-            LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
-                                            skin->normal_palette, &scene->world_lights, skin->colors);
+            if (scene->probes != NULL) {
+                const int r = scene_renderer_index(scene, e);
+                const sh1_rgb_t radiance =
+                    sh_probes_sample(scene->probes, box3f_centre(scene->renderers[r].world_bounds));
+                const sh1_irradiance_t ambient = r3d_skin_light_ambient_sh(&radiance);
+                r3d_skin_clusters_ambient(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output,
+                                          skin->normal_palette, &scene->world_lights, skin->colors, &ambient,
+                                          skin->light_mode);
+            } else {
+                LIGHT_KERNELS[skin->light_mode](&skin->skin, &skin->bind, skin->palette, start, end - start,
+                                                &skin->output, skin->normal_palette, &scene->world_lights,
+                                                skin->colors);
+            }
         } else {
             r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, start, end - start, &skin->output);
         }
@@ -300,6 +328,10 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
                 : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
         checkpoint_capture_at(saved, &skin->storage, internal_bytes);
         checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+        checkpoint_capture_at(saved, &skin->contact_joints,
+                              skin->contact_joints == NULL ? 0 : joints * sizeof *skin->contact_joints);
+        checkpoint_capture_at(saved, &skin->contact_mask.coverage,
+                              skin->contact_mask.coverage == NULL ? 0 : CONTACT_MASK_BYTES);
     }
 }
 #endif

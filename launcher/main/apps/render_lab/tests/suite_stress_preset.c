@@ -7,6 +7,8 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
@@ -17,12 +19,15 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "apps/render_lab/stress/scene_stress.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "asset/asset_store.h"
 #include "collections/bits.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "kinematics/hinge/hinge.h"
 #include "lab/lab_view.h"
 #include "lab/test/lab_perf_quarters.h"
 #include "math/scalar/math_const.h"
@@ -31,6 +36,12 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
+#include "scene/scene.h"
+#include "scene/scene_shell.h"
+#include "scene/transform/transform.h"
 
 /* Any framing: a preset is laid out in proportion to it. */
 static const stress_framing_t framing = {10.0F, 0.5F};
@@ -90,8 +101,11 @@ fixture_end(void) {
 /* `sets` buffer sets for preset `p`'s copy, FIXTURE_SETS only where a test
  * compares two builds: outside an app, PSRAM holds one set of the largest
  * mix copy, not two. */
-static void
+static bool
 fixture_begin(const stress_params_t* p, int sets) {
+    if (stress_baked(p)) {
+        return false;
+    }
     suite_add_test_cleanup(fixture_end);
     const size_t vertices = (size_t)stress_vertex_count(p);
     const size_t triangles = (size_t)stress_triangle_count(p);
@@ -105,6 +119,7 @@ fixture_begin(const stress_params_t* p, int sets) {
         TEST_ASSERT_NOT_NULL(f.at[i].colors);
         TEST_ASSERT_NOT_NULL(f.at[i].triangles);
     }
+    return true;
 }
 
 static void
@@ -113,42 +128,80 @@ release(void) {
 }
 
 static bool
-same_source(const r3d_dynamic_source_t* a, const r3d_dynamic_source_t* b) {
+same_source(const r3d_mesh_source_t* a, const r3d_mesh_source_t* b) {
     return a->vertex_count == b->vertex_count && a->triangle_count == b->triangle_count
            && memcmp(a->positions, b->positions, sizeof(vec3f_t) * (size_t)a->vertex_count) == 0
            && memcmp(a->colors, b->colors, sizeof(uint8_t[3]) * (size_t)a->vertex_count) == 0
            && memcmp(a->triangles, b->triangles, sizeof(uint16_t[3]) * (size_t)a->triangle_count) == 0;
 }
 
-/* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros. A preset
- * shows copies from the stress pack's pool, or a pack of its own and no copy. */
+static void
+test_settle_holds_a_textured_small_triangle_scene_with_partial_redraw(void) {
+    const stress_params_t* p = &stress_presets[STRESS_SETTLE];
+    TEST_ASSERT_TRUE(p->hold_camera);
+    TEST_ASSERT_TRUE(stress_textured(p));
+    TEST_ASSERT_GREATER_THAN_INT(1, p->cuts);
+    TEST_ASSERT_FALSE(stress_per_frame(p));
+    bool partial = false;
+    bool one_band = false;
+    for (int i = 0; i < STRESS_SETTINGS_MAX && p->settings[i].name != NULL; i++) {
+        if (strcmp(p->settings[i].name, TUNE_NAME(render, partial_redraw)) == 0) {
+            partial = p->settings[i].value == 1;
+        }
+        if (strcmp(p->settings[i].name, TUNE_NAME(render, settle_frame_us)) == 0) {
+            one_band = p->settings[i].value == 1;
+        }
+    }
+    TEST_ASSERT_TRUE(partial);
+    TEST_ASSERT_TRUE(one_band);
+    for (int i = 0; i < p->perf_poses; i++) {
+        TEST_ASSERT_EQUAL_UINT32(0, stress_pose_ms(p, WAVE_LATER_MS, i));
+    }
+}
+
+/* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros.
+ * Hinged copies use their own pack; a pack without copies shows its placed meshes. */
 static void
 test_every_preset_has_its_row(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].cuts);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].perf_poses);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].coverage_percent);
-        TEST_ASSERT_TRUE((stress_presets[i].copies > 0) != (stress_presets[i].scene != NULL));
+        if (stress_presets[i].surface == STRESS_SURFACE_HINGED) {
+            TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].copies);
+            TEST_ASSERT_EQUAL_STRING(STRESS_BUTTERFLY_SCENE, stress_presets[i].scene);
+        } else {
+            TEST_ASSERT_TRUE((stress_presets[i].copies > 0) != (stress_presets[i].scene != NULL));
+        }
     }
+}
+
+static bool
+fixture_pair(const stress_params_t* p, uint32_t later_ms, r3d_mesh_source_t pair[FIXTURE_SETS]) {
+    if (!fixture_begin(p, FIXTURE_SETS)) {
+        return false;
+    }
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &pair[0]));
+    TEST_ASSERT_TRUE(stress_source(p, later_ms, &f.at[1], &pair[1]));
+    return true;
 }
 
 static void
 test_every_preset_mesh_is_whole_and_repeats(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, FIXTURE_SETS);
-        r3d_dynamic_source_t a;
-        r3d_dynamic_source_t b;
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &a));
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[1], &b));
-        TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), a.vertex_count);
-        TEST_ASSERT_EQUAL_INT(stress_triangle_count(p), a.triangle_count);
-        for (int t = 0; t < a.triangle_count; t++) {
+        r3d_mesh_source_t pair[FIXTURE_SETS];
+        if (!fixture_pair(p, 0, pair)) {
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), pair[0].vertex_count);
+        TEST_ASSERT_EQUAL_INT(stress_triangle_count(p), pair[0].triangle_count);
+        for (int t = 0; t < pair[0].triangle_count; t++) {
             for (int k = 0; k < 3; k++) {
-                TEST_ASSERT_LESS_THAN_INT(a.vertex_count, a.triangles[t][k]);
+                TEST_ASSERT_LESS_THAN_INT(pair[0].vertex_count, pair[0].triangles[t][k]);
             }
         }
-        TEST_ASSERT_TRUE(same_source(&a, &b));
+        TEST_ASSERT_TRUE(same_source(&pair[0], &pair[1]));
         release();
     }
 }
@@ -157,7 +210,7 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
 static void
 mesh_fixture(const stress_params_t* p) {
     fixture_begin(p, 1);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
     capacity.textured = source.uvs != NULL;
@@ -180,7 +233,9 @@ assert_mesh_fits(const stress_params_t* p) {
 static void
 test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-        assert_mesh_fits(&stress_presets[i]);
+        if (!stress_baked(&stress_presets[i])) {
+            assert_mesh_fits(&stress_presets[i]);
+        }
     }
 }
 
@@ -196,7 +251,7 @@ test_a_per_frame_mesh_fits_all_through_its_wave(void) {
     r3d_dynamic_mesh_t mesh;
     TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
     for (int step = 0; step < WAVE_STEPS; step++) {
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, (uint32_t)(step * WAVE_STEP_MS), &f.at[0], &source));
         TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
     }
@@ -208,12 +263,11 @@ static void
 test_only_a_per_frame_preset_moves(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, FIXTURE_SETS);
-        r3d_dynamic_source_t first;
-        r3d_dynamic_source_t later;
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &first));
-        TEST_ASSERT_TRUE(stress_source(p, WAVE_LATER_MS, &f.at[1], &later));
-        TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&first, &later));
+        r3d_mesh_source_t pair[FIXTURE_SETS];
+        if (!fixture_pair(p, WAVE_LATER_MS, pair)) {
+            continue;
+        }
+        TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&pair[0], &pair[1]));
         release();
     }
     TEST_ASSERT_TRUE(stress_per_frame(&stress_presets[STRESS_PER_FRAME]));
@@ -320,8 +374,10 @@ static void
 test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p, 1);
-        r3d_dynamic_source_t source;
+        if (!fixture_begin(p, 1)) {
+            continue;
+        }
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
         TEST_ASSERT_EQUAL(i == STRESS_TWO_SIDED, source.double_sided);
         release();
@@ -332,7 +388,7 @@ test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
 /* The widest per-channel spread of a triangle's corners, in RGB565 units, packed and measured as the small-fill
  * gate does. */
 static int
-corner_spread(const r3d_dynamic_source_t* s, int t) {
+corner_spread(const r3d_mesh_source_t* s, int t) {
     unsigned low[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
     unsigned high[3] = {0, 0, 0};
     for (int k = 0; k < 3; k++) {
@@ -367,7 +423,7 @@ test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
     TEST_ASSERT_GREATER_THAN_INT(R3D_SPAN_SMALL_MAX_SIDE, narrowest);
     TEST_ASSERT_LESS_OR_EQUAL_INT(gate.ceiling, widest);
     fixture_begin(p, 1);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     for (int t = 0; t < source.triangle_count; t++) {
         for (int side = narrowest; side <= widest; side++) {
@@ -384,7 +440,7 @@ test_mixed_copies_split_colour_modes(void) {
     for (int copy = 0; copy < STRESS_MIX_LEVELS; copy++) {
         const stress_params_t p = stress_copy_params(&stress_presets[STRESS_MIX], copy);
         fixture_begin(&p, 1);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(&p, 0, &f.at[0], &source));
         int uniform = 0;
         for (int t = 0; t < source.triangle_count; t++) {
@@ -403,7 +459,7 @@ test_uniform_presets_have_equal_corner_colours_and_large_coverage(void) {
     for (int i = 0; i < (int)(sizeof presets / sizeof presets[0]); i++) {
         const stress_params_t* p = &stress_presets[presets[i]];
         fixture_begin(p, 1);
-        r3d_dynamic_source_t source;
+        r3d_mesh_source_t source;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
         for (int t = 0; t < source.triangle_count; t++) {
             TEST_ASSERT_EQUAL_INT(0, corner_spread(&source, t));
@@ -449,7 +505,7 @@ test_card_has_holes_colour_steps_and_scene_size_bins(void) {
     const stress_params_t* p = &stress_presets[STRESS_CARD];
     counted_fixture(p);
     TEST_ASSERT_LESS_THAN_INT(2 * p->cuts * p->cuts, stress_triangle_count(p));
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     int stepped = 0;
     for (int t = 0; t < source.triangle_count; t++) {
@@ -484,7 +540,7 @@ camera_fixture(const stress_params_t* p) {
 
 static r3d_pipeline_counts_t
 count_pose(const stress_params_t* p, int pose_index, int quarter) {
-    const uint32_t t_ms = (uint32_t)((uint64_t)f.duration_ms * (uint32_t)pose_index / (uint32_t)p->perf_poses);
+    const uint32_t t_ms = stress_pose_ms(p, f.duration_ms, pose_index);
     const float seconds = (float)t_ms / STRESS_TEST_MS_PER_SECOND;
     const transformf_t pose = anim_transform_sample(&f.path, seconds);
     const render_view_t view =
@@ -550,7 +606,7 @@ test_near_plane_sweeps_behind_and_clipped_triangles(void) {
 
 /* Whether (x, y) is inside triangle t of `src`, seen down z, either winding. */
 static bool
-covers(const r3d_dynamic_source_t* src, int t, float x, float y) {
+covers(const r3d_mesh_source_t* src, int t, float x, float y) {
     const vec3f_t* p[3];
     for (int k = 0; k < 3; k++) {
         p[k] = &src->positions[src->triangles[t][k]];
@@ -588,9 +644,22 @@ test_foliage_presets_differ_from_their_twins_by_the_mask_alone(void) {
                                    stress_cut_px(&stress_presets[STRESS_FOLIAGE_NEAR], short_px));
 }
 
+/* stress-textured-far is stress-textured's plane, many and small: the same
+ * shape, surface and camera, its copies drawn smaller than the one plane. */
+static void
+test_the_textured_far_twin_differs_by_its_copies_and_size_alone(void) {
+    const stress_params_t* near = &stress_presets[STRESS_TEXTURED];
+    stress_params_t far = stress_presets[STRESS_TEXTURED_FAR];
+    TEST_ASSERT_GREATER_THAN_INT(near->copies, far.copies);
+    TEST_ASSERT_GREATER_THAN_FLOAT(stress_cut_px(&far, DEFAULT_SHORT_PX), stress_cut_px(near, DEFAULT_SHORT_PX));
+    far.copies = near->copies;
+    far.coverage_percent = near->coverage_percent;
+    TEST_ASSERT_EQUAL_MEMORY(near, &far, sizeof far);
+}
+
 /* Cards of `source` over sample (sx, sy) of a FOLIAGE_SAMPLES grid on the unit square. */
 static int
-cards_over(const r3d_dynamic_source_t* source, int sx, int sy) {
+cards_over(const r3d_mesh_source_t* source, int sx, int sy) {
     const float x = (((float)sx + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
     const float y = (((float)sy + 0.5F) / FOLIAGE_SAMPLES) - 0.5F;
     int depth = 0;
@@ -622,7 +691,7 @@ static void
 test_foliage_cards_overlap_and_span_their_texture_corner_to_corner(void) {
     const stress_params_t* p = &stress_presets[STRESS_FOLIAGE_NEAR];
     mesh_fixture(p);
-    r3d_dynamic_source_t source;
+    r3d_mesh_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     int covered = 0;
     int layers = 0;
@@ -694,13 +763,260 @@ test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card(void) {
     memory_free(ltex);
 }
 
+#define TEST_BUTTERFLY_PARTS 3
+#define TEST_TIP_X           0.035F
+#define TEST_TIP_Z           (22.0F * TEST_TIP_X / 58.0F)
+#define TEST_ANGLE           0.5F
+#define TEST_TOLERANCE       0.000001F
+#define TEST_WIDTH           96
+#define TEST_HEIGHT          96
+#define TEST_CAMERA_TIME_MS  1300
+#define TEST_BODY_SCALE      100.0F
+static uint16_t* pixels;
+static uint16_t* held;
+static memory_take_fn butterfly_take;
+
+static void
+butterfly_fixture_end(void) {
+    scene_unload_all();
+    (void)scene_set_take(butterfly_take);
+    free(pixels);
+    free(held);
+    pixels = NULL;
+    held = NULL;
+}
+
+static entity_t
+butterfly_fixture(void) {
+    scene_unload_all();
+    butterfly_take = scene_set_take(NULL);
+    suite_set_test_cleanup(butterfly_fixture_end);
+    const entity_t root = scene_load(STRESS_BUTTERFLY_SCENE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    return root;
+}
+
+static entity_t
+butterfly_body(entity_t root, int index) {
+    char name[ASSET_NAME_MAX];
+    TEST_ASSERT_TRUE(snprintf(name, sizeof name, "slot_%02d", index) >= 0);
+    return entity_find(root, name_hash(name));
+}
+
+static void
+test_hinged_presets_match_pack_capacity_and_plane_metrics(void) {
+    const entity_t root = butterfly_fixture();
+    int capacity = 0;
+    while (!handle_is_none(butterfly_body(root, capacity))) {
+        capacity++;
+    }
+    const stress_preset_t presets[] = {STRESS_BUTTERFLIES, STRESS_FEW_BUTTERFLIES};
+    for (size_t i = 0; i < sizeof presets / sizeof presets[0]; i++) {
+        const stress_params_t* p = &stress_presets[presets[i]];
+        TEST_ASSERT_TRUE(stress_baked(p));
+        TEST_ASSERT_EQUAL_STRING(STRESS_BUTTERFLY_SCENE, p->scene);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(capacity, p->copies);
+        TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
+        TEST_ASSERT_EQUAL_INT(4, stress_vertex_count(p));
+        TEST_ASSERT_EQUAL_INT(2, stress_triangle_count(p));
+        const float rows = ceilf(sqrtf((float)p->copies));
+        const float expected = (float)DEFAULT_SHORT_PX * (float)p->coverage_percent / (100.0F * rows) * 0.7F;
+        TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, expected, stress_cut_px(p, DEFAULT_SHORT_PX));
+    }
+    release();
+}
+
+static void
+test_butterfly_pool_has_parented_wings(void) {
+    const entity_t root = butterfly_fixture();
+    int parts = 0;
+    for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
+        parts += renderer_mesh(e) != NULL;
+    }
+    TEST_ASSERT_EQUAL_INT(STRESS_BUTTERFLY_COPIES * TEST_BUTTERFLY_PARTS, parts);
+    for (int i = 0; i < STRESS_BUTTERFLY_COPIES; i++) {
+        const entity_t body = butterfly_body(root, i);
+        TEST_ASSERT_FALSE(handle_is_none(body));
+        int children = 0;
+        TEST_ASSERT_NOT_NULL(renderer_mesh(body));
+        int triangles = renderer_mesh(body)->triangle_count;
+        for (entity_t e = entity_next(root, ENTITY_NONE); !handle_is_none(e); e = entity_next(root, e)) {
+            if (handle_equal(entity_parent(e), body)) {
+                children++;
+                TEST_ASSERT_NOT_NULL(renderer_mesh(e));
+                triangles += renderer_mesh(e)->triangle_count;
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(TEST_BUTTERFLY_PARTS - 1, children);
+        TEST_ASSERT_GREATER_THAN_INT(0, triangles);
+    }
+    release();
+}
+
+/* Rim x coordinates identify the traced leading edge and hindwing independently of vertex order. */
+#define TEST_LEADING_INNER_X 0.009051724F
+#define TEST_LEADING_OUTER_X 0.031982759F
+#define TEST_HIND_INNER_X    0.001810345F
+#define TEST_HIND_OUTER_X    0.018103448F
+#define TEST_RIM_POINTS      2
+
+static void
+test_wing_leading_edge_is_forward_in_body_frame(void) {
+    const entity_t root = butterfly_fixture();
+    const entity_t wings[] = {entity_find(root, name_hash("slot_00_wing_l")),
+                              entity_find(root, name_hash("slot_00_wing_r"))};
+    for (size_t side = 0; side < sizeof wings / sizeof wings[0]; side++) {
+        const r3d_lit_mesh_t* mesh = renderer_mesh(wings[side]);
+        TEST_ASSERT_NOT_NULL(mesh);
+        const transformf_t rest = transform_local(wings[side]);
+        float leading = FLT_MAX;
+        float hind = -FLT_MAX;
+        int leading_points = 0;
+        int hind_points = 0;
+        const float tick = 1.0F / (float)mesh->position_scale;
+        for (int v = 0; v < mesh->vertex_count; v++) {
+            const vec3f_t point = {(float)mesh->positions[v][0] * tick, (float)mesh->positions[v][1] * tick,
+                                   (float)mesh->positions[v][2] * tick};
+            const float x = fabsf(point.x);
+            const vec3f_t in_body = vec3f_add(rest.position, quatf_rotate(rest.rotation, point));
+            const float forward = vec3f_dot(in_body, vec3f_up());
+            if (fabsf(x - TEST_LEADING_INNER_X) <= tick || fabsf(x - TEST_LEADING_OUTER_X) <= tick) {
+                leading = fminf(leading, forward);
+                leading_points++;
+            }
+            if (fabsf(x - TEST_HIND_INNER_X) <= tick || fabsf(x - TEST_HIND_OUTER_X) <= tick) {
+                hind = fmaxf(hind, forward);
+                hind_points++;
+            }
+        }
+        TEST_ASSERT_EQUAL_INT(TEST_RIM_POINTS, leading_points);
+        TEST_ASSERT_EQUAL_INT(TEST_RIM_POINTS, hind_points);
+        TEST_ASSERT_GREATER_THAN_FLOAT_MESSAGE(hind, leading, "forewing leading edge must face body forward");
+    }
+    release();
+}
+
+static vec3f_t
+butterfly_tip(entity_t wing) {
+    const transformf_t world = transform_world(wing);
+    return vec3f_add(world.position, quatf_rotate(world.rotation, (vec3f_t){-(world.scale.x * TEST_TIP_X),
+                                                                            (world.scale.y * TEST_TIP_Z), 0.0F}));
+}
+
+static void
+pose_wing(entity_t wing, const transformf_t* rest, vec3f_t axis, float angle) {
+    const hinge_t hinge = {.rest = *rest, .axis = axis, .min = -STRESS_FLAP_LIMIT, .max = STRESS_FLAP_LIMIT};
+    transform_set_local(wing, hinge_pose(&hinge, angle));
+}
+
+/* Keep per-angle transform temporaries out of the fixture's stack frame. */
+static __attribute__((noinline)) void
+check_butterfly_hinge_angle(entity_t left, entity_t right, const transformf_t* rests, float angle) {
+    pose_wing(left, &rests[0], vec3f_up(), angle);
+    pose_wing(right, &rests[1], vec3f_down(), angle);
+    const vec3f_t l = butterfly_tip(left);
+    const vec3f_t r = butterfly_tip(right);
+    angle = mathf_clamp(angle, -STRESS_FLAP_LIMIT, STRESS_FLAP_LIMIT);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -TEST_TIP_X * cosf(angle), l.x);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_X * sinf(angle), l.z);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, TEST_TIP_Z, l.y);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, -l.x, r.x);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_TOLERANCE, l.y, r.y);
+    if (angle > 0.0F) {
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, l.z);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, r.z);
+    }
+}
+
+static void
+test_hinge_angles_raise_mirrored_tips_within_shipped_limits(void) {
+    const entity_t root = butterfly_fixture();
+    const entity_t left = entity_find(root, name_hash("slot_00_wing_l"));
+    const entity_t right = entity_find(root, name_hash("slot_00_wing_r"));
+    const transformf_t rests[] = {transform_local(left), transform_local(right)};
+    const float angles[] = {0.0F, TEST_ANGLE, -TEST_ANGLE, 2.0F * STRESS_FLAP_LIMIT, -2.0F * STRESS_FLAP_LIMIT};
+    for (size_t i = 0; i < sizeof angles / sizeof angles[0]; i++) {
+        check_butterfly_hinge_angle(left, right, rests, angles[i]);
+    }
+    release();
+}
+
+static void
+test_two_seeks_and_flap_renders_at_same_time_match_bytes(void) {
+    const entity_t root = butterfly_fixture();
+    for (int i = 1; i < STRESS_BUTTERFLY_COPIES; i++) {
+        entity_set_enabled(butterfly_body(root, i), false);
+    }
+    const entity_t camera = entity_find(root, name_hash("camera"));
+    TEST_ASSERT_TRUE(camera_activate(camera));
+    const entity_t wings[] = {entity_find(root, name_hash("slot_00_wing_l")),
+                              entity_find(root, name_hash("slot_00_wing_r"))};
+    transformf_t* const rests = malloc(sizeof wings / sizeof wings[0] * sizeof *rests);
+    TEST_ASSERT_NOT_NULL(rests);
+    rests[0] = transform_local(wings[0]);
+    rests[1] = transform_local(wings[1]);
+    transformf_t body = transformf_identity();
+    transformf_set_scale(&body, (vec3f_t){TEST_BODY_SCALE, TEST_BODY_SCALE, TEST_BODY_SCALE});
+    transformf_set_rotation(&body, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI));
+    transform_set_local(butterfly_body(root, 0), body);
+    const size_t bytes = sizeof *pixels * TEST_WIDTH * TEST_HEIGHT;
+    pixels = malloc(bytes);
+    held = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(pixels);
+    TEST_ASSERT_NOT_NULL(held);
+    const scene_target_t target = {pixels, TEST_WIDTH, TEST_HEIGHT, NULL, NULL};
+    for (int render = 0; render < 2; render++) {
+        TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, TEST_CAMERA_TIME_MS));
+        const float angle = TEST_ANGLE;
+        pose_wing(wings[0], &rests[0], vec3f_up(), angle);
+        pose_wing(wings[1], &rests[1], vec3f_down(), angle);
+        (void)scene_compose(0, 0, &target);
+        if (render == 0) {
+            memcpy(held, pixels, bytes);
+        } else {
+            TEST_ASSERT_EQUAL_MEMORY(held, pixels, bytes);
+        }
+    }
+    bool visible = false;
+    for (int i = 1; i < TEST_WIDTH * TEST_HEIGHT; i++) {
+        visible = visible || pixels[i] != pixels[0];
+    }
+    TEST_ASSERT_TRUE_MESSAGE(visible, "the deterministic frame must contain the butterfly");
+    free(rests);
+    release();
+}
+
+static void
+test_contact_blob_preset_is_static_floor_work(void) {
+    bool found = false;
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        const stress_params_t* p = &stress_presets[i];
+        if (p->surface == STRESS_SURFACE_CONTACT_BLOBS) {
+            found = true;
+            TEST_ASSERT_EQUAL_INT(STRESS_CONTACT_BLOB_COPIES, p->copies);
+            TEST_ASSERT_FALSE(stress_skinned(p));
+            TEST_ASSERT_FALSE(stress_per_frame(p));
+            TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_PLANE, p->shape);
+            TEST_ASSERT_GREATER_THAN_INT(STRESS_SKINNED_COPIES, p->copies);
+        }
+    }
+    TEST_ASSERT_TRUE(found);
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_contact_blob_preset_is_static_floor_work);
+    RUN_TEST(test_hinged_presets_match_pack_capacity_and_plane_metrics);
+    RUN_TEST(test_wing_leading_edge_is_forward_in_body_frame);
+    RUN_TEST(test_butterfly_pool_has_parented_wings);
+    RUN_TEST(test_hinge_angles_raise_mirrored_tips_within_shipped_limits);
+    RUN_TEST(test_two_seeks_and_flap_renders_at_same_time_match_bytes);
     RUN_TEST(test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum);
     RUN_TEST(test_near_plane_sweeps_behind_and_clipped_triangles);
     RUN_TEST(test_card_has_holes_colour_steps_and_scene_size_bins);
     RUN_TEST(test_uniform_presets_have_equal_corner_colours_and_large_coverage);
     RUN_TEST(test_mixed_copies_split_colour_modes);
+    RUN_TEST(test_settle_holds_a_textured_small_triangle_scene_with_partial_redraw);
     RUN_TEST(test_every_preset_has_its_row);
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
     RUN_TEST(test_every_preset_mesh_fits_a_dynamic_mesh);
@@ -715,10 +1031,11 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
     RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
     RUN_TEST(test_foliage_presets_differ_from_their_twins_by_the_mask_alone);
+    RUN_TEST(test_the_textured_far_twin_differs_by_its_copies_and_size_alone);
     RUN_TEST(test_foliage_cards_overlap_and_span_their_texture_corner_to_corner);
     RUN_TEST(test_foliage_mask_opens_as_mask1_and_keeps_about_0_7_of_a_card);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);
 
-SUITE_READS(run_stress_preset_suite, STRESS_SCENE);
+SUITE_READS(run_stress_preset_suite, STRESS_SCENE, STRESS_BUTTERFLY_SCENE);

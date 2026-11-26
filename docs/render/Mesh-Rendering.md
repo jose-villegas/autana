@@ -35,9 +35,9 @@ and picture basis from `render_view_t`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is. An optional world box lets the cull drop it before its lens ([Culling.md](frame/Culling.md#the-tree-walk)) |
 | `r3d_batch_draw_t` | A batch: an instance whose placement and world box hold copies of its mesh drawn from packed rows ([SCNE batches](../assets/formats/SCNE.md#batches)) |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), then its `r3d_batch_draw_t` array, at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
-| `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
-| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)) |
-| `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
+| `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view: `raster_census()`, then `raster_draw_culled()` |
+| `raster_census()` | The cull, into the scratch block's list ([one entry](frame/Culling.md#one-entry)) |
+| `raster_draw_culled()` | Draws that list at the raster's size now, through any camera with the same lens |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `raster_upscale_picture()` | The same through the upscale filter, of another colour and depth picture at the drawn size when given one, marking the seams it blends |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
@@ -130,7 +130,7 @@ A caller builds a frame view and passes its `const render_view_t*`:
 
 | Caller | Calls |
 |---|---|
-| Draws at a set size | `raster_draw()`, which culls every instance, fits the [depth scale](frame/Attachments.md#depth) to what it kept, then draws each in turn with the fitted lens culling used, then `raster_upscale()` with the destination width and height |
+| Draws at a set size | `raster_draw()`, which culls every instance, fits the [depth scale](frame/Attachments.md#depth) to what it kept, then draws each in turn through the lens fitted to the raster, then `raster_upscale()` with the destination width and height |
 | Picks the render size from what culling kept, as the render context does | `raster_census()`, sets the size, then `raster_draw_culled()` with the same view, then `raster_upscale()` |
 | A suite or tool that schedules the stages itself | `r3d_pipeline.h`'s stages |
 
@@ -223,6 +223,12 @@ present counts against it.
 What the cull drops, stage by stage, what it keeps along two camera paths and
 what each stage costs: [Culling.md](frame/Culling.md).
 
+## Textured triangles
+
+A mesh whose [LUVS](../assets/formats/LUVS.md) entry names textures draws
+those triangles through the textured span fill: its texels, mip levels and
+perspective divide are [frame/Texture-Mapping.md](frame/Texture-Mapping.md).
+
 ## Memory
 
 The layer allocates nothing. Raster draw work owns the resolved camera
@@ -261,5 +267,7 @@ all its renderers.
 ## Related
 
 - [firmware/README.md](../firmware/README.md): the layers and the frame loop
+- [LTEX.md](../assets/formats/LTEX.md), [LUVS.md](../assets/formats/LUVS.md): a textured mesh's textures and UVs
+- [frame/Texture-Mapping.md](frame/Texture-Mapping.md): how a textured triangle's pixels take their texels
 - [gfx/Present.md](../gfx/Present.md#present-who-runs-it): the split present `update()` overlaps
 - [Building-an-App.md](../firmware/Building-an-App.md#app-memory): the app arena, one place a frame's scratch block can come from

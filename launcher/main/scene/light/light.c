@@ -7,6 +7,9 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
+/* Luminance of a linear RGB light as BT.709 weighs it. */
+#define LIGHT_LUMA_BT709 ((vec3f_t){0.2126F, 0.7152F, 0.0722F})
+
 r3d_skin_light_transfer_t*
 scene_light_transfer_take(const scene_t* scene) {
     r3d_skin_light_transfer_t* transfer = scene_allocate(sizeof *transfer, MEMORY_INTERNAL);
@@ -14,6 +17,16 @@ scene_light_transfer_take(const scene_t* scene) {
         r3d_skin_light_transfer_build(scene->tonemap_white, transfer);
     }
     return transfer;
+}
+
+static void
+show_lit_skins(scene_t* scene) {
+    for (int r = 0; r < scene->renderer_count; r++) {
+        const scene_row_t e = scene->renderers[r].entity;
+        if (scene->skinned_renderers[e].storage != NULL) {
+            scene_skin_show(scene, e);
+        }
+    }
 }
 
 bool
@@ -54,6 +67,7 @@ scene_lights_allocate(scene_t* scene) {
         return false;
     }
     scene->light_transfer = transfer;
+    show_lit_skins(scene);
     return true;
 }
 
@@ -76,13 +90,6 @@ light_attach(scene_t* scene, scene_row_t entity) {
     *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
     scene->light_count++;
     scene_stage_add(scene, entity);
-    for (int r = 0; r < scene->renderer_count; r++) {
-        scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
-        if (skin->storage != NULL) {
-            skin->output.mesh.colors = skin->colors;
-            scene->renderers[r].mesh.colors = skin->colors;
-        }
-    }
     return light;
 }
 
@@ -154,6 +161,17 @@ light_intensity(entity_t entity) {
     return scene->lights[row].kind == SCENE_LIGHT_NONE ? 0.0F : scene->lights[row].intensity;
 }
 
+static bool
+light_world(const scene_t* scene, scene_row_t row, vec3f_t* direction, vec3f_t* radiance) {
+    const scene_light_t* light = &scene->lights[row];
+    if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[row] & SCENE_FLAG_ACTIVE)) {
+        return false;
+    }
+    *direction = quatf_rotate(scene_row_world(scene->root, row).rotation, SCENE_LIGHT_AXIS);
+    *radiance = vec3f_scale(light->color, light->intensity);
+    return true;
+}
+
 void
 scene_lights_prepare(scene_t* scene) {
     if (scene->light_transfer == NULL) {
@@ -162,14 +180,8 @@ scene_lights_prepare(scene_t* scene) {
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t l = scene->staged[i];
-        const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
-            continue;
-        }
-        const int at = world.count++;
-        world.direction[at] = quatf_rotate(scene_row_world(scene->root, l).rotation, SCENE_LIGHT_AXIS);
-        world.color[at] = vec3f_scale(light->color, light->intensity);
+        const int at = world.count;
+        world.count += light_world(scene, scene->staged[i], &world.direction[at], &world.color[at]);
     }
     world.table = scene->light_table;
     if (scene->light_table != NULL && scene->light_table_dirty) {
@@ -179,4 +191,72 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     scene->world_lights = world;
+}
+
+void
+scene_set_probes(entity_t root, const sh_probes_t* probes) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    if (record == NULL || row != SCENE_ROW_ROOT || record->scene == NULL) {
+        return;
+    }
+    scene_t* scene = record->scene;
+    if (probes != NULL && scene->light_transfer == NULL && !scene_lights_allocate(scene)) {
+        return;
+    }
+    scene->probes = probes;
+    const bool unlit = !scene_is_lit(scene);
+    if (unlit) {
+        memory_free(scene->light_transfer);
+        scene->light_transfer = NULL;
+        scene->world_lights.transfer = NULL;
+    }
+    for (int r = 0; r < scene->renderer_count; r++) {
+        const scene_row_t e = scene->renderers[r].entity;
+        if (unlit) {
+            scene_skin_deactivate(scene, e);
+        }
+        if (scene->skinned_renderers[e].bound) {
+            scene->flags[e] |= SCENE_FLAG_SKIN_DIRTY;
+        }
+    }
+    scene->skins_pending = true;
+}
+
+vec3f_t
+scene_light_brightest_direction(const scene_t* scene) {
+    vec3f_t brightest = vec3f_zero();
+    float luminance = 0;
+    for (int i = 0; i < scene->staged_count; i++) {
+        vec3f_t direction;
+        vec3f_t radiance;
+        if (!light_world(scene, scene->staged[i], &direction, &radiance)) {
+            continue;
+        }
+        const float value = vec3f_dot(radiance, LIGHT_LUMA_BT709);
+        if (value > luminance) {
+            luminance = value;
+            brightest = direction;
+        }
+    }
+    return brightest;
+}
+
+vec3f_t
+scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count) {
+    /* Draw order lets a receiver scene light movers from separately loaded scenes. */
+    for (int k = 0; k < drawn_scene_count; k++) {
+        const vec3f_t direction = scene_light_brightest_direction(drawn_scenes[k]);
+        if (vec3f_dot(direction, direction) > 0) {
+            return direction;
+        }
+    }
+    if (scene->probes != NULL) {
+        const sh1_rgb_t radiance = sh_probes_sample(scene->probes, world);
+        const vec3f_t direction = sh1_rgb_dominant_direction(&radiance, LIGHT_LUMA_BT709);
+        if (vec3f_dot(direction, direction) > 0) {
+            return direction;
+        }
+    }
+    return vec3f_unit_y();
 }

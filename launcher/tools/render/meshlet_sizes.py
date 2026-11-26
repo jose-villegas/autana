@@ -14,7 +14,7 @@ import frame_cost
 from capture import build_ids, capture_board, quarter_row, require_same_board
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
-from r3d.poses import sample_camera_path
+from r3d.poses import flight_camera, path_poses
 from r3d.fitted_variant import poses_text
 
 ROWS = ("16", "32", "64")  # the cluster sizes a capture measures; the scene's shipped size is one of them
@@ -176,7 +176,7 @@ def table(scene_path, captures, bakes, chart_path, cull_table=None):
     from meshlet_capture import rebake_scene
     from showcase import showcase
     scene = load_scene(scene_path)
-    camera = scene.camera.component
+    camera = flight_camera(scene)
     jobs = [job for job in scene.renderers if job.object.name == showcase(scene)]
     if any(not job.object.identity for job in jobs):
         raise ValueError("meshlet table requires unplaced mesh geometry")
@@ -186,8 +186,7 @@ def table(scene_path, captures, bakes, chart_path, cull_table=None):
         capture_viewport(captures / f"meshlets-{row}-board.log", (width, height))
     from doc_stages import capture_pose_every_ms
     every_ms = capture_pose_every_ms([captures / f"meshlets-{row}-board.log" for row in ROWS])
-    poses = sample_camera_path(camera.path.animation, camera.path.node, every_ms, width, height,
-                               camera.half_fov_short_tan, camera.near_z)
+    poses = path_poses(camera, (width, height), every_ms, either_way_up=False)
     from r3d.build_pack import pack_bytes
     from r3d.scene_name import scene_id
     packs = {}

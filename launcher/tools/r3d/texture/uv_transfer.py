@@ -79,6 +79,24 @@ def plane_uv(points, corners, uv):
     return uv[0] + st[0][:, None] * (uv[1] - uv[0]) + st[1][:, None] * (uv[2] - uv[0])
 
 
+def material_search(source):
+    """A reusable nearest-triangle search and normals in the source frame."""
+    points, tris = np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v)
+    normals, _ = face_normals(points, tris)
+    return triangle_search(points[tris]), normals
+
+
+def nearest_materials(points, tris, source, search=None):
+    """Nearest source triangle, its material, normal agreement, baked area and face normals for every baked triangle."""
+    points, tris = np.asarray(points, dtype=np.float64), np.asarray(tris)
+    triangles, source_normal = material_search(source) if search is None else search
+    near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangles)
+    baked_normal, area = face_normals(points, tris)
+    agree = np.cos(np.radians(NORMAL_DEGREES))
+    facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
+    return near, np.asarray(source.tri_m)[near], facing, area, baked_normal, source_normal, agree
+
+
 def cluster_uvs(mesh, source, material_ids, sizes):
     """The Luvs of `mesh` (lit_mesh.read_lit_mesh's) over `source` (mesh_source.load_source's, in the bake's frame)
     for source materials `material_ids`, each `sizes[k]` texels a side."""
@@ -86,15 +104,12 @@ def cluster_uvs(mesh, source, material_ids, sizes):
         raise ValueError(f"{len(material_ids)} textured materials; LUVS holds {MATERIALS_MAX}")
     points = np.asarray(mesh.pos, dtype=np.float64) / float(mesh.position_scale)
     tris = np.asarray(mesh.tris)
-    source_corners = np.asarray(source.p, dtype=np.float64)[np.asarray(source.tri_v)]
-    near, _bary, _distance = nearest_triangles(points[tris].mean(axis=1), triangle_search(source_corners))
-    baked_normal, area = face_normals(points, tris)
-    source_normal, _ = face_normals(np.asarray(source.p, dtype=np.float64), np.asarray(source.tri_v))
-    agree = np.cos(np.radians(NORMAL_DEGREES))
-    facing = (baked_normal * source_normal[near]).sum(axis=1) >= agree
+    search = material_search(source)
+    source_corners = search[0].corners
+    near, source_material, facing, area, baked_normal, source_normal, agree = nearest_materials(points, tris, source, search)
     slot = np.full(len(source.names), NONE)
     slot[list(material_ids)] = np.arange(len(material_ids))
-    material = np.where(facing, slot[np.asarray(source.tri_m)[near]], NONE)
+    material = np.where(facing, slot[source_material], NONE)
     uvs = [np.zeros((len(points), 2), dtype=np.int16)]
     uv_count = len(points)
     shifts = np.zeros(len(mesh.clusters), dtype=np.int32)
@@ -124,6 +139,22 @@ def cluster_uvs(mesh, source, material_ids, sizes):
             on_plane = baked_normal[tb:tb + tc] @ source_normal[plane] >= agree
             own_code[(own_code == PLAIN) & (own == k) & on_plane] = chart + 1
     return Luvs(np.concatenate(uvs), shifts, materials, codes, len(points), len(material_ids))
+
+
+def card_luvs(mesh, uvs, page_of_cluster):
+    """Card UVs already in UV_SHIFT units, one MASK1 page on each cluster's chart 0."""
+    pages = np.asarray(page_of_cluster, dtype=np.int64)
+    uv = np.asarray(uvs)
+    if len(pages) != len(mesh.clusters) or uv.shape != (len(mesh.pos), 2):
+        raise ValueError("card UVs or page assignments do not match the mesh")
+    if not len(pages) or pages.min() < 0 or pages.max() >= MATERIALS_MAX:
+        raise ValueError("card pages exceed LUVS materials")
+    if uv.min() < INT16.min or uv.max() > INT16.max:
+        raise ValueError("card UVs exceed int16")
+    materials = np.full((len(pages), CHARTS), NONE, dtype=np.uint8)
+    materials[:, 0] = pages
+    return Luvs(uv.astype(np.int16), np.zeros(len(pages), dtype=np.int32), materials,
+                np.ones(len(mesh.tris), dtype=np.uint8), len(mesh.pos), int(pages.max()) + 1)
 
 
 def cluster_chart(points, own, own_area, left, near, source_corners, source, sizes):

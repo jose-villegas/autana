@@ -1050,34 +1050,36 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(dirt_grid, "dirt dry-out comparison grid must fit in what the framebuffer "
                                             "leaves");
 
-    sand_t gp;
-    sand_t dirt;
-    sand_init(&gp, gp_grid, 3, WET_DRY_TRIALS, 21U);
-    sand_init(&dirt, dirt_grid, 3, WET_DRY_TRIALS, 21U);
+    sand_t* const gp = malloc(sizeof *gp);
+    TEST_ASSERT_NOT_NULL(gp);
+    sand_t* const dirt = malloc(sizeof *dirt);
+    TEST_ASSERT_NOT_NULL(dirt);
+    sand_init(gp, gp_grid, 3, WET_DRY_TRIALS, 21U);
+    sand_init(dirt, dirt_grid, 3, WET_DRY_TRIALS, 21U);
 
     for (int y = 0; y < WET_DRY_TRIALS; y++) {
-        sand_set(&gp, 0, y, STONE);
-        sand_set(&gp, 2, y, STONE);
-        sand_set(&gp, 1, y, with_moisture(GUNPOWDER_CELL(0), 1, gp_r));
+        sand_set(gp, 0, y, STONE);
+        sand_set(gp, 2, y, STONE);
+        sand_set(gp, 1, y, with_moisture(GUNPOWDER_CELL(0), 1, gp_r));
 
-        sand_set(&dirt, 0, y, STONE);
-        sand_set(&dirt, 2, y, STONE);
-        sand_set(&dirt, 1, y, CELL_SOIL(MAT_DIRT, 0, 1));
+        sand_set(dirt, 0, y, STONE);
+        sand_set(dirt, 2, y, STONE);
+        sand_set(dirt, 1, y, CELL_SOIL(MAT_DIRT, 0, 1));
     }
 
     const int budget = 150;
     for (int i = 0; i < budget; i++) {
-        sand_step(&gp, 0, 1000, 0);
-        sand_step(&dirt, 0, 1000, 0);
+        sand_step(gp, 0, 1000, 0);
+        sand_step(dirt, 0, 1000, 0);
     }
 
     int gp_wet = 0;
     int dirt_wet = 0;
     for (int y = 0; y < WET_DRY_TRIALS; y++) {
-        if (moisture_of(sand_at(&gp, 1, y), gp_r) != 0) {
+        if (moisture_of(sand_at(gp, 1, y), gp_r) != 0) {
             gp_wet++;
         }
-        if (CELL_MOISTURE(sand_at(&dirt, 1, y)) != 0) {
+        if (CELL_MOISTURE(sand_at(dirt, 1, y)) != 0) {
             dirt_wet++;
         }
     }
@@ -1103,6 +1105,8 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
              budget, gp_wet, WET_DRY_TRIALS, dirt_wet, WET_DRY_TRIALS, WET_DRY_TRIALS);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(dirt_wet, gp_wet, why);
     free(why);
+    free(dirt);
+    free(gp);
 }
 
 /* An upper bound, not full conservation: a lit cell reads moisture_of()

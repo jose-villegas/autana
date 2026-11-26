@@ -14,13 +14,14 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from r3d.import_settings import LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
+from r3d.import_settings import LIGHT_MODE_BAKED, LIGHT_FIELDS, SettingsError, albedo_jobs, load_import_settings, load_scene
 from r3d import build_pack
-from anim_probe import write_camera_clip  # noqa: E402
+from anim_probe import build_sampler_once, write_camera_clip  # noqa: E402
 
 try:
     import numpy as np
-    from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
+    from tests.soup import sun
+    from tests import soup
 
     from r3d import mesh_import, mesh_source, ray_query
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
@@ -28,7 +29,13 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
+
+
+def setUpModule():
+    # Every fit key samples its camera clip.
+    build_sampler_once()
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
@@ -46,13 +53,15 @@ VARIANT_OUTPUT = '[output]\n'
 FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
             'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
 FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
-       '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
+       '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\nsamples = 2\ndenoise = false\ntrain_every_ms = 1000\n'
+       'held_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\n'
        '')
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
 REGION = 'visibility = { source = "camera_region", rounds = 2 }\n'
 PATH = 'visibility = { source = "camera_path", every_ms = 100, size = [8, 6], margin = 2 }\n'
+SEAL_VIEWS = 'seal_views = { every_ms = 33, size = [8, 6] }\n'
 CUBE = ("v 0 0 0\nv 8 0 0\nv 8 8 0\nv 0 8 0\nv 0 0 8\nv 8 0 8\nv 8 8 8\nv 0 8 8\nusemtl m\n"
         "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n")
 
@@ -89,15 +98,24 @@ def renderer(mesh="mesh.import.toml", extra="", transform="", name=None):
     return f'[[objects]]\nname = "{name}"\n{transform}[objects.mesh_renderer]\nmesh = "{mesh}"\n{extra}'
 
 
-def sun_object(rotation="[0.0, 0.0, 0.0]"):
+def sun_object(rotation="[0.0, 0.0, 0.0]", *, mode=None):
     return (f'[[objects]]\nname = "sun"\nrotation = {rotation}\n[objects.light]\ntype = "directional"\n'
-            'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
+            + (f'mode = "{mode}"\n' if mode is not None else '')
+            + 'color = [1.0, 1.0, 1.0]\nintensity = 1.0\n')
 
 
-def camera(path=False, region=True):
-    track = 'path = { animation = "fly.anim.toml", node = "camera" }\n' if path else ''
+def lamp_object(kind, rotation="[0.0, 0.0, 0.0]"):
+    """A baked point or spot light at [1, 2, 3] with a range of 4; a spot's cone is 20 to 30 degrees."""
+    cone = 'inner_angle = 20.0\nouter_angle = 30.0\n' if kind == "spot" else ''
+    return (f'[[objects]]\nname = "{kind}"\nposition = [1.0, 2.0, 3.0]\nrotation = {rotation}\n[objects.light]\n'
+            f'type = "{kind}"\nmode = "baked"\ncolor = [1.0, 0.5, 0.25]\nintensity = 2.0\nrange = 4.0\n' + cone)
+
+
+def camera(path=False, region=True, name="camera", clip="fly.anim.toml"):
+    """A camera object named `name`; with `path`, flying the clip `clip` (a .anim.toml beside the scene)."""
+    track = f'path = {{ animation = "{clip}", node = "camera" }}\n' if path else ''
     bounds = 'region = { min = [0.0, 0.0, 0.0], max = [1.0, 1.0, 1.0] }\n' if region else ''
-    return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
+    return (f'[[objects]]\nname = "{name}"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             + bounds + track)
 
 
@@ -131,6 +149,36 @@ class ImportTests(unittest.TestCase):
         self.assertEqual((settings.seed, settings.alpha_keep, settings.thin.keep, settings.variants[0].triangles), (3, 0.5, 0.5, 10))
         self.assertFalse(hasattr(settings, "light"))
 
+    def test_cards_defaults_and_absent_key(self):
+        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            settings = load_import_settings(write_import(directory, body=
+                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'))
+        self.assertIsNone(plain.cards)
+        self.assertEqual(vars(settings.cards), dict(never=[], always=[],
+                         epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST))
+        self.assertEqual(settings.seed, 3)
+
+    def test_cards_overlapping_overrides_are_an_error(self):
+        self.rejects("both never and always", '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+                     'cards = { never = ["m"], always = ["m"] }\n')
+
+    def test_cards_reject_invalid_settings(self):
+        prefix = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+        cases = (
+            ('cards = { choice = "path" }', "geometry.cards.choice"),
+            ('cards = { path = "fly.anim.toml" }', "geometry.cards.path"),
+            ('cards = { choice = "other" }', "geometry.cards.choice"),
+            ('cards = { epsilon = 0 }', "geometry.cards.epsilon"),
+            ('cards = { area_cost = -1 }', "geometry.cards.area_cost"),
+            ('cards = { typo = 1 }', "geometry.cards.typo"),
+        )
+        for body, message in cases:
+            with self.subTest(body=body):
+                self.rejects(message, prefix + body + '\n')
+        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = {}\n')
+
     def test_old_scene_owned_keys_name_each_new_home(self):
         cases = (
             ('[visibility]\nrounds = 2\n', r"\[visibility\] moved to objects\.mesh_renderer\.visibility"),
@@ -147,23 +195,18 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
-    def test_probes_and_a_budget_read_closed_and_need_a_fitted_import(self):
+    def test_probes_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
         with tempfile.TemporaryDirectory() as directory:
-            body = ('[geometry]\nprobes = { face = 64 }\nbudget = { step = 2, settle = 0.05 }\n'
+            body = ('[geometry]\nprobes = { face = 64 }\n'
                     + geometry + VARIANT)
             settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
             self.assertEqual(vars(settings.fit.probes), {"spacing": None, "face": 64})
-            self.assertEqual(vars(settings.fit.budget), {"step": 2, "settle": 0.05})
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-            self.assertEqual(vars(settings.fit), {"probes": None, "budget": None})
+            self.assertEqual(vars(settings.fit), {"probes": None})
         for pattern, shaping in (("geometry.probes.spacing must be positive", "probes = { spacing = 0.0 }"),
-                                 ("geometry.probes.typo", "probes = { typo = 1 }"),
-                                 ("geometry.budget.policy", 'budget = { policy = "settle", step = 2, settle = 0.1 }'),
-                                 ("geometry.budget.step is required", 'budget = { settle = 0.1 }'),
-                                 ("settle must be at least 0 and below 1",
-                                  'budget = { step = 2, settle = 1.0 }')):
+                                 ("geometry.probes.typo", "probes = { typo = 1 }")):
             with self.subTest(shaping=shaping):
                 self.rejects(pattern, f"[geometry]\n{shaping}\n" + geometry + VARIANT)
         self.rejects("needs geometry.simplify", '[geometry]\nprobes = { spacing = 2.0 }\n')
@@ -368,6 +411,25 @@ class SceneTests(unittest.TestCase):
         self.lit_rejects("camera path is required", PATH, objects=camera(region=False))
         self.lit_rejects("camera region is read by no placed mesh", PATH, objects=camera(path=True))
 
+    def test_seal_views_read_and_need_a_sealed_import_a_bake_and_the_camera_path(self):
+        sealed = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        extra = 'variant = "mesh"\n' + REGION + SEAL_VIEWS
+        scene = load_scene(self.lit(extra, objects=camera(path=True), **sealed))
+        views = scene.renderers[0].renderer.seal_views
+        self.assertEqual((views.every_ms, views.size), (33, (8, 6)))
+        unviewed = load_scene(self.lit('variant = "mesh"\n' + REGION, objects=camera(), **sealed))
+        self.assertIsNone(unviewed.renderers[0].renderer.seal_views)
+        self.lit_rejects("camera path is required: a placed mesh seals", extra, objects=camera(), **sealed)
+        self.lit_rejects("seal_views is read by no step", extra, objects=camera(path=True), output=VARIANT_OUTPUT,
+                         body=SIMPLIFY.replace("seal_seams = true", "seal_seams = false") + VARIANT)
+        self.lit_rejects("seal_views is read by no step", REGION + SEAL_VIEWS, objects=camera(path=True))
+        self.lit_rejects(r"seal_views", extra.replace("every_ms = 33, ", ""), objects=camera(path=True), **sealed)
+        self.lit_rejects(r"seal_views.size", extra.replace("[8, 6]", "[8]"), objects=camera(path=True), **sealed)
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, **sealed)
+            with self.assertRaisesRegex(SettingsError, "bake = true is required"):
+                load_scene(write_scene(directory, renderer(extra='variant = "mesh"\n' + SEAL_VIEWS) + camera(path=True)))
+
     def test_each_renderer_of_one_import_has_its_own_visibility(self):
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory)
@@ -379,24 +441,51 @@ class SceneTests(unittest.TestCase):
     def test_a_fit_needs_a_camera_path_even_with_region_visibility(self):
         for objects in (camera(), camera(region=False), ""):
             with self.subTest(objects=objects):
-                self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT,
+                self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT, head=HEAD,
                                  body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
+
+    def test_probe_fit_uses_only_the_variant_budget(self):
+        options = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT, head=HEAD,
+                       output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
+        extra = 'variant = "mesh"\n' + FIT
+        with self.subTest(budget="explicit"):
+            self.lit_rejects(r"fit.prune.budget.*geometry.probes", extra.replace("budget = 8", "budget = 10"), **options)
+        with self.subTest(budget="absent"):
+            scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
+            self.assertIsNone(scene.renderers[0].renderer.fit.budget)
+
+    def test_a_fit_recipe_needs_its_reference_samples_and_denoise_and_the_bake_table_refuses_them(self):
+        options = dict(body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False),
+                       head=HEAD)
+        fitted = 'variant = "mesh"\n' + FIT
+        fit = load_scene(self.lit(fitted, **options)).renderers[0].renderer.fit
+        self.assertEqual((fit.samples, fit.denoise), (2, False))
+        for line in ("samples = 2\n", "denoise = false\n"):
+            with self.subTest(missing=line):
+                self.lit_rejects(r"fit.poses", fitted.replace(line, ""), **options)
+                self.lit_rejects(r"scene.bake", fitted, **{**options, "head": HEAD + line})
+        for bad, pattern in (("samples = 0", "samples must be at least 1"), ("denoise = 1", "denoise must be true")):
+            with self.subTest(bad=bad):
+                line = "samples = 2" if "samples" in bad else "denoise = false"
+                self.lit_rejects(pattern, fitted.replace(line, bad), **options)
 
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
-        scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
+        scene = load_scene(self.lit(extra, head=HEAD, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
                                          objects=camera(path=True, region=False)))
+        self.lit_rejects(r"fit.prune.budget.*required", extra.replace("budget = 8\n", ""), head=HEAD,
+                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
         self.assertEqual(fit.size, (184, 224))
-        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT, "head": HEAD}
         self.lit_rejects(r"fit.poses.size", extra.replace("size = [184, 224]\n", ""), **options)
         for size in ("[0, 224]", "[184, -1]", "[true, 224]", "[184.0, 224]", "[184]", '"184,224"'):
             with self.subTest(size=size):
                 self.lit_rejects(r"fit.poses.size", extra.replace("[184, 224]", size), **options)
         self.lit_rejects("fit.hashes is gone", extra + "[objects.mesh_renderer.fit.hashes]\nsha256 = \"ab\"\n",
-                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
-        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+                         head=HEAD, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
+        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT, "head": HEAD}
         self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
         self.lit_rejects("fit", extra.replace("steps = 20\n", ""), **options)
         self.lit_rejects("fit.prune.typo", extra.replace("budget = 8", "budget = 8\ntypo = 1"), **options)
@@ -514,9 +603,31 @@ class SceneTests(unittest.TestCase):
         self.rejects("typo", self.two_imports, renderer("a.import.toml") + sun_object().replace("intensity = 1.0\n", "intensity = 1.0\ntypo = 1\n"))
         self.lit_rejects("typo", head=HEAD + "[sky]\ncolor = [1.0, 1.0, 1.0]\nintensity = 1.0\nrays = 1\ntypo = 1\n")
 
-    def test_a_reserved_light_type_is_rejected(self):
-        point = '[[objects]]\nname = "p"\n[objects.light]\ntype = "point"\n'
-        self.rejects("reserved", self.two_imports, renderer("a.import.toml") + point)
+    def test_a_point_light_sits_at_its_object_and_a_spot_shines_down_its_rotation(self):
+        lights = load_scene(self.lit(objects=lamp_object("point") + lamp_object("spot", "[90.0, 0.0, 0.0]"))).lights
+        point, spot = lights[1], lights[2]
+        self.assertEqual((point["type"], point["position"], point["range"]), ("point", [1.0, 2.0, 3.0], 4.0))
+        self.assertEqual((spot["inner_angle"], spot["outer_angle"]), (20.0, 30.0))
+        np.testing.assert_allclose(spot["axis"], [0.0, 0.0, -1.0], atol=1e-12)
+        straight = load_scene(self.lit(objects=lamp_object("spot"))).lights[1]["axis"]
+        np.testing.assert_allclose(straight, [0.0, -1.0, 0.0], atol=1e-12)
+
+    def test_a_point_or_spot_light_outside_its_rules_is_rejected(self):
+        for kind, change, pattern in (
+                ("point", ('mode = "baked"\n', ''), "baked only"),
+                ("spot", ('mode = "baked"\n', 'mode = "realtime"\n'), "baked only"),
+                ("point", ("range = 4.0", "range = 0.0"), "range must be positive"),
+                ("spot", ("inner_angle = 20.0", "inner_angle = 30.0"), "inner_angle < outer_angle"),
+                ("spot", ("outer_angle = 30.0", "outer_angle = 91.0"), "outer_angle <= 90"),
+                ("spot", ("outer_angle = 30.0\n", ""), "outer_angle is required"),
+                ("point", ("range = 4.0\n", "range = 4.0\ninner_angle = 1.0\n"), "not a known setting"),
+                ("point", ('name = "point"\n', 'name = "point"\nparent = "mesh"\n'), "no parent")):
+            with self.subTest(kind=kind, pattern=pattern):
+                self.lit_rejects(pattern, objects=lamp_object(kind).replace(*change))
+
+    def test_point_and_spot_lights_need_a_baked_renderer(self):
+        self.rejects("point and spot lights are read by no placed mesh", self.plain_import,
+                     renderer() + lamp_object("point"), TONEMAP + AMBIENT)
 
     def test_sky_and_ambient_are_not_light_objects(self):
         sky = '[[objects]]\nname = "s"\n[objects.light]\ntype = "sky"\n'
@@ -728,7 +839,7 @@ class AuthoredImportTests(unittest.TestCase):
             with self.assertRaisesRegex(SettingsError, "output.directory is gone"):
                 load_import_settings(write_import(directory, output='[output]\ndirectory = "."\n'))
 
-    @needs_mitsuba
+    @needs_llvm
     def test_a_baked_renderer_writes_its_mesh_beside_the_scene_named_by_scene_and_object(self):
         objects = renderer(extra="bake = true\n") + sun_object()
         with tempfile.TemporaryDirectory() as directory:
@@ -739,7 +850,21 @@ class AuthoredImportTests(unittest.TestCase):
         target = 255.0 * np.array([0.5, 0.25, 0.125])
         self.assertFalse((np.abs(lit.rgb - target) <= 8).all(), "a lit mesh is not its albedo")
 
-    @needs_mitsuba
+    @needs_llvm
+    def test_a_fitted_renderer_without_a_gpu_writes_its_cpu_start(self):
+        objects = (renderer(extra='bake = true\nvariant = "mesh"\n' + FIT) + sun_object()
+                   + camera(path=True, region=False))
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+            path = write_scene(root, objects, HEAD, name="hall.scene.toml")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(mesh_import.main([str(path)]), 0)
+            lit = read_lit_mesh(root / "hall.mesh.bundle")
+        self.assertLessEqual(len(lit.tris), 10)
+        self.assertIn("CUDA", err.getvalue())
+
+    @needs_llvm
     def test_a_lit_bake_welds_on_its_own_position_scale_so_a_small_model_keeps_its_triangles(self):
         size = 0.01  # model units far below one: a centimetre cube modelled in metres
         scale = 65536
@@ -753,40 +878,34 @@ class AuthoredImportTests(unittest.TestCase):
         self.assertEqual(len(lit.tris), 12)
 
 
-class ClearIntersector:
-    def blocked(self, origins, directions):
-        return np.zeros(len(origins), dtype=bool)
-
-
-def sun(direction, color, intensity):
-    return {"type": "directional", "direction": direction, "color": color, "intensity": intensity}
-
-
 def radiance(lights, normal, double_sided):
-    return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), ClearIntersector(),
+    return light(np.array([[0.0, 0.0, 0.0]]), np.array([normal]), np.array([double_sided]), soup.Open(),
                  lights, 0.5)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LightListTests(unittest.TestCase):
+    @needs_llvm
     def test_directional_lights_add_their_radiance_and_order_does_not_matter(self):
         lights = [
-            {"type": "directional", "direction": [0, 1, 0], "color": [1, 0, 0], "intensity": 2},
-            {"type": "directional", "direction": [0, 1, 0], "color": [0, 1, 0], "intensity": 3},
+            sun([0, 1, 0], [1, 0, 0], 2),
+            sun([0, 1, 0], [0, 1, 0], 3),
         ]
-        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), ClearIntersector())
+        args = (np.array([[0.0, 0.0, 0.0]]), np.array([[0.0, 1.0, 0.0]]), np.array([False]), soup.Open())
         first = light(*args, lights, 0.5)
         np.testing.assert_allclose(first, [[2.0, 3.0, 0.0]])
         np.testing.assert_allclose(light(*args, lights[::-1], 0.5), first)
 
+    @needs_llvm
     def test_a_double_sided_face_turns_to_the_light(self):
         got = radiance([sun([0, 1, 0], [1, 1, 1], 1)], [0.0, -1.0, 0.0], True)
         np.testing.assert_allclose(got, [[1.0, 1.0, 1.0]])
 
+    @needs_llvm
     def test_the_order_of_every_light_type_does_not_change_the_radiance(self):
         lights = [sun([0, 1, 0], [1, 0, 0], 2), sun([1, 0.1, 0], [0, 1, 0], 1),
-                  {"type": "sky", "color": [0, 0, 1], "intensity": 1, "rays": 1},
-                  {"type": "ambient", "color": [1, 1, 1], "intensity": 0.1}]
+                  {"type": "sky", "mode": LIGHT_MODE_BAKED, "color": [0, 0, 1], "intensity": 1, "rays": 1},
+                  {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1, 1, 1], "intensity": 0.1}]
         for normal in ([0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]):
             for double_sided in (False, True):
                 forward = radiance(lights, normal, double_sided)
@@ -808,7 +927,8 @@ class DigestTests(unittest.TestCase):
             root = pathlib.Path(directory)
             write_import(root, output='[output]\n', body=SIMPLIFY + VARIANT)
             objects = renderer(extra='variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 10, size = [8, 6] }\n' + fit)
-            first = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE))
+            first = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False),
+                                           TONEMAP + AMBIENT + BAKE))
             alternate = (TONEMAP + AMBIENT + '[bake]\ncolour_merge_step = 6\nray_offset = 0.5\n')
             second = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), alternate,
                                             "other.scene.toml"))
@@ -827,7 +947,7 @@ def triangle_source(p):
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
         source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -842,7 +962,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}
@@ -917,15 +1037,16 @@ class PathLightForTests(unittest.TestCase):
         self.assertEqual(built.call_count, 1)
 
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
+        other_variant = "cuda_ad_rgb" if ray_query.VARIANT != "cuda_ad_rgb" else "llvm_ad_rgb"
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
         with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             bake = mesh_import.path_light_for(None, self.job(indirect), scene)
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
                           "no variant is the bake's variant")
-            gpu = mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.GPU_VARIANT)
-        self.assertIsNot(gpu, bake, "a scene traced on one variant is not reused on another")
-        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, ray_query.GPU_VARIANT])
+            other = mesh_import.path_light_for(None, self.job(indirect), scene, other_variant)
+        self.assertIsNot(other, bake, "a scene traced on one variant is not reused on another")
+        self.assertEqual([call.args[-1] for call in built.call_args_list], [ray_query.VARIANT, other_variant])
 
 
 class JobTests(unittest.TestCase):
@@ -1028,7 +1149,7 @@ class LocalSourceTests(unittest.TestCase):
             source = '[source]\npath = "asset/m.obj"\ncredit = "c"\n'
             write_import(root, source=source, output='[output]\n', body=SIMPLIFY + VARIANT)
             objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
-            scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), TONEMAP + AMBIENT + BAKE)
+            scene_path = write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
             scene = load_scene(scene_path)
             job = scene.renderers[0]
             for name in ("m.obj", "m.mtl", "texture.weird"):
@@ -1054,7 +1175,29 @@ class LocalSourceTests(unittest.TestCase):
             job.renderer.fit.size = (92, 112)
             self.assertNotEqual(reference_digest(job, scene), first)
 
-    def test_geometry_probes_and_budget_move_only_the_keys_they_shape(self):
+    def test_reference_settings_key_the_reference_set_and_each_pose_and_leave_the_start_alone(self):
+        from bake import bake
+        from r3d.fitted_variant import reference_digest
+
+        def keys(fit):
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + fit)
+                scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
+                job = scene.renderers[0]
+                stages = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})
+                return stages["start"], reference_digest(job, scene), stages["reference_pose"]
+
+        start, reference, pose = keys(FIT)
+        for changed in (FIT.replace("samples = 2", "samples = 3"), FIT.replace("denoise = false", "denoise = true")):
+            with self.subTest(changed=changed):
+                moved = keys(changed)
+                self.assertEqual(moved[0], start, "a reference-trace key moved the start's key")
+                self.assertNotEqual(moved[1], reference, "a reference-trace key left the reference key alone")
+                self.assertNotEqual(moved[2], pose, "a reference-trace key left the pose store's key alone")
+
+    def test_geometry_probes_move_only_the_keys_they_shape(self):
         from bake import bake
         from r3d.fitted_variant import reference_digest
 
@@ -1062,26 +1205,19 @@ class LocalSourceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
-                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]
                 return start, reference_digest(job, scene), fit_key(job, scene), job
 
         start, reference, fit, job = keys("")
-        self.assertEqual(bake.fit_recipe(job.renderer.fit, job.settings.fit.budget), dict(vars(job.renderer.fit)))
+        self.assertEqual(bake.fit_recipe(job.renderer.fit), dict(vars(job.renderer.fit)))
         probed = keys("probes = { spacing = 2.0 }\n")
         self.assertEqual(probed[0], start, "probes moved the start's key")
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
-        # A budget packs the held-out references its settle reads: the reference key moves once, not by value.
-        settling = keys('budget = { step = 2, settle = 0.1 }\n')
-        self.assertEqual(settling[0], start, "a budget moved the start's key")
-        self.assertNotEqual(settling[1], reference, "the scored references are not in the reference key")
-        self.assertEqual(keys('budget = { step = 3, settle = 0.2 }\n')[1], settling[1],
-                         "the budget's value moved the reference key")
-        self.assertNotEqual(settling[2], fit)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

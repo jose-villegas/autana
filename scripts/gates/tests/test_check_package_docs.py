@@ -197,6 +197,10 @@ class CheckMathDocs(unittest.TestCase):
                 self.assertIn("docs/math/README.md:%d:" % expected_line, problems[0])
                 self.assertIn("split the formula into one span per step joined with <br>", problems[0])
 
+    def test_an_over_limit_span_in_a_list_items_fence_is_code(self):
+        formula = "x" * (check_package_docs.MAX_INLINE_MATH_CHARS + 1)
+        self.assertEqual([], problems_for(page_extra="- step\n\n  ```\n  $`%s`$\n  ```\n" % formula))
+
     def test_separate_inline_math_spans_are_measured_individually(self):
         formula = "x" * check_package_docs.MAX_INLINE_MATH_CHARS
         self.assertEqual([], problems_for(page_extra="$`%s`$<br> $`%s`$\n" % (formula, formula)))

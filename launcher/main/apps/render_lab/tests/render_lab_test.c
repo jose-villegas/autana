@@ -1,6 +1,7 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "collections/strbuf.h"
@@ -80,16 +81,30 @@ render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int fra
     RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
 }
 
+/* The path's struct return slot must leave the stack before the replay draws. */
+static __attribute__((noinline)) bool
+replay_path_seeks_itself(void) {
+    const lab_scene_t* current = lab_current(&render_lab);
+    const lab_path_t path = current->path != NULL ? current->path() : (lab_path_t){0};
+    return path.seek != NULL;
+}
+
 void
 render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-                            const char* quarter, const char* const* stages, int count, int64_t* stage_us) {
+                            const char* quarter, const char* const* stages, int count, int64_t* stage_us,
+                            uint32_t dt_ms, int draws) {
+    TEST_ASSERT_GREATER_THAN_INT(0, draws);
     suite_add_test_cleanup(release_pose_line);
     if (pose_line == NULL) {
         pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     }
     TEST_ASSERT_NOT_NULL(pose_line);
     pose_line_t* out = pose_line;
-    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    if (replay_path_seeks_itself()) {
+        TEST_ASSERT_TRUE(lab_seek_path(&render_lab, (uint32_t)path_ms));
+    } else {
+        TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    }
     render_lab_test_show_view(render_context_debug_view_named("cull"));
     (void)lab_test_frame_dt(0, false, NULL);
     memset(out->sums, 0, sizeof out->sums);
@@ -99,13 +114,13 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)lab_test_frame_dt(0, false, NULL);
     frame_cost_take_clear(); /* forget whatever ran before */
-    for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
-        (void)lab_test_frame_dt(0, false, NULL);
+    for (int i = 0; i < draws; i++) {
+        (void)lab_test_frame_dt(dt_ms, false, NULL);
     }
     for (int i = 0; stage_us != NULL && i < count; i++) {
-        stage_us[i] = frame_cost_take_mean_us(stages[i], FRAME_PROFILE_REPLAY_DRAWS);
+        stage_us[i] = frame_cost_take_mean_us(stages[i], draws);
     }
-    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
+    (void)frame_cost_take_report(draws, out->report, sizeof out->report);
     add_frame_counts(out->sums, &out->frame);
     render_lab_test_write_counts(out->sums, 1, out->counts, sizeof out->counts);
     ESP_LOGI(tag, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);

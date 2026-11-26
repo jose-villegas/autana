@@ -11,7 +11,6 @@
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
 #include "scene/scene.h"
-#include "scene/transform/transform.h"
 #include "scene_viewer.h"
 
 static const char* scene_id;
@@ -22,12 +21,9 @@ static const char* textured_name; /* the renderer drawn with its textures, or NU
 static bool generating;
 static recti_t size_rect;
 static camera_present_t present;
-static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
-static const char* poses_path;
-static FILE* poses;
 static entity_t shown;
 static entity_t camera;
 
@@ -42,10 +38,8 @@ reset_options(void) {
     textured_name = NULL;
     size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
-    small_fill = SMALL_FILL_SMOOTH;
     view = RENDER_DEBUG_VIEW_SHADED;
     counts_path = NULL;
-    poses_path = NULL;
 }
 
 static bool
@@ -73,16 +67,6 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
-        } else if (strcmp(flag, "--small-fill") == 0) {
-            unsigned ceiling, gate, style;
-            char trailing;
-            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > SMALL_FILL_CEILING_MAX
-                || gate > UINT8_MAX || style >= SMALL_FILL_STYLE_COUNT) {
-                fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
-                        SMALL_FILL_CEILING_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
-                return false;
-            }
-            small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -102,8 +86,6 @@ options(int argc, char** argv) {
             generating = strcmp(value, "1") == 0;
         } else if (strcmp(flag, "--counts") == 0) {
             counts_path = value;
-        } else if (strcmp(flag, "--poses") == 0) {
-            poses_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -178,10 +160,10 @@ texture_object(entity_t scene) {
     return false;
 }
 
-/* The camera entity to activate: the named one, or the scene's first. */
+/* The camera entity to activate: the named one, else the scene's flight. */
 static entity_t
 chosen_camera(entity_t scene) {
-    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_first(scene);
+    return camera_name != NULL ? entity_find(scene, name_hash(camera_name)) : camera_flight(scene);
 }
 
 static bool
@@ -219,25 +201,13 @@ setup(int quarter) {
     }
     for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
         (void)camera_set_present(e, present);
-        (void)camera_set_small_fill(e, small_fill);
     }
     shown = scene;
-    camera = chosen_camera(scene);
-    /* What a caller sampling the path along its length reads. */
-    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)animator_clip_duration_ms(camera, 0));
+    camera = camera_active(); /* the one chosen_camera() found above */
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
     render_context_set_frame_generation(context, generating);
     if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
-        scene_release(scene);
-        return false;
-    }
-    if (poses_path != NULL
-        && (poses = render_rows_open(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw", "scene_viewer")) == NULL) {
-        if (counts != NULL) {
-            fclose(counts);
-            counts = NULL;
-        }
         scene_release(scene);
         return false;
     }
@@ -249,22 +219,11 @@ setup(int quarter) {
     return true;
 }
 
-/* One row per frame of what the cull view counted from the camera, and of where the camera stood. */
+/* One row per frame of what the cull view counted from the camera. */
 static void
 draw(const provider_frame_t* frame) {
-    const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
         render_counts_row(&counts, frame);
-    }
-    if (poses != NULL) {
-        const transformf_t world = transform_world(camera);
-        fprintf(poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame->index, (unsigned)frame->elapsed_ms,
-                (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
-                (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
-        if (last) {
-            fclose(poses);
-            poses = NULL;
-        }
     }
 }
 
@@ -274,10 +233,6 @@ teardown(void) {
     if (counts != NULL) {
         fclose(counts);
         counts = NULL;
-    }
-    if (poses != NULL) {
-        fclose(poses);
-        poses = NULL;
     }
     shown = ENTITY_NONE;
     camera = ENTITY_NONE;

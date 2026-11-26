@@ -14,30 +14,45 @@
 #include "gfx/target/gfx_target.h"
 #include "image/pixel/bayer.h"
 #include "render/render_view.h"
+#include "render/settings/render_settings.h"
 
-/* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
+/* Largest bounding-box side, in pixel centres, always filled flat; the small_fill gate and style apply only above it. */
 #define R3D_SPAN_SMALL_MAX_SIDE 4
 
 /* Resolved once per frame and shared read-only by row workers. */
 typedef struct {
     uint8_t ceiling;
-    small_fill_style_t style;
+    uint8_t style; /* a small_fill_style_t, a byte so row workers read a small struct */
     uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
 } r3d_span_small_fill_t;
 
 extern const r3d_span_small_fill_t r3d_span_small_fill_default;
-void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
+void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
+
+/* A fill's face colour by value, in the target's format, or this for the
+ * vertex colours: never a pointer, so no caller's frame holds it in memory. */
+#define R3D_SPAN_FACE_NONE  UINT32_MAX
+
+/* Bits of a level setting in r3d_span_target_t: levels 0..15. */
+#define R3D_SPAN_LEVEL_BITS 4
 
 /* Where a triangle is filled: a render target whose colour is the panel's
  * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
  * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
  * drawn; and what a further attachment writes beside them. */
-typedef struct {
+typedef struct r3d_span_target {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
+    /* The draw's render_texture_settings_t: divide_px, affine_bend in
+     * 1/RENDER_TEXTURE_BEND_STEPS texel, affine_level and far_level, the two levels
+     * sharing a byte so the target keeps its size. */
+    uint8_t texture_divide_px;
+    uint8_t texture_bend_steps;
+    uint8_t texture_affine_level : R3D_SPAN_LEVEL_BITS;
+    uint8_t texture_far_level    : R3D_SPAN_LEVEL_BITS;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -51,11 +66,26 @@ typedef struct {
 #define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
     ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
+_Static_assert(RENDER_TEXTURE_DIVIDE_PX_MAX <= UINT8_MAX, "texture.divide_px fits its byte");
+_Static_assert(RENDER_TEXTURE_BEND_MAX* RENDER_TEXTURE_BEND_STEPS <= UINT8_MAX, "texture.affine_bend fits its byte");
+_Static_assert(RENDER_TEXTURE_LEVEL_MAX < (1 << R3D_SPAN_LEVEL_BITS),
+               "texture.affine_level and far_level fit their bits");
+
+/* Sets `target`'s textured fill to `texture`. */
+static inline void
+r3d_span_set_texture(r3d_span_target_t* target, const render_texture_settings_t* texture) {
+    target->texture_divide_px = (uint8_t)texture->divide_px;
+    target->texture_bend_steps = (uint8_t)((texture->affine_bend * (float)RENDER_TEXTURE_BEND_STEPS) + 0.5F);
+    target->texture_affine_level = (uint8_t)texture->affine_level;
+    target->texture_far_level = (uint8_t)texture->far_level;
+}
+
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
     r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    r3d_span_set_texture(&target, &RENDER_SETTINGS_DEFAULT.texture);
     gfx_target_of_color_depth(&target.rows, color, depth, width, row1 - row0, row0);
     assert(target.rows.attachment[GFX_ATTACHMENT_DEPTH].pitch == target.rows.attachment[GFX_ATTACHMENT_COLOR].pitch);
     return target;
@@ -107,11 +137,17 @@ void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t*
 void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, uint16_t color);
 
-/* Either fill, `face` NULL or its colour, writing no depth nearer than
+/* The solid fill in one colour, the corners' mean, capped as
+ * r3d_span_capped_triangle() when target->skip_hidden, then the target's
+ * writers over it. */
+void r3d_span_triangle_mean(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                            const r3d_span_vertex_t* c);
+
+/* Either fill, `face` R3D_SPAN_FACE_NONE or its colour, writing no depth nearer than
  * r3d_span_depth_limit() of the nearest vertex: what a skip of whole clusters
  * behind drawn depth relies on. */
 void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                              const r3d_span_vertex_t* c, const uint16_t* face);
+                              const r3d_span_vertex_t* c, uint32_t face);
 
 /* Right after either fill of the same triangle into the same target: its
  * writers over the pixels it covers. `solid` must say whether that fill used a
@@ -127,7 +163,7 @@ void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_ver
  * Capped as r3d_span_capped_triangle() when target->skip_hidden. The rarer
  * path, for a level fading in over another; the fast fills test no mask. */
 void r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                              const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool write);
+                              const r3d_span_vertex_t* c, uint32_t face, uint16_t mask, bool write);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Whether the fill's quantized colour planes have no steps. */

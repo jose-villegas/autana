@@ -15,6 +15,7 @@ sys.path.insert(0, str(TOOLS / "render"))
 from r3d import process_budget
 import bake_steps
 import doc_stages
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 class PipelineMeasuresTests(unittest.TestCase):
@@ -171,6 +172,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         self.assertEqual(probes['Driver'], '123')
         self.assertEqual([line.split('|')[1].strip() for line in doc_stages.machine_table(probes).splitlines()[2:]],
                          list(doc_stages.MACHINE_FIELDS))
+    @needs_llvm
     def test_importer_counts_real_stage_boundaries_without_gpu(self):
         import numpy as np
         from types import SimpleNamespace as NS
@@ -179,7 +181,7 @@ class PipelineMeasuresTests(unittest.TestCase):
                     tri_o=np.zeros(4, dtype=int), object_names=["mesh"],
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
-        settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
+        settings = NS(cards=None, seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
                       simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES, lod=False,
                       morph=False)
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None, variant=NS(triangles=None, ceiling=None)), bake=None)

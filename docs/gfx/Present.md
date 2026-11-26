@@ -1,5 +1,45 @@
 # Present
 
+## Panel dispatch
+
+```mermaid
+flowchart LR
+    FB["framebuffer<br/>dirty boxes and interlace"] --> ROW["gather_and_send<br/>send_fb_rows"]
+    RAW["raw full frame"] --> ROW
+    PIC["indexed and expanded<br/>half-resolution pictures"] --> EXP["send_picture_rows"]
+    BAND["band frame"] --> SUB["gfx_band_submit"]
+    ROW --> SEND["gfx_panel_send"]
+    EXP --> SEND
+    SUB --> SEND
+    SEND --> LCD["esp_lcd_panel_draw_bitmap"]
+    SEND -->|"capture on, send OK"| CAP["gfx_panel_capture_window<br/>one PSRAM image"]
+    CAP --> TX["console_stream"]
+```
+
+[`gfx_panel.c`](../../launcher/main/gfx/present/gfx_panel.c) owns every panel
+send and byte count. The framebuffer audit stays before overlays at its
+framebuffer send sites. The capture tap copies the final window pixels.
+
+`gfx_panel_capture_begin()` and `gfx_panel_capture_commit()` delimit each `run_present()` or `gfx_band_run()` present.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Idle: START and redraw
+    Idle --> Capturing: Begin
+    Capturing --> Idle: Commit holds
+    Capturing --> Ready: Commit publishes
+    Ready --> Sending: First part
+    Sending --> Sending: Busy window sets owed
+    Sending --> Idle: Release after last part
+    Idle --> Capturing: Owed queues redraw
+    Idle --> [*]: STOP
+    Sending --> [*]: STOP drains
+```
+
+Release builds omit capture hooks and sender. The `PANEL-SEND-OWNER`
+source rule rejects another direct panel caller.
+
 ## Present: what gets sent
 
 `run_present_normal()` walks the 7 strips. A clean strip is skipped. A dirty
@@ -50,7 +90,7 @@ sequenceDiagram
     Note over C: free to run app update() and<br/>scene_render() - no gfx_* calls
     Note over P: panel_clock_apply()
     loop each dirty strip
-        P->>Q: esp_lcd_panel_draw_bitmap()
+        P->>Q: gfx_panel_send()
     end
     Q-->>P: strip_sent, once per transfer
     P-->>C: present_done_sem

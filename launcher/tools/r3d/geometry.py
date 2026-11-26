@@ -7,6 +7,14 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
+def grouped_indices(keys):
+    """Indices for each integer key, preserving input order within each group."""
+    keys = np.asarray(keys)
+    order = np.argsort(keys, kind="stable")
+    found, starts = np.unique(keys[order], return_index=True)
+    return dict(zip(found.tolist(), np.split(order, starts[1:])))
+
+
 def bounds_diagonal(positions):
     """Length of the axis-aligned bounds diagonal, including degenerate objects."""
     return float(np.linalg.norm(np.ptp(positions, axis=0)))
@@ -14,6 +22,16 @@ def bounds_diagonal(positions):
 
 def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
+
+
+def hit_barycentrics(p, tri_v, hits, locations):
+    """Barycentric weights of ray hits at `locations` on their triangles `hits`, from unsigned area ratios."""
+    faces = tri_v[hits]
+    a, b, c = p[faces[:, 0]], p[faces[:, 1]], p[faces[:, 2]]
+    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
+    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
+    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
+    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
 
 
 def face_normals(p, tris):
@@ -43,9 +61,15 @@ def weld(p, tris, tolerance=1e-3):
 
 def weld_keeping(p, tris, tolerance=1e-3):
     """Merges coincident vertices across materials; every triangle stays."""
+    first, inverse = weld_map(p, tolerance)
+    return p[first], inverse[tris]
+
+
+def weld_map(p, tolerance=1e-3):
+    """(first, inverse): one source vertex per position within `tolerance`, and each vertex's welded index."""
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    return p[first], inverse.reshape(-1)[tris]
+    return first, inverse.reshape(-1)
 
 
 def corner_normals(p, tris, crease_deg=40.0):

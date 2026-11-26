@@ -1,8 +1,8 @@
 /* Plain-value UI verbs share the microui control and command builders. */
 #include "core/memory.h"
 #include "draw/draw.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
-#include "ui/ui_internal.h"
 
 #include <assert.h>
 #include <stdio.h>

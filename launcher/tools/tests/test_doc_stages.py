@@ -20,6 +20,15 @@ MEMINFO = Path("/proc/meminfo")
 POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
 
 
+def flight_scene(renderer):
+    """A scene holding `renderer` whose scene camera has no path (its fits train on probes over its region)
+    and whose second camera flies tour.anim.toml, the flight the board flies."""
+    from types import SimpleNamespace as NS
+    visitor = NS(kind="camera", component=NS(path=None))
+    flight = NS(path=NS(animation="tour.anim.toml", node="camera"), half_fov_short_tan=.5, near_z=1)
+    return NS(renderers=[renderer], camera=visitor, objects=[visitor, NS(kind="camera", component=flight)])
+
+
 class DocStagesTests(unittest.TestCase):
     def test_capture_intervals_are_required_positive_and_common(self):
         first, second = self.tmp / "a.log", self.tmp / "b.log"
@@ -38,39 +47,42 @@ class DocStagesTests(unittest.TestCase):
         capture.write_text("CAPTURE pose_every_ms=500\n"
                            "atrium t=500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n"
                            "atrium t=0ms clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n")
-        expected = [("sponza", 0), ("sponza", 500)]
-        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500),
-                         {("sponza", 0): 51.0, ("sponza", 500): 52.0})
+        self.assertEqual(stages.board_frames([capture], [0, 500], "atrium", 500), {0: 51.0, 500: 52.0})
 
     def test_path_cull_has_its_own_sampling_for_region_visibility(self):
         from types import SimpleNamespace as NS
         import numpy as np
-        from r3d import mesh_import, lit_mesh, light, ray_query
+        from r3d import mesh_import, lit_mesh, light, ray_query, poses as poses_module
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
-        scene = NS(renderers=[baked])
+        scene = flight_scene(baked)
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
         poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
                 mock.patch.object(mesh_import, "write_baked"), \
-                mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                 mock.patch.object(ray_query, "RayQuery"), \
                 mock.patch.object(light, "visible_from_path", return_value=np.array([True])) as visible, \
                 mock.patch.object(lit_mesh, "write_lit_mesh"):
             stages.bake_into(Path(directory), scene, "hall", True)
-        settings = sample.call_args.args[1]
-        self.assertEqual((settings.every_ms, settings.size, settings.samples, settings.margin),
-                         (100, (184, 224), 3, 8))
+        sample.assert_called_once_with("tour.anim.toml", "camera", 100, 184, 224, .5, 1)
         self.assertEqual(visible.call_args.args[4:], (poses[-1], *poses[:4], 3, 8))
+
+    def test_a_scene_with_no_camera_on_a_path_is_named(self):
+        from types import SimpleNamespace as NS
+        from r3d.import_settings import SettingsError
+        scene = NS(path=Path("room.scene.toml"), objects=[NS(kind="camera", component=NS(path=None))])
+        with self.assertRaisesRegex(SettingsError, "room.scene.toml: no camera on a path"):
+            stages.flight_poses(scene, NS(size=(8, 6), every_ms=100))
 
     def test_board_and_smoke_sample_the_fit_with_region_visibility(self):
         from types import SimpleNamespace as NS
-        from r3d import import_settings, fitted_variant, mesh_import, reference_render
+        from r3d import import_settings, fitted_variant, mesh_import, reference_render, poses as poses_module
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
                              variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
-        scene = NS(renderers=[job])
+        scene = flight_scene(job)
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
         with tempfile.TemporaryDirectory() as directory:
@@ -81,19 +93,19 @@ class DocStagesTests(unittest.TestCase):
             args.capture = [capture]
             with mock.patch.object(import_settings, "load_scene", return_value=scene), \
                     mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
-                    mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                    mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                     mock.patch.object(stages.subprocess, "check_output", return_value=b"commit"), \
                     mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
-                    mock.patch.object(stages, "board_means", return_value=dict.fromkeys(("room", *stages.VARIANTS), 1)), \
+                    mock.patch.object(stages, "board_mean", return_value=1), \
                     mock.patch.object(stages, "board_frames", side_effect=ValueError("stop before cost fitting")):
                 with self.assertRaisesRegex(ValueError, "stop before cost fitting"):
                     stages.board(args, root, root)
-            sample.assert_called_once_with(scene, fit, fit.held_out_every_ms, either_way_up=False)
-            with mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+            sample.assert_called_once_with("tour.anim.toml", "camera", fit.held_out_every_ms, 8, 6, .5, 1)
+            with mock.patch.object(poses_module, "sample_camera_path", return_value=poses) as sample, \
                     mock.patch.object(stages.shutil, "copyfile"), \
                     mock.patch.object(reference_render, "main") as render:
                 stages.smoke_prepare(args.scene, scene, job, root / "inputs")
-            sample.assert_called_once_with(scene, fit, 5000, either_way_up=False)
+            sample.assert_called_once_with("tour.anim.toml", "camera", 5000, 8, 6, .5, 1)
             self.assertEqual(render.call_count, 3)
 
     def test_viewer_host_build_receives_the_scene(self):
@@ -133,21 +145,20 @@ class DocStagesTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.tmp = Path(directory.name)
 
-    def test_board_uses_the_callers_scene_and_object(self):
+    def test_board_times_and_fits_the_bake_row_alone(self):
         from types import SimpleNamespace as NS
         from r3d import cost_model, import_settings, mesh_import, fitted_variant
         import numpy as np
         scene_path = Path("gallery.scene.toml")
-        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000), visibility=object()))
-        scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".bundle"))
-                              for name in ("painting", "painting_lite")])
+        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000), visibility=object()),
+                 asset_path=Path("painting_fitted_full.bundle"))
+        scene = NS(renderers=[], objects=[])
         capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n" +
-            "".join(f"{name} both cores: mean {value}us\n" for name, value in
-                    (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
-                     ("painting_fitted", 44000), ("painting_fitted_full", 45000), ("painting_flat_fitted", 46000))) +
-            "painting t= 0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n"
-            "painting_lite t= 0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n")
+        # The perf suite's rows: the bake, then other rows over the same bake, which the stage ignores.
+        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n"
+            "painting_fitted_full both cores: mean 45000us\ncull_off both cores: mean 52000us\n"
+            "painting_fitted_full t= 0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n"
+            "cull_off t= 0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n")
         out, work = self.tmp / "out", self.tmp / "work"
         (out / "tables").mkdir(parents=True)
         work.mkdir()
@@ -158,22 +169,21 @@ class DocStagesTests(unittest.TestCase):
                 mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
                 mock.patch.object(import_settings, "load_scene", return_value=scene), \
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job) as placed, \
-                mock.patch.object(mesh_import, "camera_path_poses", return_value=(8, 6, .62, 6, [[0]*7])), \
+                mock.patch.object(stages, "flight_poses", return_value=(8, 6, .62, 6, [[0]*7])), \
                 mock.patch.object(fitted_variant, "poses_text", return_value="poses"), \
                 mock.patch.object(cost_model, "mesh_rows", return_value=features) as rows, \
                 mock.patch.object(cost_model, "fit", return_value=np.ones(len(cost_model.FEATURES))) as fit, \
                 mock.patch.object(stages, "current_stamp", return_value="stamp"), \
                 mock.patch.object(stages, "apply_tables"), mock.patch.object(stages, "WEIGHTS", weights), \
                 mock.patch.object(stages, "ROOT", self.tmp):
-            self.assertEqual(stages.board(NS(scene=scene_path, object="painting", capture=[capture],
+            self.assertEqual(stages.board(NS(scene=scene_path, object="painting_fitted_full", capture=[capture],
                                              build_commit=None, check=False), out, work), 0)
-        placed.assert_called_once_with(scene, "painting_fitted")
-        self.assertEqual([call.args[0] for call in rows.call_args_list],
-                         [Path("painting.bundle"), Path("painting_lite.bundle")])
-        self.assertEqual(fit.call_args.args[1], [51.0, 42.0])
+        placed.assert_called_once_with(scene, "painting_fitted_full")
+        self.assertEqual([call.args[0] for call in rows.call_args_list], [Path("painting_fitted_full.bundle")])
+        self.assertEqual(fit.call_args.args[1], [51.0])
         self.assertEqual({path.name for path in (out / "tables").iterdir()},
                          {"gallery-board.md", "gallery-board-model.md"})
-        self.assertIn("| gallery | 51.000 |", (out / "tables/gallery-board.md").read_text())
+        self.assertIn("| painting_fitted_full | 45.000 |", (out / "tables/gallery-board.md").read_text())
 
     def test_current_stamp_needs_no_numeric_dependencies(self):
         launcher = self.tmp / "launcher"
@@ -203,20 +213,20 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
 
     def test_capture_requires_matching_commit(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("other-diag\nlite both cores: mean 42000us\n")
+        capture.write_text("other-diag\natrium both cores: mean 42000us\n")
         with self.assertRaisesRegex(ValueError, "build"):
-            stages.capture_rows(capture, "abcdef123456", "sponza", "atrium")
+            stages.capture_rows(capture, "abcdef123456")
 
     def test_capture_uses_existing_perf_parser(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\nlite both cores: mean 42000us\n")
-        self.assertEqual(stages.capture_rows(capture, "abcdef123456", "sponza", "atrium"), {"lite": 42.0})
+        capture.write_text("abcdef123456-diag\natrium both cores: mean 42000us\n")
+        self.assertEqual(stages.capture_rows(capture, "abcdef123456"), {"atrium": 42.0})
 
-    def test_capture_selects_portrait_and_resolves_variant_names(self):
+    def test_capture_selects_portrait(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\natrium_lite both cores: mean 42000us quarter=portrait\n"
-                           "atrium_lite both cores: mean 84000us quarter=landscape\n")
-        self.assertEqual(stages.capture_rows(capture, "abcdef123456", "sponza", "atrium"), {"lite": 42.0})
+        capture.write_text("abcdef123456-diag\natrium both cores: mean 42000us quarter=portrait\n"
+                           "atrium both cores: mean 84000us quarter=landscape\n")
+        self.assertEqual(stages.capture_rows(capture, "abcdef123456"), {"atrium": 42.0})
 
     def test_source_stamp_ignores_doc_refresh_but_not_recipe(self):
         (self.tmp / "launcher").mkdir()
@@ -242,53 +252,32 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
                             f"oid sha256:{checksum}\nsize {len(content)}\n").encode())
         self.assertEqual(stages.source_stamp(self.tmp, [source]), hydrated)
 
-    def test_board_rejects_missing_variants(self):
-        capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\nlite both cores: mean 42000us\n")
-        with self.assertRaisesRegex(ValueError, "missing"):
-            stages.board_means([capture], "abcdef123456", "sponza", "atrium")
-
-    def test_a_capture_of_all_six_bake_entities_yields_every_board_variant(self):
-        names = ("painting", "painting_flat", "painting_lite", "painting_fitted", "painting_fitted_full", "painting_flat_fitted")
-        capture = self.tmp / "capture.txt"
-        lines = [f"{name} both cores: mean {1000 * (k + 1)}us" for k, name in enumerate(names)]
-        capture.write_text("\n".join(["abcdef123456-diag", *lines]) + "\n")
-        means = stages.board_means([capture], "abcdef123456", "gallery", "painting")
-        self.assertEqual(set(means), {"gallery", *stages.VARIANTS})
-        self.assertEqual(means, {"gallery": 1.0, "flat": 2.0, "lite": 3.0, "fitted": 4.0, "fitted-full": 5.0,
-                                 "flat-fitted": 6.0})
-
-    def test_a_capture_without_the_flat_fitted_entity_is_refused(self):
-        names = ("painting", "painting_flat", "painting_lite", "painting_fitted", "painting_fitted_full")
-        capture = self.tmp / "capture.txt"
-        lines = [f"{name} both cores: mean 42000us" for name in names]
-        capture.write_text("\n".join(["abcdef123456-diag", *lines]) + "\n")
-        with self.assertRaisesRegex(ValueError, "flat-fitted"):
-            stages.board_means([capture], "abcdef123456", "gallery", "painting")
+    def test_board_mean_needs_the_bake_row_and_takes_the_median(self):
+        captures = [self.tmp / f"capture-{index}.txt" for index in range(3)]
+        for capture, value in zip(captures, (40000, 44000, 42000)):
+            capture.write_text(f"abcdef123456-diag\natrium both cores: mean {value}us\nother both cores: mean 1us\n")
+        self.assertEqual(stages.board_mean(captures, "abcdef123456", "atrium"), 42.0)
+        captures[1].write_text("abcdef123456-diag\nother both cores: mean 42000us\n")
+        with self.assertRaisesRegex(ValueError, "no atrium row"):
+            stages.board_mean(captures, "abcdef123456", "atrium")
 
     def test_board_half_second_pose_rows(self):
         capture = self.tmp / "capture.txt"
         capture.write_text('CAPTURE period_ms=1000 pose_every_ms=500\n'
                            'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait\n'
                            'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us quarter=portrait\n'
-                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n'
-                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us quarter=portrait\n')
-        expected = [(name, time) for name in ('sponza', 'lite') for time in (0, 500)]
-        self.assertEqual(stages.board_frames([capture], expected, 'sponza', 'atrium', 500),
-                         {('sponza', 0): 51.0, ('sponza', 500): 52.0,
-                          ('lite', 0): 42.0, ('lite', 500): 43.0})
+                           'placed t=    0s clusters=4 tris=5 | both cores: frame 42000us quarter=portrait\n')
+        self.assertEqual(stages.board_frames([capture], [0, 500], 'atrium', 500), {0: 51.0, 500: 52.0})
 
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
-        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us quarter=portrait\n"
-                           "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us quarter=portrait\n")
-        expected = [("sponza", 0), ("lite", 0)]
-        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500), {("sponza", 0): 51.0, ("lite", 0): 42.0})
+        capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us quarter=portrait\n")
+        self.assertEqual(stages.board_frames([capture], [0], "atrium", 500), {0: 51.0})
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], [*expected, ("sponza", 5)], "sponza", "atrium", 500)
-        capture.write_text(capture.read_text() + capture.read_text().splitlines()[0] + "\n")
+            stages.board_frames([capture], [0, 5], "atrium", 500)
+        capture.write_text(capture.read_text() * 2)
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], expected, "sponza", "atrium", 500)
+            stages.board_frames([capture], [0], "atrium", 500)
 
     def test_gpu_check_requires_saved_full_run(self):
         with self.assertRaisesRegex(ValueError, "no full run"):
@@ -495,16 +484,14 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         from r3d.process_budget import MEASURE_BYTES
-        jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
-                               variant=NS(triangles=10000))) for _ in range(3)]
-        baked_variants = {"hall_lite": "lite", "hall": "full", "hall_flat": "flat"}
-        scene = NS(renderers=[NS(object=NS(name=name), renderer=NS(variant=NS(name=variant)))
-                              for name, variant in baked_variants.items()])
+        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
+                             variant=NS(name="full", triangles=10000)))
+        scene = NS(renderers=[], objects=[])
         consumed, measured, completed = [], {}, []
         step = dict(wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)
 
         class Keeper(FakeKeeper):
-            """Starts, references and bakes are made at once; the fits finish in reverse, when the first bake is
+            """Starts, references and the bake are made at once; the fits finish in reverse, when the bake is
             asked for."""
             def request(self, kind, *args):
                 future = super().request(kind, *args)
@@ -545,7 +532,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
                                           'mean_delta_e': 0., 'predicted_ms': 0.}))
             before = resume.read_bytes()
             with mock.patch.object(import_settings, 'load_scene', return_value=scene), \
-                    mock.patch.object(fitted, 'placed_variant', side_effect=jobs) as placed, \
+                    mock.patch.object(fitted, 'placed_variant', return_value=job) as placed, \
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host') as build_host, \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'gpu_inputs', return_value={}), \
@@ -561,67 +548,52 @@ class FullGpuSchedulingTests(unittest.TestCase):
             light.assert_called_once_with(keeper, Path('other.scene.toml'), work)
             self.assertEqual(sheets.call_args.args[0], 'light fits')
             build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
-            self.assertEqual(placed.call_args_list, [mock.call(mock.ANY, "hall_fitted"),
-                                                    mock.call(mock.ANY, "hall_fitted_full"),
-                                                    mock.call(mock.ANY, "hall_flat_fitted")])
-            self.assertEqual([args[1:] for args, _ in keeper.of('bake')],
-                             [("hall_lite", False), ("hall", True), ("hall_flat", False)])
-            self.assertEqual([call.args for call in link.call_args_list],
-                             [(work / f"inputs-{prefix}", Path("start"), Path("references")) for prefix in ("lite", "full", "flat")])
+            placed.assert_called_once_with(scene, "hall")
+            self.assertEqual([args[1:] for args, _ in keeper.of('bake')], [("hall", True)])
+            self.assertEqual([call.args for call in link.call_args_list], [(work / "inputs", Path("start"), Path("references"))])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
-                             {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-steps.md"})
+                             {"other-normal.md", "other-budget.md", "other-gpu.md", "bake-steps.md"})
             table = (out / 'tables/bake-steps.md').read_text()
-            for prefix in ('lite', 'full', 'flat'):
-                self.assertIn(f"| {prefix}-GI-bake | bake fixture | 100% | 5 | 4 |", table)
-                self.assertIn(f"| {prefix}-fit-start | prepare fixture | 100% | 4 | 3 |", table)
-                self.assertIn(f"| {prefix}-GI-fit | fit fixture | 100% | 3 | 2 |", table)
+            self.assertIn("| fit-start | prepare fixture | 100% | 4 | 3 |", table)
+            self.assertIn("| fit | fit fixture | 100% | 3 | 2 |", table)
             self.assertNotIn("Wall s", table)
             self.assertIn("![Bake steps](../images/render/gpu/bake-steps.png)", table)
             self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
             sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
-            expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
-                             'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
-                             'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']
+            expected_rows = ['start', 'start-path-culled', 'fit', 'normal-0', 'normal-0.1', 'normal-0.3',
+                             'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1']
             self.assertEqual(consumed, expected_rows)
-            self.assertEqual({label: measured[label] for label in ('lite-GI-bake', 'full-path-culled', 'lite-GI-fit',
+            self.assertEqual({label: measured[label] for label in ('start', 'start-path-culled', 'fit',
                                                                    'normal-0', 'normal-0.3', 'budget-6000-cost-0')},
-                             {'lite-GI-bake': Path('kept/hall_lite/lite.bundle'),
-                              'full-path-culled': Path('kept/hall/culled.bundle'),
-                              'lite-GI-fit': Path('kept/fit-lite/fitted.bundle'),
+                             {'start': Path('kept/hall/full.bundle'),
+                              'start-path-culled': Path('kept/hall/culled.bundle'),
+                              'fit': Path('kept/fit/fitted.bundle'),
                               'normal-0': Path('kept/normal-0/fitted.bundle'),
-                              'normal-0.3': Path('kept/fit-lite/fitted.bundle'),
-                              'budget-6000-cost-0': Path('kept/fit-lite/fitted.bundle')},
+                              'normal-0.3': Path('kept/fit/fitted.bundle'),
+                              'budget-6000-cost-0': Path('kept/fit/fitted.bundle')},
                              "a kept result is measured from its cache folder; the recipe's own point is its fit")
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
             self.assertEqual([(row['budget'], row['cost_weight']) for row in measurements['sweep']],
-                             [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1), (6000, 0.)])
+                             [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1)])
             self.assertEqual(resume.read_bytes(), before)
             fits = keeper.of('fit')
             self.assertEqual(completed, [args[1].name for args, _ in reversed(fits)])
             self.assertCountEqual([(point_dir.name, point.get('budget'), point.get('cost_weight', 0.),
                                     job.renderer.fit.normal_weight, inputs.name)
                                    for (point, point_dir, _path, _scene, job, inputs), _ in fits], [
-                ('fit-lite', None, 0., .3, 'inputs-lite'), ('fit-full', None, 0., .3, 'inputs-full'),
-                ('fit-flat', None, 0., .3, 'inputs-flat'),
-                ('normal-0', None, 0., 0., 'inputs-lite'), ('normal-0.1', None, 0., .1, 'inputs-lite'),
-                ('budget-4000-cost-0.1', 4000, .1, .3, 'inputs-lite'),
-                ('budget-6000-cost-0.1', 6000, .1, .3, 'inputs-lite')])
-            flat_sheet = [call.args[0] for call in run.call_args_list if call.args[1].name == 'sheet-flat.log']
-            self.assertEqual(len(flat_sheet), 1)
-            command = [str(word) for word in flat_sheet[0]]
+                ('fit', None, 0., .3, 'inputs'),
+                ('normal-0', None, 0., 0., 'inputs'), ('normal-0.1', None, 0., .1, 'inputs'),
+                ('budget-4000-cost-0.1', 4000, .1, .3, 'inputs'),
+                ('budget-6000-cost-0.1', 6000, .1, .3, 'inputs')])
+            sheet = [call.args[0] for call in run.call_args_list if call.args[1].name == 'sheet.log']
+            self.assertEqual(len(sheet), 1)
+            command = [str(word) for word in sheet[0]]
             columns = [(command[i + 1], command[i + 2]) for i, word in enumerate(command) if word == '--bake']
-            self.assertEqual(columns, [('flat bake', 'flat-GI-bake.avi'), ('lite fit', 'lite-GI-fit.avi'),
-                                       ('flat fit', 'flat-GI-fit.avi')])
-            table = (out / 'tables/other-flat-fit.md').read_text().splitlines()
+            self.assertEqual(columns, [('simplifier', 'start.avi'), ('fit', 'fit.avi')])
+            table = (out / 'tables/other-gpu.md').read_text().splitlines()
             self.assertEqual([line.split(' | ')[0].strip('| ') for line in table[2:5]],
-                             ['flat-GI-bake', 'lite-GI-fit', 'flat-GI-fit'], "the sheet's column order")
-            self.assertNotIn('Predicted', table[0], "the cost model cannot price flat shading")
-            cells = [line.count('|') for line in table[:5]]
-            self.assertEqual(len(set(cells)), 1, "a row has more cells than the header")
-            self.assertNotIn('99.5', ' '.join(table), "a predicted time reached the flat table")
-            self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
-
+                             ['start', 'start-path-culled', 'fit'])
 
 class KeeperTests(unittest.TestCase):
     """The keeper on the demo scene's real keys, with a scratch cache and an executor that only records."""
@@ -640,12 +612,15 @@ class KeeperTests(unittest.TestCase):
             return Future()
         self.keeper = stages.Keeper(mock.Mock(submit=mock.Mock(side_effect=submit)), self.root / "cache")
         self.scene = load_scene(self.SCENE)
-        self.jobs = [placed_variant(self.scene, "atrium" + entry.name) for entry in stages.FITTED]
+        self.fitted = next(job.object.name for job in self.scene.renderers if job.renderer.fit)
+        self.jobs = [placed_variant(self.scene, self.fitted)]
         self.inputs = self.root / "inputs"
         self.inputs.mkdir()
         (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"start")
+        from r3d.reference_set import reference_inputs
         from test_r3d_reference import write_reference_tree
-        write_reference_tree(self.inputs)
+        self.sets = reference_inputs(self.jobs[0], self.scene).sets()
+        write_reference_tree(self.inputs, self.sets)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -655,16 +630,18 @@ class KeeperTests(unittest.TestCase):
                                  self.inputs)
         return next(folder for folder, made in self.keeper.made.items() if made is future)
 
-    def test_variants_that_share_their_inputs_share_one_reference_set_from_bakes_folder(self):
-        from bake.produce import REFERENCES
-        for job in self.jobs:
-            self.keeper.references(job, self.scene)
-        self.assertEqual(len(self.submitted), 1, "lite, full and flat read one reference set")
+    def test_a_reference_set_asked_for_twice_is_made_once_in_the_bakes_folder(self):
+        from unittest import mock
+        from bake import produce
+        with mock.patch.object(produce, "trace_machine", return_value=["cuda_ad_rgb", "GPU", "1.0"]):
+            first = self.keeper.references(self.jobs[0], self.scene)
+            self.assertIs(self.keeper.references(self.jobs[0], self.scene), first)
+            folder = produce.reference_folder(self.root / "cache", self.keeper.keys(self.jobs[0], self.scene)["reference"])
+        self.assertEqual(len(self.submitted), 1)
         function, (key, *_rest, cache), _options = self.submitted[0]
         self.assertIs(function, stages.kept_references)
         self.assertEqual((key, cache), (self.keeper.keys(self.jobs[0], self.scene)["reference"], self.root / "cache"))
-        self.assertIs(self.keeper.references(self.jobs[1], self.scene),
-                      self.keeper.made[self.root / "cache" / REFERENCES / key])
+        self.assertIs(first, self.keeper.made[folder])
 
     def test_a_done_folder_is_not_made_again_and_replays_its_steps(self):
         from bake.produce import DONE
@@ -683,7 +660,6 @@ class KeeperTests(unittest.TestCase):
         import copy
         from r3d.fitted_variant import placed_variant
         from r3d.import_settings import load_scene
-        from r3d.reference_set import TRAINING
         folders = {"recipe": self.fit_folder()}
         normal = copy.deepcopy(self.jobs[0])
         normal.renderer.fit.normal_weight = 0.1
@@ -691,7 +667,7 @@ class KeeperTests(unittest.TestCase):
         folders["budget"] = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
         folders["cost"] = self.fit_folder({"budget": 4000, "cost_weight": 0.1})
         look = load_scene(stages.write_look_scene(self.SCENE, "direct", self.root / "look"))
-        reference = self.inputs / TRAINING[0][1] / "frame.png"
+        reference = self.inputs / self.sets.training[0][1] / "frame.png"
         original = reference.read_bytes()
         reference.write_bytes(b"direct light picture")
         folders["look"] = self.fit_folder(job=placed_variant(look, self.jobs[0].renderer.variant.name), scene=look)
@@ -703,10 +679,8 @@ class KeeperTests(unittest.TestCase):
         self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
 
     def test_a_fit_counts_the_reference_bytes_it_reads(self):
-        from r3d.reference_set import TRAINING
-
         before = self.fit_folder()
-        reference = self.inputs / TRAINING[0][1] / "frame.png"
+        reference = self.inputs / self.sets.training[0][1] / "frame.png"
         reference.write_bytes(b"different training picture")
         self.assertNotEqual(self.fit_folder(), before)
 
@@ -721,10 +695,9 @@ class KeeperTests(unittest.TestCase):
             self.assertEqual(self.fit_folder({"budget": 4000, "cost_weight": 0.0}), unweighted)
 
     def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
-        self.keeper.bake(self.scene, "atrium", False)
-        self.keeper.bake(self.scene, "atrium", True)
-        self.keeper.bake(self.scene, "atrium" + stages.FITTED[0].baked, False)
-        self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 3)
+        self.keeper.bake(self.scene, self.fitted, False)
+        self.keeper.bake(self.scene, self.fitted, True)
+        self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 2)
 
     def test_the_code_that_makes_a_result_is_in_its_key(self):
         self.keeper.start(self.jobs[0], self.scene)
@@ -738,13 +711,13 @@ class KeeperTests(unittest.TestCase):
         (references / "reference").mkdir(parents=True)
         (references / "train.txt").write_text("poses")
         start.mkdir()
-        (start / "lite.bundle").write_bytes(b"mesh")
+        (start / "start.bundle").write_bytes(b"mesh")
         (start / stages.STEPS).write_text("[]")
         inputs = self.root / "linked"
         for _ in range(2):
             stages.link_inputs(inputs, start, references)
-        self.assertEqual(sorted(path.name for path in inputs.iterdir()), ["lite.bundle", "reference", "train.txt"])
-        self.assertEqual((inputs / "lite.bundle").read_bytes(), b"mesh")
+        self.assertEqual(sorted(path.name for path in inputs.iterdir()), ["reference", "start.bundle", "train.txt"])
+        self.assertEqual((inputs / "start.bundle").read_bytes(), b"mesh")
         self.assertTrue((inputs / "reference").is_dir())
 
 
@@ -761,9 +734,9 @@ spec = importlib.util.spec_from_file_location("doc_stages", sys.argv[1])
 stages = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stages)
 from bake import bake
-inputs = stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium")
+inputs = stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium_fitted_full")
 assert bake.digest(inputs) == bake.digest(
-    stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium"))
+    stages.gpu_inputs(stages.ROOT / "launcher/demo/sponza/sponza.scene.toml", "atrium_fitted_full"))
 print(json.dumps(inputs))
 """
         result = subprocess.run([sys.executable, "-c", code, str(PATH)], capture_output=True, text=True)
@@ -773,7 +746,7 @@ print(json.dumps(inputs))
                      "code launcher/tools/r3d/fitted_variant.py", "file launcher/tools/r3d/board_cost_weights.txt",
                      "host launcher/main/render/raster.c", "host launcher/tools/render/scene_viewer.c",
                      "native launcher/main/display/display.h",
-                     "bake sponza.atrium.bundle", "bake sponza.atrium_fitted.bundle"):
+                     "bake sponza.atrium_fitted_full.start.bundle", "bake sponza.atrium_fitted_full.bundle"):
             self.assertIn(name, inputs)
         self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
         self.assertEqual([name for name in inputs if "/apps/" in name], [])

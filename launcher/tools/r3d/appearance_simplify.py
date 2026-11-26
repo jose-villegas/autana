@@ -35,12 +35,12 @@ from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import log  # noqa: E402
+from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
+from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
@@ -50,6 +50,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
+# The fit refines a shape in place: no free point leaves its start by more than this many of its shortest start
+# edges (shortest_edge), however rarely the colour views see it, so a corner cannot slide across its own face and
+# widen the outline; a seam-held point follows its target (hold_seams).
+MOVE_REACH = 1.0
 SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
@@ -59,11 +63,13 @@ SEAM_MARGIN = 0.25
 # CIE76 distance from the clear colour past which a reference pixel is surface, so a fit showing nothing there
 # shows a hole: well past the eye's just-noticeable difference, so dark surface near a dark clear is not counted.
 HOLE_DE = 10.0
-# The fit's record of the budgets it tried and their held-out holes, beside stretch.json.
-HOLES = "holes.json"
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
+# A normal shorter than this fraction of its scale has no direction, and is divided by the floor instead of its
+# length, which bounds its gradient: a vertex normal's scale is the mesh's mean triangle cross product (twice its
+# mean area), a pixel normal's is 1, an interpolation of unit normals.
+NORMAL_FLOOR = 1.0e-3
 # A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
 STRETCH_RATIO = 2.0
 # A triangle counts as grown when its fitted area exceeds this many times its start area.
@@ -122,7 +128,8 @@ class FitMesh(NamedTuple):
     """What the fit moves and colours. points are the welded positions in
     model units; vertex_point maps each vertex to its position, so a colour
     seam cannot open into a crack when positions move. rgb (0..1) is one
-    colour per vertex, or per triangle when the mesh is flat."""
+    colour per vertex, or per triangle when the mesh is flat. hidden_materials carries
+    the bundle's card materials excluded from camera references."""
     points: np.ndarray
     rgb: np.ndarray
     tris: np.ndarray
@@ -130,17 +137,19 @@ class FitMesh(NamedTuple):
     scale: int
     vertex_point: np.ndarray
     flat: bool = False
+    hidden_materials: frozenset = frozenset()
 
 
 def start_mesh(path):
     """The FitMesh of a generated mesh: a smooth one welded back to one
     vertex per position and colour, a flat one to one per position."""
-    mesh = read_lit_mesh(path)
+    entries, rows = mesh_bundle.decode(pathlib.Path(path).read_bytes())
+    mesh = read_bundle_mesh(entries, mesh_bundle.rest_name(entries, rows))
     q, rgb, tris, double, face = finest_triangles(mesh)
     flat = rgb is None
     points, vertex_point = np.unique(q, axis=0, return_inverse=True)
     return FitMesh(points / float(mesh.position_scale), (face if flat else rgb) / 255.0, tris, double, mesh.position_scale,
-                   vertex_point.reshape(-1), flat)
+                   vertex_point.reshape(-1), flat, frozenset(hidden_materials(entries, rows)))
 
 
 def point_edges(tris, vertex_point):
@@ -161,17 +170,25 @@ def start_parts(mesh) -> np.ndarray:
 
 
 class SeamHolds(NamedTuple):
-    """Border points tied to another start part's triangle at fixed barycentrics."""
+    """Border points tied to another start part's triangle at fixed barycentrics, and those pinned at their start
+    position: within tolerance of another part, but refused a tie so that no hold depends on another."""
     points: np.ndarray
     corners: np.ndarray
     barycentric: np.ndarray
+    pinned: np.ndarray = np.zeros(0, dtype=np.int64)
+
+    def line(self):
+        """The fit log's account of the border points within tolerance: each is held or pinned, none left free."""
+        within = len(self.points) + len(self.pinned)
+        return f"seam holds: {within} border points within tolerance, {len(self.points)} held, {len(self.pinned)} pinned"
 
 
 def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
     """Hold each border point that starts within `tolerance` (a per-point distance) of
     another part's triangle on that triangle's closest point. Nearest contacts win,
     and a point already held, or a corner of a held point's target, is never used
-    again, so no hold depends on another."""
+    again, so no hold depends on another; a point refused that way is pinned at its
+    start instead, so none within tolerance moves free to open a crack."""
     from scipy.spatial import cKDTree
 
     border = np.unique(_border_edges(mesh.vertex_point, mesh.tris))
@@ -197,25 +214,30 @@ def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
             if distance[nearest] <= tolerance[point]:
                 ratio = distance[nearest] / tolerance[point] if tolerance[point] > 0 else 0.0
                 candidates.append((ratio, int(point), int(nearby[nearest]), barycentric[nearest]))
-    held, targets, weights = [], [], []
+    held, targets, weights, pinned = [], [], [], []
     held_points, target_points = set(), set()
     for _ratio, point, triangle, barycentric in sorted(candidates, key=lambda item: item[:2]):
         target = corners[triangle]
         if point in target_points or any(int(corner) in held_points for corner in target):
+            pinned.append(point)
             continue
         held.append(point)
         targets.append(target)
         weights.append(barycentric)
         held_points.add(point)
         target_points.update(map(int, target))
+    assert len(held) + len(pinned) == len(candidates), "a border point within tolerance was left free"
     return SeamHolds(np.asarray(held, dtype=np.int64), np.asarray(targets, dtype=np.int64).reshape(-1, 3),
-                     np.asarray(weights, dtype=float).reshape(-1, 3))
+                     np.asarray(weights, dtype=float).reshape(-1, 3), np.asarray(sorted(pinned), dtype=np.int64))
 
 
-def hold_seams(points: "torch.Tensor", holds: SeamHolds) -> "torch.Tensor":
-    """Apply independent seam holds out of place, with gradients into target corners."""
+def hold_seams(points: "torch.Tensor", holds: SeamHolds, start: "torch.Tensor") -> "torch.Tensor":
+    """Apply independent seam holds out of place, with gradients into target corners; pinned points take their
+    `start` positions, so a held point whose target has a pinned corner follows it there."""
     import torch
 
+    pinned = torch.as_tensor(holds.pinned, device=points.device)
+    points = points.index_put((pinned,), start[pinned])
     held = torch.as_tensor(holds.points, device=points.device)
     corners = torch.as_tensor(holds.corners, device=points.device)
     barycentric = torch.as_tensor(holds.barycentric, dtype=points.dtype, device=points.device)
@@ -342,15 +364,99 @@ def delta_e76(a, b):
     return ((lab(torch, a, 1e-6) - lab(torch, b, 1e-6)) ** 2).sum(dim=-1).add(1e-6).sqrt()
 
 
-def vertex_normals(points, tris, vertex_point):
-    """Per vertex, the unit area-weighted normal of the triangles around its
-    welded position, in torch, differentiable in `points`."""
+class NormalSigns(NamedTuple):
+    """How each triangle's normal counts in its vertices' normals (normal_signs)."""
+    sign: np.ndarray  # per triangle +1, -1 or 0
+    pairs: int  # two-sided sheet pairs, each counted once
+    unsettled: int  # kept pair members whose winding disagrees with a neighbour already settled
+
+
+def normal_signs(tris, vertex_point):
+    """Per triangle, how its normal counts in its vertices' normals. A two-sided
+    sheet built from pairs of triangles on the same welded corners in opposite
+    winding would sum to zero there: one member of each pair counts, turned so
+    its winding agrees with its neighbours across edge_neighbours' shared edges,
+    the one-sided triangles first (the consistent winding of a surface). A sheet
+    with no one-sided neighbour takes its first pair's winding. A pair that
+    cannot agree with every neighbour (a non-orientable sheet) keeps the first
+    and counts as unsettled. Triangles with a repeated corner count 0."""
+    from collections import deque
+
+    welded = np.asarray(vertex_point)[np.asarray(tris)]
+    key = turned(welded)
+    whole = (key[:, 0] != key[:, 1]) & (key[:, 1] != key[:, 2]) & (key[:, 0] != key[:, 2])
+    winding = key[:, 1] < key[:, 2]
+    corner_sets, pair = np.unique(np.sort(welded, axis=1), axis=0, return_inverse=True)
+    pair = pair.reshape(-1)
+    both = np.zeros((len(corner_sets), 2), dtype=bool)
+    both[pair[whole], winding[whole].astype(int)] = True
+    sheet = whole & both[pair].all(axis=1)
+    first = np.full(len(corner_sets), len(tris))
+    np.minimum.at(first, pair[sheet], np.flatnonzero(sheet))
+    kept = sheet & (first[pair] == np.arange(len(tris)))
+    counted = np.flatnonzero((whole & ~sheet) | kept)
+    local = welded[counted]
+    neighbours = edge_neighbours(local)
+    # Each edge's direction against its sorted corners, and which edge of the neighbour it is.
+    start_corner, end_corner = local, np.roll(local, -1, axis=1)
+    direction = np.where(start_corner < end_corner, 1, -1)
+    lo, hi = np.minimum(start_corner, end_corner), np.maximum(start_corner, end_corner)
+    other = neighbours.clip(min=0)
+    same = (lo[other] == lo[:, :, None]) & (hi[other] == hi[:, :, None])
+    across = np.where(neighbours >= 0, -direction * (direction[other] * same).sum(-1), 0)
+    free = kept[counted]
+    sign = np.where(free, 0, 1).astype(np.int64)
+    unsettled = np.zeros(len(counted), dtype=bool)
+    queue = deque(np.flatnonzero(~free).tolist())
+    seeds = iter(np.flatnonzero(free).tolist())
+    while True:
+        while queue:
+            face = queue.popleft()
+            for k in range(3):
+                neighbour = neighbours[face, k]
+                if neighbour < 0 or not free[neighbour]:
+                    continue
+                agrees = sign[face] * across[face, k]
+                if sign[neighbour] == 0:
+                    sign[neighbour] = agrees
+                    queue.append(neighbour)
+                elif sign[neighbour] != agrees:
+                    unsettled[neighbour] = True
+        seed = next((face for face in seeds if sign[face] == 0), None)
+        if seed is None:
+            break
+        sign[seed] = 1
+        queue.append(seed)
+    signs = np.zeros(len(tris), dtype=np.int64)
+    signs[counted] = sign
+    return NormalSigns(signs, int(kept.sum()), int(unsettled.sum()))
+
+
+def normal_sums(points, tris, vertex_point, sign=None):
+    """(per welded position its signed area-weighted face normal sum, the floor
+    under which that sum has no direction: NORMAL_FLOOR of the mean triangle
+    cross product), in torch, differentiable in `points`. `sign` is
+    normal_signs' per triangle, all +1 when None."""
     import torch
 
-    corners = points[vertex_point][tris]
+    welded = vertex_point[tris]
+    corners = points[welded]
     face = torch.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0], dim=1)
-    around = torch.zeros_like(points).index_add_(0, vertex_point[tris].reshape(-1), face.repeat_interleave(3, dim=0))
-    return torch.nn.functional.normalize(around, dim=1)[vertex_point]
+    if sign is not None:
+        face = face * sign[:, None]
+    around = torch.zeros_like(points).index_add_(0, welded.reshape(-1), face.repeat_interleave(3, dim=0))
+    counted = face.norm(dim=1)
+    count = len(tris) if sign is None else sign.abs().sum()
+    return around, NORMAL_FLOOR * counted.detach().sum() / count
+
+
+def vertex_normals(points, tris, vertex_point, sign=None):
+    """Per vertex, the unit normal of normal_sums at its welded position; a sum
+    under the floor is divided by the floor, so its gradient stays bounded."""
+    import torch
+
+    around, floor = normal_sums(points, tris, vertex_point, sign)
+    return (around / torch.maximum(around.norm(dim=1, keepdim=True), floor))[vertex_point]
 
 
 class Renderer:
@@ -376,6 +482,18 @@ class Renderer:
         self.vertex_point = torch.as_tensor(vertex_point, dtype=torch.int64, device=device)
         self.size = size
         self.clear = torch.as_tensor(clear, dtype=torch.float32, device=device)
+        self._normal_signs = None
+
+    @property
+    def normal_signs(self):
+        """normal_signs of the drawn triangles, found on first use: topology alone, fixed for the renderer."""
+        import torch
+
+        if self._normal_signs is None:
+            found = normal_signs(self.tris.cpu().numpy(), self.vertex_point.cpu().numpy())
+            self._normal_signs = found._replace(sign=torch.as_tensor(found.sign, dtype=torch.float32,
+                                                                     device=self.tris.device))
+        return self._normal_signs
 
     def clip(self, points, clip_matrix):
         """Clip-space positions of every vertex, y up."""
@@ -523,9 +641,9 @@ class Renderer:
 
         clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
         if values is None:
-            vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
+            vertex = vertex_normals(points, self.tris.long(), self.vertex_point, self.normal_signs.sign)
             values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
-        normal = torch.nn.functional.normalize(values[..., :3], dim=-1)
+        normal = torch.nn.functional.normalize(values[..., :3], dim=-1, eps=NORMAL_FLOOR)
         towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
@@ -566,18 +684,13 @@ def coverage(mesh, views, size, device="cuda"):
 
 
 def prune(mesh, shown, budget):
-    """Drop never-shown triangles first, then those showing fewest pixels to
-    meet `budget`. `shown` is one row of pixels per triangle, or ranked rows:
-    a triangle an earlier row shows outranks every one it does not, and each
-    is ordered by the pixels of the first row that shows it. A flat mesh's
-    colours go with their triangles. Return the pruned mesh and the kept
-    start indices."""
-    shown = np.atleast_2d(np.asarray(shown))
-    seen = shown > 0
-    first = np.where(seen.any(axis=0), seen.argmax(axis=0), len(shown))
-    pixels = shown[np.minimum(first, len(shown) - 1), np.arange(shown.shape[1])] * (first < len(shown))
-    order = np.lexsort((-pixels, first))
-    keep = np.sort(order[: min(budget, int(np.count_nonzero(seen.any(axis=0))))])
+    """Keep the most-shown triangles up to `budget`, dropping every never-shown triangle; with no budget, keep every
+    triangle: one the coverage views never show may still face a camera they miss, and dropping it opens a crack.
+    `shown` holds pixels per triangle. Return the pruned mesh and kept start indices."""
+    if budget is None:
+        return mesh, np.arange(len(mesh.tris))
+    shown = np.asarray(shown)
+    keep = np.sort(np.argsort(-shown, kind="stable")[:min(budget, np.count_nonzero(shown))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
                            double=np.asarray(mesh.double)[keep])
     return pruned, keep
@@ -593,6 +706,17 @@ def uniform_laplacian(points, edges):
         total.index_add_(0, edges[:, a], points[edges[:, b]])
         count.index_add_(0, edges[:, a], torch.ones(len(edges), 1, device=points.device))
     return points - total / count.clamp_min(1.0)
+
+
+def shortest_edge(start, edges):
+    """Each point's shortest start edge; a point without edges takes the start's mean edge length."""
+    import torch
+
+    length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)
+    shortest = torch.full((len(start),), torch.inf, dtype=start.dtype, device=start.device)
+    for endpoint in (0, 1):
+        shortest.scatter_reduce_(0, edges[:, endpoint], length, reduce="amin")
+    return torch.where(torch.isfinite(shortest), shortest, length.mean())[:, None]
 
 
 def vertex_scale(start, edges):
@@ -683,32 +807,52 @@ def hole_pixels(mesh, views, size, clear, device="cuda"):
     return holes
 
 
-def settled(holes, share):
-    """The index of the budget the fit settles on, `holes` per budget in rising order: the first whose holes fall
-    by less than `share` of the holes before it to the next budget's, or that has none; the last otherwise."""
-    for index, count in enumerate(holes):
-        if count == 0 or index + 1 == len(holes) or count - holes[index + 1] < share * count:
-            return index
-    raise ValueError("no budgets to settle on")
+# The share of held-out pixels a fit may lose to holes beyond its start's.
+CLOSURE_GROWTH = 0.0005
 
 
-def settle(fitted, copies, shown, budget, steps, held_out, clear):
-    """(pruned mesh, kept indices, hole record): `fitted` pruned to `budget`, or with `steps` (STEP, SHARE) to the
-    budget `settled` picks from STEP, 2 STEP, ... up to `budget`, by the hole pixels over the `held_out` (views,
-    size) sets. The record holds each budget tried and its holes; it is empty without held-out views."""
-    budgets = [budget] if steps is None else [*range(int(steps[0]), budget, int(steps[0])), budget]
-    tried, holes = [], []
-    for candidate in budgets:
-        tried.append(prune(fitted, shown, candidate))
-        if not held_out:
-            break
-        holes.append(sum(hole_pixels(joined(tried[-1][0], copies), views, size, clear) for views, size in held_out))
-        log(f"budget {candidate}: {len(tried[-1][0].tris)} triangles, {holes[-1]} held-out hole pixels")
-        if steps is None or holes[-1] == 0 or settled(holes, steps[1]) < len(holes) - 1:
-            break
-    chosen = settled(holes, steps[1]) if steps is not None else len(tried) - 1
-    record = {"budgets": budgets[:len(holes)], "holes": holes, "budget": budgets[chosen]} if holes else {}
-    return (*tried[chosen], record)
+def delta_e_total(mesh, views, size, clear, device="cuda"):
+    """(dE76 summed over every pixel of every view, pixels): the mesh as the fit's rasteriser draws it against the
+    views' references."""
+    import torch
+
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, clear, mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    colours = torch.as_tensor(mesh.rgb, dtype=torch.float32, device=device)
+    total, pixels = 0.0, 0
+    with torch.no_grad():
+        for matrix, target, *_rest in views:
+            matrix = torch.as_tensor(matrix, dtype=torch.float32, device=device)
+            error = delta_e76(render(points, colours, matrix), torch.as_tensor(target, device=device))
+            total, pixels = total + float(error.sum()), pixels + error.numel()
+    return total, pixels
+
+
+def held_out_line(mesh, held_out, clear):
+    """The log line of the fitted mesh's mean dE76 over its held-out views, [(views, size)], as the fit's rasteriser
+    draws them: not the host viewer's score."""
+    totals = [delta_e_total(mesh, views, size, clear) for views, size in held_out]
+    mean = sum(total for total, _ in totals) / sum(pixels for _, pixels in totals)
+    return f"held-out dE76 (fit rasteriser): {mean:.3f} over {sum(len(views) for views, _ in held_out)} views"
+
+
+def pictured(reference):
+    """Whether a held-out reference folder holds traced pictures: a path fit's packed set carries its held-out poses
+    but not their pictures (reference_set.pack_references), so its dE is not measured."""
+    return any(pathlib.Path(reference).glob("*.png"))
+
+
+def not_measured_line(poses):
+    """The log line of held-out sets, by poses file, the fit has no pictures to score."""
+    return f"held-out dE76 (fit rasteriser): not measured, no held-out pictures for {', '.join(map(str, poses))}"
+
+
+def check_closure(start_holes, fitted_holes, pixels):
+    """Check held-out hole growth against the start and return the log line."""
+    line = f"hole pixels: start {start_holes / pixels:.2%}; fitted {fitted_holes / pixels:.2%} over {pixels} pixels"
+    if (fitted_holes - start_holes) / pixels > CLOSURE_GROWTH:
+        raise ValueError(f"closure: {line} (growth allowed {CLOSURE_GROWTH:.2%})")
+    return line
 
 
 def triangle_error(mesh, views, size, clear, device="cuda"):
@@ -736,7 +880,7 @@ def refine(mesh, error, budget):
     mesh's halves keep their triangle's colour."""
     from r3d.tessellate import split_marked_edges
 
-    points, rgb, tris, double, _scale, vertex_point, flat = mesh
+    points, rgb, tris, double, _scale, vertex_point, flat, _hidden = mesh
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
@@ -778,7 +922,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0):
+             depth_weight=0.0, geometry_views=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -789,10 +933,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     triangles by default; `seam_margin=0` turns them off.
     `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
-    as a copy."""
+    as a copy. `geometry_views` supplies independent probe buffers for these two terms alone."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
+    points0, rgb0, tris, double, _scale, vertex_point, flat, _hidden = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
@@ -816,12 +960,13 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     holds = None
     if seam_margin > 0:
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
-        log(f"seam holds: {len(holds.points)} points")
+        log(holds.line())
     step_scale = point_scale / point_scale.max()
+    reach = MOVE_REACH * shortest_edge(start, edges) / step_scale
 
     def held_positions():
         points = start + step_scale * delta
-        return hold_seams(points, holds) if holds is not None else points
+        return hold_seams(points, holds, start) if holds is not None else points
 
     copy_points, copy_colours = (None, None) if copies is None else (
         torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))
@@ -839,6 +984,14 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if source is None or carved is None:
             raise ValueError("front and depth terms need the source and its carved triangles")
         buffers = gbuffer.reference_buffers(source, carved, matrices, [target.shape[1::-1] for target in targets], device)
+    geometry_rng = None
+    if geometry_views is not None and geometry_views.matrices and (front_weight or depth_weight):
+        from r3d.fit.geometry_views import BATCH_SEED_OFFSET
+
+        geometry_rng = np.random.default_rng(seed + BATCH_SEED_OFFSET)
+        if geometry_views.size not in renderers:
+            renderers[geometry_views.size] = Renderer(drawn.tris, drawn.double, drawn.vertex_point,
+                                                      geometry_views.size, device, clear, flat)
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if surface_weight:
@@ -857,6 +1010,20 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
+    def normals_floored():
+        """Drawn positions whose vertex normal sits under the floor: no direction, so the term ignores them."""
+        render = renderer_for(0)
+        with torch.no_grad():
+            around, floor = normal_sums(with_copies(held_positions(), colours)[0], render.tris.long(),
+                                        render.vertex_point, render.normal_signs.sign)
+            drawn = torch.zeros(len(around), dtype=torch.bool, device=device)
+            drawn[render.vertex_point[render.tris.long()].reshape(-1)] = True
+            return int(((around.norm(dim=1) < floor) & drawn).sum())
+
+    if normal_weight:
+        signs = renderer_for(0).normal_signs
+        log(f"normals: {signs.pairs} two-sided pairs counted once, {signs.unsettled} unsettled, "
+            f"{normals_floored()} positions under the floor")
     adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
@@ -870,7 +1037,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
-            vertex = vertex_normals(draw, render.tris.long(), render.vertex_point)
+            vertex = vertex_normals(draw, render.tris.long(), render.vertex_point, render.normal_signs.sign)
             attributes = draw_colours.repeat_interleave(3, dim=0) if flat else draw_colours
             attributes = torch.cat([attributes, vertex, draw[render.vertex_point]], dim=1)
         for i in chosen:
@@ -897,6 +1064,16 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 distance, _angles = normal_l1(render, draw, (matrices[i], None, normals[i], views[i][3]), clip,
                                               angles=False, raster=raster, values=values[..., 3:])
                 error = error + normal_weight * distance / len(chosen)
+        if geometry_rng is not None:
+            count = len(geometry_views.matrices)
+            geometry_chosen = geometry_rng.choice(count, size=min(batch, count), replace=False)
+            render = renderers[geometry_views.size]
+            for i in geometry_chosen:
+                fitted, shown = gbuffer.distance(render, draw, geometry_views.matrices[i])
+                rest_shown = (shown >= 0) & (shown < len(tris))
+                held = geometry_views.buffers
+                front = front + gbuffer.front_loss(fitted, rest_shown, held.depth[i], held.copy[i]) / len(geometry_chosen)
+                depth = depth + gbuffer.depth_loss(fitted, rest_shown, held.depth[i], held.copy[i]) / len(geometry_chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / point_scale).pow(2).sum(dim=1).mean()
         if surface_weight:
             from r3d.appearance_gather import gather
@@ -912,6 +1089,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
+            # A point moves step_scale * delta, so a cap of MOVE_REACH shortest edges bounds its row of delta.
+            length = delta.norm(dim=1, keepdim=True)
+            delta.mul_(torch.where(length > reach, reach / length.clamp_min(torch.finfo(length.dtype).tiny), 1.0))
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
@@ -921,6 +1101,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
                 f"{time.time() - started:.1f} s")
+    if normal_weight:
+        log(f"normals: {normals_floored()} positions under the floor after the fit")
     points = held_positions()
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
@@ -969,19 +1151,19 @@ def main(argv=None):
     parser.add_argument("--laplacian", type=float, default=10.0)
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
     parser.add_argument("--coverage-poses", action="append",
-                        help="a poses file to count shown pixels over, the training poses otherwise; repeated, ranked: "
-                             "the prune keeps what an earlier file shows before what only a later one does")
-    parser.add_argument("--settle", nargs=2, type=float, metavar=("STEP", "SHARE"),
-                        help="with --budget as the most, prune to STEP, 2 STEP, ... and keep the first budget whose "
-                             "held-out holes fall by less than SHARE to the next")
-    parser.add_argument("--held-out-poses", action="append", default=[], help="poses whose holes settle the budget")
+                        help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
+    parser.add_argument("--held-out-poses", action="append", default=[],
+                        help="held-out poses: the fit logs its dE76 over them, and with --closure gates hole growth")
     parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
+    parser.add_argument("--closure", action="store_true", help="fail when the fit loses held-out surface (check_closure)")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
+    parser.add_argument("--hidden-materials", nargs="*",
+                        help="source materials hidden by cards in the full bundle; defaults to the start's cards")
     parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
     parser.add_argument("--front-weight", type=float, default=0.0,
@@ -997,9 +1179,10 @@ def main(argv=None):
         parser.error("give one --reference per --poses")
     if len(args.held_out_poses) != len(args.held_out_reference):
         parser.error("give one --held-out-reference per --held-out-poses")
-    if args.settle and (args.budget is None or not args.held_out_poses or args.settle[0] < 1
-                        or not 0 <= args.settle[1] < 1):
-        parser.error("--settle needs --budget, --held-out-poses, a STEP of at least 1 and a SHARE in [0, 1)")
+    held_pairs = list(zip(args.held_out_poses, args.held_out_reference))
+    unpictured = [poses for poses, reference in held_pairs if not pictured(reference)]
+    if args.closure and unpictured:
+        parser.error(f"--closure needs held-out pictures; none for {', '.join(unpictured)}")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
         parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
@@ -1041,13 +1224,22 @@ def main(argv=None):
         if args.surface_weight or copies is not None:
             from r3d.reference_render import source_for
 
-            source, job = source_for(scene, args.object, lit=False)
+            source, job = source_for(scene, args.object, lit=False, hide_cards=True,
+                                     hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
+                                                       else set(args.hidden_materials)))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)
             carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
                                      job.settings.meshes))] = True
             carved = carved[source.tri_o]
+        geometry = {}
+        if copies is not None and job.settings.fit.probes is not None:
+            from r3d.fit.geometry_views import select
+
+            camera = scene.camera.component
+            geometry["geometry_views"] = select(source, carved, camera.region, camera.near_z,
+                                                 job.settings.fit.probes.spacing)
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
@@ -1055,22 +1247,26 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight, **geometry)
         fitted = fitted._replace(points=points, rgb=rgb)
-        kept = np.arange(len(fit_start.tris))
-        if args.budget is not None:
-            drawn = joined(fitted, copies)
-            rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
-                    for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
-            shown = rows[0] if len(rows) == 1 else np.stack(rows)
-            held_out = [load_views([pair], args.scale) for pair in zip(args.held_out_poses, args.held_out_reference)]
-            pruned, kept, holes = settle(fitted, copies, shown, args.budget, args.settle, held_out, clear)
-            if holes:
-                out.mkdir(parents=True, exist_ok=True)
-                (out / HOLES).write_text(json.dumps(holes) + "\n", encoding="utf-8")
-            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
-                f"{np.count_nonzero(~(np.atleast_2d(shown) > 0).any(axis=0))} never shown")
-            fitted = pruned
+        drawn = joined(fitted, copies)
+        rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
+                for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
+        shown = np.sum(rows, axis=0)
+        held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
+        pruned, kept = prune(fitted, shown, args.budget)
+        if held_out and args.closure:
+            pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
+            start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
+                                             for held_views, held_size in held_out) for candidate in (fit_start, pruned))
+            log(check_closure(start_holes, fitted_holes, pixels))
+        if held_out:
+            log(held_out_line(joined(pruned, copies), held_out, clear))
+        if unpictured:
+            log(not_measured_line(unpictured))
+        log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
+            f"{np.count_nonzero(shown == 0)} never shown")
+        fitted = pruned
         if copies is not None:
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))

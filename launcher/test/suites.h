@@ -32,7 +32,7 @@
  * bake lock skips that suite rather than fail it. The host runner fails a run
  * in which a suite reads a pack it did not name, so no read goes unnamed.
  * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
-#define SUITE_READS_MAX 19
+#define SUITE_READS_MAX 20
 void suite_reads(const char* name, const char* const* packs);
 
 #define SUITE_READS(fn, ...)                                                                                           \
@@ -65,15 +65,18 @@ void suites_run_all(void);
  * SUITE_FILTER_LEN - 1 characters and a request at most SUITE_FILTER_MAX;
  * one past either is refused. While filtering, suites_test_runs() prints
  * "SUITE_TEST name=... selected=..." for every test reached. */
-#define SUITE_FILTER_MAX 4
-#define SUITE_FILTER_LEN 32
+#define SUITE_TEST_NAME_MAX 95
+#define SUITE_FILTER_MAX    4
+/* Every legal test-name segment must be selectable as one pattern. */
+#define SUITE_FILTER_LEN    (SUITE_TEST_NAME_MAX + 1)
 
 typedef struct {
-    char name[SUITE_NAME_MAX + 1];
-    bool found;    /* a suite of that exact name is registered */
-    bool refused;  /* a pattern was too long, empty, or one too many */
-    int selected;  /* tests that ran */
-    int unmatched; /* patterns that matched no test */
+    const char* name; /* the suite asked for, borrowed from the request */
+    int name_length;  /* its characters; the request may go on with patterns */
+    bool found;       /* a suite of that exact name is registered */
+    bool refused;     /* a pattern was too long, empty, or one too many */
+    int selected;     /* tests that ran */
+    int unmatched;    /* patterns that matched no test */
 } suite_run_t;
 
 void suites_run_request(const char* request, suite_run_t* run);
@@ -97,7 +100,6 @@ bool suite_test_matches(const char* pattern, const char* name);
  * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX,
  * or a segment of other than SUITE_TEST_SEGMENT_CHARS, which the tools'
  * result lines read, is a SUITE OVERFLOW, not run. A case never runs another. */
-#define SUITE_TEST_NAME_MAX      95
 #define SUITE_TEST_SEGMENT_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 #define RUN_TEST_CASE(func, ...)                                                                                       \
     do {                                                                                                               \

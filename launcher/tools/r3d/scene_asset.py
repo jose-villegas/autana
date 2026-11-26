@@ -11,7 +11,7 @@ from asset.asset_pack import NAME_BYTES
 from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
-from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.import_settings import ANIM_WRAPS, LOCAL_LIGHTS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
@@ -90,7 +90,8 @@ def encode(scene, cache=None, offline=False):
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
-        if obj.kind == "light":
+        # A point or spot light is baked only: its light is in the vertex colours and probes, not the light rows.
+        if obj.kind == "light" and obj.component["type"] not in LOCAL_LIGHTS:
             light = obj.component
             if light["type"] not in LIGHT_KINDS:
                 raise SceneError(f"unknown light kind {light['type']!r}")
@@ -146,6 +147,21 @@ def parent_index(obj, index):
     if obj.kind in ("camera", "light", "skinned_renderer"):
         raise SceneError(f"{obj.name}: a {obj.kind} has no parent yet")
     return index[parent]
+
+
+def world_placement(scene, obj):
+    """The authored object-to-world transform, composed in source axes."""
+    import numpy as np
+
+    index = {item.name: i for i, item in enumerate(scene.objects)}
+    matrix, position = np.asarray(obj.matrix), np.asarray(obj.position)
+    parent = parent_index(obj, index)
+    while parent != PARENT_ROOT:
+        obj = scene.objects[parent]
+        position = obj.matrix @ position + obj.position
+        matrix = obj.matrix @ matrix
+        parent = parent_index(obj, index)
+    return SimpleNamespace(matrix=matrix, position=position)
 
 
 def column_scales(matrix):

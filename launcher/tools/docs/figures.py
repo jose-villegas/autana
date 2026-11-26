@@ -1,11 +1,13 @@
 """What the doc-figure producers share: a C probe built against the engine's libraries, a scene viewer run,
 and the one way to write a PNG or a GIF.
 
-    python launcher/tools/docs/figures.py gif AVI GIF --fps 15 [--rate R] [--first N] [--end N] [--seconds S] [--quarter Q]
+    python launcher/tools/docs/figures.py gif AVI GIF --fps 15 [--rate R] [--first N] [--end N] [--seconds S]
+        [--quarter Q] [--crop-box LEFT TOP RIGHT BOTTOM]
     python launcher/tools/docs/figures.py png PICTURE PNG [--quarter Q]
 """
 import argparse
 import bisect
+import colorsys
 import fractions
 import functools
 import json
@@ -25,8 +27,9 @@ from docs.probe_standard import PROBE_STANDARD  # noqa: E402
 from docs.producer import DEPENDS_FOLDER  # noqa: E402
 from render.check_avi import read_video  # noqa: E402
 
-# Every probe prints its numbers through the library's own text formatting.
-PROBE_SUPPORT = (ROOT / "launcher/packages/math/src/text/math_text.c",)
+# Every probe links the packages whole, as a library: a package function an engine source starts
+# calling never leaves a probe with an undefined reference.
+PROBE_SUPPORT = tuple(sorted((ROOT / "launcher/packages").glob("*/src/**/*.c")))
 
 
 def build_probe(cc, sources, directory, extra_flags=()):
@@ -34,7 +37,7 @@ def build_probe(cc, sources, directory, extra_flags=()):
     returns the program."""
     binary = pathlib.Path(directory) / "probe"
     flags = [f"-std={PROBE_STANDARD}", *(flag for root in include_roots() for flag in ("-I", str(root))), *extra_flags]
-    sources = [str(source) for source in (*sources, *PROBE_SUPPORT)]
+    sources = list(dict.fromkeys(str(pathlib.Path(source).resolve()) for source in (*sources, *PROBE_SUPPORT)))
     if os.environ.get(DEPENDS_FOLDER):
         for source in sources:
             listing = tempfile.NamedTemporaryFile(suffix=".d", dir=os.environ[DEPENDS_FOLDER], delete=False).name
@@ -159,6 +162,18 @@ def rgb(name):
     return tuple(int(name[at:at + 2], 16) for at in (1, 3, 5))
 
 
+GOLDEN_ANGLE = 0.381966
+INDEX_SATURATION = 0.75
+INDEX_VALUE = 0.95
+BYTE_CHANNEL_MAX = (1 << 8) - 1
+
+
+def index_hue(index, stride=GOLDEN_ANGLE, saturation=INDEX_SATURATION, value=INDEX_VALUE, *, byte=False):
+    """An index's RGB at a fixed stride around the hue wheel, in unit or byte channels."""
+    colour = colorsys.hsv_to_rgb((index * stride) % 1.0, saturation, value)
+    return tuple(int(BYTE_CHANNEL_MAX * channel) for channel in colour) if byte else colour
+
+
 @functools.cache
 def gif_palette():
     """The GIF palette as (GIF_COLOURS, 3) sRGB and as OKLab."""
@@ -245,12 +260,13 @@ def clip(frames, rate, fps, *, first=0, end=None, seconds=None):
     return [frames[bisect.bisect_right(landed, tick) - 1] for tick in range(count)]
 
 
-def gif_from_avi(avi, out, fps, *, rate=None, first=0, end=None, seconds=None, quarter=0):
+def gif_from_avi(avi, out, fps, *, rate=None, first=0, end=None, seconds=None, quarter=0, crop=None):
     """A host render's AVI as a doc GIF at `fps`, turned `quarter` quarters counterclockwise. `rate` replaces the
     AVI's own frame rate, so rate == fps shows every frame once."""
     source_rate, frames = read_video(avi)
     shown = clip(frames, rate or source_rate, fps, first=first, end=end, seconds=seconds)
-    save_gif([np.rot90(frame, quarter) for frame in shown], out, 1000 / fps)
+    frames = [Image.fromarray(np.rot90(frame, quarter)) for frame in shown]
+    save_gif([frame.crop(crop) for frame in frames] if crop else frames, out, 1000 / fps)
 
 
 def main(argv=None):
@@ -265,6 +281,8 @@ def main(argv=None):
     gif.add_argument("--end", type=int, help="the AVI frame after the last one shown")
     gif.add_argument("--seconds", type=float, help="show at most this much of the AVI")
     gif.add_argument("--quarter", type=int, default=0, help="quarter turns counterclockwise")
+    gif.add_argument("--crop-box", nargs=4, type=int, metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"),
+                     help="crop after rotation")
     png = commands.add_parser("png", help="any picture Pillow opens to a PNG with no metadata")
     png.add_argument("picture", type=pathlib.Path)
     png.add_argument("png", type=pathlib.Path)
@@ -274,7 +292,7 @@ def main(argv=None):
         save_png(Image.open(args.picture).rotate(90 * args.quarter, expand=True), args.png)
         return
     gif_from_avi(args.avi, args.gif, args.fps, rate=args.rate, first=args.first, end=args.end, seconds=args.seconds,
-                 quarter=args.quarter)
+                 quarter=args.quarter, crop=args.crop_box)
 
 
 if __name__ == "__main__":

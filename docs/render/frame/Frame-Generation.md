@@ -52,58 +52,28 @@ scored beside it.
 
 <details><summary>Every scene and size</summary>
 
-<!-- generated: framegen-scores sha256=e560a602f17af2990e74a8fd347fc0c94d93722df9af2b468ab103fc6a962727 -->
+<!-- generated: framegen-scores sha256=b714a6dbc93bb01bb2f94eee66db9f6bace88f9bb2b957137a4de8bd6276e2f0 -->
 | Scene | Size | Ahead | Holes % (pinholes) | dE warp, row fill | dE warp, previous fill | dE repeat | p95 frame dE warp / repeat | SSIM warp / repeat |
 |---|---|---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 1 | 11.3 (5.1) | 4.73 | 3.24 | 2.32 | 21.53 / 4.99 | 0.765 / 0.877 |
-| bistro-fitted-full | 184x224 | 2 | 17.5 (7.1) | 6.19 | 3.84 | 3.64 | 23.80 / 7.63 | 0.710 / 0.797 |
-| bistro-fitted-full | 184x149 | 1 | 11.3 (5.0) | 4.85 | 3.29 | 2.32 | 21.45 / 5.02 | 0.758 / 0.881 |
-| bistro-fitted-full | 184x149 | 2 | 17.5 (7.0) | 6.38 | 3.93 | 3.64 | 23.88 / 7.65 | 0.701 / 0.801 |
-| bistro-fitted-full | 184x112 | 1 | 11.3 (5.1) | 4.95 | 3.32 | 2.33 | 21.38 / 5.05 | 0.755 / 0.883 |
-| bistro-fitted-full | 184x112 | 2 | 17.4 (7.0) | 6.61 | 4.00 | 3.64 | 23.78 / 7.57 | 0.687 / 0.805 |
-| sponza-fitted-full | 184x224 | 1 | 2.4 (1.4) | 2.51 | 2.35 | 3.02 | 4.28 / 6.19 | 0.904 / 0.884 |
-| sponza-fitted-full | 184x224 | 2 | 4.7 (2.8) | 3.05 | 2.81 | 4.68 | 4.97 / 9.39 | 0.881 / 0.803 |
-| sponza-fitted-full | 184x149 | 1 | 2.3 (1.4) | 2.63 | 2.48 | 3.01 | 4.50 / 6.20 | 0.901 / 0.887 |
-| sponza-fitted-full | 184x149 | 2 | 4.7 (2.8) | 3.25 | 2.98 | 4.67 | 5.11 / 9.35 | 0.873 / 0.804 |
-| sponza-fitted-full | 184x112 | 1 | 2.3 (1.4) | 2.72 | 2.56 | 3.00 | 4.65 / 6.16 | 0.900 / 0.889 |
-| sponza-fitted-full | 184x112 | 2 | 4.6 (2.7) | 3.42 | 3.15 | 4.66 | 5.44 / 9.33 | 0.870 / 0.806 |
-| sponza | 184x224 | 1 | 7.2 (3.8) | 4.42 | 3.50 | 2.74 | 11.60 / 5.70 | 0.790 / 0.886 |
-| sponza | 184x224 | 2 | 12.5 (5.8) | 5.68 | 4.15 | 4.26 | 16.14 / 8.74 | 0.735 / 0.807 |
-| sponza | 184x149 | 1 | 7.2 (3.8) | 4.53 | 3.61 | 2.74 | 11.68 / 5.71 | 0.786 / 0.888 |
-| sponza | 184x149 | 2 | 12.5 (5.8) | 5.83 | 4.27 | 4.26 | 16.07 / 8.71 | 0.726 / 0.808 |
-| sponza | 184x112 | 1 | 7.1 (3.8) | 4.61 | 3.69 | 2.74 | 11.73 / 5.70 | 0.782 / 0.891 |
-| sponza | 184x112 | 2 | 12.4 (5.8) | 5.96 | 4.38 | 4.26 | 16.14 / 8.74 | 0.721 / 0.809 |
-| sponza-flat | 184x224 | 1 | 5.6 (3.8) | 3.13 | 2.63 | 2.47 | 8.10 / 5.88 | 0.758 / 0.808 |
-| sponza-flat | 184x224 | 2 | 10.2 (6.4) | 4.25 | 3.43 | 4.12 | 10.77 / 9.19 | 0.694 / 0.698 |
-| sponza-flat | 184x149 | 1 | 5.6 (3.8) | 3.24 | 2.73 | 2.48 | 8.25 / 5.90 | 0.751 / 0.813 |
-| sponza-flat | 184x149 | 2 | 10.2 (6.4) | 4.40 | 3.53 | 4.12 | 10.77 / 9.18 | 0.685 / 0.703 |
-| sponza-flat | 184x112 | 1 | 5.4 (3.8) | 3.30 | 2.80 | 2.48 | 8.16 / 5.89 | 0.749 / 0.818 |
-| sponza-flat | 184x112 | 2 | 10.2 (6.3) | 4.55 | 3.64 | 4.13 | 10.90 / 9.20 | 0.682 / 0.708 |
-| sponza-lite | 184x224 | 1 | 2.2 (1.4) | 1.68 | 1.57 | 2.30 | 3.24 / 4.64 | 0.929 / 0.898 |
-| sponza-lite | 184x224 | 2 | 4.5 (2.8) | 2.03 | 1.87 | 3.62 | 3.60 / 7.10 | 0.909 / 0.827 |
-| sponza-lite | 184x149 | 1 | 2.2 (1.4) | 1.78 | 1.67 | 2.30 | 3.47 / 4.64 | 0.926 / 0.899 |
-| sponza-lite | 184x149 | 2 | 4.5 (2.8) | 2.18 | 2.01 | 3.61 | 3.73 / 7.11 | 0.904 / 0.828 |
-| sponza-lite | 184x112 | 1 | 2.1 (1.3) | 1.87 | 1.77 | 2.30 | 3.64 / 4.62 | 0.923 / 0.901 |
-| sponza-lite | 184x112 | 2 | 4.4 (2.7) | 2.32 | 2.15 | 3.61 | 3.92 / 7.08 | 0.900 / 0.829 |
-| sponza-fitted | 184x224 | 1 | 2.1 (1.3) | 1.90 | 1.78 | 2.67 | 3.27 / 5.43 | 0.928 / 0.896 |
-| sponza-fitted | 184x224 | 2 | 4.3 (2.7) | 2.27 | 2.10 | 4.21 | 3.66 / 8.45 | 0.910 / 0.823 |
-| sponza-fitted | 184x149 | 1 | 2.1 (1.3) | 2.02 | 1.90 | 2.67 | 3.46 / 5.47 | 0.926 / 0.898 |
-| sponza-fitted | 184x149 | 2 | 4.3 (2.7) | 2.46 | 2.26 | 4.21 | 3.86 / 8.44 | 0.905 / 0.823 |
-| sponza-fitted | 184x112 | 1 | 2.0 (1.3) | 2.12 | 2.00 | 2.67 | 3.73 / 5.46 | 0.923 / 0.900 |
-| sponza-fitted | 184x112 | 2 | 4.2 (2.6) | 2.62 | 2.42 | 4.20 | 3.99 / 8.43 | 0.901 / 0.825 |
-| sponza-flat-fitted | 184x224 | 1 | 6.0 (4.0) | 3.82 | 2.97 | 2.47 | 16.19 / 5.83 | 0.795 / 0.853 |
-| sponza-flat-fitted | 184x224 | 2 | 10.3 (6.0) | 4.84 | 3.47 | 4.14 | 19.11 / 9.26 | 0.759 / 0.762 |
-| sponza-flat-fitted | 184x149 | 1 | 6.0 (4.0) | 3.93 | 3.08 | 2.48 | 16.37 / 5.83 | 0.792 / 0.857 |
-| sponza-flat-fitted | 184x149 | 2 | 10.2 (5.9) | 4.98 | 3.59 | 4.16 | 19.28 / 9.29 | 0.752 / 0.766 |
-| sponza-flat-fitted | 184x112 | 1 | 5.9 (4.0) | 4.00 | 3.16 | 2.49 | 16.05 / 5.79 | 0.788 / 0.862 |
-| sponza-flat-fitted | 184x112 | 2 | 10.2 (5.9) | 5.13 | 3.73 | 4.15 | 19.34 / 9.25 | 0.748 / 0.771 |
+| bistro | 184x224 | 1 | 2.9 (2.2) | 1.73 | 1.68 | 2.36 | 2.88 / 4.89 | 0.910 / 0.873 |
+| bistro | 184x224 | 2 | 5.6 (4.1) | 2.24 | 2.17 | 3.67 | 3.32 / 7.65 | 0.879 / 0.793 |
+| bistro | 184x149 | 1 | 2.7 (2.1) | 1.81 | 1.76 | 2.36 | 3.07 / 4.92 | 0.907 / 0.877 |
+| bistro | 184x149 | 2 | 5.5 (4.1) | 2.39 | 2.31 | 3.66 | 3.55 / 7.68 | 0.871 / 0.798 |
+| bistro | 184x112 | 1 | 2.8 (2.2) | 1.88 | 1.81 | 2.36 | 3.28 / 4.93 | 0.904 / 0.879 |
+| bistro | 184x112 | 2 | 5.4 (4.0) | 2.51 | 2.42 | 3.66 | 3.73 / 7.61 | 0.865 / 0.801 |
+| sponza | 184x224 | 1 | 2.2 (1.3) | 2.04 | 1.93 | 2.88 | 3.76 / 5.83 | 0.919 / 0.884 |
+| sponza | 184x224 | 2 | 4.4 (2.7) | 2.41 | 2.24 | 4.47 | 4.02 / 8.76 | 0.902 / 0.806 |
+| sponza | 184x149 | 1 | 2.1 (1.3) | 2.17 | 2.05 | 2.87 | 3.98 / 5.83 | 0.916 / 0.886 |
+| sponza | 184x149 | 2 | 4.4 (2.7) | 2.60 | 2.42 | 4.46 | 4.25 / 8.77 | 0.895 / 0.807 |
+| sponza | 184x112 | 1 | 2.0 (1.3) | 2.25 | 2.13 | 2.86 | 4.18 / 5.79 | 0.914 / 0.888 |
+| sponza | 184x112 | 2 | 4.3 (2.6) | 2.77 | 2.59 | 4.45 | 4.44 / 8.75 | 0.889 / 0.810 |
 <!-- /generated: framegen-scores -->
 
 </details>
 
 - The warp beats repeating the frame on every scene and size: the mean dE
-  drops by a quarter to a half, and the worst frames' dE (p95) by a quarter
-  to over two thirds, most at two steps ahead.
+  drops by a fifth to a half, and the worst frames' dE (p95) by over a
+  quarter to over a half, most at two steps ahead.
 - One step ahead leaves 2-3% holes, most of them pinholes; two steps ahead
   doubles both.
 - Smaller render heights keep the gain; the warp's error grows a little with
@@ -145,21 +115,21 @@ half-picture step. At 24 poses along it, it warps the drawn frame one display
 step on, both cores taking half the rows, fills the holes and composes the
 generated picture into the half picture; the send overlaps it.
 
-<!-- generated: framegen-board sha256=d241c237f7e1571f58f07fd2cb9466e0cb68e86bfbd33a9d62f1a79180b2b710 -->
+<!-- generated: framegen-board sha256=fb434d8e5cc5d6327b52096b21eae743728ecab9a4c650b573c99a707e3ae589 -->
 | Scene | Size | Drawn frame | Warp | Fill | Compose | Generated frame |
 |---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 40.8 ms | 10.0 ms | 2.1 ms | 2.8 ms | 14.9 ms |
-| bistro-fitted-full | 184x179 | 37.2 ms | 7.7 ms | 1.6 ms | 2.4 ms | 11.7 ms |
-| bistro-fitted-full | 184x149 | 34.9 ms | 6.5 ms | 1.4 ms | 2.1 ms | 10.0 ms |
-| bistro-fitted-full | 184x112 | 32.1 ms | 4.8 ms | 1.0 ms | 1.9 ms | 7.7 ms |
-| sponza-fitted-full | 184x224 | 49.5 ms | 10.1 ms | 1.9 ms | 2.6 ms | 14.6 ms |
-| sponza-fitted-full | 184x179 | 45.1 ms | 7.9 ms | 1.5 ms | 2.3 ms | 11.8 ms |
-| sponza-fitted-full | 184x149 | 42.1 ms | 6.6 ms | 1.2 ms | 2.1 ms | 10.0 ms |
-| sponza-fitted-full | 184x112 | 38.3 ms | 4.9 ms | 0.9 ms | 1.8 ms | 7.7 ms |
+| bistro | 184x224 | 48.0 ms | 10.0 ms | 2.1 ms | 2.8 ms | 14.9 ms |
+| bistro | 184x179 | 44.1 ms | 8.0 ms | 1.8 ms | 2.4 ms | 12.3 ms |
+| bistro | 184x149 | 41.4 ms | 6.6 ms | 1.4 ms | 2.2 ms | 10.2 ms |
+| bistro | 184x112 | 38.2 ms | 4.8 ms | 1.1 ms | 1.9 ms | 7.8 ms |
+| sponza | 184x224 | 56.5 ms | 10.2 ms | 1.9 ms | 2.7 ms | 14.8 ms |
+| sponza | 184x179 | 51.1 ms | 7.8 ms | 1.4 ms | 2.4 ms | 11.6 ms |
+| sponza | 184x149 | 47.6 ms | 6.7 ms | 1.3 ms | 2.1 ms | 10.1 ms |
+| sponza | 184x112 | 43.2 ms | 4.9 ms | 0.9 ms | 1.8 ms | 7.7 ms |
 <!-- /generated: framegen-board -->
 
 - A generated frame costs about a third of a drawn one at 184x224 and a
-  quarter at 184x112.
+  fifth at 184x112.
 - The fill writes only the holes, a few percent of the pixels, from the
   drawn frame into the warp's own picture, and compose reads that picture
   (`raster_upscale_picture()`). The drawn frame stays as it was drawn.
@@ -168,17 +138,17 @@ Where the warp's time goes. The same warp is timed with every splat off screen
 (the clear, the maths and the source reads), to the drawn view itself (adding
 every write, in order), and to the next view (adding their scatter):
 
-<!-- generated: framegen-profile sha256=a72af77c373fb8731b3606742d0eb867a79773cd113f99e74b82047e9d4a1946 -->
+<!-- generated: framegen-profile sha256=280d6170d97a9f9046448fa48e3b8a5938a287d3a726725bf0528a1a86e8978b -->
 | Scene | Size | Clear | Off screen | To the drawn view | To the next view |
 |---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 0.8 ms | 10.4 ms | 10.2 ms | 10.0 ms |
-| bistro-fitted-full | 184x179 | 0.5 ms | 7.3 ms | 7.7 ms | 7.7 ms |
-| bistro-fitted-full | 184x149 | 0.4 ms | 6.1 ms | 6.5 ms | 6.5 ms |
-| bistro-fitted-full | 184x112 | 0.3 ms | 4.7 ms | 4.9 ms | 4.8 ms |
-| sponza-fitted-full | 184x224 | 0.8 ms | 10.4 ms | 9.9 ms | 10.1 ms |
-| sponza-fitted-full | 184x179 | 0.5 ms | 7.4 ms | 7.9 ms | 7.9 ms |
-| sponza-fitted-full | 184x149 | 0.4 ms | 6.3 ms | 6.7 ms | 6.6 ms |
-| sponza-fitted-full | 184x112 | 0.3 ms | 4.7 ms | 4.9 ms | 4.9 ms |
+| bistro | 184x224 | 0.8 ms | 10.4 ms | 10.0 ms | 10.0 ms |
+| bistro | 184x179 | 0.6 ms | 7.4 ms | 8.1 ms | 8.0 ms |
+| bistro | 184x149 | 0.4 ms | 6.2 ms | 6.6 ms | 6.6 ms |
+| bistro | 184x112 | 0.3 ms | 4.7 ms | 4.9 ms | 4.8 ms |
+| sponza | 184x224 | 0.8 ms | 10.5 ms | 10.0 ms | 10.2 ms |
+| sponza | 184x179 | 0.5 ms | 7.4 ms | 7.8 ms | 7.8 ms |
+| sponza | 184x149 | 0.4 ms | 6.3 ms | 6.8 ms | 6.7 ms |
+| sponza | 184x112 | 0.3 ms | 4.8 ms | 4.9 ms | 4.9 ms |
 <!-- /generated: framegen-profile -->
 
 The three warps cost the same: writing and scattering the splats is free next
@@ -202,6 +172,12 @@ on, so the render context times both and decides each frame:
 | It saved less | Drawn |
 | `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
 
+A frame drawn as a held one is never generated: a warp to the same camera
+shows nothing new, so its moving objects are drawn as
+[partial redraw](Partial-Redraw.md#when-every-row-is-drawn) draws them. A
+held view under [dynamic resolution](Dynamic-Resolution.md#a-held-camera)
+that was handed back to the policy is generated as a moving one is.
+
 The margin keeps a generated frame, which shows the scene less exactly than
 a drawn one, from being shown for a saving too small to see.
 
@@ -218,34 +194,34 @@ rate: a tighter one draws coarser and shows more frames.
 
 Each scene's path played in real time on the board, per mode:
 
-<!-- generated: framegen-modes sha256=c0f18c9ea95bbb8c8e80c1aaaa90bd1867678f1262eb1d60594ee13f4437e63d -->
+<!-- generated: framegen-modes sha256=3ccd0dab03c42672db57196a4b3a439da6643a875d92e957a660c1c0409e4a5f -->
 | Scene | Frame generation | Budget | Shown | p95 frame | Drawn | Drawn height |
 |---|---|---|---|---|---|---|
-| bistro-fitted-full | off | off | 27.7 fps | 53.7 ms | 100% | 224 |
-| bistro-fitted-full | on | off | 32.5 fps | 49.1 ms | 56% | 224 |
-| bistro-fitted-full | off | 23 ms | 31.7 fps | 42.1 ms | 100% | 154 |
-| bistro-fitted-full | on | 23 ms | 38.3 fps | 39.2 ms | 55% | 157 |
-| bistro-fitted-full | on | 17 ms | 40.5 fps | 38.9 ms | 55% | 138 |
-| bistro-fitted-full | on | 11 ms | 42.2 fps | 38.8 ms | 52% | 115 |
-| sponza-fitted-full | off | off | 21.0 fps | 58.2 ms | 100% | 224 |
-| sponza-fitted-full | on | off | 27.4 fps | 57.9 ms | 50% | 224 |
-| sponza-fitted-full | off | 23 ms | 26.9 fps | 44.9 ms | 100% | 115 |
-| sponza-fitted-full | on | 23 ms | 36.0 fps | 44.5 ms | 50% | 115 |
-| sponza-fitted-full | on | 17 ms | 36.4 fps | 44.6 ms | 50% | 112 |
-| sponza-fitted-full | on | 11 ms | 36.4 fps | 44.6 ms | 50% | 112 |
-| capybara-sponza | off | off | 28.6 fps | 45.9 ms | 100% | 224 |
-| capybara-sponza | on | off | 32.0 fps | 45.8 ms | 50% | 224 |
-| capybara-sponza | off | 23 ms | 30.2 fps | 36.7 ms | 100% | 193 |
-| capybara-sponza | on | 23 ms | 34.4 fps | 36.6 ms | 50% | 189 |
-| capybara-sponza | on | 17 ms | 38.8 fps | 36.6 ms | 52% | 133 |
-| capybara-sponza | on | 11 ms | 40.9 fps | 36.6 ms | 52% | 112 |
+| bistro | off | off | 23.9 fps | 63.5 ms | 100% | 224 |
+| bistro | on | off | 29.3 fps | 58.7 ms | 52% | 224 |
+| bistro | off | 33 ms | 26.5 fps | 50.8 ms | 100% | 166 |
+| bistro | on | 33 ms | 33.5 fps | 47.9 ms | 52% | 163 |
+| bistro | on | 24 ms | 35.5 fps | 47.4 ms | 52% | 140 |
+| bistro | on | 16 ms | 37.4 fps | 47.2 ms | 50% | 118 |
+| sponza | off | off | 18.5 fps | 65.3 ms | 100% | 224 |
+| sponza | on | off | 25.1 fps | 64.8 ms | 50% | 224 |
+| sponza | off | 33 ms | 23.4 fps | 50.3 ms | 100% | 123 |
+| sponza | on | 33 ms | 32.4 fps | 49.9 ms | 50% | 123 |
+| sponza | on | 24 ms | 33.5 fps | 49.9 ms | 50% | 112 |
+| sponza | on | 16 ms | 33.5 fps | 49.9 ms | 50% | 112 |
+| capybara-sponza | off | off | 25.5 fps | 49.7 ms | 100% | 224 |
+| capybara-sponza | on | off | 30.0 fps | 49.4 ms | 50% | 224 |
+| capybara-sponza | off | 33 ms | 26.8 fps | 40.8 ms | 100% | 195 |
+| capybara-sponza | on | 33 ms | 31.8 fps | 40.2 ms | 50% | 193 |
+| capybara-sponza | on | 24 ms | 36.2 fps | 39.1 ms | 50% | 141 |
+| capybara-sponza | on | 16 ms | 39.0 fps | 39.1 ms | 50% | 112 |
 <!-- /generated: framegen-modes -->
 
 - At the same budget, frame generation shows more frames at about the same
-  rows: Bistro shows 38.3 fps instead of 31.7, at 157 rows instead of 154,
-  and its p95 frame falls from 42.1 ms to 39.2 ms.
-- A tighter budget turns the saving into rate: Bistro shows 42 fps at the
-  floor of the ladder.
+  rows: Bistro shows 33.5 fps instead of 26.5, at 163 rows instead of 166,
+  and its p95 frame falls from 50.8 ms to 47.9 ms.
+- A tighter budget turns the saving into rate: Bistro shows 37.4 fps at a
+  16 ms budget.
 - The rate gains less than the cost table suggests: every update, drawn or
   generated, also pays the frame's own work outside the render, a few
   milliseconds.

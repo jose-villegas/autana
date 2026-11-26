@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
 # A reference set's files, by role: each (poses, references) pair the fit trains on, the poses its prune counts
-# shown pixels over, and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/fit/probes.py).
+# shown pixels over, and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/views/probes.py).
 TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
 COVERAGE = "coverage.txt"
 HELD_OUT = ("held_out.txt", "reference_held_out")
@@ -21,20 +21,12 @@ PROBE_SEED = 1
 PACKED_SUFFIXES = (".png", ".normal.npy")
 
 
-def fit_sets(path, probed, shaped):
-    """The sets of a camera with a `path` and an import with geometry.probes (`probed`), one that shapes its fit
-    (`shaped`: probes or geometry.budget): `training` pairs, `coverage` poses, `held_out` pairs, and `scored`,
-    the held-out pairs the fit reads to count holes, none unless shaped. The prune keeps what the path shows
-    before what only a probe does, so the path's sets come first."""
+def fit_sets(path, probed):
+    """Training, coverage and held-out sets, with held-out references for probe fits' closure gate."""
     held_out = ((HELD_OUT,) if path else ()) + ((PROBE_HELD_OUT,) if probed else ())
     return SimpleNamespace(training=(TRAINING if path else ()) + ((PROBE_TRAINING,) if probed else ()),
                            coverage=((COVERAGE,) if path else ()) + ((PROBE_TRAINING[0],) if probed else ()),
-                           held_out=held_out, scored=held_out if shaped else ())
-
-
-def shapes_fit(fit):
-    """Whether an import's `fit` (geometry.probes, geometry.budget) shapes its fit."""
-    return fit.probes is not None or fit.budget is not None
+                           held_out=held_out)
 
 
 def poses_text(width, height, lens, near, poses):
@@ -74,7 +66,7 @@ def canonical(value):
 class ReferenceInputs:
     """Everything a fit's reference set reads, and so everything its bake key counts (bake/bake.py): the
     import, the scene's bake light, tone map and camera, the size and spacing of the poses, the import's
-    probes (None without geometry.probes) and whether it shapes the fit. Nothing of
+    probes (None without geometry.probes). Nothing of
     the start or its renderer, so fits that differ only there share one set. The set is rendered from
     these fields alone (`job()`, `scene()`): one the render reads and this lacks fails there."""
     settings: SimpleNamespace     # the import
@@ -84,12 +76,13 @@ class ReferenceInputs:
     tonemap_white: float
     camera: SimpleNamespace       # the scene camera: lens, background and path
     size: tuple                   # the fit recipe's pose size
+    samples: int                  # the fit recipe's rays per pixel side of a reference render
+    denoise: bool                 # the fit recipe's: denoise each reference render
     poses: dict                   # the fit recipe's POSE_SPACING fields
     probes: SimpleNamespace = None  # the import's geometry.probes
-    shaped: bool = False          # the import shapes the fit (shapes_fit): its pack holds the scored references
 
     def sets(self):
-        return fit_sets(self.camera.path is not None, self.probes is not None, self.shaped)
+        return fit_sets(self.camera.path is not None, self.probes is not None)
 
     def job(self):
         return SimpleNamespace(settings=self.settings, bake=self.bake)
@@ -100,19 +93,21 @@ class ReferenceInputs:
 
 
 def reference_inputs(job, scene):
-    """The reference inputs of a fitted renderer, with its recipe's pose size."""
+    """The reference inputs of a fitted renderer, with its recipe's pose size, samples and denoise."""
     renderer = job.renderer
     size = tuple(renderer.fit.size)
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
+                           samples=renderer.fit.samples, denoise=renderer.fit.denoise,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING},
-                           probes=job.settings.fit.probes, shaped=shapes_fit(job.settings.fit))
+                           probes=job.settings.fit.probes)
 
 
-def prepare_references(inputs, work):
+def prepare_references(inputs, work, store=None, progress=None):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
-    has only those) and the references of every training and held-out set with their normals.
+    has only those) and the references of every training and held-out set with their normals, each pose taken
+    from or traced into the pose `store` when given, progress() after each pose traced (reference_render.render_sets).
     Returns the training views."""
     from r3d.mesh_source import camera_path_poses
     from r3d.reference_render import render_sets
@@ -135,37 +130,47 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
     sets = inputs.sets()
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out])
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets.training + sets.held_out],
+                store=store, progress=progress)
     return count
 
 
 def probe_poses(inputs, work, path):
-    """Writes the probes' training and held-out faces (r3d/fit/probes.py) and their record; returns the
-    training faces."""
+    """Writes the probes' training and held-out faces (r3d/views/probes.py) and their record; returns the
+    training faces. An alpha-masked import keeps its masked triangles and lets rays through their cut texels."""
     import json
-    from r3d.fit import probes
-    from r3d.reference_render import lit_source
 
-    camera = inputs.scene().camera.component
+    import numpy as np
+
+    from r3d.light import AlphaTest
+    from r3d.mesh_source import load_source
+    from r3d.ray_query import RayQuery
+    from r3d.views import probes
+
+    settings, camera = inputs.job().settings, inputs.scene().camera.component
     face = probes.PROBE_FACE if inputs.probes.face is None else inputs.probes.face
-    source = lit_source(inputs.job(), inputs.scene(), lit=False)
-    training, held_out, record = probes.select(source.p, source.tri_v, camera.region, camera.near_z,
-                                               inputs.probes.spacing, PROBE_SEED, path)
-    for (poses, _), faces in ((PROBE_TRAINING, training), (PROBE_HELD_OUT, held_out)):
-        (work / poses).write_text(poses_text(face, face, probes.FACE_LENS, camera.near_z, faces))
-    (work / PROBE_RECORD).write_text(json.dumps(record) + "\n")
-    return len(training)
+    source = load_source(settings, np.float32)
+    query = None
+    if settings.alpha_keep is not None:
+        query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, settings.alpha_keep))
+    views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
+                          path, query=query)
+    for (poses, _), faces in ((PROBE_TRAINING, views.training), (PROBE_HELD_OUT, views.held_out)):
+        (work / poses).write_text(poses_text(face, face, views.face_lens, camera.near_z, faces))
+    (work / PROBE_RECORD).write_text(json.dumps(views.record) + "\n")
+    return len(views.training)
 
 
 def pack_references(work, sets):
     """The files of the reference set in `work` that a fit with `sets` (fit_sets) reads, as one .tar.xz: the pose
-    files and the picture and normals of each training and scored reference. The other held-out references are
+    files and the picture and normals of each training and closure reference. The other held-out references are
     left out: they score a fit, not make it. Names are sorted and carry no time or owner, so the same files pack
     to the same bytes."""
     work = pathlib.Path(work)
     poses = {poses for poses, _ in sets.training + sets.held_out} | set(sets.coverage)
+    references = sets.training + (sets.held_out if PROBE_TRAINING in sets.training else ())
     names = sorted(poses) + sorted(
-        f"{folder}/{path.name}" for _, folder in sets.training + sets.scored for path in (work / folder).iterdir()
+        f"{folder}/{path.name}" for _, folder in references for path in (work / folder).iterdir()
         if path.name.endswith(PACKED_SUFFIXES))
     packed = io.BytesIO()
     with tarfile.open(fileobj=packed, mode="w:xz", format=tarfile.USTAR_FORMAT) as tar:

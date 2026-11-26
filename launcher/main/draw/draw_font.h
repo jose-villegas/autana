@@ -247,65 +247,37 @@ draw_font_glyph_run_boxes(const draw_font_t* f, unsigned char ch, draw_font_run_
     for (int row = 0; row <= f->cell_h; row++) {
         const uint8_t bits = (row < f->cell_h) ? glyph[row] : 0;
 
-        draw_font_run_box_t current[DRAW_FONT_MAX_OPEN_RUNS];
-        int current_count = 0;
+        uint8_t opening = bits;
+        int kept = 0;
+        for (int i = 0; i < open_count; i++) {
+            const draw_font_run_box_t run = open_runs[i];
+            const uint32_t mask = (2U << run.col1) - (1U << run.col0);
+            const uint32_t neighbours = (mask << 1) | (mask >> 1);
+            if ((bits & (mask | neighbours)) == mask) {
+                open_runs[kept] = run;
+                open_runs[kept++].row1 = (uint8_t)(row + 1);
+                opening &= (uint8_t)~mask;
+            } else if (n < max_out) {
+                out[n++] = run;
+            }
+        }
+
+        /* The surviving runs are already in order. Unmatched runs start to
+         * their right in the output order, even when they lie left on screen. */
         int col = 0;
-        while (col < f->cell_w) {
-            if (!(bits & (1 << col))) {
+        while (col < f->cell_w && kept < DRAW_FONT_MAX_OPEN_RUNS) {
+            if ((opening & (1U << col)) == 0) {
                 col++;
                 continue;
             }
             int end = col;
-            while (end + 1 < f->cell_w && (bits & (1 << (end + 1)))) {
+            while (end + 1 < f->cell_w && (opening & (1U << (end + 1))) != 0) {
                 end++;
             }
-            if (current_count < DRAW_FONT_MAX_OPEN_RUNS) {
-                current[current_count].row0 = (uint8_t)row;
-                current[current_count].row1 = (uint8_t)(row + 1);
-                current[current_count].col0 = (uint8_t)col;
-                current[current_count].col1 = (uint8_t)end;
-                current_count++;
-            }
+            open_runs[kept++] = (draw_font_run_box_t){(uint8_t)row, (uint8_t)(row + 1), (uint8_t)col, (uint8_t)end};
             col = end + 1;
         }
-
-        bool current_matched[DRAW_FONT_MAX_OPEN_RUNS] = {0};
-        draw_font_run_box_t next_open[DRAW_FONT_MAX_OPEN_RUNS];
-        int next_open_count = 0;
-
-        /* Extend an open run whose [col0, col1] survives into this row;
-         * flush it (it stops here) otherwise. */
-        for (int p = 0; p < open_count; p++) {
-            int found = -1;
-            for (int c = 0; c < current_count; c++) {
-                if (!current_matched[c] && current[c].col0 == open_runs[p].col0
-                    && current[c].col1 == open_runs[p].col1) {
-                    found = c;
-                    break;
-                }
-            }
-            if (found >= 0) {
-                current_matched[found] = true;
-                if (next_open_count < DRAW_FONT_MAX_OPEN_RUNS) {
-                    next_open[next_open_count] = open_runs[p];
-                    next_open[next_open_count].row1 = (uint8_t)(row + 1);
-                    next_open_count++;
-                }
-            } else if (n < max_out) {
-                out[n++] = open_runs[p];
-            }
-        }
-        /* A run this row that matched no open one starts fresh here. */
-        for (int c = 0; c < current_count; c++) {
-            if (!current_matched[c] && next_open_count < DRAW_FONT_MAX_OPEN_RUNS) {
-                next_open[next_open_count++] = current[c];
-            }
-        }
-
-        open_count = next_open_count;
-        for (int i = 0; i < open_count; i++) {
-            open_runs[i] = next_open[i];
-        }
+        open_count = kept;
     }
 
     return n;

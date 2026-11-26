@@ -5,6 +5,7 @@ share of the budget, so small detailed props are not starved by large
 surfaces a global pass prefers to keep."""
 
 from dataclasses import dataclass
+import math
 import pathlib
 import sys
 
@@ -97,6 +98,13 @@ class Allocation:
     shade_shared: object = None
     report: object = None
     shapes: object = None
+    # With seal_seams, where the probes that look for sky through walls stand: (camera region or None, near plane),
+    # then optionally the camera path's views, as leaks.LeakProbes takes them.
+    camera: object = None
+    detail: object = None
+    split: object = None
+    double_sided: tuple = ()
+    held: object = None
 
 
 def object_groups(pos, tris, tri_o):
@@ -120,16 +128,27 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     """Material shares budget the rest; carved meshes own independent per-copy budgets."""
     allocation = Allocation() if allocation is None else allocation
     tri_o = np.zeros(len(tris), dtype=np.int64) if allocation.tri_o is None else np.asarray(allocation.tri_o)
+    held = np.zeros(len(tris), dtype=bool) if allocation.held is None else np.asarray(allocation.held, dtype=bool)
     options = REGULARIZE | PERMISSIVE
     if seal_seams:
-        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o]), seal_tolerance(position_scale))
-        labels, tri_o = ownership.T
+        pos, rgb, tris, ownership = repair(pos, rgb, tris, np.column_stack([labels, tri_o, held]),
+                                           seal_tolerance(position_scale))
+        labels, tri_o, held = ownership.T
+        held = held.astype(bool)
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
+    # Held triangles (thinned pieces) pass the collapse whole: their corners are locked, so the rest pays the budget.
+    locks = np.zeros(len(pos), dtype=bool)
+    locks[tris[held]] = True
     parts, taken = [], np.zeros(len(tris), dtype=bool)
-    if allocation.meshes:
+    probes = None
+    if seal_seams and allocation.camera is not None:
+        from .leaks import LeakProbes
+
+        probes = LeakProbes(pos, tris, *allocation.camera)
+    if allocation.meshes or allocation.selection:
         return _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation,
-                                colour_deviation, options, position_scale)
+                                colour_deviation, options, position_scale, locks, probes)
     for group, share in reserved:
         sel = np.isin(labels, list(group)) & ~taken
         parts.append((sel, max(1, int(triangles * share))))
@@ -140,7 +159,9 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     for sel, budget in parts:
         if budget == 0 or not np.any(sel):
             continue
-        p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options)
+        p, c, t, m = _run_pass(pos, rgb, tris[sel], labels[sel], budget, colour_deviation, options,
+                               locks if np.any(locks[tris[sel]]) else None,
+                               leaks=None if probes is None else (probes, np.flatnonzero(sel)))
         out_pos.append(p)
         out_rgb.append(c)
         out_tris.append(t + base)
@@ -155,24 +176,70 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     return out_pos, out_rgb, np.concatenate(out_tris), np.concatenate(out_labels)
 
 
-def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None):
+def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, leaks=None, record=None):
+    """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
+    while a view shows sky through the result, the pass runs again with one more source vertex locked per hole.
+    A round whose locks leave the pass more triangles than its budget, or than its first run when that is
+    already over, is tried again with the half that answers the widest holes, and ends the pass when not one lock
+    fits. `record`, a dict, takes the rounds run, the vertices locked and
+    the holes the result still shows."""
     used, local = np.unique(tris, return_inverse=True)
     local = local.reshape(-1, 3)
     weight = colour_weight(pos[used], local, budget, deviation)
-    kwargs = {} if locks is None else {'vertex_lock': locks[used]}
-    p, c, t, kept = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
-    log(f"  simplified {len(tris)} -> {len(t)} triangles (budget {budget}, colour weight {weight:.3g})")
+    held = None if locks is None else locks[used].copy()
+
+    def run():
+        kwargs = {} if held is None else {'vertex_lock': held}
+        result = simplify_with_update(pos[used], rgb[used], local, budget, weight, options, **kwargs)
+        log(f"  simplified {len(tris)} -> {len(result[2])} triangles (budget {budget}, colour weight {weight:.3g})")
+        return result
+
+    p, c, t, kept = run()
+    if leaks is not None:
+        from .leaks import ROUNDS
+
+        probes, rows = leaks
+        most = max(len(t), budget)
+        rounds = locked = 0
+
+        def look():
+            free = np.zeros(len(pos), dtype=bool)
+            free[used] = True if held is None else ~held
+            return probes.repair(rows, p, t, free)
+
+        holes, pinned = look()
+        while len(pinned) and rounds < ROUNDS:
+            log(f"  {holes} holes seen, {len(pinned)} vertices to lock")
+            before = np.zeros(len(used), dtype=bool) if held is None else held
+            while len(pinned):
+                held = before.copy()
+                held[np.searchsorted(used, pinned)] = True
+                again = run()
+                if len(again[2]) <= most:
+                    break
+                log(f"  {len(pinned)} locks leave {len(again[2])} triangles, over the pass's {most}: trying half")
+                pinned = pinned[:len(pinned) // 2]
+            if not len(pinned):
+                held = before
+                break
+            p, c, t, kept = again
+            rounds, locked = rounds + 1, locked + len(pinned)
+            holes, pinned = look()
+        log(f"  {holes} holes left after {rounds} rounds, {locked} vertices locked")
+        probes.finish(rows, p, t)
+        if record is not None:
+            record.update(leak_rounds=rounds, leak_locks=locked, leak_holes=holes)
     return p, c, t, _label_after(local, labels, kept, t)
 
 
 def check_ceiling(total, ceiling):
-    """The scene ceiling caps emitted triangles, including every placed copy."""
+    """The scene ceiling caps stored triangles: the rest and every emitted copy prototype."""
     if ceiling is not None and total > ceiling:
         raise SettingsError(f"scene emitted triangles {total} exceeds ceiling {ceiling}")
     return total
 
 
-def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
+def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budgets=None):
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
 
@@ -187,7 +254,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
     if np.any(~taken):
         parts.append((~taken, max(1, triangles - sum(n for _, n in parts))))
     for obj, rule in selected.items():
-        parts.append((tri_o == obj, rule['triangles']))
+        parts.append((tri_o == obj, (budgets or {}).get(obj, rule.get('triangles', 1))))
     pass_ids = {obj: [i for i, (sel, _) in enumerate(parts) if np.any(sel & (tri_o == obj))]
                 for obj in np.unique(tri_o)}
     links = []
@@ -206,11 +273,79 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
     return merged, policies
 
 
-def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
+def _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, single, locks,
+                 deviation, options, shade, shapes, budget, error):
     from scipy.spatial import cKDTree
-    from .objects.instances import place, source_objects
-    from .objects.stand_ins import best_stand_in
+    from .geometry import weld_map
+    from .objects.instances import place
     from .objects.surface_match import JoinedInstance
+
+    emitted, consumed, shared, stands = [], set(), [], []
+    # A derived shape is welded as detail.ladder measured it: the seams the source splits at would hold its stand-in
+    # back. A pinned one is not: nothing measures its move, and welding frees its stand-in to move vertices.
+    positions, triangles = shape.positions, shape.triangles
+    if error is not None:
+        first, inverse = weld_map(positions)
+        positions, triangles = positions[first], inverse[triangles]
+    union = np.zeros(len(positions), dtype=bool)
+    first_indices = None
+    placements = []
+    for instance in shape.instances:
+        obj = int(instance.object_name)
+        sel, _ = parts[single[obj]]
+        used = np.unique(tris[sel])
+        placed = place(positions, instance.linear, instance.position)
+        _, nearest = cKDTree(pos[used]).query(placed)
+        # A copy joined by surface holds no locked vertex (rule_shapes), so its nearest rows add nothing here.
+        indices = used[nearest]
+        union |= locks[indices]
+        if first_indices is None:
+            first_indices = indices
+        placements.append((instance, indices))
+        consumed.add(single[obj])
+    stand_in, candidates, budget, moved = stand_in_within(
+        positions, rgb[first_indices], triangles, shape.materials, budget, deviation, options,
+        union if np.any(union) else None, error)
+    p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
+    shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
+                       joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
+                       budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
+                       locked_vertices=int(union.sum()), output_triangles=len(t),
+                       stand_in=stand_in.kind, stand_ins=candidates,
+                       locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0,
+                       surface_error=moved))
+    mat = stand_in.materials
+    copies = []
+    for instance, indices in placements:
+        placed = place(p, instance.linear, instance.position)
+        # World-space locked positions must survive local-frame float conversion.
+        if kept is not None:
+            placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
+        faces = t[:, ::-1] if instance.mirrored else t
+        stands.append((np.flatnonzero(parts[single[int(instance.object_name)]][0]), placed, faces))
+        own = mat
+        if isinstance(instance, JoinedInstance):
+            sel = parts[single[int(instance.object_name)]][0]
+            own = own_materials(placed, faces, mat, pos, tris[sel], labels[sel])
+        result = placed, c.copy(), faces, own.copy()
+        # Shaded in the shape's material groups, so every copy's corners come out in the order of the
+        # shape's one triangle list, which its copy meshes share.
+        lit = shade(*result, groups=mat) if shade is not None else result
+        if shapes is None:
+            emitted.append(lit)
+        else:
+            copies.append((instance, lit))
+    if shapes is not None:
+        shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
+                           copies=copies))
+    return emitted, consumed, shared, shapes, stands
+
+
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade,
+                   shapes=None, derived=None, split=None, double_sided=(), probes=None):
+    from .objects.instances import Instance, Shape, source_objects
+    from .objects.carve import measured_balance, rule_groups
+    from .objects.detail import object_error
 
     single = {}
     for index, (sel, budget) in enumerate(parts):
@@ -218,69 +353,71 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
         if len(objects) == 1 and objects[0] in selected:
             single[int(objects[0])] = index
     names = tuple(str(i) for i in range(int(tri_o.max()) + 1))
-    objects = source_objects(pos, tris, labels, tri_o, names)
-    buckets = {}
-    for obj in objects:
-        obj_id = int(obj.name)
-        if obj_id in single:
-            rule = selected[obj_id]
-            buckets.setdefault(id(rule), []).append(obj)
+    objects = {int(obj.name): obj for obj in source_objects(pos, tris, labels, tri_o, names)}
     held = {obj for obj, index in single.items() if np.any(locks[np.unique(tris[parts[index][0]])])}
-    emitted, consumed, shared = [], set(), []
-    for candidates in buckets.values():
+    jobs = []
+    for members in rule_groups(selected).values():
+        candidates = [objects[obj] for obj in members if obj in single]
+        if not candidates:
+            continue
         for shape in rule_shapes(candidates, selected[int(candidates[0].name)], held):
-            if len(shape.instances) == 1:
+            if len(shape.instances) == 1 and shapes is None:
                 continue
-            union = np.zeros(len(shape.positions), dtype=bool)
-            first_indices = None
-            placements = []
-            for instance in shape.instances:
-                obj = int(instance.object_name)
-                sel, budget = parts[single[obj]]
-                used = np.unique(tris[sel])
-                placed = place(shape.positions, instance.linear, instance.position)
-                _, nearest = cKDTree(pos[used]).query(placed)
-                # A copy joined by surface holds no locked vertex (rule_shapes), so its nearest rows add nothing here.
-                indices = used[nearest]
-                union |= locks[indices]
-                if first_indices is None:
-                    first_indices = indices
-                placements.append((instance, indices))
-                consumed.add(single[obj])
-            stand_in, candidates = best_stand_in(shape.positions, rgb[first_indices], shape.triangles,
-                shape.materials, budget, colour_weight(shape.positions, shape.triangles, budget, deviation),
-                options, union if np.any(union) else None)
-            p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
-            shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
-                               joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
-                               budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
-                               locked_vertices=int(union.sum()), output_triangles=len(t),
-                               stand_in=stand_in.kind, stand_ins=candidates,
-                               locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0))
-            mat = stand_in.materials
-            copies = []
-            for instance, indices in placements:
-                placed = place(p, instance.linear, instance.position)
-                # World-space locked positions must survive local-frame float conversion.
-                if kept is not None:
-                    placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
-                faces = t[:, ::-1] if instance.mirrored else t
-                own = mat
-                if isinstance(instance, JoinedInstance):
-                    sel = parts[single[int(instance.object_name)]][0]
-                    own = own_materials(placed, faces, mat, pos, tris[sel], labels[sel])
-                result = placed, c.copy(), faces, own.copy()
-                # Shaded in the shape's material groups, so every copy's corners come out in the order of the
-                # shape's one triangle list, which its copy meshes share.
-                lit = shade(*result, groups=mat) if shade is not None else result
-                if shapes is None:
-                    emitted.append(lit)
-                else:
-                    copies.append((instance, lit))
-            if shapes is not None:
-                shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
-                                   copies=copies))
+            first = int(shape.instances[0].object_name)
+            if len(shape.instances) == 1:
+                sel = parts[single[first]][0]
+                used, local = np.unique(tris[sel], return_inverse=True)
+                shape = Shape(pos[used], local.reshape(-1, 3), labels[sel],
+                              (Instance(str(first), np.eye(3), np.zeros(3), False, 0.0),))
+            info = None if derived is None else derived.per_object.get(first)
+
+            def build(pick, shape=shape, first=first, info=info):
+                budget = parts[single[first]][1]
+                error = None
+                if info is not None:
+                    rung = info['ladder'][pick]
+                    budget = max(selected[first].get('min_triangles', 1), rung.triangles)
+                    error = object_error(info['distance'], derived.focal, rung.error_px)
+                result = _carve_shape(shape, pos, rgb, tris, labels, selected, policies, parts, single, locks,
+                                      deviation, options, shade, None if shapes is None else [], budget, error)
+                if result[3] is not None:
+                    from .objects.budget import stored_count
+                    result[2][0]['stored_triangles'] = sum(stored_count(s, double_sided) for s in result[3])
+                return result
+
+            jobs.append(dict(build=build, info=info, pick=0))
+    results = measured_balance(jobs, split)
+    emitted, consumed, shared = [], set(), []
+    for out, used, rows, carved, stands in results:
+        emitted.extend(out)
+        consumed.update(used)
+        shared.extend(rows)
+        if shapes is not None:
+            shapes.extend(carved)
+        if probes is not None:
+            for stand in stands:
+                probes.finish(*stand)
     return emitted, consumed, shared
+
+
+MIN_BUDGET_GROWTH = 1.25
+
+
+def stand_in_within(positions, rgb, tris, materials, budget, deviation, options, lock, error):
+    """best_stand_in() at `budget`, raised until the stand-in's measured surface move is within `error` (model
+    units; None bounds nothing) or it keeps every triangle: the carve keeps colour as well as shape, so at the
+    count a shape-only simplifier needs for `error` it can move further. Returns (stand_in, candidates, budget,
+    move). Surfaces move about as the square root of their triangles, so each try asks (move / error)^2 more."""
+    from .objects.detail import surface_error
+    from .objects.stand_ins import best_stand_in
+
+    while True:
+        stand_in, candidates = best_stand_in(positions, rgb, tris, materials, budget,
+                                             colour_weight(positions, tris, budget, deviation), options, lock)
+        moved = surface_error(positions, tris, stand_in.positions, stand_in.tris)
+        if error is None or moved <= error or budget >= len(tris):
+            return stand_in, candidates, budget, moved
+        budget = min(len(tris), math.ceil(budget * max(MIN_BUDGET_GROWTH, (moved / error) ** 2)))
 
 
 def rule_shapes(candidates, rule, held):
@@ -307,17 +444,19 @@ def own_materials(placed, faces, materials, pos, own_tris, own_labels):
     return majority(materials, found, int(materials.max()) + 1)[materials].astype(np.asarray(materials).dtype)
 
 
-def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):
+def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale,
+                     held_locks, probes=None):
     from .objects.contact import contact_graph
-    from .objects.instances import Instance
 
     selected = (match_meshes(tri_o, labels, allocation.object_names, allocation.material_names, allocation.meshes)
                 if allocation.selection is None else {obj: rule for obj, rule in allocation.selection.items() if np.any(tri_o == obj)})
     rest_budget = triangles if np.any(~np.isin(tri_o, list(selected))) else 0
-    requested = rest_budget + sum(rule['triangles'] for rule in selected.values())
+    budgets = {obj: info['ladder'][0].triangles for obj, info in allocation.detail.per_object.items()} if allocation.detail else {}
+    budgets.update({obj: rule['triangles'] for obj, rule in selected.items() if 'triangles' in rule})
+    requested = rest_budget + sum(budgets[obj] for obj in selected)
     edges = contact_graph(pos, tris, tri_o, position_scale)
-    parts, policies = _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges)
-    locks = np.zeros(len(pos), dtype=bool)
+    parts, policies = _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges, budgets)
+    locks = held_locks.copy()
     for edge in edges:
         if any(policies.get(obj) == 'lock' or (edge.unshared and policies.get(obj) == 'weld')
                for obj in (edge.a, edge.b)):
@@ -330,11 +469,12 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
     report = dict(requested_scene_total=requested, rest_budget=rest_budget, ceiling=allocation.ceiling, passes=[],
                   contacts=[dict(a=allocation.object_names[e.a], b=allocation.object_names[e.b], unshared=e.unshared,
                                  vertices_a=e.vertices_a.tolist(), vertices_b=e.vertices_b.tolist()) for e in edges],
-                  meshes=[dict(object=allocation.object_names[obj], copies=1, budget=rule['triangles'], policy=policies[obj],
+                  meshes=[dict(object=allocation.object_names[obj], copies=1, budget=budgets[obj], policy=policies[obj],
                                locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
     log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
     emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
-                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes)
+                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes,
+                                       allocation.detail, allocation.split, allocation.double_sided, probes)
     shared_objects = {obj for entry in shared for obj in entry['objects']}
     report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]
     for entry in shared:
@@ -343,55 +483,46 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         report['passes'].append(entry)
 
     def run_part(sel, budget):
-        from .objects.stand_ins import best_stand_in
-
+        if budget == 0:
+            return 0
         objects = np.unique(tri_o[sel])
-        carved = allocation.shapes is not None and len(objects) == 1 and objects[0] in selected
-        candidates = None
-        if carved:
-            used, local = np.unique(tris[sel], return_inverse=True)
-            local = local.reshape(-1, 3)
-            stand_in, candidates = best_stand_in(pos[used], rgb[used], local, labels[sel], budget,
-                colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
-            result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
-        else:
-            result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
-                               locks if np.any(locks) else None)
-        shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
-        if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
-            result = shade(*result)
+        leaks = {}
+        result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
+                           locks if np.any(locks) else None,
+                           None if probes is None else (probes, np.flatnonzero(sel)), leaks)
+        if allocation.shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
+            result = allocation.shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
-        if candidates is not None:
-            entry.update(stand_in=stand_in.kind, stand_ins=candidates)
+        entry.update(leaks)
         report['passes'].append(entry)
         for row in report['meshes']:
             if row.get('object') in entry['objects']:
                 row.update(output_triangles=entry['output_triangles'], pass_objects=entry['objects'],
                            pass_budget=budget, locked_border_excess=entry['locked_border_excess'])
-                if candidates is not None:
-                    row.update(stand_in=stand_in.kind, stand_ins=candidates)
-        if carved:
-            instance = Instance(str(objects[0]), np.eye(3), np.zeros(3), False, 0.0)
-            allocation.shapes.append(dict(positions=result[0], tris=result[2], materials=result[3],
-                                         rule=selected[objects[0]], copies=[(instance, result)]))
-        else:
-            emitted.append(result)
+        emitted.append(result)
         return len(result[2])
 
-    # Carved meshes are paid first, out of the ceiling, at what they emit (locked seams can overshoot their
-    # budget); the rest shares what is left. A weld group mixing carved and rest objects counts as rest.
+    # Locked seams can exceed a budget, so the rest pays for actual stored prototypes.
+    # A weld group mixing carved and rest objects counts as rest.
     waiting = [index for index in range(len(parts)) if index not in consumed]
     carved_first = [index for index in waiting if np.all(np.isin(tri_o[parts[index][0]], list(selected)))]
     rest = [index for index in waiting if index not in carved_first]
-    carved_total = sum(entry['output_triangles'] * entry['copies'] for entry in shared)
+    carved_total = sum(entry.get('stored_triangles', entry['output_triangles']) if allocation.shapes is not None else
+                       entry['output_triangles'] * entry['copies'] for entry in shared)
     carved_total += sum(run_part(*parts[index]) for index in carved_first)
-    check_ceiling(carved_total + len(rest), allocation.ceiling)
+    from .objects.budget import rest_target, stored_count
+    if allocation.split is not None:
+        rest_target(allocation.split, carved_total)
+    check_ceiling(carved_total + (len(rest) if allocation.shapes is None else 0), allocation.ceiling)
     asked = sum(parts[index][1] for index in rest)
-    room = asked if allocation.ceiling is None else min(asked, allocation.ceiling - carved_total)
+    room = (asked if allocation.split is not None and allocation.split[0] is None else
+            min(asked, rest_target(allocation.split, carved_total)) if allocation.split is not None else
+            asked if allocation.ceiling is None else min(asked, allocation.ceiling - carved_total))
     for index in rest:
-        run_part(parts[index][0], max(1, parts[index][1] * room // max(asked, 1)))
+        budget = parts[index][1] * room // max(asked, 1)
+        run_part(parts[index][0], max(1, budget) if allocation.shapes is None else budget)
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
     for p, c, t, m in emitted:
@@ -402,9 +533,11 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         base += len(p)
     report['scene_total'] = report['output_triangles'] = (sum(len(t) for t in out_t) +
         (sum(len(shape['copies'][0][1][2]) * len(shape['copies']) for shape in allocation.shapes) if allocation.shapes is not None else 0))
+    report['stored_total'] = (sum(len(t) for t in out_t) +
+        (sum(stored_count(shape, allocation.double_sided) for shape in allocation.shapes) if allocation.shapes is not None else 0))
     if allocation.report is not None:
         allocation.report.update(report)
-    check_ceiling(report['scene_total'], allocation.ceiling)
+    check_ceiling(report['stored_total'], allocation.ceiling)
     if not out_p:
         return pos[:0], rgb[:0], tris[:0], labels[:0]
     return np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t), np.concatenate(out_m)

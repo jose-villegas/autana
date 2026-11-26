@@ -300,7 +300,13 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "lod.blend": [0], "lod.blend_px": [4],
                                                     "anim.mid_px": [768], "anim.far_px": [320],
                                                     "anim.mid_every": [2], "anim.far_every": [4],
-                                                    "anim.hysteresis_px": [64]}, 4))
+                                                    "anim.hysteresis_px": [64],
+                                                    "texture.divide_px": [16], "texture.affine_bend": [16],
+                                                    "texture.affine_level": [1],
+                                                    "texture.far_level": [4],
+                                                    "small_fill.ceiling": [4], "small_fill.gate": [0],
+                                                    "small_fill.style": [0],
+                                                    "settle.frame_us": [4000], "settle.hold_frames": [6]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:

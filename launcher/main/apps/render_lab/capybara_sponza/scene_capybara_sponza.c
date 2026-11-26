@@ -2,12 +2,13 @@
  * scene_capybara_sponza: the capybara's run down Sponza's atrium. Sponza
  * (its fitted full bake) and the capybara load as two scenes, both drawn
  * through Sponza's camera. The capybara idles between the first pair of
- * columns at the lion end, gallops down the centre line and comes to rest
- * between the last pair (a motion profile), its clip and rate from its
- * ground speed (gait). A third-person camera sees it from a front
- * three-quarter while it idles, turns slowly round toward its back as it
- * runs, never all the way, and back as it comes to rest. Everything is a
- * function of the path's time, so a frame profile seeks it.
+ * columns at the lion end, gallops down a line near the sunlit +z columns
+ * and comes to rest between the last pair (a motion profile), its clip and
+ * rate from its ground speed (gait). A third-person camera on its -z side,
+ * looking toward the sunlit columns, sees it from a front three-quarter
+ * while it idles, turns slowly round toward its back as it runs, never all
+ * the way, and back as it comes to rest. Everything is a function of the
+ * path's time, so a frame profile seeks it.
  */
 #include "apps/render_lab/capybara_sponza/scene_capybara_sponza.h"
 
@@ -44,9 +45,11 @@ static const char* TAG = "capybara_sponza";
 
 /* Sponza is in centimetres, the capybara in metres. */
 #define RUN_SCALE           100.0F
-/* The atrium's centre line (z) and floor (y), and the x of its first and
- * last pairs of columns from the lion's west wall (Sponza's source mesh). */
-#define RUN_CENTRE_Z        (-34.0F)
+/* The run's line (z), 110 cm inside the sunlit strip of floor along the +z
+ * columns (z 265 in the fitted full bake's render), and the atrium's floor
+ * (y), and the x of its first and last pairs of columns from the lion's west
+ * wall (Sponza's source mesh). */
+#define RUN_LANE_Z          155.0F
 #define RUN_FLOOR_Y         0.0F
 #define RUN_START_X         (-616.0F)
 #define RUN_END_X           487.0F
@@ -57,9 +60,10 @@ static const char* TAG = "capybara_sponza";
 #define RUN_HEADING         (-0.25F * MATH_TAU)
 
 /* The third-person camera: this far from the capybara and this high, looking
- * at a point this high on it; inside the columns (225 cm off the centre line)
- * when it is at the capybara's side. It stands 15 degrees round from the
- * face at both ends and 135 mid-run, short of the back. */
+ * at a point this high on it; on its -z side, so it looks toward the sunlit
+ * +z columns, and well inside the -z ones (z -259) when it is at the
+ * capybara's side. It stands 15 degrees round from the face at both ends
+ * and 135 mid-run, short of the back. */
 #define RUN_CAMERA_DISTANCE 220.0F
 #define RUN_CAMERA_HEIGHT   100.0F
 #define RUN_CAMERA_FROM     (MATH_PI / 12.0F)
@@ -149,16 +153,16 @@ camera_angle(float at) {
 /* The capybara where the run is at `at`, and the camera round it. */
 static void
 place(motion_profile_at_t at) {
-    const transformf_t body = {.position = {at.at, RUN_FLOOR_Y, RUN_CENTRE_Z},
+    const transformf_t body = {.position = {at.at, RUN_FLOOR_Y, RUN_LANE_Z},
                                .rotation = quatf_from_axis_angle(vec3f_unit_y(), RUN_HEADING),
                                .scale = {RUN_SCALE, RUN_SCALE, RUN_SCALE}};
     transform_set_local(capybara, body);
-    /* Ahead of it at angle 0, toward behind it at pi, round its +z side. */
+    /* Ahead of it at angle 0, toward behind it at pi, round its -z side. */
     const float angle = camera_angle(at.at);
     transformf_t eye = transform_local(camera);
     eye.position = (vec3f_t){at.at + (RUN_CAMERA_DISTANCE * cosf(angle)), RUN_FLOOR_Y + RUN_CAMERA_HEIGHT,
-                             RUN_CENTRE_Z + (RUN_CAMERA_DISTANCE * sinf(angle))};
-    transformf_look_at(&eye, (vec3f_t){at.at, RUN_FLOOR_Y + RUN_CAMERA_LOOK_Y, RUN_CENTRE_Z}, vec3f_unit_y());
+                             RUN_LANE_Z - (RUN_CAMERA_DISTANCE * sinf(angle))};
+    transformf_look_at(&eye, (vec3f_t){at.at, RUN_FLOOR_Y + RUN_CAMERA_LOOK_Y, RUN_LANE_Z}, vec3f_unit_y());
     transform_set_local(camera, eye);
 }
 
@@ -223,7 +227,7 @@ apply_settings(void) {
 #endif
 }
 
-/* Sponza with its fitted full bake alone, its camera held still for the run to place. */
+/* Sponza with its bake, its camera held still for the run to place. */
 static bool
 load_sponza(void) {
     const scene_baked_t* family = &baked_sponza;
@@ -231,7 +235,7 @@ load_sponza(void) {
     if (handle_is_none(sponza)) {
         return false;
     }
-    if (!scene_baked_show(sponza, family, SCENE_BAKED_FITTED_FULL, failure, sizeof failure)) {
+    if (handle_is_none(scene_baked_find(sponza, family, failure, sizeof failure))) {
         return false;
     }
     camera = entity_find(sponza, name_hash(family->camera));
@@ -255,6 +259,8 @@ load_capybara(void) {
     }
     entity_set_enabled(entity_find(capybara, name_hash(CAPYBARA_MEADOW)), false);
     runner = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
+    const scene_contact_t contact = {RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, false};
+    scene_set_contact(runner, &contact);
     if (handle_is_none(runner) || !build_gait()) {
         fail("no capybara gallop");
         return false;

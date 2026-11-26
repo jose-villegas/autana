@@ -98,7 +98,7 @@ source was found for using it as an image blur.
 
 ## 3. Reduced pixel representations
 
-**Cheap luminance.** `Y = 2·r5 + 2·g6 + b5`, range 0–219. Normalised
+**Cheap luminance.** $`Y = 2 r_5 + 2 g_6 + b_5`$, range 0–219. Normalised
 weights 0.28 / 0.58 / 0.14 against BT.601's 0.299 / 0.587 / 0.114. About
 6 ops. Green alone (`g6`, weight 0.587) is cheaper still. Both are derived
 for this note; no source was found.
@@ -140,7 +140,7 @@ entries) cost about 8 ops.
 *Estimate*: 15–20 cycles per pixel in scalar C. Keeping the column sums from
 the previous pixel saves about a third.
 
-**Laplacian.** `4c − n − s − e − w`, about 8 ops *(estimate)*.
+**Laplacian.** $`4c - n - s - e - w`$, about 8 ops *(estimate)*.
 
 **Difference of Gaussians.** Two running-box blurs on luminance,
 subtracted; about 20 cycles *(estimate)*. Kovesi 2010 covers it.

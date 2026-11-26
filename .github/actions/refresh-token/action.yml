@@ -1,0 +1,32 @@
+name: Refresh App token
+description: >-
+  Mint the refresh GitHub App's token and make it this checkout's git credential, so the refresh
+  branch push and pull request come from the App and start their checks. A pull request or push made
+  with GITHUB_TOKEN starts no workflows. Missing secrets fail the step; nothing falls back to GITHUB_TOKEN.
+inputs:
+  client-id:
+    description: The App's ID (secrets.DOC_REFRESH_APP_ID).
+    required: true
+  private-key:
+    description: The App's private key (secrets.DOC_REFRESH_APP_PRIVATE_KEY).
+    required: true
+outputs:
+  token:
+    description: The installation token, for the refresh_pr.py calls.
+    value: ${{ steps.app.outputs.token }}
+runs:
+  using: composite
+  steps:
+    - id: app
+      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+    # Replaces the GITHUB_TOKEN header actions/checkout stored; its post step removes it.
+    - shell: bash
+      env:
+        TOKEN: ${{ steps.app.outputs.token }}
+      run: |
+        auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+        echo "::add-mask::$auth"
+        git config --local --replace-all http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"

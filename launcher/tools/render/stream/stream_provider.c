@@ -436,12 +436,15 @@ reserve(void** block, size_t* capacity, size_t bytes) {
     if (*capacity >= bytes && *block != NULL) {
         return true;
     }
-    void* grown = realloc(*block, bytes > 0 ? bytes : 1);
+    /* Doubled at least: a mesh rebuilt each frame (water) grows a little at
+     * a time, and a realloc per frame is what the frame watch reports. */
+    const size_t want = bytes > *capacity * 2 ? bytes : *capacity * 2;
+    void* grown = realloc(*block, want > 0 ? want : 1);
     if (grown == NULL) {
         return refuse("no memory for replay mesh");
     }
     *block = grown;
-    *capacity = bytes;
+    *capacity = want;
     return true;
 }
 
@@ -525,13 +528,13 @@ build_mesh(stream_mesh_t* m) {
     memcpy(c, source + positions, colours);
     memcpy(t, source + positions + colours, triangles);
     memcpy(u, source + positions + colours + triangles, uvs);
-    const r3d_dynamic_source_t src = {.positions = p,
-                                      .colors = c,
-                                      .triangles = t,
-                                      .vertex_count = (int)row.vertices,
-                                      .triangle_count = (int)row.triangles,
-                                      .double_sided = row.double_sided != 0,
-                                      .uvs = row.textured ? u : NULL};
+    const r3d_mesh_source_t src = {.positions = p,
+                                   .colors = c,
+                                   .triangles = t,
+                                   .vertex_count = (int)row.vertices,
+                                   .triangle_count = (int)row.triangles,
+                                   .double_sided = row.double_sided != 0,
+                                   .uvs = row.textured ? u : NULL};
     const bool fitted = r3d_dynamic_mesh_build(&built, &src);
     m->mesh = built.mesh;
     return fitted == (row.fitted != 0) || refuse("dynamic build fit differs");

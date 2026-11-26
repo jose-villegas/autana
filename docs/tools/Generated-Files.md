@@ -68,14 +68,15 @@ the banner marks, since the generator, not a person, decides their form.
 ## Usage examples
 
 [`examples_doc.py`](../../launcher/tools/gen/examples_doc.py) embeds every tracked
-`.c` file below any `<area>_examples` folder, at any depth, whole in a C fence.
-Its owning document declares `<area>-<name>-example`, where `<name>` is the file
-stem. For example:
+`.c` or `.toml` file below an `<area>_examples` folder in a matching code
+fence. The document declares `<area>-<name>-example`, using the file stem
+for `<name>` and hyphens for its underscores and dots.
 
 | Source | Block |
 |---|---|
 | `input_examples/touch.c` | `input-touch-example` |
 | `ui_examples/screens/settings.c` | `ui-settings-example` |
+| `anim_examples/path.keys.toml` | `anim-path-keys-example` |
 
 ```sh
 python launcher/tools/gen/examples_doc.py

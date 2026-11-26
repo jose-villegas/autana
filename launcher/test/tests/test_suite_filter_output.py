@@ -19,12 +19,16 @@ import device  # noqa: E402
 import device_report  # noqa: E402
 import device_capture  # noqa: E402
 
+sys.path.insert(0, str(host_runner.REPO / "launcher" / "tools"))
+from build.math_constants import blank_comments, integer_defines  # noqa: E402
+
 HEADER = (host_runner.TEST_DIR / "suites.h").read_text(encoding="utf-8")
-FILTER_MAX = int(re.search(r"#define SUITE_FILTER_MAX (\d+)", HEADER).group(1))
-FILTER_LEN = int(re.search(r"#define SUITE_FILTER_LEN (\d+)", HEADER).group(1))
+DEFINES = integer_defines([blank_comments(HEADER)])
+FILTER_MAX = DEFINES["SUITE_FILTER_MAX"]
+FILTER_LEN = DEFINES["SUITE_FILTER_LEN"]
 FIXTURE = "filter_fixture_suite"
 CASES = "case_fixture_suite"
-NAME_MAX = int(re.search(r"#define SUITE_TEST_NAME_MAX\s+(\d+)", HEADER).group(1))
+NAME_MAX = DEFINES["SUITE_TEST_NAME_MAX"]
 
 
 def probes(output):
@@ -88,24 +92,36 @@ class FilteredRunOutputTests(unittest.TestCase):
 
 
 class TestCaseOutputTests(unittest.TestCase):
+    def test_every_legal_registered_name_segment_fits_in_one_pattern(self):
+        self.assertGreaterEqual(FILTER_LEN, NAME_MAX + 1,
+                                "every segment allowed by SUITE_TEST_NAME_MAX must fit with its terminator")
+
+    def test_each_segment_of_a_maximum_length_case_can_select_it_alone(self):
+        names = probes(host_runner.run("case_limit_suite"))
+        self.assertEqual(len(names), 1)
+        for segment in names[0].split("/"):
+            with self.subTest(segment=segment):
+                self.assertLess(len(segment), FILTER_LEN)
+                self.assertEqual(probes(host_runner.run(f"case_limit_suite {segment}")), names)
+
     def test_each_case_is_named_by_its_segments_and_left_out_ones_are_skipped(self):
         self.assertEqual(probes(host_runner.run(CASES)), [
-            "test_case/sponza-fitted/portrait", "test_case/sponza-fitted/landscape",
-            "test_case/sponza-fitted-full/portrait", "test_case/sponza-fitted-full/landscape",
+            "test_case/bistro/portrait", "test_case/bistro/landscape",
+            "test_case/bistro-textured/portrait", "test_case/bistro-textured/landscape",
             "test_case/capybara/front/portrait"])
 
     def test_a_scene_pattern_picks_its_own_cases_and_not_a_longer_scene(self):
-        self.assertEqual(probes(host_runner.run(f"{CASES} sponza-fitted")),
-                         ["test_case/sponza-fitted/portrait", "test_case/sponza-fitted/landscape"])
+        self.assertEqual(probes(host_runner.run(f"{CASES} bistro")),
+                         ["test_case/bistro/portrait", "test_case/bistro/landscape"])
 
     def test_a_group_pattern_picks_one_take(self):
-        self.assertEqual(probes(host_runner.run(f"{CASES} capybara/front,sponza-fitted-full/landscape")),
-                         ["test_case/sponza-fitted-full/landscape", "test_case/capybara/front/portrait"])
+        self.assertEqual(probes(host_runner.run(f"{CASES} capybara/front,bistro-textured/landscape")),
+                         ["test_case/bistro-textured/landscape", "test_case/capybara/front/portrait"])
 
     def test_every_case_is_listed_by_its_full_name(self):
         output = host_runner.run(f"{CASES} capybara")
         self.assertIn("SUITE_TEST name=test_case/capybara/front/portrait selected=1", output)
-        self.assertIn("SUITE_TEST name=test_case/sponza-fitted/portrait selected=0", output)
+        self.assertIn("SUITE_TEST name=test_case/bistro/portrait selected=0", output)
 
     def test_a_part_of_a_segment_picks_nothing_and_is_counted_unmatched(self):
         output = host_runner.run(f"{CASES} sponza-fitt,capybara")

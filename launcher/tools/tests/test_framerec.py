@@ -30,7 +30,7 @@ def record(name, body):
 
 
 def header(keyframe_every=30):
-    return record("HEADER", framerec.HEADER.pack(1, 368, 448, keyframe_every, b"host"))
+    return record("HEADER", framerec.HEADER.pack(framerec.VERSION, 368, 448, keyframe_every, b"host"))
 
 
 def frame(index, flags=0):
@@ -82,6 +82,11 @@ class RecordTests(unittest.TestCase):
         with self.assertRaisesRegex(framerec.StreamError, "opens with HEADER"):
             framerec.parse(frame(0))
 
+    def test_a_stream_of_another_version_is_refused(self):
+        older = record("HEADER", framerec.HEADER.pack(framerec.VERSION - 1, 368, 448, 30, b"host"))
+        with self.assertRaisesRegex(framerec.StreamError, "frame record version"):
+            framerec.parse(older + frame(0))
+
     def test_a_record_cut_short_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "cut short"):
             framerec.parse(header() + frame(0)[:-1])
@@ -89,6 +94,14 @@ class RecordTests(unittest.TestCase):
     def test_a_fixed_record_of_the_wrong_size_is_refused(self):
         with self.assertRaisesRegex(framerec.StreamError, "the format's is"):
             framerec.parse(header() + record("FRAME", struct.pack("<I", 0)))
+
+    def test_a_mesh_lit_per_face_reads_back_with_its_face_colours_where_they_are(self):
+        positions, colours, batch = (1, 10, 100), (1, 11, 200), (2, 12, 300)
+        body = framerec.MESH.pack(3, framerec.MESH_KINDS["STATIC"], True, True, *positions, *colours, *batch,
+                                  *[0.0] * 16)
+        mesh = framerec.decode_mesh(body)
+        self.assertTrue(mesh["faces"])
+        self.assertEqual((mesh["positions"], mesh["colours"], mesh["batch"]), (positions, colours, batch))
 
 
 if __name__ == "__main__":

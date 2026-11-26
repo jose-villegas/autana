@@ -75,6 +75,22 @@ diagnostics_enter(void) {
     post_rerun();
 }
 
+static __attribute__((noinline)) void
+diagnostics_draw(const input_t* input) {
+    (void)input;
+    /* Redrawn every frame rather than cached: the shell owns the framebuffer
+     * and the previous app may have left anything in it. */
+    if (page == 0) {
+        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_quarter_now()};
+        post_ui_draw_report(&report);
+    }
+#if CONFIG_LAUNCHER_SELFTEST
+    else {
+        draw_selftest_page(input);
+    }
+#endif
+}
+
 static void
 diagnostics_frame(uint32_t dt_ms, const input_t* input) {
     (void)dt_ms;
@@ -111,17 +127,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         }
     }
 
-    /* Redrawn every frame rather than cached: the shell owns the framebuffer
-     * and the previous app may have left anything in it. */
-    if (page == 0) {
-        const post_ui_report_t report = {.title = POST_LAYOUT_TITLE, .quarter = display_quarter_now()};
-        post_ui_draw_report(&report);
-    }
-#if CONFIG_LAUNCHER_SELFTEST
-    else {
-        draw_selftest_page(input);
-    }
-#endif
+    diagnostics_draw(input);
 }
 
 static void

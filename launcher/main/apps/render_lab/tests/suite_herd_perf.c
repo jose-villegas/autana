@@ -73,7 +73,7 @@ release_fixture(void) {
 
 /* The skinned copies the scene keeps active and, in `external`, those of
  * them whose skin buffers MEMORY_FAST put in external RAM. */
-static int
+static __attribute__((noinline)) int
 shown_copies(const scene_t* scene, int* external) {
     int shown = 0;
     *external = 0;
@@ -87,7 +87,7 @@ shown_copies(const scene_t* scene, int* external) {
     return shown;
 }
 
-static bench_stats_t
+static __attribute__((noinline)) bench_stats_t
 sample_herd_steps(scene_t* scene, uint32_t dt_ms, const r3d_lod_measure_t* measure) {
     for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
         /* Step-only samples have no draw to refresh the held camera's sizes. */
@@ -110,7 +110,7 @@ sample_herd_steps(scene_t* scene, uint32_t dt_ms, const r3d_lod_measure_t* measu
     return bench_stats_compute(active->step_us, HERD_PERF_SAMPLES);
 }
 
-static bench_stats_t
+static __attribute__((noinline)) bench_stats_t
 sample_herd_frames(uint32_t dt_ms) {
     for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
         if (i == 0) {
@@ -127,7 +127,7 @@ sample_herd_frames(uint32_t dt_ms) {
 
 /* The skinned copies the scene keeps active whose world box the active
  * camera's picture at `quarter` takes in: the planes the raster culls with. */
-static int
+static __attribute__((noinline)) int
 copies_in_view(const scene_t* scene, int quarter) {
     const entity_t camera = camera_active();
     const transformf_t pose = transform_world(camera);
@@ -148,6 +148,63 @@ copies_in_view(const scene_t* scene, int quarter) {
     return seen;
 }
 
+static __attribute__((noinline)) void
+report_turn_steps(scene_t* scene, int copies) {
+    const bench_stats_t step = sample_herd_steps(scene, HERD_PERF_DT_MS, NULL);
+    TEST_ASSERT_GREATER_THAN_INT64(0, step.avg);
+    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d samples=%d step_mean_us=%lld step_p95_us=%lld", copies, HERD_PERF_SAMPLES,
+             (long long)step.avg, (long long)step.p95);
+    (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
+    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d step stages %s", copies, active->report);
+}
+
+static __attribute__((noinline)) vec3f_t
+herd_position(entity_t entity) {
+    return transform_world(entity).position;
+}
+
+static __attribute__((noinline)) void
+log_turn_quarter(int copies, const char* quarter, int in_view) {
+    const bench_stats_t frame = bench_stats_compute(active->frame_us, HERD_PERF_SAMPLES);
+    TEST_ASSERT_GREATER_THAN_INT64(0, frame.avg);
+    ESP_LOGI(TAG,
+             HERD_PERF_PREFIX
+             "n=%d samples=%d frame_mean_us=%lld frame_p95_us=%lld in_view_mean=%.2f" LAB_PERF_QUARTER_FORMAT,
+             copies, HERD_PERF_SAMPLES, (long long)frame.avg, (long long)frame.p95, (double)in_view / HERD_PERF_SAMPLES,
+             quarter);
+    (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
+    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d stages" LAB_PERF_QUARTER_FORMAT " %s", copies, quarter, active->report);
+}
+
+static __attribute__((noinline)) void
+report_turn_quarter(scene_t* scene, int copies, const lab_perf_quarter_t* quarter) {
+    test_hold_quarter(quarter->quarter);
+    int in_view = 0; /* summed over the samples, counted outside their timing */
+    const vec3f_t eye = herd_position(camera_active());
+    bool turned = false;
+    for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
+        if (i == 0) {
+            frame_cost_take_clear();
+        }
+        const int64_t start = timing_now_us();
+        (void)lab_test_frame_dt(HERD_PERF_DT_MS, false, NULL);
+        if (i >= 0) {
+            active->frame_us[i] = (int32_t)(timing_now_us() - start);
+            in_view += copies_in_view(scene, quarter->quarter);
+            turned |= vec3f_length(vec3f_sub(herd_position(camera_active()), eye)) > 0.0F;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(turned, "the camera turns about the herd");
+    TEST_ASSERT_EQUAL_INT(0, scene->starved_count);
+    log_turn_quarter(copies, quarter->name, in_view);
+}
+
+static __attribute__((noinline)) scene_t*
+turn_scene(void) {
+    scene_row_t row;
+    return scene_entity_row(herd->path().entity, &row); /* a row of a copy: the root is not one */
+}
+
 static void
 test_herd_turn_cost(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
@@ -159,8 +216,7 @@ test_herd_turn_cost(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, orbit_ms), HERD_PERF_TURN_MS));
     const entity_t root = lab_test_loaded_scene("herd");
     TEST_ASSERT_FALSE(handle_is_none(root));
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(herd->path().entity, &row); /* a row of a copy: the root is not one */
+    scene_t* scene = turn_scene();
     TEST_ASSERT_NOT_NULL(scene);
     const int copies = *(const int*)herd->data;
     scene_animation_step(scene, 0); /* a shown copy takes its buffers on its first step */
@@ -172,43 +228,11 @@ test_herd_turn_cost(void) {
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
     ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d copies_in_external_ram=%d", copies, external);
 
-    const bench_stats_t step = sample_herd_steps(scene, HERD_PERF_DT_MS, NULL);
-    TEST_ASSERT_GREATER_THAN_INT64(0, step.avg);
-    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d samples=%d step_mean_us=%lld step_p95_us=%lld", copies, HERD_PERF_SAMPLES,
-             (long long)step.avg, (long long)step.p95);
-    (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
-    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d step stages %s", copies, active->report);
+    report_turn_steps(scene, copies);
 
     for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
         const lab_perf_quarter_t* quarter = &lab_perf_quarters[q];
-        test_hold_quarter(quarter->quarter);
-        int in_view = 0; /* summed over the samples, counted outside their timing */
-        const vec3f_t eye = transform_world(camera_active()).position;
-        bool turned = false;
-        for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
-            if (i == 0) {
-                frame_cost_take_clear();
-            }
-            const int64_t start = timing_now_us();
-            (void)lab_test_frame_dt(HERD_PERF_DT_MS, false, NULL);
-            if (i >= 0) {
-                active->frame_us[i] = (int32_t)(timing_now_us() - start);
-                in_view += copies_in_view(scene, quarter->quarter);
-                turned |= vec3f_length(vec3f_sub(transform_world(camera_active()).position, eye)) > 0.0F;
-            }
-        }
-        TEST_ASSERT_TRUE_MESSAGE(turned, "the camera turns about the herd");
-        TEST_ASSERT_EQUAL_INT(0, scene->starved_count);
-        const bench_stats_t frame = bench_stats_compute(active->frame_us, HERD_PERF_SAMPLES);
-        TEST_ASSERT_GREATER_THAN_INT64(0, frame.avg);
-        ESP_LOGI(TAG,
-                 HERD_PERF_PREFIX
-                 "n=%d samples=%d frame_mean_us=%lld frame_p95_us=%lld in_view_mean=%.2f" LAB_PERF_QUARTER_FORMAT,
-                 copies, HERD_PERF_SAMPLES, (long long)frame.avg, (long long)frame.p95,
-                 (double)in_view / HERD_PERF_SAMPLES, quarter->name);
-        (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
-        ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d stages" LAB_PERF_QUARTER_FORMAT " %s", copies, quarter->name,
-                 active->report);
+        report_turn_quarter(scene, copies, quarter);
     }
     /* Paced: each frame steps by the time the last one took, as the app runs it. */
     uint32_t paced_ms = HERD_PERF_DT_MS;
@@ -232,7 +256,7 @@ test_herd_turn_cost(void) {
     release_fixture();
 }
 
-static void
+static __attribute__((noinline)) void
 place_rate_herd(scene_t* scene, entity_t camera) {
     const transformf_t eye = transform_world(camera);
     const render_view_t* view = &render_context_main()->kept_view;
@@ -262,6 +286,20 @@ place_rate_herd(scene_t* scene, entity_t camera) {
 }
 
 /* Still herd (scene_herd_hold): held transforms and camera isolate throttling; each arm starts fresh. */
+static __attribute__((noinline)) void
+report_rate_steps(scene_t* scene, const char* name) {
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &render_context_main()->kept_view, 1);
+    const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
+    const bench_stats_t step = sample_herd_steps(scene, LAB_TEST_FRAME_MS, &measure);
+    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d anim=%s samples=%d step_mean_us=%lld step_p95_us=%lld step_max_us=%lld",
+             *(const int*)scene_herd[HERD_EIGHT].data, name, HERD_PERF_SAMPLES, (long long)step.avg,
+             (long long)step.p95, (long long)step.max);
+    (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
+    ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d anim=%s step stages %s", *(const int*)scene_herd[HERD_EIGHT].data, name,
+             active->report);
+}
+
 static void
 test_herd_fixed_animation_rates(void) {
     for (int arm = 0; arm < 2; arm++) {
@@ -285,6 +323,11 @@ test_herd_fixed_animation_rates(void) {
                                   arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.mid_every)));
         TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(anim, far_every),
                                   arm == 0 ? RENDER_ANIM_EVERY_MIN : (RENDER_SETTINGS_DEFAULT.anim.far_every)));
+        /* A copy is measured, and its tier picked, on the frames it poses:
+         * the slowest tier's interval in frames re-tiers every placed copy. */
+        for (int f = 0; f < (RENDER_SETTINGS_DEFAULT.anim.far_every); f++) {
+            (void)lab_test_frame_dt(0, false, NULL);
+        }
         scene_animation_step(scene, 0);
         const int intervals[] = {RENDER_ANIM_EVERY_MIN, (RENDER_SETTINGS_DEFAULT.anim.mid_every),
                                  (RENDER_SETTINGS_DEFAULT.anim.far_every)};
@@ -296,16 +339,7 @@ test_herd_fixed_animation_rates(void) {
                 copy++;
             }
         }
-        r3d_lens_t lens;
-        r3d_lens_init(&lens, &render_context_main()->kept_view, 1);
-        const r3d_lod_measure_t measure = r3d_lod_measure(&lens);
-        const bench_stats_t step = sample_herd_steps(scene, LAB_TEST_FRAME_MS, &measure);
-        ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d anim=%s samples=%d step_mean_us=%lld step_p95_us=%lld step_max_us=%lld",
-                 *(const int*)scene_herd[HERD_EIGHT].data, name, HERD_PERF_SAMPLES, (long long)step.avg,
-                 (long long)step.p95, (long long)step.max);
-        (void)frame_cost_take_report(HERD_PERF_SAMPLES, active->report, sizeof active->report);
-        ESP_LOGI(TAG, HERD_PERF_PREFIX "n=%d anim=%s step stages %s", *(const int*)scene_herd[HERD_EIGHT].data, name,
-                 active->report);
+        report_rate_steps(scene, name);
         for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
             const lab_perf_quarter_t* quarter = &lab_perf_quarters[q];
             test_hold_quarter(quarter->quarter);
@@ -324,6 +358,7 @@ test_herd_fixed_animation_rates(void) {
 
 /* The walking herd sought to a time stays there, copies and clips, until
  * play, then walks on from it; two seeks to one time place it alike. */
+
 static void
 test_a_sought_herd_holds_until_play(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
@@ -334,22 +369,22 @@ test_a_sought_herd_holds_until_play(void) {
     const lab_path_t path = scene_herd[HERD_EIGHT].path();
     TEST_ASSERT_NOT_NULL(path.seek);
     TEST_ASSERT_TRUE(path.seek(HERD_PERF_TURN_MS / 2));
-    const vec3f_t sought = transform_world(path.entity).position;
+    const vec3f_t sought = herd_position(path.entity);
     for (int i = 0; i < HERD_SEEK_FRAMES; i++) {
         (void)lab_test_frame_dt(LAB_TEST_FRAME_MS, false, NULL);
     }
-    TEST_ASSERT_TRUE(vec3f_equal(sought, transform_world(path.entity).position));
+    TEST_ASSERT_TRUE(vec3f_equal(sought, herd_position(path.entity)));
     TEST_ASSERT_TRUE(animator_paused(path.entity, ANIMATOR_CURRENT));
     path.play();
     TEST_ASSERT_FALSE(animator_paused(path.entity, ANIMATOR_CURRENT));
     vec3f_t moved = sought;
     for (int i = 0; i < HERD_SEEK_FRAMES * HERD_PERF_SAMPLES && vec3f_equal(moved, sought); i++) {
         (void)lab_test_frame_dt(LAB_TEST_FRAME_MS, false, NULL);
-        moved = transform_world(path.entity).position;
+        moved = herd_position(path.entity);
     }
     TEST_ASSERT_FALSE(vec3f_equal(sought, moved));
     TEST_ASSERT_TRUE(path.seek(HERD_PERF_TURN_MS / 2));
-    TEST_ASSERT_TRUE(vec3f_equal(sought, transform_world(path.entity).position));
+    TEST_ASSERT_TRUE(vec3f_equal(sought, herd_position(path.entity)));
     suite_clear_test_cleanup();
     release_fixture();
 }

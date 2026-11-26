@@ -5,7 +5,7 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ $# -eq 0 ]; then
-    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--textured NAME] [--camera NAME] [--frames N --dt MS] [--framegen 0|1] [--view NAME (an unknown NAME lists them)] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
+    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--textured NAME] [--camera NAME] [--frames N --dt MS] [--framegen 0|1] [--view NAME (an unknown NAME lists them)] [--counts out.csv] [--poses out.csv] [--ids DIR] [--camera-poses FILE] [--size WxH] [--present nearest|scanline|double] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
     exit 2
 fi
 scene_file=$1

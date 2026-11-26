@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "core/tune.h"
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
@@ -194,6 +195,13 @@ mark_set_up(raster_cull_t* s, const drawn_at_t* w, const uint16_t* kept, int cou
     }
 }
 
+static __attribute__((noinline)) void
+count_buffers(const raster_t* raster, uint16_t** culled, r3d_pipeline_vertex_t** vertices) {
+    const raster_buffers_t buffers = raster_carve(raster);
+    *culled = buffers.culled;
+    *vertices = buffers.cs;
+}
+
 /* After the camera's draw, which picked each instance's level, its drawn
  * clusters are listed, and its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
@@ -204,36 +212,37 @@ static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     list_drawn(s, raster);
     memset(s->fate, RASTER_FATE_CULLED, (size_t)s->clusters);
-    const raster_buffers_t b = raster_carve(raster);
+    uint16_t* culled;
+    r3d_pipeline_vertex_t* vertices;
+    count_buffers(raster, &culled, &vertices);
     const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_lit_mesh_t* mesh = instance->mesh;
         const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
         if (copy != NULL) {
-            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+            r3d_batch_copy_mesh(copy->batch, mesh, copy->copy, &s->count_mesh);
+            mesh = &s->count_mesh;
         }
-        const r3d_lit_mesh_t* mesh = &counted_mesh;
-        r3d_lens_t lens;
-        raster_lens(raster, &s->camera, mesh->position_scale, &lens);
-        raster_drawn_place(raster, i, &lens);
+        raster_lens(raster, &s->camera, mesh->position_scale, &s->count_lens);
+        raster_drawn_place(raster, i, &s->count_lens);
         const uint16_t* kept = &s->drawn[w.at + 1];
         int count = s->drawn[w.at];
         if (culls) {
-            kept = b.culled;
-            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, raster_lod_dithering(raster, instance),
-                                              b.culled, &s->walk, &s->frame.counts);
+            kept = culled;
+            count =
+                r3d_pipeline_cull_counted(mesh, &s->count_lens, instance->lod_coarse,
+                                          raster_lod_dithering(raster, instance), culled, &s->walk, &s->frame.counts);
         } else {
             keep_drawn(mesh, kept, count, &s->frame.counts);
         }
-        r3d_lod_morph_t morph;
-        raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
-        r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
+        raster_lod_morph(raster, &s->camera, instance, &s->count_lens, &s->count_morph);
+        r3d_pipeline_transform_morphed(mesh, &s->count_lens, &s->count_morph, kept, count, vertices, NULL, false);
         for (int k = 0; k < count; k++) {
-            count_vertices(&s->frame.counts, &morph, mesh, kept[k]);
+            count_vertices(&s->frame.counts, &s->count_morph, mesh, kept[k]);
         }
-        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        r3d_pipeline_count_triangles(mesh, &s->count_lens, kept, count, vertices, &s->frame.counts, s->set_up);
         mark_set_up(s, &w, kept, count);
         walk_next(s, &w);
     }
@@ -361,8 +370,8 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
     }
 }
 
-/* A cluster owning a covered triangle is drawn; then the fates are counted. */
-static void
+/* Keep coverage's raster buffers off the stack while count_frame() transforms vertices. */
+static __attribute__((noinline)) void
 tally(raster_cull_t* s, const raster_t* raster) {
     mark_covered(s, raster);
     drawn_at_t w = {0};
@@ -455,11 +464,11 @@ world_bounds(const raster_t* raster) {
     return bounds;
 }
 
-/* From `observer` when given, else from cullview.from's pose, written to
- * `pose`; the lens is the camera's either way. */
-static render_view_t
-spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_t* observer, transformf_t* pose) {
+/* Keep the spectator's view temporary off the stack during count_frame(). */
+static __attribute__((noinline)) void
+spectator_view(raster_cull_t* s, const raster_t* raster, const transformf_t* observer) {
     const render_view_t* camera = &s->camera;
+    transformf_t* pose = &s->spectator_pose;
     const box3f_t bounds = world_bounds(raster);
     const vec3f_t centre = box3f_centre(bounds);
     const vec3f_t half = box3f_half_extent(bounds);
@@ -477,10 +486,8 @@ spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
         *pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
-    render_view_t view = render_view_make(pose, tan_half, near_z, camera->viewport);
-    view.present = camera->present;
-    view.small_fill = camera->small_fill;
-    return view;
+    s->spectator = render_view_make(pose, tan_half, near_z, camera->viewport);
+    s->spectator.present = camera->present;
 }
 
 /* The census list of each instance: its culled drawn clusters, or its kept
@@ -510,12 +517,18 @@ static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_ta
 
 /* The culled clusters' picture painted and kept with its depth, for the
  * kept clusters' to be layered on. */
-static void
+static __attribute__((noinline)) void
 keep_under(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
     paint_picture(s, raster, &b.picture, index);
-    assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    memory_free(s->under_color);
+    s->under_color = memory_alloc(pixels * (sizeof *s->under_color + sizeof *s->under_depth), MEMORY_APP);
+    if (s->under_color == NULL) {
+        return; /* the kept clusters show alone */
+    }
+    s->under_depth = (uint16_t*)(void*)(s->under_color + pixels);
     for (int y = 0; y < raster->height; y++) {
         const gfx_color_t* color = gfx_target_color(&b.picture, y);
         const uint16_t* depth = gfx_target_depth(&b.picture, y);
@@ -540,7 +553,7 @@ raster_cull_second_view(void* state, const raster_t* raster, const transformf_t*
             if (!s->spectated) {
                 return false;
             }
-            s->spectator = spectator_view(s, raster, observer, &s->spectator_pose);
+            spectator_view(s, raster, observer);
             s->spectating = true;
             s->pass = RASTER_CULL_PASS_CULLED;
             list_clusters(s, raster, true);
@@ -657,9 +670,11 @@ static void
 show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     raster_cull_t* s = self->state;
     paint_picture(s, raster, picture, index);
-    if (s->pass == RASTER_CULL_PASS_KEPT) {
+    if (s->pass == RASTER_CULL_PASS_KEPT && s->under_color != NULL) {
         layer_under(s, picture, index);
     }
+    memory_free(s->under_color);
+    s->under_color = NULL;
     s->spectating = false;
     s->pass = RASTER_CULL_PASS_CAMERA;
 }

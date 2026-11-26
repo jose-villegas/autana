@@ -4,6 +4,9 @@
 #include <math.h>
 #include <string.h>
 
+#include "math/scalar/mathi.h"
+#include "math/signal/smooth.h"
+
 /* Tuned on the board: one step's cost ratio reaches 1.34, and a finer step
  * must still fit once taken, so the up threshold sits under 1 / 1.34. */
 #define DEFAULT_WINDOW            8
@@ -358,4 +361,20 @@ resolution_predict_measured(resolution_predict_t* p, const resolution_config_t* 
         || p->scale <= 0.0F) {
         reset_refit(p);
     }
+}
+
+resolution_budget_t
+resolution_budget(int32_t target_us) {
+    return (resolution_budget_t){.target_us = target_us};
+}
+
+int32_t
+resolution_budget_learn(resolution_budget_t* budget, int32_t sample_us) {
+    const int32_t target_us = budget->target_us;
+    sample_us = mathi_clamp(sample_us, 0, target_us);
+    budget->unscaled_us =
+        budget->learned ? (int32_t)smooth_step_i64(budget->unscaled_us, sample_us, SMOOTH_RTT_DIVISOR) : sample_us;
+    budget->learned = true;
+    const int32_t floor_us = (int32_t)((int64_t)target_us * RESOLUTION_SCALED_MIN_PERCENT / 100);
+    return mathi_max(target_us - budget->unscaled_us, floor_us);
 }

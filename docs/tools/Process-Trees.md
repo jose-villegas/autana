@@ -18,33 +18,35 @@ as one *tree* that can be stopped whole.
 
 ```mermaid
 flowchart LR
-    L["launch_process_tree(command)"] --> W{"Windows?"}
+    L["run_process_tree(command, timeout)"] --> W{"Windows?"}
     W -->|"yes"| J["create job, start suspended,<br/>assign, resume"]
     W -->|"no"| S["start in a new session"]
-    J --> R["run"]
+    J --> R["wait, polling watch,<br/>handing lines to on_line"]
     S --> R
-    R -->|"error, Ctrl+C, lock lost"| X["stop_process_tree()"]
+    R -->|"deadline, watch or on_line raises,<br/>error, Ctrl+C"| X["stop_process_tree()"]
     R -->|"finished"| C["close_process_tree()"]
+    X --> C
 ```
 
 ## The functions
 
 | Function | Does |
 |---|---|
+| `run_process_tree(command, timeout=None, *, watch=None, on_line=None, **options)` | runs the command to its end like `subprocess.run`; past `timeout` raises `TimeoutExpired`, `watch` is called at least every `WATCH_SECONDS` and stops the run by raising, `on_line` gets each output line in the caller's thread; any exception stops the tree |
 | `launch_process_tree(command, parent_lifetime=False, new_session=True, **options)` | starts the command as a stoppable tree; `options` go to `Popen` |
 | `stop_process_tree(process)` | terminates the tree, waits up to 10 s, then releases the job |
 | `close_process_tree(process)` | releases the Windows job, killing any descendant still in it; a no-op on POSIX |
 | `install_console_interrupt_handler()` | turns Windows Ctrl-Break into `KeyboardInterrupt` so locks and ports unwind |
 
-`run_to_end()` in `scripts/device/device.py` wraps these: it waits on the command, and stops
-the tree on any error, on Ctrl+C, or the moment the held lock is lost
-([`device.py:1104`](../../scripts/device/device.py#L1103)).
+`run_to_end()` in `scripts/device/device.py` is `run_process_tree` with a `watch` that raises the
+moment the held lock is lost. `guard_stage()` in `scripts/lib/local_schedule.py` is the `watch` of a GPU stage:
+it raises once the stage stops progressing or passes its backstop.
 
 ## Using it
 
 | Do | Do not |
 |---|---|
-| Start child commands with `launch_process_tree`, finish with `close_process_tree` in a `finally` | use bare `subprocess.Popen` for a command that may spawn children |
+| Run a command to its end with `run_process_tree`; launch and close by hand only a tree you must signal mid-run | use bare `subprocess.Popen` for a command that may spawn children |
 | On Linux, start a `parent_lifetime=True` child from the thread that waits for it | start it from a worker thread that may exit first; the signal follows that thread |
 | Treat the "using tree kill" message as a downgrade | rely on a job object when the message appeared |
 

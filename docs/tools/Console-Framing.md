@@ -43,6 +43,13 @@ because the device keeps logging while it streams. It converts the BMP to PNG in
 the standard library only; opening the port is the caller's job, under the
 [device lock](../cli/Device-Lock.md).
 
+## Binary packet tags
+
+| Tag | Stream |
+|---|---|
+| `FRAMEREC` | [Render input](#binary-packets-framerec) |
+| `PANEL` | [Panel video](Panel-Video.md) |
+
 ## Binary packets: FRAMEREC
 
 `FRAMEREC START` streams each drawn frame's render input, in the
@@ -69,12 +76,12 @@ sequenceDiagram
 | `FRAMEREC_BEGIN ring=N keyframe_every=K` | the send ring's bytes and the keyframe interval |
 | `FRAMEREC_BIN n crc32` | `n` raw stream bytes follow the newline; `crc32` is theirs, in hex |
 | `FRAMEREC_END frames=F dropped=D bytes=B` | frames sent, frames dropped, stream bytes sent |
-| `FRAMEREC_REFUSED:` | the reason: already recording, not recording, or no memory for the stream or the recorder |
+| `FRAMEREC_REFUSED:` | the reason: already recording, not recording, no memory for the stream (with PSRAM's largest block) or the recorder, or neither START nor STOP |
 
 | Rule | Why | Where |
 |---|---|---|
 | A packet's line and bytes go out in one `console_emit_packet()` write of at most `CONSOLE_PACKET_MAX` | no other task's output lands inside a packet | [`console.c`](../../launcher/main/console/console.c) |
-| A stream's task starts with FRAMEREC START, sends what the ring holds after STOP, then `FRAMEREC_END`, and ends itself | a STOP drains the ring before the totals; a second START waits for the end | [`console_stream.c`](../../launcher/main/console/console_stream.c), [`console_framerec.c`](../../launcher/main/shell/console/console_framerec.c) |
+| A stream's task starts with FRAMEREC START, sends what the ring holds after STOP, then `FRAMEREC_END`, and ends itself | a STOP drains the ring before the totals; a START before `FRAMEREC_END` is refused | [`console_stream.c`](../../launcher/main/console/console_stream.c), [`console_framerec.c`](../../launcher/main/shell/console/console_framerec.c) |
 | A frame goes into the ring whole or not at all; a full ring drops it and counts it | a dropped frame never leaves half a record; the next frame is a keyframe | [`console_framerec.c`](../../launcher/main/shell/console/console_framerec.c) |
 | While FREEZE holds the picture, a frame waits up to `FRAMEREC_HELD_WAIT_MS` for room | a STEP's frame is sent, never dropped | same file |
 | Development builds only | the verb and the recorder are not in a release image | [`frame_record.h`](../../launcher/main/render/record/frame_record.h) |

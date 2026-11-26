@@ -28,6 +28,7 @@ add_library(render_host_core INTERFACE)
 add_library(autana::render_host_core ALIAS render_host_core)
 target_sources(render_host_core INTERFACE
     "${CMAKE_CURRENT_LIST_DIR}/render_host.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../anim/camera_poses.c"
     "${CMAKE_CURRENT_LIST_DIR}/render_video.c"
     "${CMAKE_CURRENT_LIST_DIR}/render_watch.c")
 target_include_directories(render_host_core INTERFACE "${CMAKE_CURRENT_LIST_DIR}")
@@ -52,11 +53,12 @@ foreach(package_list IN LISTS package_lists)
 endforeach()
 target_link_libraries(render_engine INTERFACE ${launcher_packages})
 
-# Consumers of the renderer define display_quarter_now (display/display.h).
+# The renderer and its scene shell, which asks display_quarter_now (display/display.h):
+# render_host_quarter.c answers with the run's quarter. A render_host_core consumer defines its own.
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
 target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
-    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c")
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer

@@ -13,27 +13,30 @@
 
 #define CODE_ENTRY_OFFSET(slots)                                                                                       \
     __attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE), patchable_function_entry(slots, slots)))
-/* The draw path's entry functions run from IRAM: on a dense scene, flash
- * fetch stalls cost the drawing core about a tenth of its draw cycles. The
- * cull's serial setup (lens, planes, level pick) runs once a frame, so from
- * flash each of its calls missed the instruction cache. IRAM has no cache
- * line to place a loop on, so the render sources' cache-line function
- * alignment would only waste IRAM; 4 bytes keeps entries aligned.
- * IRAM budget: release 7396 B, dev 7392 B, diag 7392 B */
-#define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
+/* IRAM draw entry points avoid flash stalls that cost about a tenth of draw
+ * cycles in dense scenes. The once-per-frame cull setup also misses the
+ * instruction cache. IRAM entries need only 4-byte alignment.
+ * IRAM budget: 7380 B */
+#define RENDER_IRAM_ATTR   IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: release 4475 B, dev 4479 B, diag 4479 B */
-#define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
+ * IRAM budget: release 4471 B, dev 4475 B, diag 4475 B */
+#define RENDER_SKIP_ATTR   RENDER_IRAM_ATTR
+/* The fill and row walk of a textured triangle that divides u and v by
+ * depth, placed with the draw path as RENDER_SKIP_ATTR is: in IRAM they take
+ * about a twentieth off the draw of near textured cards, all dividing.
+ * IRAM budget: 1799 B */
+#define RENDER_DIVIDE_ATTR RENDER_IRAM_ATTR
 /* Flash code off the hot draw (a masked texture's fill): linker.lf places it
  * after all other flash text, so it never sits between the per-triangle
  * flash functions and moves their cache placement. */
-#define RENDER_TAIL_ATTR __attribute__((section(".render_tail.text")))
+#define RENDER_TAIL_ATTR   __attribute__((section(".render_tail.text")))
 #else
 /* A host build has no instruction cache to place code in. */
 #define CODE_ENTRY_OFFSET(slots)
 #define RENDER_IRAM_ATTR
 #define RENDER_SKIP_ATTR
+#define RENDER_DIVIDE_ATTR
 #define RENDER_TAIL_ATTR
 #endif

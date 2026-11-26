@@ -3,6 +3,8 @@
 
 #define CAPYBARA_SCENE         "capybara"
 #define CAPYBARA_SUBJECT       "capybara"
+#define CAPYBARA_LIGHT         "sun"
+#define CAPYBARA_MEADOW        "meadow"
 #define CAPYBARA_GALLOP        "gallop"
 #define CAPYBARA_CLIP_COMMAND  "clip " CAPYBARA_GALLOP " %d"
 #define CAPYBARA_CLIP_CUT_MS   0

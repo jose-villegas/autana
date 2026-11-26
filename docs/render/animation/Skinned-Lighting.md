@@ -9,12 +9,13 @@ skinned normal receives, then tone mapped and gamma encoded like the bake.
 | Term | What it adds |
 |---|---|
 | Albedo | the vertex colour from the import, unlit |
-| Ambient | a constant light from every direction |
+| Ambient | a constant light from every direction, or the light a [probe grid](../frame/Light-Probes.md) holds at the mover |
 | Directional light | its colour times intensity times `max(0, N.L)`: full facing the light, nothing facing away |
 | Lit | albedo times the sum, then tone map and gamma |
 
-There is no shadow, sky visibility, ambient occlusion or bounced light at run
-time.
+There is no shadow, sky visibility or ambient occlusion at run time; bounced
+light comes only from a [probe grid](../frame/Light-Probes.md), and a
+[contact disc](../frame/Contact-Shadows.md) stands in for the shadow on the ground.
 
 ## What runs when
 
@@ -150,7 +151,7 @@ Per channel, with intensity unscaled as in `light.py:bake_directional`:
 
 | Step | Formula |
 |---|---|
-| Albedo decode | `(a / 255)^2.2` for albedo byte `a` |
+| Albedo decode | $`(a/255)^{2.2}`$ for albedo byte `a` |
 | Light | `ambient_color * ambient_intensity + sum(light_color * intensity * max(0, N.L))` |
 | Radiance | `albedo * light` |
 | Tone map, Reinhard<sup>[[7]](../../Citations.md#reinhard-2002)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |

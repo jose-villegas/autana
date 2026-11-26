@@ -9,6 +9,11 @@
 /* The first camera within `within`, in load order, or ENTITY_NONE. */
 entity_t camera_first(entity_t within);
 
+/* The first camera within `within` that flies a path, else camera_first(): the
+ * camera a flythrough is drawn from, the one r3d.poses.flight_camera samples
+ * when tools trace references and fit meshes along the path. */
+entity_t camera_flight(entity_t within);
+
 /* The camera's lens, or NULL when the entity has no camera. */
 const lens_t* camera_lens(entity_t camera);
 
@@ -29,9 +34,10 @@ void camera_deactivate(void);
 
 /* False for a non-camera entity or an invalid value; refusals change nothing. */
 bool camera_set_present(entity_t camera, camera_present_t present);
-bool camera_set_small_fill(entity_t camera, small_fill_t fill);
 /* render_view_t.skip_hidden for the camera's views. */
 bool camera_set_skip_hidden(entity_t camera, bool skip);
+/* The projection in short-axis tangent units; invalid values change nothing. */
+bool camera_set_projection(entity_t camera, float half_fov_short_tan, float near_z);
 /* The lens shift (render_view_t.shift): an off-axis view, as a window onto a
  * fixed rectangle needs. False also for a shift that is not finite. */
 bool camera_set_shift(entity_t camera, vec2f_t shift);

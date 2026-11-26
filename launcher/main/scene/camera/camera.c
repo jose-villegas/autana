@@ -3,6 +3,7 @@
 
 #include <math.h>
 
+#include "scene/animator/animator.h"
 #include "scene/scene_internal.h"
 
 int
@@ -40,6 +41,16 @@ camera_first(entity_t within) {
     return ENTITY_NONE;
 }
 
+entity_t
+camera_flight(entity_t within) {
+    for (entity_t e = entity_next(within, ENTITY_NONE); !handle_is_none(e); e = entity_next(within, e)) {
+        if (camera_of(e) != NULL && animator_clip_count(e) > 0) {
+            return e;
+        }
+    }
+    return camera_first(within);
+}
+
 const lens_t*
 camera_lens(entity_t camera) {
     return camera_of(camera);
@@ -67,22 +78,24 @@ camera_set_present(entity_t camera, camera_present_t present) {
 }
 
 bool
+camera_set_projection(entity_t camera, float half_fov_short_tan, float near_z) {
+    lens_t* found = camera_of(camera);
+    if (found == NULL || !isfinite(half_fov_short_tan) || half_fov_short_tan <= 0.0F || !isfinite(near_z)
+        || near_z <= 0.0F) {
+        return false;
+    }
+    found->half_fov_short_tan = half_fov_short_tan;
+    found->near_z = near_z;
+    return true;
+}
+
+bool
 camera_set_shift(entity_t camera, vec2f_t shift) {
     lens_t* found = camera_of(camera);
     if (found == NULL || !isfinite(shift.x) || !isfinite(shift.y)) {
         return false;
     }
     found->shift = shift;
-    return true;
-}
-
-bool
-camera_set_small_fill(entity_t camera, small_fill_t fill) {
-    lens_t* found = camera_of(camera);
-    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style >= SMALL_FILL_STYLE_COUNT) {
-        return false;
-    }
-    found->small_fill = fill;
     return true;
 }
 

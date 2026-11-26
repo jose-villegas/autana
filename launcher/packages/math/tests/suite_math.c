@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "math/linear/mat3f.h"
+#include "math/linear/quatf_euler.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
@@ -90,6 +91,63 @@ test_euler_angles_apply_z_then_x_then_y(void) {
     const quatf_t q = quatf_from_euler((vec3f_t){HALF_PI, HALF_PI, HALF_PI});
     assert_vec3(vec3f_unit_x(), quatf_rotate(q, vec3f_unit_x()));
     assert_vec3(vec3f_unit_z(), quatf_rotate(q, vec3f_unit_y()));
+}
+
+/* Angles inside quatf_to_euler's ranges come back as given, each part on its own and all three at once. */
+static void
+test_euler_angles_come_back_from_their_quaternion(void) {
+    const vec3f_t cases[] = {{0.0F, 0.0F, 0.0F},  {0.7F, 0.0F, 0.0F},   {0.0F, -2.5F, 0.0F}, {0.0F, 0.0F, 3.0F},
+                             {-0.2F, 0.8F, 0.3F}, {1.4F, -3.0F, -2.9F}, {-1.5F, 2.2F, 1.1F}};
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        assert_vec3(cases[i], quatf_to_euler(quatf_from_euler(cases[i])));
+    }
+}
+
+/* At pitch +-90 degrees yaw and roll turn about one axis: the angles that come back differ, the turn does not. */
+static void
+test_euler_angles_at_a_pitch_lock_give_the_same_turn(void) {
+    const vec3f_t locked[] = {{HALF_PI, 0.4F, 0.9F}, {-HALF_PI, -1.0F, 0.5F}};
+    for (size_t i = 0; i < sizeof locked / sizeof locked[0]; i++) {
+        const quatf_t q = quatf_from_euler(locked[i]);
+        const quatf_t again = quatf_from_euler(quatf_to_euler(q));
+        assert_vec3(quatf_rotate(q, vec3f_unit_x()), quatf_rotate(again, vec3f_unit_x()));
+        assert_vec3(quatf_rotate(q, vec3f_unit_y()), quatf_rotate(again, vec3f_unit_y()));
+    }
+    /* A quarter pitch with yaw, built exactly: roll comes back 0 and yaw takes the whole turn. */
+    const float half = sqrtf(0.5F);
+    const quatf_t exact = quatf_mul(quatf_from_axis_angle(vec3f_unit_y(), 0.6F), (quatf_t){half, 0.0F, 0.0F, half});
+    const vec3f_t back = quatf_to_euler(exact);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, HALF_PI, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.6F, back.y);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, back.z);
+}
+
+/* Pitch where cos pitch is twice and half QUATF_EULER_LOCK. Outside the lock
+ * the angles come back as given. Inside, roll folds into yaw, which moves an
+ * axis by at most cos pitch, so the turn matches within QUATF_EULER_LOCK. */
+static void
+test_euler_angles_beside_the_lock_threshold(void) {
+    const vec3f_t outside = {HALF_PI - (2.0F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const vec3f_t back = quatf_to_euler(quatf_from_euler(outside));
+    /* Yaw and roll come from entries scaled by cos pitch, so their noise grows by 1 / cos pitch. */
+    const float split_slack = SLACK / (2.0F * QUATF_EULER_LOCK);
+    TEST_ASSERT_FLOAT_WITHIN(SLACK, outside.x, back.x);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.y, back.y);
+    TEST_ASSERT_FLOAT_WITHIN(split_slack, outside.z, back.z);
+
+    const vec3f_t inside = {HALF_PI - (0.5F * QUATF_EULER_LOCK), 0.4F, 0.3F};
+    const quatf_t q = quatf_from_euler(inside);
+    const vec3f_t folded = quatf_to_euler(q);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, folded.z);
+    const quatf_t again = quatf_from_euler(folded);
+    const vec3f_t axes[] = {vec3f_unit_x(), vec3f_unit_y(), vec3f_unit_z()};
+    for (size_t i = 0; i < sizeof axes / sizeof axes[0]; i++) {
+        const vec3f_t want = quatf_rotate(q, axes[i]);
+        const vec3f_t got = quatf_rotate(again, axes[i]);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.x, got.x);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.y, got.y);
+        TEST_ASSERT_FLOAT_WITHIN(QUATF_EULER_LOCK, want.z, got.z);
+    }
 }
 
 static void
@@ -752,6 +810,20 @@ test_mat3_from_nonsymmetric_mat4_preserves_rows(void) {
 }
 
 static void
+test_mat3_scale_multiplies_every_entry(void) {
+    const mat3f_t matrix = {{{1, -2, 3}, {-4, 5, -6}, {7, -8, 9}}};
+    static const float scales[] = {0, 1, -2, 0.5F};
+    for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        const mat3f_t scaled = mat3f_scale(matrix, scales[i]);
+        for (int row = 0; row < MAT3F_AXES; row++) {
+            for (int col = 0; col < MAT3F_AXES; col++) {
+                TEST_ASSERT_EQUAL_FLOAT(matrix.m[row][col] * scales[i], scaled.m[row][col]);
+            }
+        }
+    }
+}
+
+static void
 test_mat3_product_applies_right_operand_first(void) {
     const mat3f_t left = {{{1, 2, 3}, {4, 5, 6}, {7, 8, 10}}};
     const mat3f_t right = {{{2, -1, 4}, {3, 5, 0}, {-2, 6, 1}}};
@@ -764,8 +836,123 @@ test_mat3_product_applies_right_operand_first(void) {
     }
 }
 
+static void
+test_quatf_from_to_rotates_directions_at_any_scale(void) {
+    const vec3f_t a = {1.0F, -2.0F, 3.0F};
+    const vec3f_t b = {2.0F, 1.0F, -4.0F};
+    const quatf_t turn = quatf_from_to(vec3f_scale(a, 1.0E-30F), vec3f_scale(b, 1.0E30F));
+    assert_vec3(vec3f_normalize(b), quatf_rotate(turn, vec3f_normalize(a)));
+    const quatf_t identity = quatf_identity();
+    const quatf_t absent = quatf_from_to(a, vec3f_zero());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &absent, sizeof absent);
+}
+
+static void
+test_quatf_from_to_handles_half_turns(void) {
+    const vec3f_t down = vec3f_scale(vec3f_up(), -1.0F);
+    const quatf_t turn = quatf_from_to(down, vec3f_up());
+    assert_vec3(vec3f_up(), quatf_rotate(turn, down));
+    assert_vec3(vec3f_back(), quatf_rotate(turn, vec3f_forward()));
+    const quatf_t axial = quatf_from_to(vec3f_forward(), vec3f_back());
+    assert_vec3(vec3f_back(), quatf_rotate(axial, vec3f_forward()));
+
+    const float lean = 1.0E-5F;
+    const vec3f_t almost_down = {lean, -1.0F, 0};
+    const quatf_t near = quatf_from_to(almost_down, vec3f_up());
+    const vec3f_t raised = quatf_rotate(near, almost_down);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 0.0F, raised.x);
+    assert_vec3(vec3f_back(), quatf_rotate(near, vec3f_back()));
+}
+
+static void
+test_quatf_looking_with_missing_up_and_nonfinite_forward(void) {
+    const quatf_t look = quatf_looking(vec3f_forward(), vec3f_zero());
+    assert_vec3(vec3f_forward(), quatf_rotate(look, vec3f_forward()));
+    assert_vec3(vec3f_up(), quatf_rotate(look, vec3f_up()));
+    const quatf_t identity = quatf_identity();
+    const quatf_t bad = quatf_looking((vec3f_t){INFINITY, 1, 0}, vec3f_up());
+    TEST_ASSERT_EQUAL_MEMORY(&identity, &bad, sizeof bad);
+}
+
+static void
+test_quatf_from_to_near_antiparallel(void) {
+    const vec3f_t starts[] = {{1.0F, 0.8F, 0.9F}, {0.9F, 1.0F, 0.8F}, {0.8F, 0.9F, 1.0F}};
+    const float steps[] = {1.0E-7F, 1.0E-6F, 1.0E-5F, 1.0E-4F, 1.0E-3F};
+    const float sides[] = {-1.0F, 1.0F};
+    for (size_t i = 0; i < sizeof starts / sizeof starts[0]; i++) {
+        const vec3f_t a = starts[i];
+        const vec3f_t unit = vec3f_normalize(a);
+        for (size_t j = 0; j < sizeof sides / sizeof sides[0]; j++) {
+            vec3f_t b = vec3f_scale(a, -1.0F);
+            b.z = nextafterf(b.z, sides[j]);
+            assert_vec3(vec3f_normalize(b), quatf_rotate(quatf_from_to(a, b), unit));
+            for (size_t k = 0; k < sizeof steps / sizeof steps[0]; k++) {
+                b.z = -a.z + sides[j] * steps[k];
+                assert_vec3(vec3f_normalize(b), quatf_rotate(quatf_from_to(a, b), unit));
+            }
+        }
+    }
+}
+
+static void
+test_quatf_from_to_uses_least_aligned_axis_near_opposition(void) {
+    const vec3f_t a = {0.25F, 0.5F, 1.0F};
+    vec3f_t b = vec3f_scale(a, -1.0F);
+    b.z = nextafterf(b.z, 0.0F);
+    const vec3f_t axis = vec3f_normalize(vec3f_cross(vec3f_unit_x(), a));
+    const quatf_t turn = quatf_from_to(a, b);
+    assert_vec3(axis, quatf_rotate(turn, axis));
+}
+
+static void
+test_quatf_looking_keeps_roll_across_both_poles(void) {
+    const float poles[] = {-1.0F, 1.0F};
+    const float sides[] = {-1.0F, 1.0F};
+    const float outside = 1.0E-4F;
+    const float inside = 1.0E-8F;
+    const float edge_outside = 1.01E-6F;
+    const float edge_inside = 0.99E-6F;
+    const float tolerance = 2.0F * outside;
+    for (size_t i = 0; i < sizeof poles / sizeof poles[0]; i++) {
+        for (size_t j = 0; j < sizeof sides / sizeof sides[0]; j++) {
+            const vec3f_t up = vec3f_up();
+            const vec3f_t pole = {0, poles[i], 0};
+            const float side = sides[j];
+            const quatf_t past = quatf_looking((vec3f_t){0, pole.y, side * outside}, up);
+            const quatf_t within = quatf_looking((vec3f_t){0, pole.y, side * inside}, up);
+            const vec3f_t roll_delta = vec3f_sub(quatf_rotate(past, up), quatf_rotate(within, up));
+            TEST_ASSERT_FLOAT_WITHIN(tolerance, 0.0F, vec3f_length(roll_delta));
+
+            const quatf_t edge_past = quatf_looking(pole, (vec3f_t){0, 1, side * edge_outside});
+            const quatf_t edge_within = quatf_looking(pole, (vec3f_t){0, 1, side * edge_inside});
+            assert_vec3(quatf_rotate(edge_past, up), quatf_rotate(edge_within, up));
+        }
+    }
+}
+
+static void
+test_transformf_aims_with_quatf_pole_roll(void) {
+    const vec3f_t position = {1, 2, 3};
+    const vec3f_t down = vec3f_down();
+    const vec3f_t up = vec3f_up();
+    const quatf_t rotation = quatf_looking(down, up);
+    const transformf_t pose = transformf_looking(position, down, up);
+    assert_vec3(quatf_rotate(rotation, up), quatf_rotate(pose.rotation, up));
+    transformf_t current = transformf_identity();
+    transformf_set_position(&current, position);
+    transformf_look_at(&current, vec3f_add(position, down), up);
+    assert_vec3(quatf_rotate(rotation, up), quatf_rotate(current.rotation, up));
+}
+
 void
 suite_math(void) {
+    RUN_TEST(test_quatf_from_to_near_antiparallel);
+    RUN_TEST(test_quatf_from_to_uses_least_aligned_axis_near_opposition);
+    RUN_TEST(test_quatf_looking_keeps_roll_across_both_poles);
+    RUN_TEST(test_transformf_aims_with_quatf_pole_roll);
+    RUN_TEST(test_quatf_from_to_rotates_directions_at_any_scale);
+    RUN_TEST(test_quatf_from_to_handles_half_turns);
+    RUN_TEST(test_quatf_looking_with_missing_up_and_nonfinite_forward);
     RUN_TEST(test_vector_float_ranges_with_decimal_lengths);
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
@@ -831,6 +1018,7 @@ suite_math(void) {
 
     RUN_TEST(test_view_from_axes_maps_the_eye_and_frame_axes);
     RUN_TEST(test_scale_rows_and_columns_match_diagonal_products_exactly);
+    RUN_TEST(test_mat3_scale_multiplies_every_entry);
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
@@ -840,6 +1028,9 @@ suite_math(void) {
     RUN_TEST(test_a_quarter_turn_about_y_takes_z_to_x);
     RUN_TEST(test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y);
     RUN_TEST(test_euler_angles_apply_z_then_x_then_y);
+    RUN_TEST(test_euler_angles_come_back_from_their_quaternion);
+    RUN_TEST(test_euler_angles_at_a_pitch_lock_give_the_same_turn);
+    RUN_TEST(test_euler_angles_beside_the_lock_threshold);
     RUN_TEST(test_a_product_applies_the_right_operand_first);
     RUN_TEST(test_slerp_hits_both_ends_and_the_half_angle_between);
     RUN_TEST(test_slerp_takes_the_short_way_when_the_signs_differ);

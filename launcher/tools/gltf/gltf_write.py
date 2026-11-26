@@ -124,8 +124,11 @@ def build_glb(nodes, animations, cameras=(), meshes=(), skins=(), materials=()):
                        ("materials", out_materials)):
         if value:
             document[key] = value
+    extensions = dict.fromkeys(extension for node in nodes for extension in node.get("extensions", ()))
     if pointers:
-        document["extensionsUsed"] = ["KHR_animation_pointer"]
+        extensions["KHR_animation_pointer"] = None
+    if extensions:
+        document["extensionsUsed"] = list(extensions)
     text = _pad(json.dumps(document, separators=(",", ":")).encode("utf-8"), b" ")
     binary = _pad(bytes(blob), b"\0")
     total = 12 + 8 + len(text) + 8 + len(binary)

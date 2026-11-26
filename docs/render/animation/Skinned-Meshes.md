@@ -166,12 +166,19 @@ at once.
 [`rate_figures.py`](../../../launcher/tools/anim/playback/rate_figures.py) measures the lag above from
 the glTF clips and the default settings.
 
+### Ambient irradiance
+
+Ambient is flat, or sampled from a baked probe grid given by
+`scene_set_probes()` at each skinned renderer's bounds centre; the technique,
+from the bake to the per-vertex shading, is [Light Probes](../frame/Light-Probes.md).
+
+`scene_set_contact()` configures a skinned renderer’s [contact shadow](../frame/Contact-Shadows.md).
+
 ## 6. Current limits
 
 - Loop or clamp is set per animator in the scene file, not per clip.
 - A skin whose colours are per face (no vertex colours) cannot be lit.
-- A skinned mesh in a baked scene gets the direct lights and ambient, not
-  the scene's baked indirect light.
+- Indirect lighting requires a probe grid, baked only for a scene whose import asks for one ([limits](../frame/Light-Probes.md#8-limits)).
 - Influences per vertex are set per pack build, not per rig.
 
 The frame perf harness holds the display quarter, so gravity cannot change

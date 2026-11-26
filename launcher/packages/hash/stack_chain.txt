@@ -1,0 +1,3 @@
+indirect suite_crc32.c:check_random_buffers : suite_crc32.c:check_whole_buffer suite_crc32.c:check_chunk_boundaries
+
+indirect suite_hash_perf.c:test_hash_board_rows suite_crc32.c:check_whole_buffer suite_crc32.c:check_chunk_boundaries : crc32_update_nibble crc32_update_rom

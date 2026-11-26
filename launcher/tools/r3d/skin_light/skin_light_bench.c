@@ -166,7 +166,7 @@ lut_init(lut_t* t, unsigned size) {
 static r3d_skin_lights_t
 baseline_lights(const lights_t* lights) {
     r3d_skin_lights_t out = {.count = (int)lights->count};
-    out.ambient =
+    out.ambient.constant =
         vec3f_scale(vec3f_sub(lights->ambient, (vec3f_t){0.5F, 0.5F, 0.5F}), 1.0F / R3D_SKIN_LIGHT_BYTE_SCALE);
     for (int i = 0; i < out.count; i++) {
         out.direction[i] = lights->dir[i];

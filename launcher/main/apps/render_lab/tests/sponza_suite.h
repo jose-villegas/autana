@@ -21,8 +21,9 @@ typedef struct {
     size_t arena_mark;
 } sponza_suite_t;
 
-/* Loads it, printing why when it cannot; the scene is then ENTITY_NONE. */
-static inline sponza_suite_t
+/* Loads it, printing why when it cannot; the scene is then ENTITY_NONE.
+ * Not inlined, so its failure report stays out of the suite's test chains. */
+static __attribute__((noinline, unused)) sponza_suite_t
 sponza_suite_load(void) {
     scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
     const size_t mark = app_arena_mark();
@@ -35,7 +36,7 @@ sponza_suite_load(void) {
         s.scene = ENTITY_NONE;
     } else {
         s.load = asset_store_load(SPONZA_SCENE);
-        s.lens = camera_lens(camera_first(s.scene));
+        s.lens = camera_lens(entity_find(s.scene, name_hash(SPONZA_CAMERA)));
     }
     return s;
 }

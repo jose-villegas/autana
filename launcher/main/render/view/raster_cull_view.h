@@ -19,6 +19,7 @@
 
 #include "collections/bits.h"
 #include "gfx/gfx.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -55,8 +56,6 @@ typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PAS
  * instance, and the drawn clusters' triangles. */
 #define RASTER_CULL_CLUSTERS_MAX  8192
 #define RASTER_CULL_TRIANGLES_MAX 131072
-/* The largest picture it layers: the panel's. */
-#define RASTER_CULL_PIXELS_MAX    (GFX_WIDTH * GFX_HEIGHT)
 
 /* One frame's counts, every instance summed, from the camera. */
 typedef struct {
@@ -132,14 +131,19 @@ typedef struct {
     };
 
     r3d_pipeline_count_walk_t walk;
+    r3d_lit_mesh_t count_mesh;
+    r3d_lens_t count_lens;
+    r3d_lod_morph_t count_morph;
     /* The tree walks' pending nodes, here rather than on the drawing task's stack. */
     uint16_t walk_node[R3D_LIT_WALK_STACK_MAX], walk_shown[R3D_LIT_WALK_STACK_MAX];
     uint8_t walk_depth[R3D_LIT_WALK_STACK_MAX];
     uint32_t covered[BITS32_WORDS(RASTER_CULL_TRIANGLES_MAX)];
-    /* The culled clusters' picture, as painted, and its depth: R3D_DEPTH_EMPTY
-     * where nothing of them shows. */
-    gfx_color_t under_color[RASTER_CULL_PIXELS_MAX];
-    uint16_t under_depth[RASTER_CULL_PIXELS_MAX];
+    /* The culled clusters' picture, as painted, and its depth (R3D_DEPTH_EMPTY
+     * where nothing of them shows): one block the size of the drawn picture,
+     * held from the spectator's culled pass to the frame's show, NULL outside
+     * it or when the heap had none. */
+    gfx_color_t* under_color;
+    uint16_t* under_depth;
 } raster_cull_t;
 
 raster_attachment_t raster_cull_view(void* state);

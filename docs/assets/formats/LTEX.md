@@ -9,9 +9,9 @@ The palette holds the pattern divided by its mean on screen, so a vertex
 colour keeps its meaning (the surface's mean lit colour) and the texture only
 modulates it. A mesh names its textures through its [LUVS](LUVS.md) entry.
 
-A MASK1 texture cuts a triangle instead of patterning it, as a foliage card's
-leaves: its texel 0 leaves the pixel as it was, and texel 1 draws palette
-colour 1.
+A card cluster names one MASK1 page on chart 0 and every triangle draws with
+it: the mask, rather than the plane test, cuts the card. Texel 0 preserves
+the pixel; texel 1 draws palette colour 1.
 
 ![Bistro's street on host: the source render, the vertex colours alone, and the cobblestones and beige brick textured, with each one's CIE76 error against the source](../../images/render/bistro-street-textured.png)
 
@@ -19,6 +19,9 @@ colour 1.
 
 CIE76 is the distance between two colours in CIELAB; the error panels' scale
 runs from black (matches the source) through red to yellow.
+
+How the span fill maps these texels onto a triangle, picks a level and
+divides by depth: [Texture-Mapping.md](../../render/frame/Texture-Mapping.md).
 
 ```mermaid
 ---
@@ -49,7 +52,7 @@ title Header, 20 bytes at 0, one cell a byte
 | Tint | 6 | 3 × u8, r, g, b: the hue the colormap lights the pattern with, the mean vertex colour it is drawn on |
 | Reserved | 9 | 3 bytes, zero |
 | Palette | `palette_off` | INDEX4: 16, MASK1: 2 × {u8 r, g, b, 0}, 128 = the pattern's mean |
-| Texels | `texels_off` | each level's `side² / 2` (INDEX4) or `side² / 8` (MASK1) bytes, level 0 first |
+| Texels | `texels_off` | each level's `side * side / 2` (INDEX4) or `side * side / 8` (MASK1) bytes, level 0 first |
 
 | Rule | Detail |
 |---|---|

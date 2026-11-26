@@ -6,6 +6,16 @@ itself is [`docs/tools/Render-Harness.md`](../../../../../docs/tools/Render-Harn
 Before a source bake or reference render, pull the
 [mesh source files](../../../../tools/r3d/README.md).
 
+## SH probes
+
+Sponza's scene requests an incident-radiance grid. Its sampling settings live
+in `launcher/demo/sponza/sponza.probes.toml`; the bake logs cost and cell counts.
+See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
+
+```sh
+python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
+```
+
 ## Host renders
 
 ```sh
@@ -27,11 +37,11 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
-bakes, from `variant`), then the rows the showing scene declares in its
-`controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
-index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
-and host scene keys are unchanged.
+`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (the herd's
+sizes, from `variant`), then the rows the showing scene declares in its
+`controls` (Capybara's CLIP and BLEND; TEXTURES on a bake whose pack mesh has textures,
+the setting `render_lab.textures`). Order in `scenes[]` is the order of every list, and
+index 0 (Sponza) is the scene a start with no key shows.
 
 ### Water
 
@@ -138,12 +148,12 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family shows a generated primitive or a static pack mesh in copies,
-or a baked mesh of its own pack, before a moving camera. Each preset ties down
-one behaviour with its own pegged goal. The presets are the per-PR perf check
-for r3d work. Scenes run nightly, on request, and for bake and fit changes; a
-scene regression with no preset moving is a coverage gap and becomes a new
-preset.
+The Stress family draws generated or baked meshes before a moving or held
+camera. Each preset isolates a renderer cost and owns its perf goals.
+
+The presets are the per-PR perf check for r3d work. Scenes run nightly,
+on request, and for bake and fit changes. A scene regression with no
+preset moving becomes a new preset.
 
 Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
 the presets vary the copies' geometry, layout and colour modes.
@@ -159,20 +169,43 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-skinned-sh-blobs` | ![Skinned copies with probe lighting and contact discs](../../../../../docs/images/overview/render-lab-stress-skinned-sh-blobs.png) | animated skins over floor pads; copy count is `STRESS_SKINNED_COPIES` | Per-mover SH sampling, per-vertex irradiance and BLOB contact discs. |
+| `stress-skinned-feet-blobs` | ![Constant discs under generic contact joints](../../../../../docs/images/overview/render-lab-stress-skinned-feet-blobs.png) | Same copies and low light as `stress-skinned-silhouette-blobs`, with FEET and warp off | Contact discovery and posed discs. |
+| `stress-skinned-blob-warped` | ![Warped radial ellipse](../../../../../docs/images/overview/render-lab-stress-skinned-blob-warped.png) | BLOB with the low contact light and warp on | Divide-free ellipse path. |
+| `stress-skinned-silhouette-warped` | ![Warped silhouette contacts](../../../../../docs/images/overview/render-lab-stress-skinned-silhouette-warped.png) | `stress-skinned-silhouette-blobs` with warp on | Warp cost against its unwarped twin. |
+| `stress-skinned-silhouette-blobs` | ![Top-down joint-proxy silhouette](../../../../../docs/images/overview/render-lab-stress-skinned-silhouette-blobs.png) | Same copies and pose tiers as `stress-skinned-sh-blobs`, with a low directional light | Mask refresh cost and redraw bounds. |
+| `stress-contact-blobs` | ![Contact discs on plain floor pads](../../../../../docs/images/overview/render-lab-stress-contact-blobs.png) | static floor pads; copy count is `STRESS_CONTACT_BLOB_COPIES` | Contact-disc clipping, depth and fill, under the near camera swing. |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 | `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 | `stress-few-copies` | ![Stress few copies: two dense spheres](../../../../../docs/images/overview/render-lab-stress-few-copies.png) | two dense spheres side by side | the two-core cull split: with one instance a core, its fork and join cost more than the halved walk saves |
+| `stress-carved-near` | ![Stress carved near: a few bumpy balls close up](../../../../../docs/images/overview/render-lab-stress-carved-near.png) | a few copies of a banded bumpy ball, baked with levels of detail, close to the camera | the carve's finest levels: each copy draws near its full shape |
+| `stress-carved-far` | ![Stress carved far: a wall of bumpy balls in the distance](../../../../../docs/images/overview/render-lab-stress-carved-far.png) | many copies of the same ball, small in the distance | per-copy level picks: far copies draw their coarse levels |
 | `stress-textured` | ![Stress textured: big triangles under a brick texture](../../../../../docs/images/overview/render-lab-stress-textured.png) | the big-tris layout, its banded light multiplied by a generated 4-bit brick texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) | the textured span fill against the same pixels drawn plain in `stress-big-tris` |
+| `stress-textured-far` | ![Stress textured far: a wall of small brick planes](../../../../../docs/images/overview/render-lab-stress-textured-far.png) | `stress-textured`'s plane, 64 small copies on a wall, so its brick picks far mip levels | the far mip levels: every textured pixel takes `texture.far_level`'s flat fill, against `stress-textured`, whose levels all read texels |
 | `stress-foliage-near` | ![Stress foliage near: three bushes of masked cards over the view](../../../../../docs/images/overview/render-lab-stress-foliage-near.png) | three bushes one behind another over the whole view, each 24 small cards turned and overlapping several deep, cut by a generated MASK1 texture ([LTEX](../../../../../docs/assets/formats/LTEX.md)) keeping about 0.7 | the masked textured fill at its largest: foliage cards' overdraw near the camera |
 | `stress-foliage-near-opaque` | ![Stress foliage near opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-near-opaque.png) | `stress-foliage-near`'s cards under the INDEX4 brick, whole | the twin: against it, the near cards' mask costs alone |
 | `stress-foliage-far` | ![Stress foliage far: a wall of small bushes of masked cards](../../../../../docs/images/overview/render-lab-stress-foliage-far.png) | 36 small bushes side by side, their cards a few pixels across | the masked textured fill on small triangles, as distant foliage draws |
 | `stress-foliage-far-opaque` | ![Stress foliage far opaque: the same cards under the brick](../../../../../docs/images/overview/render-lab-stress-foliage-far-opaque.png) | `stress-foliage-far`'s cards under the INDEX4 brick, whole | the twin: against it, the far cards' mask costs alone |
+| `stress-butterflies` | ![Butterfly wall](../../../../../docs/images/overview/render-lab-stress-butterflies.png) | a wall of butterfly bodies with two hinged wings each | static mesh batches, hierarchy propagation and flap transforms |
+| `stress-few-butterflies` | ![Four butterflies](../../../../../docs/images/overview/render-lab-stress-few-butterflies.png) | a smaller wall with the same coverage | larger wing triangles with fewer transform batches |
 | `stress-record` | ![Stress record: four planes with a wave running over them](../../../../../docs/images/overview/render-lab-stress-record.png) | four planes made again every frame, a wave running over them, while the frame recorder runs | the recorder: each frame's four built meshes written whole, a keyframe's meshes every 30 frames |
 | `stress-cull-setup` | ![Stress cull setup: one small cube](../../../../../docs/images/overview/render-lab-stress-cull-setup.png) | one small cube of a few triangles | the cull's setup before it walks anything: the lens, frustum, settings and pick setup every cull pays once |
 | `stress-baked-tree` | ![Stress baked tree: the inside of a ring](../../../../../docs/images/overview/render-lab-stress-baked-tree.png) | a ring baked by the bake tools in its own pack, the camera at its centre turning half a turn; [`torus_obj.py`](torus_obj.py) writes the ring into [`ring.obj`](../../../../demo/stress_ring/ring.obj) | the baked cluster tree the cull walks, which no generated copy has |
+| `stress-small-grain` | ![Stress small grain: a wall of coarse planes drawn in grain](../../../../../docs/images/overview/render-lab-stress-small-grain.png) | a wall of banded planes, each triangle a few pixels past the always-flat side, under the SMALL FILL menu's largest ceiling and the grain style, no colour gate | the small fill's grain kernel, which only that setting selects |
+| `stress-small-dither` | ![Stress small dither: a wall of coarse noisy planes, dithered](../../../../../docs/images/overview/render-lab-stress-small-dither.png) | the same wall, its corners far apart in colour, under the dither style | the small fill's dither kernel, which only that setting selects |
+| `stress-small-off` | ![Stress small off: many small spheres, the small fill off](../../../../../docs/images/overview/render-lab-stress-small-off.png) | `stress-tiny-copies` with the small fill off | the row walk's flat fill, which the small fill otherwise takes first |
+| `stress-stack-skip` | ![Stress stack skip: planes one behind another, hidden clusters skipped](../../../../../docs/images/overview/render-lab-stress-stack-skip.png) | `stress-stack`, its camera skipping clusters behind drawn depth as Bistro's does | the capped row walk, every fill's depth held under its cluster's |
+| `stress-settle` | ![Live and settled comparison](../../../../../docs/images/render/settle.png) | a held wall of tessellated textured planes | quiet-band refinement, with partial redraw enabled by the preset |
+| `stress-carved-blend` | ![Stress carved blend: bumpy balls close up, changing level through dither masks](../../../../../docs/images/overview/render-lab-stress-carved-blend.png) | `stress-carved-near` with `lod.blend` on | the dithered blend's masked fill as a group moves between levels |
+
+![Butterfly wing motion](../../../../../docs/images/overview/render-lab-butterflies.gif)
+
+The butterfly pack uses unbaked vertex colour. Its wing outline traces
+miziziziz's CC0 texture<sup>[[132]](../../../../../docs/Citations.md#miziziziz-butterfly-2019)</sup>.
+`scene_stress.c` feeds a fixed sine flap, one phase per copy, to `hinge_pose`.
 
 A change is judged by each preset's own readout, stage by stage. The sum over
 presets is a summary line only. A draw change can win on two-sided and static
@@ -226,7 +259,7 @@ traverses the stacked surfaces. Their sweeps are claims of
 | Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
 The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
-preset's swing. `stress_presets[].perf_poses` owns sampling density.
+preset's swing or held pose. `stress_presets[].perf_poses` owns sampling density.
 Uniform presets also replay the full and half-height render_lab ladder steps.
 
 Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
@@ -249,9 +282,32 @@ perf board, plus the script's margins. Regenerate it with:
 python launcher/main/apps/render_lab/tools/stress_goals.py --unpegged stress-uniform-full CAPTURE...
 ```
 
-Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
-measured frames. The pose counts and size loops in the suite own its frame
-budget.
+Each pose draws one counted frame and one warm frame before measurement.
+Swinging presets measure `FRAME_PROFILE_REPLAY_DRAWS` frames; held presets
+measure the default settle hold plus `RENDER_SETTLE_BANDS` frames.
+
+The settle preset pauses its camera and samples the same pose throughout.
+Its `render.partial_redraw` setting enables kept rows even in the perf suite.
+Both columns capture frame 38, with settle disabled in the Live column.
+
+![Live and settled Sponza and textured planes, with amplified difference](../../../../../docs/images/render/settle.png)
+
+![Silhouette, arch and texture detail before and after settling](../../../../../docs/images/render/settle.crops.png)
+
+```sh
+launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/settle
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 \
+    --live-tune render.settle_frame_us=0 -o /tmp/settle/live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene stress-settle --frames 38 -o /tmp/settle/settled.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
+    --tune render.partial_redraw=1 --tune render.settle_frame_us=0 --frames 38 -o /tmp/settle/sponza-live.ppm
+/tmp/settle/render_lab_render --quarter 1 --no-hud --scene sponza-fitted-full --console '0:pose 0' \
+    --tune render.partial_redraw=1 --tune render.settle_frame_us=1 --frames 38 -o /tmp/settle/sponza-settled.ppm
+python launcher/tools/render/render_compare.py --out docs/images/render/settle.png \
+    --row 'Held Sponza view' /tmp/settle/sponza-live.ppm /tmp/settle/sponza-settled.ppm \
+    --row 'Held textured wall' /tmp/settle/live.ppm /tmp/settle/settled.ppm \
+    --label-a Live --label-b Settled --crops 2
+```
 
 Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
 Dynamic copies also use PSRAM and the same packed-int16 transform loop;
@@ -294,6 +350,12 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
 `RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use
 `R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
 pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
+
+`--perf-poses` draws a stress scene at the poses the stress perf suite
+replays, one frame each. `--path-hits FILE` writes each r3d fill path's hits
+after the last frame. `--stress-runs` prints every stress preset and quarter,
+one `key quarter` line each. `stress_path_hits.sh --check` uses all three and
+fails naming any path no preset reaches; Host Tests runs it.
 
 `--camera still` holds the camera, so a frame differs from the last only
 where the mesh moved. Mixed copies share meshes by tessellation;
@@ -344,6 +406,7 @@ pair; its clip and rate come from its ground speed. A third-person camera
 starts a little round from its face, turns slowly toward its back as it runs,
 never reaching it, and comes back as it stops. With frame generation on, a
 generated frame shows the capybara where the last drawn frame put it.
+The capybara uses BLOB contact coverage with warp off.
 
 ![Capybara in Sponza: the capybara's run down the atrium, rest to rest, under a third-person camera](../../../../../docs/images/overview/render-lab-capybara-sponza.gif)
 
@@ -356,7 +419,8 @@ generated frame shows the capybara where the last drawn frame put it.
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
-`render_lab.small_fill_style` apply to the scene camera each frame.
+`render_lab.small_fill_style` set the main render context's `small_fill`
+render settings every frame, so in the lab the picker owns small fill.
 The BOOT menu has a SMALL FILL dropdown with every `SMALL_FILL_` preset;
 picking one sets the three tunables. Every menu option is in a release
 image too.
@@ -373,14 +437,15 @@ depth edges sharp
 ([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 
-The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
-come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The generic scene viewer sets small fill like any render setting, with
+`--set render.small_fill.FIELD=VALUE`; a value outside the field's range fails the run.
 The [engine feature](../../../../../docs/render/frame/Coverage.md#small-fill)
 defines the axes and defaults.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
-    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+    --object atrium_fitted_full --set render.small_fill.ceiling=12 \
+    --set render.small_fill.gate=16 --set render.small_fill.style=1 -o grain.bmp
 ```
 
 The app host accepts `--tune` before entry or `--live-tune` after entry.
@@ -404,23 +469,18 @@ apply it every frame, and the perf suites size and compose the same way.
 autana tune render_lab.present 1
 autana suite run_sponza_perf_suite --set render_lab.present=1
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/present
-/tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
+/tmp/present/render_lab_render --scene sponza --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
 ```
 
 Seeded `perf_compare` on one board, eight seeds per side, ms per frame:
 
 | Scene | NEAREST | SCANLINE | Δ |
 |---|---:|---:|---:|
-| sponza fitted-full | 45.4 | 32.9 | −27.7% |
-| sponza full | 43.1 | 31.2 | −27.7% |
-| sponza flat | 32.7 | 25.1 | −23.3% |
-| sponza lite | 34.8 | 24.3 | −30.0% |
-| sponza fitted | 35.2 | 24.8 | −29.5% |
-| sponza flat-fitted | 32.9 | 25.4 | −22.7% |
+| sponza | 45.4 | 32.9 | −27.7% |
 | capybara render (paused) | 6.75 | 3.87 | −42.7% |
 
 A separate scoped A/B on the same day (one flash, two interleaved repeats) timed
-all three modes on sponza fitted-full, in ms:
+all three modes on sponza, in ms:
 
 | Quarter | NEAREST | DOUBLE | SCANLINE |
 |---|---:|---:|---:|
@@ -461,7 +521,7 @@ scene with no lit mesh, an unknown name or no value fails the run.
 Motion paints offsets red for x and green for y. Meshlets paints each mesh
 cluster a flat hue, with disjoint IDs across instances.
 
-![The meshlets view: full, lite and fitted](../../../../../docs/images/render/sponza-meshlets.png)
+![Clusters painted by the meshlets debug view](../../../../../docs/images/render/sponza-view-meshlets.png)
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
@@ -471,6 +531,9 @@ selects a scene camera; omitted, it draws the first camera.
 upscale, to `DIR/NNNN.raw` for the frame generation experiment
 ([Frame-Generation.md](../../../../../docs/render/frame/Frame-Generation.md)).
 
+`--transforms PATH` writes each entity's local position and quaternion after
+every update to a CSV, keyed by frame and entity name.
+
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at
 intervals taken from the script and over the clip's full period. Per-path
@@ -479,7 +542,7 @@ results belong in `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 [Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface):
 
 ```sh
-sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro-fitted-full     launcher/demo/sponza/sponza.scene.toml:sponza-fitted-full launcher/demo/sponza/sponza.scene.toml:sponza-fitted     launcher/demo/sponza/sponza.scene.toml:sponza-flat-fitted launcher/demo/sponza/sponza.scene.toml:sponza     launcher/demo/sponza/sponza.scene.toml:sponza-flat launcher/demo/sponza/sponza.scene.toml:sponza-lite
+sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro     launcher/demo/sponza/sponza.scene.toml:sponza
 ```
 
 The tour is authored as camera keys in `launcher/demo/sponza/tour.keys.toml`;
@@ -502,13 +565,14 @@ its scene by name rather than through the menu:
 | `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms, which the picker then keeps (its current blend when omitted) |
 | `autana render view <name>` | holds the Capybara scene's camera still on a named view: `home`, `front`, `side`, `back`, or `close` (home's angle at the zoom-in limit) |
 | `autana render scenes` | every scene's key and name, and which one is showing |
-| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
+| `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza` or `bistro` |
 | `sh launcher/main/apps/render_lab/tools/floor_shots.sh [--flash] --out <dir>/shots.txt <scene>@<ms>...` | screenshots each pose at the chosen size and at the dynamic-resolution floor, into `<dir>` |
 | `autana render pose <ms>` | holds the scene's path at that time: a baked scene's camera, or the capybara's gallop; `autana render pose play` lets it move again |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
+| `autana tune render_lab.orbit_zoom <n>` | where the Capybara and Herd scenes' camera starts, in hundredths of the distance that fits the subject from every angle: below 100 starts closer; taken at the next enter or scene switch |
 
 ### Flying the camera
 
@@ -517,7 +581,7 @@ mouse while the board draws it, to look at a scene, a fit or an LOD from
 anywhere:
 
 ```sh
-python launcher/main/apps/render_lab/tools/fly.py --scene sponza-fitted-full
+python launcher/main/apps/render_lab/tools/fly.py --scene sponza
 ```
 
 | Input | Does |
@@ -577,8 +641,15 @@ be checked to have measured the same thing.
 | Image | Shows |
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
-| `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
+| `render-lab-herd.gif` | the biggest herd (`herd-8`) walking for 12 s, each clip at the pace of its ground speed, as the camera turns a fifth of the way round it from closer than its home view (`render_lab.orbit_zoom`) |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
+
+The [warp comparison](../../../../../docs/render/frame/Contact-Shadows.md#light-warp) pairs clips
+from the same run. Refresh the contact renders with `doc_images.sh OUT WORK --contacts-only`.
+The host harness accepts `--contact-shape blob|feet|silhouette` and `--contact-warp 0|1`.
+
+[contact-silhouette.png](../../../../../docs/images/render/contact-silhouette.png) and its crops compare BLOB and SILHOUETTE on
+capybara-sponza at the same pose, with warp off.
 
 Run the app shots from the repository root with Python, Pillow and numpy:
 
@@ -586,8 +657,22 @@ Run the app shots from the repository root with Python, Pillow and numpy:
 PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work
 ```
 
-`tests/test_sky_through_walls.py`
-checks the app flythrough against its sky-through-wall ceilings.
+[`tests/test_sky_through_walls.py`](tests/test_sky_through_walls.py)
+checks the app flythrough against its sky-through-wall ceilings. An enclosed
+sky pixel is not counted when the source mesh
+([`sponza.obj`](../../../../demo/sponza/source/sponza.obj), from Git LFS)
+shows sky in any ray through it or through an enclosed pixel beside it.
+
+[`tests/test_see_through.py`](tests/test_see_through.py) checks every scene
+with a camera path for places where the source closes the view but the bake
+lets it past, such as a doorway decimation opened. It traces the source as the
+import keeps it and the drawn bundles at the same poses. A pixel counts where
+the bake hits nothing or lies beyond `BEHIND` times the source's distance, in a
+region wider than `OPENING` pixels.
+
+Each scene's pixels, summed over its path, stay within its `MOST_SEE_THROUGH`
+ceiling. Bakes that drop whole props under their budget count too, so a
+ceiling is that scene's measured sum.
 
 ## Sponza poses
 
@@ -608,18 +693,19 @@ python launcher/tools/anim/track_host.py \
     --every "$pose_every_ms" \
     --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
-        --mesh sponza.atrium -
+        --mesh sponza.atrium_fitted_full -
 ```
 
 ## The capybara asset
 
 `launcher/demo/capybara/capybara.blend` is a hand-modelled low-poly capybara
 with a control rig and in-place loops at 30 fps: `idle`, `walk`, `walk_fast`,
-`gallop` and `half_bound`. It is the source asset for skinned-mesh import;
-nothing in the build reads it.
+`gallop` and `half_bound`, and the one-shot idle gestures `glance` and
+`ear_flick` ([Idle gestures](../../../../demo/capybara/Idle-Gestures.md)). It is
+the source asset for skinned-mesh import; nothing in the build reads it.
 
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
-every loop as an animation, four influences per vertex. Host tools that read
+every clip as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
 [skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
@@ -631,7 +717,7 @@ exporter in Blender. By hand, it is:
 ```sh
 blender --background --factory-startup --python launcher/tools/gltf/blend_skin_to_glb.py -- \
     launcher/demo/capybara/capybara.blend capybara.glb \
-    --clips idle,walk,walk_fast,gallop,half_bound
+    --clips idle,walk,walk_fast,gallop,half_bound,glance,ear_flick
 ```
 
 and measure the lighting again:
@@ -694,13 +780,13 @@ matching reference views.
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
 `SPONZA_PERF_POSE_EVERY_MS`: the showcase bake with culling on and off, and
-the full bake placed by a moving model. Each frame-cost row reports mean,
+the bake placed by a moving model. Each frame-cost row reports mean,
 worst, median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each fitted Sponza scene's camera clip,
-Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
+`run_render_lab_frame_profile_suite` plays Sponza's and Bistro's camera clips
+and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
 After each playback the suite finds its frame peaks: the path is a loop, so
