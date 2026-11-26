@@ -27,6 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
+from r3d.leaks import seal_camera  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
@@ -120,21 +121,6 @@ def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
         return visible_from_path(p, tri_v, double, intersector, poses, width, height, lens, near, visibility.samples,
                                  visibility.margin)
     return visible_from_region(p, tri_v, double, intersector, visibility.rounds, rng, *scene.region)
-
-
-def seal_camera(scene, renderer):
-    """Where a sealed import's probes stand (simplify's Allocation.camera): the scene camera's region and near
-    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
-    if scene is None or scene.camera is None:
-        return None
-    camera = (scene.region, scene.camera.component.near_z)
-    views = getattr(renderer, "seal_views", None)
-    if views is None:
-        return camera
-    from r3d.poses import flight_camera, path_poses
-
-    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
-    return (*camera, (width, height, lens, poses))
 
 
 def thin_meshes(src, selected, thin, seed):

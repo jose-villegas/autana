@@ -48,7 +48,9 @@ flowchart LR
     S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
     F --> P[prune the fitted mesh<br/>to the budget]
-    P --> W[write_lit_mesh]
+    P --> B[snap back where<br/>views show new sky]
+    B --> T[split T-junctions]
+    T --> W[write_lit_mesh]
 ```
 
 Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
@@ -201,9 +203,29 @@ The plane envelope is zero inside the margin; the small pull remains active ther
 
 A start border point within `SEAM_MARGIN` × its capped local start edge scale
 of another part's triangle is moved onto that triangle. It then follows the
-triangle at fixed start barycentrics, so parts that overlapped in the start
-cannot pull apart into cracks. Nearest contacts win, and a held point never
-anchors another hold.
+triangle at fixed start barycentrics. Nearest contacts win, and a held point
+never anchors another hold.
+
+A hold ties points, not edges. A border edge between two held points stays
+straight while the triangles under it bend, so sky can open along it. A held
+point can also land on a triangle edge without sharing it: a T-junction, which
+the rasterizer can leave a pixel open along. The two steps after the fit close
+both.
+
+### After the fit
+
+| Step | What it does | Limit |
+|---|---|---|
+| `snap_back` | Looks from the start's leak probes ([`seal_seams`](Mesh-Import.md#seal_seams)'s views). Where the fit shows sky in a region that touches none of the start's, it moves the points round that region back to their start positions, a ring a pixel wider each round. | `SNAP_BACK_ROUNDS`; holes left after it fail the fit |
+| `split_t_junctions` | Splits each edge a fitted point lies within `T_JUNCTION_DISTANCE` of, through that point, unless a half would come out flat. | More splits than starting triangles fail the fit |
+
+The fit log reports the points moved back and the triangles added. On the
+current fits the split adds:
+
+| Scene | Fitted triangles | Added by the split |
+|---|---:|---:|
+| Sponza | 13312 | 438 (3.3%) |
+| Bistro | 29912 | 866 (2.9%) |
 
 ### Normals
 

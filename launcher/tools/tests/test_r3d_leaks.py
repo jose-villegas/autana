@@ -269,17 +269,17 @@ class SealCameraTests(unittest.TestCase):
 
     def test_no_scene_or_no_camera_gives_none(self):
         renderer = SimpleNamespace(seal_views=None)
-        self.assertIsNone(mesh_import.seal_camera(None, renderer))
-        self.assertIsNone(mesh_import.seal_camera(self.scene(camera=False), renderer))
+        self.assertIsNone(leaks.seal_camera(None, renderer))
+        self.assertIsNone(leaks.seal_camera(self.scene(camera=False), renderer))
 
     def test_the_region_and_near_plane_come_alone_without_seal_views(self):
-        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=None)), ("the region", 2.0))
-        self.assertEqual(mesh_import.seal_camera(self.scene(), SimpleNamespace()), ("the region", 2.0))
+        self.assertEqual(leaks.seal_camera(self.scene(), SimpleNamespace(seal_views=None)), ("the region", 2.0))
+        self.assertEqual(leaks.seal_camera(self.scene(), SimpleNamespace()), ("the region", 2.0))
 
     def test_seal_views_add_the_paths_views_at_their_size_and_lens(self):
         views = SimpleNamespace(every_ms=33, size=(8, 6))
         with mock.patch("r3d.poses.path_poses", return_value=(8, 8, 0.8, 2.0, ["a pose"])) as sampled:
-            camera = mesh_import.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
+            camera = leaks.seal_camera(self.scene(), SimpleNamespace(seal_views=views))
         self.assertEqual(camera, ("the region", 2.0, (8, 8, 0.8, ["a pose"])))
         self.assertEqual(sampled.call_args.args[0].path, "the flight")
         self.assertEqual(sampled.call_args.args[1:], ((8, 6), 33))

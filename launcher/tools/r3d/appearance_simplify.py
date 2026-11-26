@@ -38,12 +38,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
-from r3d.fit import gbuffer  # noqa: E402
+from r3d.fit import gbuffer, seal  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_bundle_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
+from r3d.leaks import seal_camera  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -1125,6 +1126,9 @@ def main(argv=None):
             geometry["geometry_views"] = select(source, carved, camera.region, camera.near_z,
                                                  job.settings.fit.probes.spacing)
         fit_start = fitted
+        # The start's leak probes stand where the object's import sealed its seams, for snap_back after the fit.
+        sealed = next(item for item in scene.renderers if args.object in (None, item.object.name))
+        probes = seal.start_probes(fit_start, copies, seal_camera(scene, sealed.renderer))
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
@@ -1150,12 +1154,14 @@ def main(argv=None):
             log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        fitted = pruned
+        fitted, moved = seal.snap_back(fit_start, pruned, copies, probes)
         if copies is not None:
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
-        count = write_mesh(out, name, fitted)
         report = stretch_report(fit_start, fitted, kept)
+        split, splits = seal.split_t_junctions(fitted)
+        seal.log_lines(moved, splits, len(fitted.tris))
+        count = write_mesh(out, name, split)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
             log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"

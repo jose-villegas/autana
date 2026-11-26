@@ -60,8 +60,25 @@ class LeakProbes:
 
     def holes(self, positions, tris):
         """Per hole a mesh shows, the source triangles seen through it."""
-        result = RayQuery(positions, tris)
         holes = []
+        for origins, directions, masks in self._view_holes(RayQuery(positions, tris)):
+            _, _, seen = self.query.first_hits(origins, directions)
+            holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
+        return holes
+
+    def rims(self, positions, tris, width=1):
+        """Per hole a mesh shows, the rows of its `tris` seen within `width` pixels around the hole."""
+        result = RayQuery(positions, tris)
+        rims = []
+        for origins, directions, masks in self._view_holes(result):
+            hit, _, seen = result.first_hits(origins, directions)
+            for mask in masks:
+                ring = (ndimage.binary_dilation(mask, CONNECTED, iterations=width) & ~mask).reshape(-1)
+                rims.append(np.unique(seen[ring & hit]))
+        return rims
+
+    def _view_holes(self, result):
+        """(origins, directions, hole masks) of each view where the RayQuery `result` shows a hole."""
         for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):
             sky = ~result.blocked(origins, directions)
             if not np.any(sky & ~source_sky):
@@ -74,9 +91,7 @@ class LeakProbes:
                     continue
                 masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width))
                 if masks:
-                    _, _, seen = self.query.first_hits(origins[rows], directions[rows])
-                    holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
-        return holes
+                    yield origins[rows], directions[rows], masks
 
     def repair(self, rows, result_positions, result_tris, free):
         """(number of holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the
@@ -123,3 +138,18 @@ def pins(positions, tris, holes, result_positions, result_tris, free):
             distance = nearest_triangles(positions[candidates], search)[2]
             picked[int(candidates[np.argmax(distance)])] = float(distance.max())
     return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)
+
+
+def seal_camera(scene, renderer):
+    """Where LeakProbes stand for an object's `renderer`: a sealed import's (simplify's Allocation.camera) and a fit's (fit/seal.py): the scene camera's region and near
+    plane, then the flight's views when the renderer has `seal_views`. None without a scene camera."""
+    if scene is None or scene.camera is None:
+        return None
+    camera = (scene.region, scene.camera.component.near_z)
+    views = getattr(renderer, "seal_views", None)
+    if views is None:
+        return camera
+    from r3d.poses import flight_camera, path_poses
+
+    width, height, lens, _, poses = path_poses(flight_camera(scene), views.size, views.every_ms)
+    return (*camera, (width, height, lens, poses))

@@ -704,6 +704,20 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(border, 4 * 4, "a moved seam vertex opened a crack")
 
 
+def stub_seal(seal):
+    """`seal`, a Mock standing in for r3d.fit.seal, made to change nothing: snap_back and the split return the
+    mesh they are given."""
+    seal.snap_back.side_effect = lambda start, fitted, copies, probes: (fitted, 0)
+    seal.split_t_junctions.side_effect = lambda mesh: (mesh, 0)
+    return seal
+
+
+def fit_scene():
+    """A scene with a camera and one renderer, as main() reads it."""
+    return SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(background=0)),
+                           renderers=[SimpleNamespace(object=SimpleNamespace(name="card"), renderer=None)])
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
     def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
@@ -720,13 +734,12 @@ class PruneAndCostTests(unittest.TestCase):
                     pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
                     calls = mock.Mock()
                     with mock.patch.multiple(appearance,
-                            load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
-                                component=SimpleNamespace(background=0)))),
+                            load_scene=mock.Mock(return_value=fit_scene()),
                             start_mesh=mock.Mock(return_value=mesh),
                             load_views=mock.Mock(return_value=(["training"], (24, 20))),
                             pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
                             optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
-                            write_mesh=calls.write_mesh):
+                            write_mesh=calls.write_mesh, seal=stub_seal(calls.seal), seal_camera=mock.Mock()):
                         calls.optimise.return_value = (points, rgb, [1.0])
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
@@ -736,7 +749,12 @@ class PruneAndCostTests(unittest.TestCase):
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
-                                     ["optimise", "coverage", "prune", "write_mesh"])
+                                     ["seal.start_probes", "optimise", "coverage", "prune", "seal.snap_back",
+                                      "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
+                    start, snapped, _copies, probes = calls.seal.snap_back.call_args.args
+                    self.assertIs(start, mesh)
+                    self.assertIs(snapped, pruned)
+                    self.assertIs(probes, calls.seal.start_probes.return_value)
                     covered, views, size = calls.coverage.call_args.args
                     np.testing.assert_array_equal(covered.points, points)
                     np.testing.assert_array_equal(covered.rgb, rgb)
@@ -773,12 +791,11 @@ class PruneAndCostTests(unittest.TestCase):
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh.points + 1, mesh.rgb / 2
             with mock.patch.multiple(appearance,
-                    load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
-                        component=SimpleNamespace(background=0)))),
+                    load_scene=mock.Mock(return_value=fit_scene()),
                     start_mesh=mock.Mock(return_value=mesh),
                     load_views=mock.Mock(return_value=(["training"], (24, 20))),
                     optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
-                    write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
+                    write_mesh=mock.DEFAULT, seal=stub_seal(mock.Mock()), seal_camera=mock.Mock()) as calls,                     mock.patch.dict(sys.modules, {
                         "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
                 calls["coverage"].return_value = np.ones(len(mesh.tris))
