@@ -3,14 +3,14 @@
 
     python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work DIR prepare
     python launcher/tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work DIR fit
-    python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME --budgets 4000,6000 --out DIR
+    python launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME --cost-weights 0,1 --out DIR
 
 A scene renderer with a `fit` table is not baked by mesh_import.py.
 `prepare`, in the r3d environment, bakes its start (the import's geometry
 steps at the variant's `triangles`, lit by the scene's bake, flat when the
 renderer's shading is), samples the
 scene camera's path for training,
-held-out and pruning poses, and renders the training references with their
+held-out and coverage poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
 fits the start with the recipe's settings and writes the renderer's mesh
 into DIR (r3d/fit/stage.py). bake/bake.py bakes the start as a mesh
@@ -34,7 +34,7 @@ from r3d.reference_set import (ReferenceInputs, POSE_SPACING, canonical,
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
 
-CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
+CSV_FIELDS = ("cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
 # The host renderer that draws any scene file's objects along its camera path.
 VIEWER = pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh"
@@ -124,7 +124,7 @@ def write_sweep_csv(path, rows):
 
 
 def point_name(point):
-    return "budget-%d-cost-%g" % (point["budget"], point["cost_weight"])
+    return "cost-%g" % point["cost_weight"]
 
 
 def run_sweep_points(out, points, run_fit, executor=None, deferred=None):
@@ -191,7 +191,7 @@ def plot_pareto(path, rows):
     figure, axis = plt.subplots(figsize=(8, 5), layout="constrained")
     for row in rows:
         axis.scatter(row["predicted_ms"], row["mean_delta_e"], color="tab:blue", zorder=2)
-        label = "%d, %g" % (row["budget"], row["cost_weight"])
+        label = "%g" % row["cost_weight"]
         axis.annotate(label, (row["predicted_ms"], row["mean_delta_e"]), xytext=(4, 4), textcoords="offset points",
                       fontsize=8, path_effects=[patheffects.withStroke(linewidth=3, foreground="white")])
     if front:
@@ -217,12 +217,11 @@ def comma_numbers(text, cast):
 
 
 def sweep_main(argv):
-    parser = argparse.ArgumentParser(description="Fit and score a recipe over triangle budgets and cost weights.")
+    parser = argparse.ArgumentParser(description="Fit and score a recipe over cost weights.")
     parser.add_argument("scene")
     parser.add_argument("--variant", required=True, help="the fitted scene object, or its variant when only one object fits it")
-    parser.add_argument("--budgets", required=True, type=lambda text: comma_numbers(text, int))
     parser.add_argument("--cost-weights", default="0", type=lambda text: comma_numbers(text, float))
-    parser.add_argument("--board-ms", type=lambda text: comma_numbers(text, float), help="measurements in budget, cost-weight order")
+    parser.add_argument("--board-ms", type=lambda text: comma_numbers(text, float), help="measurements in cost-weight order")
     parser.add_argument("--out", required=True)
     parser.add_argument("--smoke", action="store_true", help="fit eight steps at each point")
     args = parser.parse_args(argv)
@@ -232,14 +231,10 @@ def sweep_main(argv):
         job = placed_variant(scene, args.variant)
     except SettingsError as error:
         parser.error(str(error))
-    if job.settings.fit.probes is not None:
-        parser.error("--budgets is refused with geometry.probes; the variant's triangles is the budget")
-    points = [{"budget": budget, "cost_weight": weight} for budget in args.budgets for weight in args.cost_weights]
+    points = [{"cost_weight": weight} for weight in args.cost_weights]
     variant = job.renderer.variant
-    if any(budget > variant.triangles for budget in args.budgets):
-        parser.error("--budgets cannot exceed the variant's start triangle count")
     if args.board_ms is not None and len(args.board_ms) != len(points):
-        parser.error("--board-ms needs one value per budget and cost-weight point")
+        parser.error("--board-ms needs one value per cost-weight point")
     out = pathlib.Path(args.out).resolve()
     reference_work = out / "references"
     sweep_references(scene_path, scene, job, reference_work)
@@ -254,7 +249,7 @@ def sweep_main(argv):
         from r3d.fit.stage import fit
 
         work = point_dir / "work"
-        mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
+        mesh = fit(scene_path, scene, job, work, cost_weight=point["cost_weight"],
                    smoke=args.smoke, target=point_dir / f"{variant.name}.bundle", inputs=reference_work)
         mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
@@ -273,7 +268,7 @@ def sweep_main(argv):
     write_sweep_csv(out / "sweep.csv", rows)
     plot_pareto(out / "pareto.png", rows)
     for row in rows:
-        print("budget %(budget)d, cost %(cost_weight)g: %(triangles)d triangles, mean dE76 %(mean_delta_e).3f, p95 %(p95_delta_e).3f, %(predicted_ms).3f ms" % row)
+        print("cost %(cost_weight)g: %(triangles)d triangles, mean dE76 %(mean_delta_e).3f, p95 %(p95_delta_e).3f, %(predicted_ms).3f ms" % row)
     return 0
 
 

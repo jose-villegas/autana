@@ -3,7 +3,7 @@
 
     objects_report.py SCENE.scene.toml --object NAME --out DIR
         [--tolerance X] [--parts] [--surface-tolerance [X] [--surface-floor D]]
-        [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]] [--authoring]
+        [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]]
         [--carved BUNDLE]
 
 Reads source geometry after alpha masking. Writes only to --out, which must
@@ -25,24 +25,14 @@ error.md and error.png. --docs keeps error.csv and error.json as
 docs/render/data/SCENE-OBJECT-object-error.*, which render_doc_images.sh makes the
 page's figure and generated block from.
 
---authoring carves the renderer's mesh unlit (objects/carve.py) and writes
-detail.json, one row per shape whose detail was derived, and authoring.md:
-how the variant's ceiling splits between the carved shapes and the rest, then
-the shapes whose kept level still moves its surface more than
-lod.tolerance_px at the camera's closest view, with the reason
-(objects/detail.py).
-
 --carved reads a baked bundle of the renderer (its start or a fit) and writes
 carved.md, one row per carved shape: copies, triangles of one source copy and
 of its baked finest level, triangles drawn by all copies, the share of its
-source triangles with an alpha-tested material, and the nearest any camera
-path eye comes to a copy, then the nearest one looking at it, as the carve
-budgets it (objects/carve.py views); then the rest's finest triangles. carved.png draws the CARVED_SHEET_SHAPES shapes drawing the most,
-source beside baked finest level from two sides.
+source triangles with an alpha-tested material, the measured surface error
+and the error floor. The sheet draws source beside baked from two sides.
 """
 
 import argparse
-import copy
 import json
 import pathlib
 import shutil
@@ -207,7 +197,6 @@ def main(argv=None):
     parser.add_argument('--fitted', type=pathlib.Path)
     parser.add_argument('--cache', type=pathlib.Path)
     parser.add_argument('--docs', action='store_true')
-    parser.add_argument('--authoring', action='store_true')
     parser.add_argument('--carved', type=pathlib.Path)
     args = parser.parse_args(argv)
     if args.surface_floor and args.surface_tolerance is None:
@@ -238,26 +227,22 @@ def main(argv=None):
         write_sheet(out / 'shapes.png', objects, shapes)
     if args.held_out:
         write_error_report(args, scene, job, out)
-    if args.authoring:
-        write_authoring(scene, job, out)
     if args.carved:
-        write_carved(scene, job, src, args.carved, out)
+        write_carved(job, src, args.carved, out)
     return 0
 
 
-def write_carved(scene, job, src, bundle, out):
+def write_carved(job, src, bundle, out):
     """The --carved report; see the module docstring."""
     from r3d import mesh_bundle
-    from r3d.objects.carve import views
 
     entries, copies = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
-    eyes, _, near, sight = views(scene, job.renderer)
-    shapes, rest = carved_shapes(src, entries, copies, eyes, near, sight)
+    shapes, rest = carved_shapes(src, entries, copies)
     lines = [f'# {job.object.name}: carved shapes', '',
-             '| Shape | Copies | Source tris | Baked tris | Drawn tris | Alpha-tested | Nearest eye | Nearest in view |',
+             '| Shape | Copies | Source tris | Baked tris | Drawn tris | Alpha-tested | Surface error | Error floor |',
              '|---|---:|---:|---:|---:|---:|---:|---:|']
     lines += [f"| {s['shape']} | {s['copies']} | {s['source']} | {s['baked']} | {s['drawn']} | "
-              f"{s['alpha_tested']:.0%} | {s['nearest']:.0f} | {s['in_view']:.0f} |" for s in shapes]
+              f"{s['alpha_tested']:.0%} | {s['error']:.3g} | {s['floor']:.3g} |" for s in shapes]
     lines += ['', f"Rest: {rest} finest tris. Copies: {len(shapes)} shapes, {sum(s['drawn'] for s in shapes)} "
               f'tris drawn by {len(copies)} copies.']
     (out / 'carved.md').write_text('\n'.join(lines) + '\n')
@@ -265,14 +250,16 @@ def write_carved(scene, job, src, bundle, out):
     print(f'{len(shapes)} carved shapes, rest {rest} finest tris')
 
 
-def carved_shapes(src, entries, copies, eyes, near, sight=None):
+def carved_shapes(src, entries, copies):
     """(shapes, rest): per carved mesh of a decoded bundle, most drawn first, its first source object's source
     triangles and its baked finest level placed by its first copy, both in source units; and the rest's finest
     triangle count."""
     from r3d import mesh_bundle
     from r3d.lit_mesh import finest_count, finest_triangles, read_bundle_mesh
     from r3d.obj import alpha_tested
-    from r3d.objects.detail import nearest_distance
+    from r3d.geometry import compact
+    from r3d.objects.allocate import Piece, piece_error
+    from r3d.objects.detail import surface_error
 
     tested = alpha_tested(src.textures)
     index = {name: i for i, name in enumerate(src.object_names)}
@@ -285,13 +272,14 @@ def carved_shapes(src, entries, copies, eyes, near, sight=None):
         local, _, triangles, _, _ = finest_triangles(mesh)
         local = local / float(mesh.position_scale)
         points = [local @ np.asarray(row['matrix'], dtype=np.float64).T + np.asarray(row['position']) for row in rows]
-        bounds = [p.min(axis=0) for p in points], [p.max(axis=0) for p in points]
         mine = src.tri_o == index[rows[0]['first']]
-        shapes.append(dict(shape=rows[0]['first'], copies=len(rows), source=int(mine.sum()), baked=len(triangles),
+        source_positions, source = compact(src.p, src.tri_v[mine])
+        piece = Piece(rows[0]['first'], source_positions, source, len(rows), True)
+        shapes.append(dict(shape=piece.name, copies=len(rows), source=int(mine.sum()), baked=len(triangles),
                            drawn=len(triangles) * len(rows), alpha_tested=float(tested[src.tri_m[mine]].mean()),
-                           nearest=nearest_distance(*bounds, eyes, near),
-                           in_view=nearest_distance(*bounds, eyes, near, sight),
-                           source_positions=src.p, source_triangles=src.tri_v[mine],
+                           error=surface_error(source_positions, source, points[0], triangles),
+                           floor=piece_error(piece, np.inf),
+                           source_positions=source_positions, source_triangles=source,
                            baked_positions=points[0], baked_triangles=triangles))
     shapes.sort(key=lambda s: s['drawn'], reverse=True)
     return shapes, finest_count(read_bundle_mesh(entries, mesh_bundle.rest_name(entries, copies)))
@@ -318,46 +306,6 @@ def write_carved_sheet(path, shapes):
         row[0].set_title(f"{shape['shape'][-22:]} x{shape['copies']}\nsource {shape['source']} tris",
                          fontsize=plot_style.LABEL_SIZE)
     plot_style.save(fig, path)
-
-
-def write_authoring(scene, job, out):
-    """The --authoring report; see the module docstring."""
-    from r3d.mesh_import import bake_geometry
-    from r3d.objects.detail import TOLERANCE_PX
-
-    unlit = copy.copy(job)
-    unlit.bake = None
-    report = bake_geometry(unlit, scene, carve=True).mesh_report
-    rows, authoring = report.get('detail', []), report.get('authoring', [])
-    (out / 'detail.json').write_text(json.dumps(rows, indent=2) + '\n')
-    split = budget_split(job.renderer, report, rows)
-    lines = [f'# {job.object.name}: triangle budget', '',
-             '| Ceiling | Floor | Copies kept | Rest target | Rest below floor | Stepped below near levels |', '|---:|---:|---:|---:|---:|---|',
-             '| {ceiling} | {floor} | {copies} | {rest} | {shortfall} | {stepped} shapes, {below} triangles |'.format(**split), '',
-             f'# {job.object.name}: shapes needing authoring (above {TOLERANCE_PX:g} px up close)', '',
-             '| Shape | Error px | Reason |', '|---|---:|---|']
-    lines += [f"| {row['shape']} | {row['error_px']:.2f} | {row['reason']} |" for row in authoring]
-    lines += ['', '# Coarsest shapes', '', '| Shape |', '|---|']
-    lines += [f'| {name} |' for name in split['coarsest']] or ['| none |']
-    (out / 'authoring.md').write_text('\n'.join(lines) + '\n')
-    print(f'{len(rows)} derived shapes, {len(authoring)} need authoring')
-
-
-def budget_split(renderer, report, rows):
-    """How the variant's ceiling is split, as the carve measured it: the rest's soft floor, stored copy
-    prototypes, the rest target and shortfall, and derived shapes stepped down or at their coarsest rung."""
-    from r3d.objects.budget import ceiling_split, rest_target
-
-    ceiling = getattr(renderer.variant, 'ceiling', None)
-    split = ceiling_split(renderer)
-    floor = split[2]
-    copies = sum(entry.get('stored_triangles', entry['output_triangles'])
-                 for entry in report.get('passes', []) if 'stand_in' in entry)
-    rest = rest_target(split, copies)
-    stepped = [row for row in rows if row['rung'] > 0]
-    return dict(ceiling=ceiling, floor=floor, copies=copies, rest=rest, shortfall=max(0, floor - rest),
-                coarsest=[row['shape'] for row in rows if row.get('coarsest', False)], stepped=len(stepped),
-                below=sum(row['near_triangles'] - row['carved_triangles'] for row in stepped))
 
 
 def write_error_report(args, scene, job, out):

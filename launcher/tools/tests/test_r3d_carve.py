@@ -11,7 +11,7 @@ try:
     import numpy as np
 
     from r3d.objects import budget, carve, detail
-    from test_r3d_detail import FOCAL, NEAR, sphere
+    from test_r3d_detail import sphere
 except ImportError:
     np = None
 
@@ -77,73 +77,18 @@ class FreeRepeatTest(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "needs the r3d environment")
-class DerivedBudgetTest(unittest.TestCase):
-    def selected(self):
-        pos, tri_v, tri_m, tri_o, names = odd_scene()
-        rule = {"match": {"material": "m"}}
-        return pos, tri_v, tri_m, tri_o, {0: rule, 1: rule, 2: rule}
-
-    def test_copies_share_one_budget_from_the_closest_view_of_any(self):
-        pos, tri_v, tri_m, tri_o, selected = self.selected()
-        budgets, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[13, 0, 0]], FOCAL, NEAR)
-        self.assertEqual(budgets[0], budgets[1])
-        copies = next(shape for shape in shapes if shape["objects"] == [0, 1])
-        self.assertAlmostEqual(copies["distance"], 2.0)
-        self.assertEqual(budgets[0], copies["ladder"][0].triangles)
-
-    def test_a_shape_split_at_its_seams_is_welded_before_its_level(self):
-        positions, tris = sphere()
-        # Every triangle on its own corners, as a source splits at texture seams: no edge is shared.
-        split = positions[tris].reshape(-1, 3)
-        faces = np.arange(len(split)).reshape(-1, 3)
-        pos, tri_v = np.concatenate([split, split + [10, 0, 0]]), np.concatenate([faces, faces + len(split)])
-        tri_o, tri_m = np.repeat([0, 1], len(faces)), np.zeros(2 * len(faces), dtype=int)
-        rule = {"match": {"material": "m"}}
-        _, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, {0: rule, 1: rule}, [[-20, 0, 0]], FOCAL, NEAR)
-        welded = shapes[0]["ladder"][0].triangles
-        unwelded = len(detail.level(split, faces, detail.object_error(19.0, FOCAL)))
-        self.assertLess(welded, unwelded)
-        self.assertLess(welded, len(tris) // 2)
-
-    def measured(self, selected, room):
-        from r3d.simplify import Allocation, simplify
-        pos, tri_v, tri_m, tri_o, _ = self.selected()
-        _, shapes = carve.derived_budgets(pos, tri_v, tri_m, tri_o, selected, [[13, 0, 0]], FOCAL, NEAR)
-        allocation = Allocation(tri_o=tri_o, object_names=['a', 'b', 'c'], selection=selected, shapes=[], report={},
-            detail=SimpleNamespace(per_object={obj: shape for shape in shapes for obj in shape['objects']}, focal=FOCAL),
-            split=(room, room, 0))
-        simplify(pos, np.full_like(pos, 100), tri_v, tri_m, 1, colour_deviation=1, allocation=allocation)
-        return allocation.report
-
-    def test_a_ceiling_that_binds_steps_shapes_down_counting_each_once(self):
-        *_, selected = self.selected()
-        free = self.measured(selected, None)['stored_total']
-        tight = self.measured(selected, free - 1)['stored_total']
-        self.assertLessEqual(tight, free - 1)
-        self.assertEqual(self.measured(selected, free)['stored_total'], free)
-
-    def test_a_pinned_rule_keeps_its_budget_and_takes_its_share_of_the_room(self):
-        *_, selected = self.selected()
-        selected[2] = {'match': {'object': 'c'}, 'triangles': 50}
-        free = self.measured(selected, None)
-        pinned = next(row for row in free['passes'] if row['objects'] == ['c'])
-        self.assertEqual(pinned['budget'], 50)
-        tight = self.measured(selected, free['stored_total'] - 1)
-        self.assertLess(tight['stored_total'], free['stored_total'])
-        self.assertEqual(next(row for row in tight['passes'] if row['objects'] == ['c'])['budget'], 50)
-
-
-@unittest.skipIf(np is None, "needs the r3d environment")
 class CarveWithinTest(unittest.TestCase):
     def test_the_carve_adds_triangles_until_its_measured_move_fits(self):
+        from r3d.geometry import bounds_diagonal
         from r3d.meshopt import PERMISSIVE, REGULARIZE
+        from r3d.objects.allocate import FLOOR_SHARE
         from r3d.simplify import stand_in_within
 
         positions, tris = sphere()
         rgb = np.where(positions[:, :1] > 0, 255.0, 0.0).repeat(3, axis=1)
         materials = np.zeros(len(tris), dtype=int)
         options = REGULARIZE | PERMISSIVE
-        error = detail.object_error(2.0, FOCAL)
+        error = FLOOR_SHARE * bounds_diagonal(positions)
         floor = len(detail.level(positions, tris, error))
         _, _, kept, unbounded = stand_in_within(positions, rgb, tris, materials, floor, 2.0, options, None, None)
         self.assertEqual(kept, floor)
@@ -153,61 +98,6 @@ class CarveWithinTest(unittest.TestCase):
         if unbounded > error:
             self.assertGreater(budget, floor)
 
-
-@unittest.skipIf(np is None, "needs the r3d environment")
-class DetailReportTest(unittest.TestCase):
-    def test_each_shape_s_surface_move_is_reported_in_pixels_at_its_nearest_view(self):
-        rungs = [detail.Rung(100, 2.0), detail.Rung(40, 4.0)]
-        shapes = [dict(objects=[0, 1], distance=2.0, ladder=rungs, pick=1, triangles=np.zeros((120, 3)))]
-        passes = [dict(objects=["b", "a"], surface_error=0.05, output_triangles=48)]
-        rows, authoring = carve.detail_report(shapes, passes, ["a", "b"], FOCAL)
-        self.assertEqual((rows[0]["rung_triangles"], rows[0]["carved_triangles"]), (40, 48))
-        self.assertAlmostEqual(rows[0]["error_px"], 0.05 * FOCAL / 2.0)
-        self.assertEqual(authoring, [dict(shape="a", error_px=rows[0]["error_px"], reason="ceiling")])
-
-
-
-@unittest.skipIf(np is None, "needs the r3d environment")
-class ViewsTest(unittest.TestCase):
-    def test_a_renderer_that_samples_no_camera_path_has_no_eyes_and_sees_from_the_near_plane(self):
-        camera = SimpleNamespace(path=object(), half_fov_short_tan=0.5, near_z=NEAR)
-        path_scene = SimpleNamespace(camera=SimpleNamespace(component=camera))
-        for visibility in (SimpleNamespace(source="camera_region", rounds=4), None):
-            eyes, focal, near, sight = carve.views(path_scene, SimpleNamespace(visibility=visibility))
-            self.assertEqual((len(eyes), near, sight), (0, NEAR, None))
-            self.assertGreater(focal, 0.0)
-
-
-@unittest.skipIf(np is None, "needs the r3d environment")
-class CeilingSplitTest(unittest.TestCase):
-    """The variant ceiling is one budget: without a fit it caps the baked mesh; with one, the fitted bundle, and
-    the fit's budget is the least its rest keeps."""
-    CEILING, TRIANGLES, FLOOR = 34500, 33178, 18678
-
-    def renderer(self, fit):
-        variant = SimpleNamespace(ceiling=self.CEILING, triangles=self.TRIANGLES)
-        return SimpleNamespace(variant=variant, fit=SimpleNamespace(budget=self.FLOOR) if fit else None)
-
-    def test_without_a_fit_the_ceiling_caps_the_bake_and_the_copies_get_what_the_variant_leaves(self):
-        renderer = self.renderer(fit=False)
-        self.assertEqual(budget.ceiling_split(renderer), (self.CEILING, self.CEILING - self.TRIANGLES, self.TRIANGLES))
-
-    def test_with_a_fit_the_start_is_uncapped_and_the_copies_get_what_the_floor_leaves(self):
-        renderer = self.renderer(fit=True)
-        self.assertEqual(budget.ceiling_split(renderer), (None, self.CEILING - self.FLOOR, self.FLOOR))
-
-    def test_the_fit_prunes_to_the_ceiling_less_the_copies_with_a_soft_floor(self):
-        split = budget.ceiling_split(self.renderer(fit=True))
-        self.assertEqual(budget.rest_target(split, 14449), self.CEILING - 14449)
-        self.assertEqual(budget.rest_target(split, self.CEILING - 1), 1)
-        unbounded = self.renderer(fit=True)
-        unbounded.variant.ceiling = None
-        self.assertEqual(budget.rest_target(budget.ceiling_split(unbounded), 14449), self.FLOOR)
-
-    def test_without_a_ceiling_nothing_caps_the_copies(self):
-        renderer = self.renderer(fit=True)
-        renderer.variant.ceiling = None
-        self.assertIsNone(budget.ceiling_split(renderer)[1])
 
 if __name__ == "__main__":
     unittest.main()

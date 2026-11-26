@@ -53,7 +53,6 @@ bake = true
 visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
-budget = 18678
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]

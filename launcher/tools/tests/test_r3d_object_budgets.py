@@ -50,10 +50,10 @@ class ObjectBudgetTests(unittest.TestCase):
                  object_names=['near', 'far'], names=['plain', 'leaf'], textures=[texture, texture])
         settings = NS(seed=5, position_scale=None, alpha_keep=0.5, double_sided=[], cards=None,
                       thin=NS(material='leaf', keep=0.7),
-                      simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1, props=set(), props_share=0),
-                      meshes=[{'match': {'object': 'far'}, 'triangles': 100}])
+                      simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1),
+                      meshes=[{'match': {'object': 'far'}}])
         job = NS(settings=settings, renderer=NS(visibility=NS(source='camera_region'),
-                                                variant=NS(name='full', triangles=500, objects_scale=1.0)), bake=None)
+                                                variant=NS(name='full', triangles=2000)), bake=None)
         stages = []
         def mask(*args, **kwargs):
             result = original_mask(*args, **kwargs)
@@ -88,24 +88,13 @@ class ObjectBudgetTests(unittest.TestCase):
                 patch.object(importer, 'densify', side_effect=dense), \
                 patch.object(owner, 'repair', side_effect=repair), \
                 patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t: (p, np.full_like(p, 100), t)):
-            result = importer.bake_geometry(job, None)
+            result = importer.bake_geometry(job, None, carve=True)
         self.assertEqual(stages, ['alpha', 'visibility', 'thin/dense', 'seal'])
-        self.assertEqual(np.count_nonzero(result.tri_mat == 1), 100)
-        self.assertTrue(np.all(result.positions[result.tris[result.tri_mat == 1]][:, :, 2] > 40))
+        _, (positions, _, faces, materials) = result.shapes[0]["copies"][0]
+        self.assertGreater(len(faces), 0)
+        self.assertTrue(np.all(materials == 1))
+        self.assertTrue(np.all(positions[faces][:, :, 2] > 40))
 
-    def test_reserved_share_matches_main_formula(self):
-        from unittest.mock import patch
-        p, t, o = props()
-        for budget, share in ((401, 0.3), (400, 0), (400, 1)):
-            calls = []
-            def record(p, c, t, target, *args):
-                calls.append(target)
-                return p, c, t[:target], np.arange(len(p))
-            with self.subTest(budget=budget, share=share), patch.object(owner, 'simplify_with_update', side_effect=record):
-                owner.simplify(p, np.full_like(p, 100), t, o, budget, reserved=[({0}, share)],
-                               colour_deviation=1, allocation=owner.Allocation(tri_o=o))
-            prop = max(1, int(budget * share))
-            self.assertEqual(calls, [prop, max(1, budget - prop)])
 
 
     def test_no_new_cracks(self):

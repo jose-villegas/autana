@@ -6,7 +6,7 @@ vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
-        [--object NAME --surface-weight W --surface-margin E --seam-margin E] [--coverage-poses POSES.txt]
+        [--object NAME --surface-weight W --surface-margin E --seam-margin E]
 
 --start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
@@ -660,42 +660,6 @@ class Renderer:
         return self.antialias(colour, clip, rast, keep).flip(0)
 
 
-def visible(mesh, views, size, device="cuda"):
-    """Visible triangle IDs for each view, without gradients."""
-    import torch
-
-    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
-    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
-    for matrix, *_rest in views:
-        with torch.no_grad():
-            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
-        yield ids
-
-
-def coverage(mesh, views, size, device="cuda"):
-    """Per triangle, the pixels it shows summed over every view: zero for a
-    triangle no view sees, small for a sliver or a speck."""
-    import torch
-
-    total = torch.zeros(len(mesh.tris), dtype=torch.int64, device=device)
-    for ids in visible(mesh, views, size, device):
-        total += torch.bincount(ids[ids >= 0], minlength=len(mesh.tris))
-    return total.cpu().numpy()
-
-
-def prune(mesh, shown, budget):
-    """Keep the most-shown triangles up to `budget`, dropping every never-shown triangle; with no budget, keep every
-    triangle: one the coverage views never show may still face a camera they miss, and dropping it opens a crack.
-    `shown` holds pixels per triangle. Return the pruned mesh and kept start indices."""
-    if budget is None:
-        return mesh, np.arange(len(mesh.tris))
-    shown = np.asarray(shown)
-    keep = np.sort(np.argsort(-shown, kind="stable")[:min(budget, np.count_nonzero(shown))])
-    pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
-                           double=np.asarray(mesh.double)[keep])
-    return pruned, keep
-
-
 def uniform_laplacian(points, edges):
     """Each position minus the mean of its neighbours."""
     import torch
@@ -1149,9 +1113,6 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
-    parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
-    parser.add_argument("--coverage-poses", action="append",
-                        help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
     parser.add_argument("--held-out-poses", action="append", default=[],
                         help="held-out poses: the fit logs its dE76 over them, and with --closure gates hole growth")
     parser.add_argument("--held-out-reference", action="append", default=[], help="references for --held-out-poses")
@@ -1249,36 +1210,28 @@ def main(argv=None):
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
                                         front_weight=args.front_weight, depth_weight=args.depth_weight, **geometry)
         fitted = fitted._replace(points=points, rgb=rgb)
-        drawn = joined(fitted, copies)
-        rows = [coverage(drawn, *pose_views(poses, args.scale))[:len(fitted.tris)]
-                for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
-        shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
-        pruned, kept = prune(fitted, shown, args.budget)
         if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
             start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
-                                             for held_views, held_size in held_out) for candidate in (fit_start, pruned))
+                                             for held_views, held_size in held_out) for candidate in (fit_start, fitted))
             log(check_closure(start_holes, fitted_holes, pixels))
         if held_out:
-            log(held_out_line(joined(pruned, copies), held_out, clear))
+            log(held_out_line(joined(fitted, copies), held_out, clear))
         if unpictured:
             log(not_measured_line(unpictured))
-        log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
-            f"{np.count_nonzero(shown == 0)} never shown")
-        fitted = pruned
         if copies is not None:
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
         count = write_mesh(out, name, fitted)
-        report = stretch_report(fit_start, fitted, kept)
+        report = stretch_report(fit_start, fitted, np.arange(len(fitted.tris)))
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
             log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"
                                                     for row in report["worst"][measure]))
         (out / "stretch.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
-        print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
+        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76")
+        print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.
     torch = sys.modules.get("torch")
     if torch is not None and torch.cuda.is_available():

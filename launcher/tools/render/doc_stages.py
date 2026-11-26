@@ -487,14 +487,11 @@ class Keeper:
                          estimates=PREPARE_BYTES, priority=True)
 
     def fit(self, point, point_dir, scene_path, scene, job, inputs):
-        """`job` fitted at `point` ({budget, cost_weight}, as fit_point takes it) from the start and references
+        """`job` fitted at `point` ({cost_weight}, as fit_point takes it) from the start and references
         link_inputs put in `inputs`; its log in `point_dir`."""
         from r3d.process_budget import FIT_BYTES
-        variant = copy.deepcopy(job)
-        if point.get("budget") is not None:
-            variant.renderer.fit.budget = point["budget"]
         cost = point.get("cost_weight", 0.0)
-        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.bundle", inputs)["fit"],
+        folder = self.doc("fit", self.keys(job, scene, inputs / f"{job.renderer.variant.name}.bundle", inputs)["fit"],
                           cost, content_checksum(WEIGHTS).decode() if cost else None, code_digest(fit_into))
         return self.keep(folder, make_kept, folder, fit_into, point, point_dir, scene_path, scene, job, inputs,
                          estimates=FIT_BYTES)
@@ -671,16 +668,16 @@ def normal_weights(job):
     return list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
 
 
-def sweep_points(job):
-    """The budget sweep's points, at the budgets the variant has the triangles for."""
-    budgets = dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
-                            if budget <= job.renderer.variant.triangles)
-    return [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
+FIT_COST_WEIGHTS = (0.0, 0.1)
 
 
-def recipe_point(job, point):
-    """Whether the sweep `point` is the recipe's own fit."""
-    return point["budget"] == job.renderer.fit.budget and not point["cost_weight"]
+def sweep_points():
+    """Cost weights for the fit sweep, including the recipe's unweighted fit."""
+    return [{"cost_weight": cost} for cost in FIT_COST_WEIGHTS]
+
+
+def recipe_point(point):
+    return not point["cost_weight"]
 
 
 def _gpu(args, out, work, executor):
@@ -730,14 +727,14 @@ def _gpu(args, out, work, executor):
                 variant.renderer.fit.normal_weight = normal
                 futures[f"normal-{normal:g}"] = keeper.fit({}, work / f"normal-{normal:g}", scene_path, scene, variant,
                                                            reference_inputs)
-        for point in sweep_points(job):
+        for point in sweep_points():
             point_dir = work / point_name(point)
-            if not recipe_point(job, point) and not (point_dir / "result.json").is_file():
+            if not recipe_point(point) and not (point_dir / "result.json").is_file():
                 futures[point_dir.name] = keeper.fit(point, point_dir, scene_path, scene, job, reference_inputs)
 
     ready = prepare_variants(keeper, [(scene, job, reference_inputs)], prepared)
     light = submit_light_fits(keeper, scene_path, work)
-    # The fit's start, the import simplified to the fit's budget, with its path cull.
+    # The fit's start, the import simplified at the shared shape error, with its path cull.
     baked = keeper.bake(scene, args.object, True)
 
     start_steps = ready[0].result()
@@ -771,10 +768,10 @@ def _gpu(args, out, work, executor):
     for normal in normal_weights(job):
         command += ["--angle-column", f"normal {normal:g}", work / f"normal-{normal:g}/angles"]
     run(command, work / "normal-sheet.log")
-    points = sweep_points(job)
+    points = sweep_points()
 
     def run_point(point, point_dir):
-        mesh = fitted if recipe_point(job, point) else futures[point_dir.name].result().folder / FITTED_MESH
+        mesh = fitted if recipe_point(point) else futures[point_dir.name].result().folder / FITTED_MESH
         return measure(point_dir.name, job, mesh, reference_inputs)
 
     run_sweep_points(work, points, run_point)
@@ -783,9 +780,9 @@ def _gpu(args, out, work, executor):
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
     (out / f"tables/{id}-budget.md").write_text(markdown(
-        ["Budget", "Cost weight", "Triangles", "Held-out dE76", "Predicted ms"],
-        [(row["budget"], row["cost_weight"], row["triangles"], f'{row["mean_delta_e"]:.3f}', f'{row["predicted_ms"]:.3f}')
-         for row in sweep]) + "\n![Budget and cost sweep](../images/render/gpu/appearance-pareto.png)\n")
+        ["Cost weight", "Triangles", "Held-out dE76", "Predicted ms"],
+        [(row["cost_weight"], row["triangles"], f'{row["mean_delta_e"]:.3f}', f'{row["predicted_ms"]:.3f}')
+         for row in sweep]) + "\n![Fit cost sweep](../images/render/gpu/appearance-pareto.png)\n")
     gpu_images = ["appearance-indirect", "appearance-indirect.crops", "appearance-path-culled"]
     if (out / "render/gpu/appearance-path-culled.crops.png").exists():
         gpu_images.append("appearance-path-culled.crops")

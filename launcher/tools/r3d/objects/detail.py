@@ -1,77 +1,11 @@
-"""How much detail a carved shape keeps, derived from the views and the runtime's one LOD threshold.
-
-A shape's near level has just enough triangles that, seen from the closest the camera comes to any of its copies,
-no surface moves more than lod.tolerance_px on screen. Its far levels are the levels stage's, picked at run time
-against the same threshold. When the scene's ceiling binds, balance() steps shapes down a ladder of coarser
-rungs, the one that removes the most triangles per pixel of error first. needs_authoring() names every shape
-whose kept level still errs above the threshold up close, with the reason.
-"""
-
-from dataclasses import dataclass
+"""Re-measure a simplified prototype's surface error."""
 
 import numpy as np
 
 from r3d.geometry import bounds_diagonal, nearest_triangles, triangle_search
 from r3d.meshopt import simplify_to_error
-from render.settings import settings_toml
 
-# The screen error the level pick allows, in pixels: the default render settings' value r3d.lod.pick reads. Read
-# without the settings encoder, which would bring the pack's table format into every mesh's key.
-TOLERANCE_PX = settings_toml.default_value("lod.tolerance_px")
-
-# Each rung of a shape's ladder allows this many times the screen error of the rung before.
-LADDER_STEP = 2.0
 MAX_ERROR_SHRINK = 0.5
-
-
-@dataclass(frozen=True)
-class Rung:
-    triangles: int
-    error_px: float  # the screen error this rung allows at the shape's nearest view
-
-
-@dataclass(frozen=True)
-class Authoring:
-    shape: str
-    error_px: float  # the kept level's largest surface move at the shape's nearest view
-    reason: str  # 'ceiling': the balance stepped it past the threshold; 'silhouette': its stand-in's surface moved
-
-
-def nearest_distance(lows, highs, eyes, near, sight=None):
-    """The closest any of `eyes` comes to any copy's bounds (lows, highs per copy), never nearer than the camera's
-    near plane, since nothing nearer is drawn. With no eyes the camera may stand anywhere: the near plane. With
-    `sight` (each eye's forward and the tangent of its view's half-angle) an eye counts only for the copies in its
-    view (in_view); copies no eye sees count every eye, as without it."""
-    eyes = np.asarray(eyes, dtype=np.float64).reshape(-1, 3)
-    if not len(eyes):
-        return float(near)
-    lows, highs = np.asarray(lows, dtype=np.float64), np.asarray(highs, dtype=np.float64)
-    gap = np.maximum(np.maximum(lows[None] - eyes[:, None], eyes[:, None] - highs[None]), 0.0)
-    distance = np.linalg.norm(gap, axis=2)
-    if sight is not None:
-        seen = in_view(lows, highs, eyes, *sight)
-        if seen.any():
-            distance = np.where(seen, distance, np.inf)
-    return max(float(distance.min()), float(near))
-
-
-def in_view(lows, highs, eyes, forwards, half_tan):
-    """(eyes, copies): does each copy's bounding sphere reach into each eye's view cone, of half-angle
-    atan(half_tan) about its forward? A cone round the view's corners holds every pixel."""
-    centre, radius = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
-    to = centre[None] - eyes[:, None]
-    length = np.linalg.norm(to, axis=2)
-    forwards = np.asarray(forwards, dtype=np.float64)
-    forwards = forwards / np.linalg.norm(forwards, axis=1, keepdims=True)
-    along = np.einsum('ecd,ed->ec', to, forwards) / np.maximum(length, 1e-12)
-    angle = np.arccos(np.clip(along, -1.0, 1.0))
-    spread = np.arcsin(np.clip(radius[None] / np.maximum(length, 1e-12), 0.0, 1.0))
-    return (length <= radius[None]) | (angle <= np.arctan(half_tan) + spread)
-
-
-def object_error(distance, focal, error_px=TOLERANCE_PX):
-    """The model-space move that projects to `error_px` at `distance` through `focal` pixels per unit depth."""
-    return error_px * distance / focal
 
 
 def level(positions, triangles, error):
@@ -93,20 +27,6 @@ def level(positions, triangles, error):
         asked = asked if asked >= floor else 0.0
 
 
-def ladder(positions, triangles, distance, focal, tolerance_px=TOLERANCE_PX):
-    """The shape's rungs: the near level at tolerance_px, then each LADDER_STEP times coarser, while the triangle
-    count still drops and the allowed move stays inside the shape."""
-    assert distance > 0
-    rungs = [Rung(len(level(positions, triangles, object_error(distance, focal, tolerance_px))), tolerance_px)]
-    error_px = tolerance_px * LADDER_STEP
-    while object_error(distance, focal, error_px) < bounds_diagonal(positions):
-        count = len(level(positions, triangles, object_error(distance, focal, error_px)))
-        if count < rungs[-1].triangles:
-            rungs.append(Rung(count, error_px))
-        error_px *= LADDER_STEP
-    return rungs
-
-
 def surface_error(source_positions, source_triangles, positions, triangles):
     """The largest distance from either surface's vertices to the other surface, in model units."""
     if not len(triangles):
@@ -114,10 +34,3 @@ def surface_error(source_positions, source_triangles, positions, triangles):
     there = nearest_triangles(source_positions[np.unique(source_triangles)], triangle_search(positions[triangles]))[2]
     back = nearest_triangles(positions[np.unique(triangles)], triangle_search(source_positions[source_triangles]))[2]
     return float(max(there.max(initial=0.0), back.max(initial=0.0)))
-
-
-def needs_authoring(rows, tolerance_px=TOLERANCE_PX):
-    """The shapes whose kept level errs above `tolerance_px` at their nearest view. Each row is (name, error_px,
-    stepped): `stepped` when the balance took the shape past its near level."""
-    return [Authoring(name, error_px, 'ceiling' if stepped else 'silhouette')
-            for name, error_px, stepped in rows if error_px > tolerance_px]

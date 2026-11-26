@@ -43,11 +43,10 @@ outputs; the board table measures the committed asset.
 Run the documented stage to populate this comparison from current inputs.
 <!-- /generated: sponza-gpu -->
 
-### Budget and normal sweeps
+### Cost and normal sweeps
 
-The budget sweep varies the recipe's pruning budget and cost weight: held-out
-error against predicted time. The predictions use the board's cost weights, as
-fresh as its last board stage.
+The cost sweep compares held-out error against predicted frame time as the fit's cost weight varies.
+Every point fits the same start. The predictions use the weights produced by the board stage.
 
 <!-- generated: sponza-budget sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
 Run the documented stage to populate this comparison from current inputs.

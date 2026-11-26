@@ -294,7 +294,7 @@ the training poses:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \
-    --poses train.txt --reference reference_train --coverage-poses coverage.txt --object NAME --surface-weight 10 --surface-margin 0.25 --out fitted
+    --poses train.txt --reference reference_train --object NAME --surface-weight 10 --surface-margin 0.25 --out fitted
 ```
 
 To score a fitted mesh, pack it in place of the tracked one, as
@@ -324,7 +324,7 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 samples the camera's path every
 `fit.poses.train_every_ms`, holds out the multiples of
 `fit.poses.held_out_every_ms`, samples it again every
-`fit.prune.coverage_every_ms` for pruning, and renders the training references
+`fit.prune.coverage_every_ms` for probe placement, and renders the training references
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
@@ -334,9 +334,8 @@ way up at `fit.poses.size`. `fit` fits with
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
-`fit` prunes the fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. The fit uses deterministic
-reductions and seeded sampling; the lock pins the bytes a fit made.
+`fit` writes the fitted mesh into the work folder and keeps the start's triangles under the
+variant's stored ceiling. The importer sets the start count by [shared shape error](../../../docs/render/offline/Mesh-Import.md#shared-shape-error).
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
@@ -389,22 +388,21 @@ repository); what changed is where the files go: that page copies them into Wind
 change, while here they stay in a user folder that `DRJIT_LIBOPTIX_PATH` (read by Dr.Jit's core library, drjit-core)
 points at.
 
-### Budget sweep
+### Fit cost sweep
 
 `fitted_variant.py sweep` remakes and scores a fitted recipe at several
-triangle budgets and cost weights, one GPU fit at a time:
+cost weights, one GPU fit at a time:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/fitted_variant.py sweep SCENE.scene.toml --variant NAME \
-    --budgets 4000,6000,8672 --cost-weights 0,0.1 --out scratch/sweep
+    --cost-weights 0,0.1 --out scratch/sweep
 ```
 
 The sweep prepares one shared start and reference set for the scene, variant
-lighting and poses, then each point fits the recipe with only its budget and
-cost weight changed, scores the held-out references, and predicts the
+lighting and poses, then each point fits the recipe at its cost weight, scores the held-out references, and predicts the
 held-out path's board-render frame time with
 `board_cost_weights.txt`. `--board-ms` accepts optional board readings in
-budget then cost-weight order. `--smoke` uses a few fit steps per point.
+cost-weight order. `--smoke` uses a few fit steps per point.
 Finished point records let a later invocation resume without rerunning them.
 The output directory contains `sweep.csv` and `pareto.png`.
 
@@ -422,13 +420,11 @@ and measured tables. The GPU smoke mode publishes no images or tables.
 
 ## Cost-aware fit
 
-These stages spend a triangle budget where the camera looks, fit geometry
-as well as colour, and weigh appearance against frame time.
+These stages fit geometry and colour and weigh appearance against frame time.
 
 | Stage | What it does | Where |
 |---|---|---|
-| Path visibility | A renderer's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Scene-Files.md](../../../docs/render/scene/Scene-Files.md#visibility-camera_path) |
-| Pruning | `--budget N` draws every pose of `--coverage-poses` (the training poses when omitted) and counts the pixels each triangle shows; triangles no pose shows go first, then those showing fewest, down to N. Simplifying to more than N and pruning back puts the triangles where they show | `appearance_simplify.coverage`, `prune` |
+| Path visibility | A renderer's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification | `light.visible_from_path`, [Scene-Files.md](../../../docs/render/scene/Scene-Files.md#visibility-camera_path) |
 | Cost term | `--cost-model board_cost_weights.txt --cost-weight L` adds L dE76 per predicted millisecond to the loss: the model's drawn-triangle, row and pixel terms, differentiable in the vertex positions | `appearance_simplify.predicted_ms`, `cost_model.triangle_terms` |
 | Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle, and with `--angle-dir` writes each pose's per-pixel angle for `render_compare.py --angle-column` | `appearance_simplify.normal_l1`, `normal_error` |
 | Warm start | `--refine-to N` splits the longest edge of the start's worst triangles, by dE summed over the pixels they show, both sides of an edge at once, until N; a fitted coarse mesh then starts a finer fit | `appearance_simplify.refine`, `tessellate.split_marked_edges` |

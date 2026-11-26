@@ -127,16 +127,18 @@ class BakeTests(unittest.TestCase):
     @needs_llvm
     def test_a_cut_out_aggregate_keeps_a_thinned_enlarged_share_through_simplify(self):
         from r3d import mesh_import
+        from test_r3d_detail import sphere as wound_sphere
         leaf_p, leaf_v = quads(2 * AGGREGATE_PIECES_MIN, z=5.0)
-        ball_p, ball_v = sphere(9)
+        sphere_rings = 8
+        ball_p, ball_v = wound_sphere(rings=sphere_rings)
         p = np.concatenate([leaf_p, ball_p * 4])
         tri_v = np.concatenate([leaf_v, ball_v + len(leaf_p)])
         tri_m = np.repeat([0, 1], [len(leaf_v), len(ball_v)])
         src = SimpleNamespace(p=p, tri_v=tri_v, tri_t=None, uv=None, tri_m=tri_m, tri_o=tri_m.copy(),
                               names=['leaf', 'wall'], object_names=['tree', 'ball'], textures=[None, None],
                               materials={}, colors=None)
-        budget = len(tri_v) // 4
-        steps = SimpleNamespace(dense_edge=100.0, props=set(), props_share=0, seal_seams=False, colour_deviation=1.0)
+        budget = len(tri_v) // 2
+        steps = SimpleNamespace(dense_edge=100.0, seal_seams=False, colour_deviation=1.0)
         settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, cards=None, double_sided=set(),
                                    meshes=[], simplify=steps)
         job = SimpleNamespace(settings=settings, bake=None,
@@ -149,8 +151,10 @@ class BakeTests(unittest.TestCase):
         self.assertGreater(leaves.sum(), 0)
         self.assertEqual(leaves.sum() % 2, 0)
         area = triangle_areas(result.positions, result.tris[leaves])
-        np.testing.assert_allclose(area, QUAD * QUAD / 2 / ratio)
-        self.assertLessEqual(len(result.tris), budget + 3)
+        # The simplifier returns float32 positions before areas are measured.
+        rtol = np.finfo(np.float32).eps * np.abs(result.positions).max() / QUAD
+        np.testing.assert_allclose(area, QUAD * QUAD / 2 / ratio, rtol=rtol)
+        self.assertLessEqual(len(result.tris), budget)
 
 
 if __name__ == '__main__':

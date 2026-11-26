@@ -1,30 +1,8 @@
-"""The variant ceiling split and the stored prototypes paid from it."""
+"""Count the stored prototypes in geometry and mesh bundles."""
 
 import numpy as np
 
-from r3d.import_settings import SettingsError
 from r3d.lit_mesh import finest_count, read_bundle_mesh
-
-
-def ceiling_split(renderer):
-    """(start ceiling, copies' room, rest floor); a fitted start has no ceiling. A probe fit (no prune budget)
-    keeps its start's triangles, so its floor is the variant's."""
-    ceiling = getattr(renderer.variant, 'ceiling', None)
-    fit = getattr(renderer, 'fit', None)
-    floor = renderer.variant.triangles if fit is None or fit.budget is None else fit.budget
-    return (ceiling if fit is None else None, None if ceiling is None else ceiling - floor, floor)
-
-
-def rest_target(split, copies):
-    """The rest's target after paying copies; the ceiling is hard and the floor is soft."""
-    start, room, floor = split
-    if room is None:
-        return floor
-    ceiling = room + floor
-    if copies > ceiling:
-        raise SettingsError(f"copies total {copies} exceeds ceiling {ceiling} (room {room})")
-    available = ceiling - copies
-    return min(floor, available) if start is not None else available
 
 
 def prototype_groups(shape, double_sided):
@@ -36,9 +14,9 @@ def prototype_groups(shape, double_sided):
     return groups
 
 
-def stored_count(shape, double_sided):
-    """Triangles emitted by every prototype of a carved shape."""
-    return sum(len(copies[0][1][2]) for copies in prototype_groups(shape, double_sided).values())
+def stored_count(groups):
+    """Triangles emitted by a carved shape's stored prototype groups."""
+    return sum(len(copies[0][1][2]) for copies in groups.values())
 
 
 def bundle_count(entries, names):

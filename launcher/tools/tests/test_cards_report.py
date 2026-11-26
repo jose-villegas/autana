@@ -23,7 +23,7 @@ def report_job(root):
     settings_path = leaf_import(root, p, t)
     settings_path.write_text(settings_path.read_text().replace('name = "mesh"\n', ''))
     with settings_path.open('a') as stream:
-        stream.write(f'simplify = {{ dense_edge = {SIDE}, props = [], props_share = 0.0, seal_seams = false, colour_deviation = 1.0 }}\n'
+        stream.write(f'simplify = {{ dense_edge = {SIDE}, seal_seams = false, colour_deviation = 1.0 }}\n'
                      f'[[variants]]\nname = "mesh"\ntriangles = {len(t)}\nceiling = {len(t)}\n')
     job = albedo_jobs(card_settings(settings_path))[0]
     job.object = SimpleNamespace(name='fitted_full', kind='mesh_renderer')
@@ -89,7 +89,7 @@ class CardsReportTests(unittest.TestCase):
             assert not leaf['accepted']
             assert leaf['cards'] == 0
             assert leaf['replaced'] > 0
-            assert total['budget'] == job.renderer.variant.triangles
+            assert 0 < total['budget'] <= job.renderer.variant.triangles
 
     @needs_llvm
     def test_cards_report_budget(self):
@@ -105,4 +105,6 @@ class CardsReportTests(unittest.TestCase):
                 leaf, total = cards_report.rows_for(job, None)
                 assert total['triangles'] == requested
                 assert total['ceiling'] == ('' if ceiling is None else ceiling)
-                assert total['budget'] == (requested if ceiling is None else min(requested, ceiling - leaf['cards']))
+                limit = requested if ceiling is None else min(requested, ceiling)
+                assert 0 < total['budget'] <= limit - leaf['cards']
+                assert total['scene_total'] <= limit

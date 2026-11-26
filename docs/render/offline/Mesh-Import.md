@@ -163,12 +163,8 @@ Sponza's scene camera has none.
 
 A camera without a path fits on probes alone.
 
-A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
-The import spends it through [simplify](#simplify) with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
-
-It keeps every triangle: one no coverage view shows may still face a camera they miss.
-A border point within the seam tolerance that the hold rule refuses stays at its start.
+A probe fit keeps the triangles set by the import's [shared shape error](#shared-shape-error).
+Border positions within the seam tolerance stay at their start where the hold rule pins them.
 
 A hole pixel shows no fitted surface where the reference differs from the clear
 colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
@@ -274,54 +270,38 @@ with the baked colour as an appearance attribute<sup>[[13]](../../Citations.md#h
 | Key | Meaning |
 |---|---|
 | `dense_edge` | The longest unsplit edge. |
-| `props`, `props_share` | Materials that reserve the `props_share` part of the budget. |
 | `seal_seams` | See [seal_seams](#seal_seams). |
 | `colour_deviation` | Source units that price one panel colour step. |
 
-The baked colour steers which edges collapse: losing one colour step costs as
-much as moving a surface `colour_deviation` away, for `props` and the rest
-alike, at every budget. A smaller value keeps surfaces nearer their source
-planes and less colour detail: a trade, not a limit.
+The baked colour steers which edges collapse. Losing one panel colour step costs as much as moving
+the surface by `colour_deviation` source units. A smaller value favours shape over colour detail.
 
 Each `[[objects.meshes]]` rule carves out matching source objects:
 
 | Key | Meaning |
 |---|---|
 | `match` | Exactly `{ object = "glob" }` or `{ material = "glob" }`; must match. |
-| `triangles` | Optional pin on the shape budget, separate from the variant's rest budget; otherwise derived from the camera. |
-| `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
-| `min_triangles` | Optional floor on the shape budget; at most `triangles` when pinned. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
 | `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces match within `SURFACE_TOLERANCE`, whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
-A pinned rule uses its entry in `variants`, or round(`triangles` ×
-`objects_scale`), never below `min_triangles`.
-`import_settings.variant_meshes()` owns this scaling.
+Overlapping rules are rejected. A carved bake also carves rigid repeats whose copies touch nothing.
 
-The ceiling counts stored triangles: the rest and every copy prototype.
-Mirroring or a different per-face sidedness mask emits another prototype.
-`objects/budget.py` owns the split. The ceiling is hard; the rest floor is soft.
+### Shared shape error
 
-| Renderer | The ceiling caps | Copies' room | Rest floor | Rest target |
-|---|---|---|---|---|
-| no `fit` | the baked mesh | `ceiling` − `triangles` | `triangles` | at most `triangles`, within the ceiling |
-| with `fit` | the fitted bundle; the start is uncapped | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies |
+Every carved prototype and every remaining source object contributes one piece. A rest object
+counts all its connected parts together. The error allowed for a piece is the smaller of the
+shared world-space error ε and its floor, 5% of its bounds diagonal in source units.
 
-Overlapping rules are rejected.
-
-### Free repeats and derived detail
-
-A carved bake automatically carves rigid repeats whose copies touch nothing.
-They need no rule. An uncarved geometry bake stores each placed copy and
-uses neither free repeats nor camera-derived budgets.
-
-| Step | Result |
+| Step | Triangle accounting |
 |---|---|
-| Near level | At the closest camera view of any copy, measured surface movement stays within `lod.tolerance_px`. With camera-path visibility, only views looking at a copy count. The shape is welded first, so source seams do not hold it back. A scene camera is required. |
-| Balance | Measured stand-ins pay for every emitted prototype. The shape whose next rung removes most triangles per pixel steps down first. |
-| Ceiling | After the last rungs, the rest may shrink below its floor. Copies that leave the rest no triangle fail with the room, total and ceiling. |
-| Authoring | `objects_report.py SCENE --object NAME --out DIR --authoring` writes the derived rows and an authoring table: the split, the rest's shortfall below its floor, the coarsest shapes and the shapes above the near-view tolerance. |
-| Carved | `objects_report.py SCENE --object NAME --out DIR --carved BUNDLE` lists each carved shape of a start or fit: copies, source, baked and drawn triangles, alpha-tested share and nearest eye, any and in view. A sheet sets source beside baked. |
+| Pay fixed cost | Charge cards and held triangles first. |
+| Count pieces | Re-measure each carved prototype's surface error. Count each rest object with meshoptimizer's absolute error and component pruning. A small component can disappear within its object's error. |
+| Bisect ε | Take the smallest error whose drawn and stored counts fit. A drawn copy pays for all its triangles. A stored prototype pays once per stored mesh, including distinct mirrored or sidedness meshes. |
+| Emit and verify | Simplify the rest in one pass and lock the retained vertices of objects at their floors. If the result exceeds either limit, bisect again with measured excess. An allocation that cannot meet the limits raises a settings error. |
+
+Camera views do not enter the allocation. The carved copies of a prototype all share its count.
+`objects_report.py SCENE --object NAME --out DIR --carved BUNDLE` shows each shape's counts,
+measured surface error and floor, with a source and baked comparison sheet.
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
 surface. `objects/contact.py` owns the graph and both sides' border vertices.
@@ -333,14 +313,9 @@ The tolerance is the reciprocal of `output.position_scale`.
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
 | `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 
-A pillar standing on a floor, carved with each policy and the same configured
-budgets:
-
 ![A pillar's contact with the floor under weld, lock and free](../../images/render/import-mesh-contact.png)
 
-Weld and lock pin every contact vertex; weld shares one budget with the floor,
-so its pillar ends with fewer triangles than under lock. Free keeps only the
-floor's side pinned, and the pass spends what it frees up the shaft.
+Weld and lock pin the pillar and floor at their contact. Free pins the floor's side.
 
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
@@ -477,27 +452,14 @@ whose bake lets the view past more of the source than its pegged ceiling.
 
 ### Geometry variants
 
-| Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
-|---|---|---|---|---|---|
-| `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
-| `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
-| `[[variants]].objects_scale` | — | Scales each pinned `[[objects.meshes]]` shape budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
-
-#### variants
-
-`[[variants]]` gives a geometry output its name and, with `simplify`, its
-triangle budget. Without variants, `output.name` names the single output.
+Each `[[variants]]` entry names a geometry output and sets its [shared error limits](#shared-shape-error).
+Without variants, `output.name` names the single unsimplified output.
 
 #### variants triangles
 
-`[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
-a `fit` budget may not exceed it.
-
-#### variants objects_scale
-
-`[[variants]].objects_scale` multiplies each pinned shape budget for this
-variant; a rule's `variants` entry or `min_triangles` overrides or floors the
-result. Derived budgets follow the camera and LOD tolerance instead.
+`triangles` is the hard limit on drawn triangles, including the rest, cards and every copy.
+A simplified variant requires it. Optional `ceiling` caps stored triangles, counting each stored
+prototype once. The same limits apply to a fitted variant's start and its final bundle.
 
 ## Objects and instances
 

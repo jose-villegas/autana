@@ -516,7 +516,7 @@ class CardTests(unittest.TestCase):
             (root / 'source.obj').write_text('\n'.join(lines))
             settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n[output]\n'
                 '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
-                f'simplify = {{ dense_edge = {SIDE}, props = [], props_share = 0.0, seal_seams = false, colour_deviation = 1.0 }}\n'
+                f'simplify = {{ dense_edge = {SIDE}, seal_seams = false, colour_deviation = 1.0 }}\n'
                 f'[[variants]]\nname = "mesh"\ntriangles = {len(t)}\nceiling = {len(t)}\n')
             limited = albedo_jobs(card_settings(settings_path))[0]
             geometry = mesh_import.bake_geometry(limited, None, carve=True)

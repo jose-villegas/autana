@@ -52,7 +52,7 @@ bake = true
 visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit]      # fitted to reference renders of the source
-prune = { budget = 13313, coverage_every_ms = 20 }
+prune = { coverage_every_ms = 20 }
 poses = { size = [184, 224], samples = 4, denoise = true, train_every_ms = 1000, held_out_every_ms = 5000 }
 
 [objects.mesh_renderer.fit.optimise]
@@ -193,7 +193,6 @@ An example `fit` recipe, grouped below its renderer's `fit` table:
 
 ```toml
 [objects.mesh_renderer.fit.prune]
-budget = 8672
 coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
@@ -222,7 +221,7 @@ normal_weight = 1.0
 | `seal_views` | `every_ms`, `size` | Adds the camera path's frames to the views a sealed import is checked from. | Off: probes in the camera's region alone. | [seal_views](#seal_views) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
-| `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
+| `fit.prune` | `coverage_every_ms` | Samples the path for probe placement. | Required in `fit`. | [fit.prune](#fitprune) |
 | `fit.poses` | `size`, `samples`, `denoise`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
@@ -299,9 +298,9 @@ are the sky light's `rays`; `bake_fidelity.py` scores your own settings.
 
 #### fit.prune
 
-`budget` is the triangle count the fitted mesh keeps, at most the variant's
-`triangles`; `coverage_every_ms` spaces the camera-path poses pruning counts
-pixels over. How a fit runs: [Appearance-Fit.md](../offline/Appearance-Fit.md#stages).
+`coverage_every_ms` spaces the dense camera-path poses available to probe placement.
+The fit keeps the start's triangles. Its import bisects one shared error, capped at 5% of each piece's
+bounds diagonal, to fit the variant's drawn and stored limits. [Shared shape error](../offline/Mesh-Import.md#shared-shape-error)
 
 #### fit.poses
 

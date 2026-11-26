@@ -7,8 +7,8 @@ import tarfile
 from types import SimpleNamespace
 
 POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
-# A reference set's files, by role: each (poses, references) pair the fit trains on, the poses its prune counts
-# shown pixels over, and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/views/probes.py).
+# A reference set's files, by role: each (poses, references) pair the fit trains on, the dense path poses for probe placement,
+# and the held-out pair that scores a fit; the camera path's, then the probes' (r3d/views/probes.py).
 TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
 COVERAGE = "coverage.txt"
 HELD_OUT = ("held_out.txt", "reference_held_out")
@@ -104,7 +104,7 @@ def reference_inputs(job, scene):
 
 
 def prepare_references(inputs, work, store=None, progress=None):
-    """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
+    """The reference set of `inputs` into `work`: the training, held-out and dense coverage poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
     has only those) and the references of every training and held-out set with their normals, each pose taken
     from or traced into the pose `store` when given, progress() after each pose traced (reference_render.render_sets).
@@ -162,7 +162,7 @@ def probe_poses(inputs, work, path):
 
 
 def pack_references(work, sets):
-    """The files of the reference set in `work` that a fit with `sets` (fit_sets) reads, as one .tar.xz: the pose
+    """The files of the reference set in `work` that belong to `sets` (fit_sets), as one .tar.xz: the pose
     files and the picture and normals of each training and closure reference. The other held-out references are
     left out: they score a fit, not make it. Names are sorted and carry no time or owner, so the same files pack
     to the same bytes."""
