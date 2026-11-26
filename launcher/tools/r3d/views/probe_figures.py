@@ -158,8 +158,8 @@ def cut_normal(forward):
     return normal / np.linalg.norm(normal)
 
 
-def see_through(source, query, eye, forward, lens, cut=None, size=VIEW_SIZE):
-    """The source drawn as the cull view draws a culled cluster; with a `cut` point, only what lies behind the cut
+def see_through(source, eye, forward, lens, cut=None, size=VIEW_SIZE):
+    """The source drawn through its ray query (`source.intersector`) as the cull view draws a culled cluster; with a `cut` point, only what lies behind the cut
     through it: every ray starts where it crosses the cut."""
     width, height = size
     origin, direction = camera_rays(width, height, lens, eye, forward, 1)
@@ -168,7 +168,7 @@ def see_through(source, query, eye, forward, lens, cut=None, size=VIEW_SIZE):
         along = direction @ normal
         to_plane = np.where(along > 0, ((cut - eye) @ normal) / np.where(along > 0, along, 1), 0)
         origin = origin + direction * np.maximum(to_plane, 0)[:, None]
-    hit, distance, tri = query.first_hits(origin, direction)
+    hit, distance, tri = source.intersector.first_hits(origin, direction)
     faces = tri[hit]
     locations = origin[hit] + direction[hit] * distance[hit][:, None]
     colour = np.zeros((len(origin), 3))
@@ -265,7 +265,6 @@ class Probed(NamedTuple):
     found: list  # the training probes, as placed_training gives them
     path: list  # the camera path's coverage poses, or None without a path
     source: object
-    query: RayQuery
     lens: float  # the scene camera's
 
 
@@ -282,20 +281,21 @@ def probed(scene_path, object_name):
         coverage = camera_path_poses(scene, visibility, inputs.poses["coverage_every_ms"])
     source = load_source(job.settings, np.float32)
     keep_alpha = job.settings.alpha_keep
-    query = RayQuery(source.p, source.tri_v, hit_filter=None if keep_alpha is None else AlphaTest(source, keep_alpha))
+    source.intersector = RayQuery(source.p, source.tri_v,
+                                  hit_filter=None if keep_alpha is None else AlphaTest(source, keep_alpha))
     path = None if coverage is None else (*coverage[:3], coverage[4])
     views = probes.select(source.p, source.tri_v, camera.region, camera.near_z, inputs.probes.spacing, PROBE_SEED,
-                          path, query=query)
-    found = placed_training(source.p, source.tri_v, camera.near_z, PROBE_SEED, views, query)
+                          path, query=source.intersector)
+    found = placed_training(source.p, source.tri_v, camera.near_z, PROBE_SEED, views, source.intersector)
     unknown = {probe["fate"] for probe in found} - set(FATES)
     if unknown:
         raise ValueError(f"the probes have fates FATES has no row for: {sorted(unknown)}")
     return Probed(f"{scene_id(scene_path)}-{object_name}", scene_id(scene_path).capitalize(), views.record, found,
-                  None if coverage is None else coverage[4], source, query, camera.half_fov_short_tan)
+                  None if coverage is None else coverage[4], source, camera.half_fov_short_tan)
 
 
 def picture(probe_set, eye, forward, cut=None, size=VIEW_SIZE):
-    image = see_through(probe_set.source, probe_set.query, eye, forward, probe_set.lens, cut, size)
+    image = see_through(probe_set.source, eye, forward, probe_set.lens, cut, size)
     return draw(image, probe_set.found, probe_set.path, eye, forward, probe_set.lens,
                 ARROW_SPACING * probe_set.record["spacing"], cut)
 
