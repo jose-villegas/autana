@@ -49,7 +49,8 @@ mesh_array(const r3d_lit_mesh_t* mesh, size_t offset) {
     return source;
 }
 
-/* The front colours one set of `mesh` holds for colour array `array`. */
+/* The elements `array` of `mesh` holds per vertex or per triangle: for a
+ * colour array, one set's front colours. */
 static size_t
 set_front(const r3d_lit_mesh_t* mesh, size_t array) {
     return (size_t)(mesh_arrays[array].per_vertex ? mesh->vertex_count : mesh->triangle_count);
@@ -76,7 +77,7 @@ mesh_array_count(const scene_renderer_t* r, size_t array) {
                    * r->colour_sets;
         case ARRAY_BACK: return back_follows(mesh, (size_t)mesh_arrays[array].pair) ? 0U : (size_t)mesh->back_count;
         case ARRAY_PLAIN:
-        default: return (size_t)(mesh_arrays[array].per_vertex ? mesh->vertex_count : mesh->triangle_count);
+        default: return set_front(mesh, array);
     }
 }
 
@@ -132,8 +133,11 @@ resident_walk(scene_t* scene, int index, void* block, asset_copy_t* told, int* c
     *count = 0;
     for (size_t a = 0; a < MESH_ARRAY_COUNT; a++) {
         const void* source = mesh_array(&r->mesh, mesh_arrays[a].offset);
+        if (source == NULL || (r->resident_arrays & (1U << a)) != 0) {
+            continue;
+        }
         const size_t bytes = mesh_array_count(r, a) * mesh_arrays[a].size;
-        if (source == NULL || bytes == 0 || (r->resident_arrays & (1U << a)) != 0) {
+        if (bytes == 0) {
             continue;
         }
         void* copy = copy_in(block, &end, mesh_arrays[a].alignment, source, bytes, told, count);

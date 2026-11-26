@@ -2936,7 +2936,8 @@ make_batch_entry(test_pack_t* pack, const batch_case_t* spec) {
 }
 
 /* red.colors in LCOL_TEST_SETS sets, each the quad's front colours then its
- * back ones: set k's front has channel k at full, its back channel 2. */
+ * back ones: set k's front has channel k at full, its back channel 2 at
+ * full less k. */
 static void
 make_back_lcol_entry(test_pack_t* pack) {
     enum { PER_SET = 2 * QUAD_VERTICES * LCOL_RGB888_BYTES };
@@ -2951,7 +2952,7 @@ make_back_lcol_entry(test_pack_t* pack) {
         uint8_t* front = colors + LCOL_HEADER_SIZE + (set * PER_SET);
         for (int v = 0; v < QUAD_VERTICES; v++) {
             front[(v * LCOL_RGB888_BYTES) + set] = UINT8_MAX;
-            front[((QUAD_VERTICES + v) * LCOL_RGB888_BYTES) + 2] = UINT8_MAX;
+            front[((QUAD_VERTICES + v) * LCOL_RGB888_BYTES) + 2] = (uint8_t)(UINT8_MAX - set);
         }
     }
 }
@@ -2999,8 +3000,9 @@ test_a_batch_copy_in_a_later_set_draws_that_set_s_resident_back_colours(void) {
     r3d_lit_mesh_t second;
     r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
+    TEST_ASSERT_EQUAL_PTR(r->mesh.back_colors + r->batch->colour_stride, second.back_colors);
     for (int v = 0; v < count; v++) {
-        TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.back_colors[v][2]);
+        TEST_ASSERT_EQUAL_UINT8(UINT8_MAX - 1, second.back_colors[v][2]);
     }
 }
 
@@ -3061,6 +3063,9 @@ test_batch_refusals(void) {
         {"negative reach", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, reach), minus_one, U32, BATCH_COPIES},
         {"infinite centre", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, centre), infinity, U32, BATCH_COPIES},
         {"largest beyond w", SCENE_ASSET_TURNS, offsetof(r3d_copy_turn_t, largest), BATCH_LARGEST_W + 1, U16,
+         BATCH_COPIES},
+        /* The highest set plus one is the batch's set count: past uint16_t it wraps. */
+        {"set count beyond its type", SCENE_ASSET_PLACES, offsetof(r3d_copy_place_t, colour_set), UINT16_MAX, U16,
          BATCH_COPIES},
         {"set beyond the colours", SCENE_ASSET_PLACES,
          sizeof(r3d_copy_place_t) + offsetof(r3d_copy_place_t, colour_set), LCOL_TEST_SETS, U16, BATCH_COPIES},
