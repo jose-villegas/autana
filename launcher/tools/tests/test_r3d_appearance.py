@@ -559,6 +559,35 @@ class AppearanceMeshTests(unittest.TestCase):
         self.assertLess(history[-1], history[0])
 
     @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_putting_back_a_turned_face_restores_its_newly_turned_neighbour(self):
+        from r3d import appearance_simplify as appearance
+
+        start = torch.tensor([[0., 0., 0.], [-1., 1., 0.], [1., 1., 0.], [-1., -1., 0.], [1., -1., 0.]])
+        faces = np.array([[0, 2, 1], [0, 3, 4]])
+        first, neighbour = faces
+        shared = 0
+        previous = start + torch.tensor([0., 0., 1.])
+        proposed = previous.clone()
+        proposed[shared, 1] = 2.
+        proposed[neighbour[1:], 1] = 1.
+        first_restored = proposed.clone()
+        first_restored[first] = previous[first]
+
+        # Both start normals point along +z.
+        self.assertEqual((appearance._triangle_cross(proposed[faces])[:, 2] > 0).tolist(), [False, True])
+        self.assertEqual((appearance._triangle_cross(first_restored[faces])[:, 2] > 0).tolist(), [True, False])
+
+        guard = appearance._turned_guard(faces, None, lambda points=start: points)
+        candidate = proposed.clone()
+        with mock.patch.object(appearance, "TURNED_HALVING_ROUNDS", 0):
+            guard(candidate, previous)
+            torch.testing.assert_close(candidate[first], previous[first], rtol=0, atol=0)
+            torch.testing.assert_close(candidate[neighbour], previous[neighbour], rtol=0, atol=0)
+            self.assertTrue((appearance._triangle_cross(candidate[faces])[:, 2] > 0).all())
+            with self.assertRaisesRegex(ValueError, "fit still has a turned single-sided face"):
+                guard(proposed.clone(), proposed)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
     def test_local_scale_holds_tiny_edges_against_image_pull(self):
         from r3d import appearance_simplify as appearance
 

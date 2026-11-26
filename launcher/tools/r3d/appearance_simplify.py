@@ -232,11 +232,6 @@ def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
                      np.asarray(weights, dtype=float).reshape(-1, 3), np.asarray(sorted(pinned), dtype=np.int64))
 
 
-def _seam_targets(points, corners, barycentric):
-    """The positions of held seam points on their target triangles."""
-    return (points[corners] * barycentric[..., None]).sum(dim=1)
-
-
 def hold_seams(points: "torch.Tensor", holds: SeamHolds, start: "torch.Tensor") -> "torch.Tensor":
     """Apply independent seam holds out of place, with gradients into target corners; pinned points take their
     `start` positions, so a held point whose target has a pinned corner follows it there."""
@@ -247,7 +242,8 @@ def hold_seams(points: "torch.Tensor", holds: SeamHolds, start: "torch.Tensor") 
     held = torch.as_tensor(holds.points, device=points.device)
     corners = torch.as_tensor(holds.corners, device=points.device)
     barycentric = torch.as_tensor(holds.barycentric, dtype=points.dtype, device=points.device)
-    return points.index_put((held,), _seam_targets(points, corners, barycentric))
+    targets = (points[corners] * barycentric[..., None]).sum(dim=1)
+    return points.index_put((held,), targets)
 
 
 def _turned_guard(tri_points, holds, held_positions):
