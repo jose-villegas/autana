@@ -127,6 +127,15 @@ def divide_label(divide):
     return "affine" if divide == 0 else "true" if divide == TRUTH else f"N{divide}"
 
 
+def square_box(cluster, size):
+    """The square around `cluster`, its longer side, centred on it and moved inside a `size` picture, so every
+    square of the sheet is one cell whatever the cluster's shape."""
+    side = min(max(cluster.x1 - cluster.x0, cluster.y1 - cluster.y0), *size)
+    x0 = min(max((cluster.x0 + cluster.x1 - side) // 2, 0), size[0] - side)
+    y0 = min(max((cluster.y0 + cluster.y1 - side) // 2, 0), size[1] - side)
+    return (x0, y0, x0 + side, y0 + side)
+
+
 def divide_sheet(args, work):
     """The squares of the near floor where the second --divides value differs most from the first: a row per
     square, a column per value, each column headed with its dE against the truth over the near floor."""
@@ -145,10 +154,8 @@ def divide_sheet(args, work):
     clusters = render_compare.find_clusters(truth, lower, None, DIVIDE_CROPS)
     rows = []
     for cluster in clusters:
-        box = (cluster.x0, cluster.y0, cluster.x1, cluster.y1)
-        scale = DIVIDE_CELL / max(cluster.x1 - cluster.x0, cluster.y1 - cluster.y0)
-        size = (round((cluster.x1 - cluster.x0) * scale), round((cluster.y1 - cluster.y0) * scale))
-        crops = [picture.crop(box).resize(size, Image.NEAREST) for picture in pictures]
+        box = square_box(cluster, truth.size)
+        crops = [picture.crop(box).resize((DIVIDE_CELL, DIVIDE_CELL), Image.NEAREST) for picture in pictures]
         rows.append(list(zip(labels, crops)))
     sheet = render_compare.still_sheet(rows)
     sheet.save(args.out / args.divide_image, optimize=True)
