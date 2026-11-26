@@ -28,7 +28,7 @@ try:
     from bake import bake
     from r3d.appearance_simplify import start_mesh
     from r3d.fit.copies import joined, placed_copies
-    from r3d.import_settings import flight_camera, load_scene
+    from r3d.import_settings import flight_camera, lfs_pointer_oid, load_scene, source_files
     from r3d.light import drop_masked
     from r3d.mesh_source import load_source
     from r3d.objects.instances import place
@@ -179,6 +179,9 @@ class SeeThroughBakes(unittest.TestCase):
         for key, scene in baked_scenes():
             with self.subTest(scene=key):
                 baked = [job for job in scene.renderers if job.bake]
+                unpulled = [path for job in baked for path in source_files(job.settings) if lfs_pointer_oid(path)]
+                if unpulled:
+                    self.skipTest(f"{key}: {unpulled[0]} is a Git LFS pointer; run git lfs pull --exclude=\"\"")
                 tracer = Tracer(merged([kept_source(scene, job) for job in baked]),
                                 merged([drawn_bake(scene, job) for job in baked]))
                 width, height, lens, near, poses = path_poses(flight_camera(scene), RENDER_SIZE, EVERY_MS,
