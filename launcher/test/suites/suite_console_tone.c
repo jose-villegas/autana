@@ -1,5 +1,4 @@
 /* Tone command accepts complete decimal arguments within audio limits. */
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +12,6 @@
 #include "sound/console/console_tone_parse.h"
 #include "sound/console/console_tone_reply.h"
 #include "suites.h"
-#include "testkit/cleanup.h"
 #include "unity.h"
 #define TEST_TARGET_HZ   1000u
 #define TEST_DURATION_MS 100u
@@ -217,11 +215,6 @@ static struct {
 } device;
 
 static console_registry_t registry;
-
-void
-sound_get_stats(sound_stats_t* out) {
-    *out = (sound_stats_t){0};
-}
 
 #ifdef _WIN32
 #define TEST_CLOCK_REAL __real__timespec64_get
