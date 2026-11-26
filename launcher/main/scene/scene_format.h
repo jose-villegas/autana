@@ -7,6 +7,8 @@
 #define SCENE_ASSET                   ASSET_TYPE('S', 'C', 'N', 'E')
 #define SCENE_ASSET_VERSION           6U
 #define SCENE_LIGHT_KIND_DIRECTIONAL  1U
+#define SCENE_LIGHT_MODE_REALTIME     0U
+#define SCENE_LIGHT_MODE_BAKED        1U
 #define SCENE_ASSET_DEFAULT_CLIP_NONE 0xFFFFU
 #define SCENE_ASSET_COLOUR_SET_OWN    0xFFFFU
 #define SCENE_ASSET_PARENT_ROOT       0xFFFFU /* an entity_parents row: no parent */

@@ -14,7 +14,6 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include "esp_log.h"
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"

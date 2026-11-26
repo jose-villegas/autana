@@ -228,26 +228,10 @@ read_file(const char* path, long* size) {
 
 static sh_probes_t
 load_grid(const unsigned char* bytes, long size) {
-    sh_probes_t probes = {0};
-    float fields[AXES];
-    uint16_t flags = 0;
-    memcpy(&flags, bytes + SH_PROBES_AT_FLAGS, sizeof flags);
-    memcpy(fields, bytes + SH_PROBES_AT_ORIGIN, sizeof fields);
-    probes.origin = (vec3f_t){fields[0], fields[1], fields[2]};
-    memcpy(fields, bytes + SH_PROBES_AT_SPACING, sizeof fields);
-    probes.spacing = (vec3f_t){fields[0], fields[1], fields[2]};
-    memcpy(probes.dims, bytes + SH_PROBES_AT_DIMS, sizeof probes.dims);
-    memcpy(&probes.scale, bytes + SH_PROBES_AT_SCALE, sizeof probes.scale);
-    const long count = (long)probes.dims[0] * probes.dims[1] * probes.dims[2];
-    const long mask_at = SH_PROBES_HEADER_SIZE + (count * SH_PROBES_RECORD_SIZE);
-    const long mask_size = (flags & SH_PROBES_FLAG_INSIDE_MASK)
-                               ? (count + SH_PROBES_MASK_BITS_PER_BYTE - 1) / SH_PROBES_MASK_BITS_PER_BYTE
-                               : 0;
-    if (size != mask_at + mask_size) {
+    sh_probes_t probes;
+    if (sh_probes_read((asset_view_t){bytes, (uint32_t)size}, &probes) != ASSET_OK) {
         exit(1);
     }
-    probes.coefficients = (const int16_t (*)[SH_PROBES_COMPONENTS])(bytes + SH_PROBES_HEADER_SIZE);
-    probes.inside = mask_size ? bytes + mask_at : NULL;
     return probes;
 }
 

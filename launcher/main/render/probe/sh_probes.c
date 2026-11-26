@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stddef.h>
+#include <string.h>
 #include "math/scalar/mathf.h"
 
 bool
@@ -55,3 +56,57 @@ sh_probes_sample(const sh_probes_t* probes, vec3f_t world) {
 }
 
 _Static_assert(SH_PROBES_HEADER_SIZE % _Alignof(int16_t) == 0, "SHPR coefficient alignment");
+
+asset_status_t
+sh_probes_read(asset_view_t entry, sh_probes_t* out) {
+    *out = (sh_probes_t){0};
+    const asset_status_t status =
+        asset_entry_validate(entry, SH_PROBES_VERSION, SH_PROBES_AT_VERSION, SH_PROBES_HEADER_SIZE, _Alignof(int16_t));
+    if (status != ASSET_OK) {
+        return status;
+    }
+    uint16_t flags;
+    memcpy(&flags, entry.data + SH_PROBES_AT_FLAGS, sizeof flags);
+    if ((flags & ~SH_PROBES_FLAG_INSIDE_MASK) != 0
+        || !asset_entry_zero(entry, SH_PROBES_AT_PADDING, SH_PROBES_HEADER_SIZE)) {
+        return ASSET_ERR_FORMAT;
+    }
+    sh_probes_t grid = {0};
+    memcpy(&grid.origin, entry.data + SH_PROBES_AT_ORIGIN, sizeof grid.origin);
+    memcpy(&grid.spacing, entry.data + SH_PROBES_AT_SPACING, sizeof grid.spacing);
+    memcpy(grid.dims, entry.data + SH_PROBES_AT_DIMS, sizeof grid.dims);
+    memcpy(&grid.scale, entry.data + SH_PROBES_AT_SCALE, sizeof grid.scale);
+    const float origin[] = {grid.origin.x, grid.origin.y, grid.origin.z};
+    const float spacing[] = {grid.spacing.x, grid.spacing.y, grid.spacing.z};
+    const size_t payload = entry.size - SH_PROBES_HEADER_SIZE;
+    size_t count = 1;
+    for (int axis = 0; axis < MAT3F_AXES; axis++) {
+        if (grid.dims[axis] == 0 || !isfinite(origin[axis]) || !isfinite(spacing[axis]) || spacing[axis] <= 0) {
+            return ASSET_ERR_FORMAT;
+        }
+        if (count > payload / SH_PROBES_RECORD_SIZE / grid.dims[axis]) {
+            return ASSET_ERR_SIZE;
+        }
+        count *= grid.dims[axis];
+    }
+    const size_t coefficients_size = count * SH_PROBES_RECORD_SIZE;
+    const size_t mask_size = (flags & SH_PROBES_FLAG_INSIDE_MASK) != 0
+                                 ? (count + SH_PROBES_MASK_BITS_PER_BYTE - 1) / SH_PROBES_MASK_BITS_PER_BYTE
+                                 : 0;
+    if (payload - coefficients_size != mask_size) {
+        return ASSET_ERR_SIZE;
+    }
+    if (!isfinite(grid.scale) || grid.scale <= 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    grid.coefficients = (const int16_t (*)[SH_PROBES_COMPONENTS])(entry.data + SH_PROBES_HEADER_SIZE);
+    if (mask_size != 0) {
+        grid.inside = entry.data + SH_PROBES_HEADER_SIZE + coefficients_size;
+        const unsigned used = count % SH_PROBES_MASK_BITS_PER_BYTE;
+        if (used != 0 && (grid.inside[mask_size - 1] >> used) != 0) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    *out = grid;
+    return ASSET_OK;
+}

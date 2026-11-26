@@ -17,8 +17,7 @@ python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
 ```
 
 The capybara uses the packed grid when `sponza.shpr` is present. Without it,
-the scene uses its sun and ambient lighting. Successful loading logs
-`SH probes:` and the record size.
+the scene uses its sun and ambient lighting.
 
 ## Host renders
 

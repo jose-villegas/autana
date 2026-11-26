@@ -118,7 +118,7 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="mesh", skin="mesh.skin", skeleton="armature"))
         self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
         self.assertEqual(decoded["clips"], ["move"])
-        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL, mode=scene_asset.LIGHT_MODES.index(scene_asset.LIGHT_MODE_REALTIME),
+        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL, mode=scene_asset.LIGHT_MODE_BYTES["realtime"],
                          color=[0.25, 0.5, 0.75], intensity=2.5))
         self.assertEqual(decoded["settings"], dict(ambient_color=[f32(v) for v in (0.4, 0.5, 0.6)],
                          ambient_intensity=f32(0.2), tonemap_white=f32(0.3)))
@@ -213,7 +213,7 @@ class SceneEntryTests(SceneFiles):
                        + lens())
             entry = self.entry(objects, HEAD)
             decoded = scene_asset.decode(entry)
-            self.assertEqual(decoded["lights"][0]["mode"], scene_asset.LIGHT_MODES.index(mode))
+            self.assertEqual(decoded["lights"][0]["mode"], scene_asset.LIGHT_MODE_BYTES[mode])
             self.assertEqual(scene_asset.LIGHT.size, 20)
 
     def test_a_light_is_an_entity_with_its_authored_values(self):
@@ -344,7 +344,7 @@ class SceneEntryRefusalTests(unittest.TestCase):
     def test_every_authored_refusal(self):
         original = authored_entry()
         offsets = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS):]
-        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", len(scene_asset.LIGHT_MODES)),
+        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", max(scene_asset.LIGHT_MODE_BYTES.values()) + 1),
                  ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
                  ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
                  ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1)]

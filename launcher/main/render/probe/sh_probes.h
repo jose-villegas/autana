@@ -2,11 +2,13 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "asset/asset_entry.h"
 #include "math/sh/sh1.h"
 #define SH_PROBES_COMPONENTS         (SH1_COEFFICIENTS * SH1_CHANNELS)
 
 #define SH_PROBES_NAME_SUFFIX        ".shpr"
 
+#define SH_PROBES_ASSET              ASSET_TYPE('S', 'H', 'P', 'R')
 #define SH_PROBES_VERSION            1U
 #define SH_PROBES_FLAG_INSIDE_MASK   0x0001U
 #define SH_PROBES_MASK_BITS_PER_BYTE 8U
@@ -33,3 +35,6 @@ typedef struct sh_probes {
 bool sh_probes_inside(const sh_probes_t* probes, int x, int y, int z);
 
 sh1_rgb_t sh_probes_sample(const sh_probes_t* probes, vec3f_t world);
+
+/* The entry bytes must outlive the grid. Failure clears the output. */
+asset_status_t sh_probes_read(asset_view_t entry, sh_probes_t* out);

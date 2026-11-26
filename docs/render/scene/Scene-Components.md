@@ -47,7 +47,8 @@ map before attaching lights.
 
 Lit skins share world lights; probes exclude baked lights from that table.
 A BAKED light still lights skins when the scene has no probes.
-Normal palettes include entity and joint scale through an inverse-transpose.
+Normal palettes take joint scale through an inverse-transpose; a uniform
+entity scale cancels out of them.
 The skin stage consumes dirty bits even when another scene is active.
 
 Exactly one camera is active engine-wide, and it draws the active renderers of
