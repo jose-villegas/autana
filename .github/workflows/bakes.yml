@@ -7,10 +7,9 @@ name: Bakes
 # reference set in one job; both upload the files; the author runs `bake.py lock --from-run N` with that run and
 # commits the lock. A run that makes levels runs the sky-through-walls flythrough and the see-through check against
 # the source on their finest level in the CPU job, so a fit that opens holes fails before it is locked. A mesh's
-# bytes differ
-# between CPU models and a reference set's, traced
-# on the CUDA GPU, between GPU models, so every job that makes a bake runs on the one self-hosted runner that makes
-# the fits, gpu-legion (docs/assets/Bakes.md), where these jobs and the fits queue behind each other. A push never
+# bytes differ between CPU models and a reference set's, traced on the CUDA GPU, between GPU models, so every job
+# that makes a bake runs on the one self-hosted runner that makes the fits, gpu-legion (docs/assets/Bakes.md), where
+# these jobs and the fits queue behind each other. A push never
 # queues there: the bake jobs it skips report success, so a branch that bakes nothing passes at once. No pull request starts this workflow: a self-hosted runner
 # never takes a pull request's code (scripts/gates/check_workflows.py). The checks a pull request needs are this
 # workflow's, on its head commit; a fork's pull request gets them only once its branch is pushed here, and
