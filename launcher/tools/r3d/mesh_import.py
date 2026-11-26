@@ -26,7 +26,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
-from r3d.geometry import closed_shells, compact, corner_normals, face_normals, weld_keeping  # noqa: E402
+from r3d.geometry import closed_shells, compact, corner_normals, face_normals, vertex_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
     SettingsError, albedo_jobs, far_skin_region, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
@@ -44,7 +44,7 @@ from r3d.light import (  # noqa: E402
 from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import (  # noqa: E402
-    POSITION_SCALE, WELD_PER_TICK, back_rows, bundle_entries, panel_colour, build_lit_mesh,
+    POSITION_SCALE, RGB_CHANNELS, WELD_PER_TICK, back_rows, bundle_entries, panel_colour, build_lit_mesh,
 )
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
 from r3d.obj import alpha_tested
@@ -90,17 +90,15 @@ def far_skins(p, tris, shell, towards):
 def back_albedo_at(src, points, normals, front, spacing):
     """What vertices of a double-sided material show from behind: the far skin's albedo where the sheet stands for
     two skins (midsurface.back_albedo(); `normals` None reads its nearest point), else the front's."""
-    far = getattr(src, "far_skin", None)
+    far = src.far_skin
     if far is None:
         return front
 
     def at_hit(hits, rows, hit):
-        out, spacing_at = np.empty((len(hits), 3)), spacing[hit]
+        out, spacing_at = np.empty((len(hits), RGB_CHANNELS)), spacing[hit]
         for material in np.unique(far.src.tri_m[rows]):
             mine = far.src.tri_m[rows] == material
-            kd = src.materials.get(src.names[material], {}).get("Kd", (1.0, 1.0, 1.0))
-            out[mine] = sample_albedo(hits[mine], spacing_at[mine], material, far.src.p, far.src.uv, far.src.tri_v,
-                                      far.src.tri_t, far.src.tri_m, far.src.textures, kd, far.src.colors)
+            out[mine] = albedo_at(far.src, hits[mine], spacing_at[mine], material)
         return out
 
     return midsurface.back_albedo(points, normals, front, far.query, far.src.p[far.src.tri_v], far.reach, at_hit)
@@ -134,7 +132,7 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *,
     spacing = vertex_spacing(vpos, vtris)
     albedo = albedo_at(src, vpos, spacing, material)
     welded = np.unique(np.round(vpos * grid).astype(np.int64), axis=0, return_inverse=True)[1].reshape(-1)
-    if getattr(src, "two_sided", False):
+    if src.two_sided:
         back = back_albedo_at(src, vpos, vn, albedo, spacing) if double else albedo
         vrgb = sided_light(vpos, vn, np.full(len(vpos), double), albedo, back, intersector, scene, job,
                            bounce=bounce, bounce_groups=welded)
@@ -147,23 +145,18 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *,
     return merge_matching_colours(vpos, vrgb, vtris, grid, job.bake.colour_merge_step, labels=labels)
 
 
-def shade_unlit(src, material, mp, mt):
+def shade_unlit(src, material, mp, mt, double):
     """The material's albedo, with no light: the colour the source authored; in a scene with a double-sided
     material, the back's beside it (shade_lit())."""
     spacing = vertex_spacing(mp, mt)
     albedo = albedo_at(src, mp, spacing, material)
     rgb = encode_srgb8(albedo)
-    if getattr(src, "two_sided", False):
+    if src.two_sided:
         back = np.zeros_like(rgb)
-        if src.names[material] in src.double_names:
+        if double:
             back = encode_srgb8(back_albedo_at(src, mp, vertex_normals(mp, mt), albedo, spacing))
         rgb = np.concatenate([rgb, back], axis=1)
     return mp, rgb, mt
-
-
-def vertex_normals(p, tris):
-    """Area-weighted unit normals of `tris` at each of the points `p`."""
-    return midsurface.vertex_normals(p, tris, np.arange(len(p)), len(p))
 
 
 def fidelity_poses(scene, object_name, frames, dt):
@@ -299,9 +292,6 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     # A closed double-sided shell, cloth built as two skins, collapses to one sheet halfway between them, drawn
     # from both sides: the skin the camera region faces moves onto it, the far skin and the rim where the two meet
     # leave the geometry, and the far skin stays what the sheet shows from behind.
-    src.double_names = settings.double_sided
-    src.two_sided = any(name in settings.double_sided for name in src.names)
-    src.far_skin = None
     listed = np.isin(tri_m, [index for index, name in enumerate(src.names) if name in settings.double_sided])
     region = far_skin_region(settings, scene) if listed.any() else None
     shell = np.zeros(len(tri_v), dtype=bool)
@@ -385,7 +375,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                 vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, occluder, bounce,
                                                          labels=owners)
             else:
-                vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
+                vpos, vrgb, vtris = shade_unlit(src, material, mp, mt, double)
             all_pos.append(vpos)
             all_rgb.append(vrgb)
             all_tris.append(vtris + base)
@@ -396,7 +386,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
         positions = np.concatenate(all_pos) if all_pos else np.empty((0, 3))
-        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, 6 if src.two_sided else 3), dtype=int)
+        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, (2 if src.two_sided else 1) * RGB_CHANNELS), dtype=int)
         tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=int)
         tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
@@ -508,7 +498,7 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
                             bounce=geometry.bounce, ao=job.bake.ao, bounce_intensity=scene.indirect.intensity, **knobs)
 
     every = range(len(src.names))
-    if not getattr(src, "two_sided", False):
+    if not src.two_sided:
         return coloured(geometry.tris, every, double_materials, front_albedo)
     # A point of a face has no normal here: its back reads the far skin's nearest point (back_albedo_at()).
     back_albedo = lambda centres, spacing, material: back_albedo_at(  # noqa: E731

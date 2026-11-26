@@ -267,7 +267,7 @@ class WaveSheetTests(unittest.TestCase):
 
         def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
             shaded.append(intersector)
-            return (*mesh_import.shade_unlit(src, material, mp, mt), labels)
+            return (*mesh_import.shade_unlit(src, material, mp, mt, double), labels)
 
         with tempfile.TemporaryDirectory() as directory:
             job = albedo_jobs(load_import_settings(write_import(directory, cloth, "cloth", every_material(cloth))))[0]

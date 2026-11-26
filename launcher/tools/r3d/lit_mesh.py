@@ -18,7 +18,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
 from build.c_header import read_define  # noqa: E402
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE, back_entries  # noqa: E402
+from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE, back_entries, back_runs  # noqa: E402
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
@@ -173,17 +173,12 @@ def split_back(mesh, back):
 def back_firsts(clusters, per_vertex):
     """Each cluster's back_first: a double-sided one's first entry in the back colours, one per vertex
     (`per_vertex`) or per triangle, the double-sided clusters' runs tiling them in order; 0 for the rest."""
-    firsts, end = [], 0
-    for _, vcount, _, tcount, *_, double in clusters:
-        firsts.append(end if double else 0)
-        end += (vcount if per_vertex else tcount) if double else 0
-    return firsts
+    return [back_first for _, _, back_first in back_runs(clusters, per_vertex)]
 
 
 def back_rows(clusters, colours, per_vertex):
     """The rows of `colours` (one per vertex, or per triangle) the double-sided clusters hold, in cluster order."""
-    runs = [colours[vb:vb + vc] if per_vertex else colours[tb:tb + tc]
-            for vb, vc, tb, tc, *_, double in clusters if double]
+    runs = [colours[first:first + count] for first, count, _ in back_runs(clusters, per_vertex) if count]
     return np.concatenate(runs) if runs else colours[:0]
 
 
@@ -191,12 +186,8 @@ def filled_back(clusters, front, rows, per_vertex):
     """Back colours as long as `front`, back_rows()'s inverse: `rows` where a double-sided cluster holds them, the
     front colours elsewhere, which a single-sided triangle never shows from behind."""
     full = np.array(front, copy=True)
-    at = 0
-    for vb, vc, tb, tc, *_, double in clusters:
-        if double:
-            first, n = (vb, vc) if per_vertex else (tb, tc)
-            full[first:first + n] = rows[at:at + n]
-            at += n
+    for first, count, back_first in back_runs(clusters, per_vertex):
+        full[first:first + count] = rows[back_first:back_first + count]
     return full
 
 
@@ -406,9 +397,8 @@ def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False
         mesh = mesh_builder(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
     if colourless:
-        back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
-        mesh.colour_keys = None if mesh.rgb is None else both_sides(mesh.rgb, back_rgb)
-        mesh.face_keys = None if mesh.face_colors is None else both_sides(mesh.face_colors, back_face)
+        mesh.colour_keys = None if mesh.rgb is None else both_sides(mesh.rgb, mesh.back_rgb)
+        mesh.face_keys = None if mesh.face_colors is None else both_sides(mesh.face_colors, mesh.back_face_colors)
         mesh.rgb = mesh.face_colors = mesh.back_rgb = mesh.back_face_colors = None
     return mesh
 
@@ -445,7 +435,7 @@ def mesh_blob(mesh):
     per triangle for a flat mesh."""
     per_vertex = mesh.face_colors is None and getattr(mesh, "face_keys", None) is None
     firsts = back_firsts(mesh.clusters, per_vertex)
-    back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
+    back_rgb, back_face = mesh.back_rgb, mesh.back_face_colors
     if back_rgb is not None:
         back = np.asarray(back_rows(mesh.clusters, back_rgb, True), dtype="u1").tobytes()
     else:
@@ -633,7 +623,6 @@ def finest_triangles(mesh):
     for (_, _, tbase, tcount, _, _, is_double), level0 in zip(mesh.clusters, finest(mesh)):
         double[tbase : tbase + tcount] = int(is_double)
         shown[tbase : tbase + tcount] = level0
-    back_rgb, back_face = getattr(mesh, "back_rgb", None), getattr(mesh, "back_face_colors", None)
-    rgb = None if mesh.rgb is None else both_sides(mesh.rgb, back_rgb)
-    face = None if mesh.face_colors is None else both_sides(mesh.face_colors, back_face)[shown]
+    rgb = None if mesh.rgb is None else both_sides(mesh.rgb, mesh.back_rgb)
+    face = None if mesh.face_colors is None else both_sides(mesh.face_colors, mesh.back_face_colors)[shown]
     return weld_quantised(mesh.pos, rgb, mesh.tris[shown], double[shown], face)

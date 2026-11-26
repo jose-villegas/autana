@@ -87,7 +87,7 @@ class ObjectBudgetTests(unittest.TestCase):
                 patch.object(importer, 'visible_triangles', side_effect=visible), \
                 patch.object(importer, 'densify', side_effect=dense), \
                 patch.object(owner, 'repair', side_effect=repair), \
-                patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t: (p, np.full_like(p, 100), t)):
+                patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t, double: (p, np.full_like(p, 100), t)):
             result = importer.bake_geometry(job, None)
         self.assertEqual(stages, ['alpha', 'visibility', 'thin/dense', 'seal'])
         self.assertEqual(np.count_nonzero(result.tri_mat == 1), 100)

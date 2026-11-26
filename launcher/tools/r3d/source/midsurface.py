@@ -9,14 +9,14 @@ from typing import NamedTuple
 
 import numpy as np
 
-from r3d.geometry import face_normals, nearest_triangles, triangle_search, weld_map
+from r3d.geometry import WELD_TOLERANCE, face_normals, nearest_triangles, triangle_search, vertex_normals, weld_map
 
 # A pair's skins face each other: the dot of the two normals is below this.
 FACING = -0.9
 # A pair is at most this many times its piece's median thickness apart; a longer ray crossed a fold.
 REACH = 1.5
-# A ray that meets the far skin nearer than this (model units) starts on it: a rim vertex both skins share.
-CONTACT = 1e-6
+# A ray that meets the far skin within a weld starts on it: a rim vertex both skins share.
+CONTACT = WELD_TOLERANCE
 
 
 class Midsurface(NamedTuple):
@@ -28,15 +28,6 @@ class Midsurface(NamedTuple):
     drawn: np.ndarray
     far: np.ndarray
     reach: float
-
-
-def vertex_normals(p, tris, welded, count):
-    """Area-weighted unit normals of `tris` at each welded vertex (`welded` per point, `count` of them)."""
-    cross = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
-    normals = np.zeros((count, 3))
-    for k in range(3):
-        np.add.at(normals, welded[tris[:, k]], cross)
-    return normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
 
 
 def inward_hits(far_query, far_normals, origins, normals):

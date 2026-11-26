@@ -438,7 +438,7 @@ class CardTests(unittest.TestCase):
 
         def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
             shaded.append(intersector)
-            return (*mesh_import.shade_unlit(src, material, mp, mt), labels)
+            return (*mesh_import.shade_unlit(src, material, mp, mt, double), labels)
 
         with tempfile.TemporaryDirectory() as directory:
             settings = card_settings(leaf_import(pathlib.Path(directory), p, t))

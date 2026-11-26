@@ -36,7 +36,7 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
-from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
+from r3d.geometry import closest_point_on_triangles, corner_edges, triangle_areas  # noqa: E402
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
@@ -150,8 +150,7 @@ def start_mesh(path):
 
 def point_edges(tris, vertex_point):
     """The unique undirected edges between welded positions."""
-    corners = vertex_point[tris]
-    edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
+    edges = corner_edges(vertex_point[tris])
     edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
     return np.unique(edges, axis=0)
 
@@ -415,20 +414,26 @@ class Renderer:
         import torch
 
         with torch.no_grad():
-            corners = clip[self.tris.long()]
-            w = corners[..., 3]
-            xy = corners[..., :2] / w.clamp_min(1e-6)[..., None]
-            area = (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
-            return self.double | (area > 0) | (w <= 0).any(dim=1)
+            return self.double | (self.screen_area(clip) > 0) | (clip[self.tris.long()][..., 3] <= 0).any(dim=1)
+
+    def screen_area(self, clip):
+        """Each triangle's signed area on screen, positive where its corners wind counter-clockwise."""
+        corners = clip[self.tris.long()]
+        xy = corners[..., :2] / corners[..., 3:].clamp_min(1e-6)
+        return (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
+
+    @staticmethod
+    def pixel_triangles(rast, keep):
+        """The triangle each pixel of a raster() shows, -1 where none."""
+        import torch
+
+        local = rast[0, ..., 3].long() - 1
+        return torch.cat([keep, keep.new_full((1,), -1)])[torch.where(local >= 0, local, len(keep))]
 
     def visible_ids(self, points, clip_matrix):
         """The triangle each pixel shows, -1 where none."""
-        import torch
-
         _clip, rast, keep = self.raster(points, clip_matrix)
-        local = rast[0, ..., 3].long() - 1
-        mapping = torch.cat([keep, keep.new_full((1,), -1)])
-        return mapping[torch.where(local >= 0, local, len(keep))]
+        return self.pixel_triangles(rast, keep)
 
 
     def raster(self, points, clip_matrix, clip=None):
@@ -560,12 +565,8 @@ class Renderer:
         import torch
 
         with torch.no_grad():
-            corners = clip[self.tris.long()]
-            xy = corners[..., :2] / corners[..., 3:].clamp_min(1e-6)
-            area = (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
-            local = rast[0, ..., 3].long() - 1
-            shown = torch.cat([keep, keep.new_zeros(1)])[torch.where(local >= 0, local, len(keep))]
-            return (area[shown] > 0) | (local < 0)
+            shown = self.pixel_triangles(rast, keep)
+            return (self.screen_area(clip)[shown.clamp_min(0)] > 0) | (shown < 0)
 
     def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch

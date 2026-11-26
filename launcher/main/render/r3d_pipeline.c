@@ -882,21 +882,51 @@ rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint3
     }
 }
 
-/* Triangle `t` of cluster `c` rebuilt, cut to the guard planes and projected
- * into work->clip.projected: its corner count, 0 when nothing is left or it
- * faces away. The cut learns which way it faces only once projected, so one
- * seen from behind that shows back colours is rebuilt again from them, and
- * `face` becomes its back face colour. */
+/* Triangle `t`'s corners rebuilt with the colours of the side `back` names,
+ * and its UVs in chart `chart`. */
+static inline __attribute__((always_inline)) void
+textured_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, int cluster, int chart,
+                 r3d_pipeline_work_t* work, const r3d_lit_cluster_t* back) {
+    rebuilt_corners(mesh, lens, t, R3D_SPAN_FACE_NONE, work, 0, 0, back);
+    clip_vertex_t* poly = work->clip.poly;
+    for (int k = 0; k < 3; k++) {
+        const vec2f_t uv = r3d_texture_uv(mesh->texturing, cluster, chart, mesh->triangles[t][k]);
+        poly[k].u = uv.x;
+        poly[k].v = uv.y;
+    }
+}
+
+/* The chart side_corners() takes for an untextured triangle. */
+#define UNTEXTURED (-1)
+
+/* Triangle `t`'s corners with the colours of the side `back` names: plain
+ * (`chart` UNTEXTURED) with `face`, morphed by `weight` in `cluster`, or with UVs in
+ * chart `chart` of `cluster`. */
+static inline __attribute__((always_inline)) void
+side_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t face, r3d_pipeline_work_t* work,
+             int cluster, int weight, int chart, const r3d_lit_cluster_t* back) {
+    if (chart == UNTEXTURED) {
+        rebuilt_corners(mesh, lens, t, face, work, cluster, weight, back);
+    } else {
+        textured_corners(mesh, lens, t, cluster, chart, work, back);
+    }
+}
+
+/* Triangle `t` of cluster `c` rebuilt (side_corners()), cut to the guard
+ * planes and projected into work->clip.projected: its corner count, 0 when
+ * nothing is left or it faces away. The cut learns which way it faces only
+ * once projected, so one seen from behind that shows back colours is rebuilt
+ * again from them, and `face` becomes its back face colour. */
 static inline __attribute__((always_inline)) int
 rebuilt_polygon(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t* face, const r3d_lit_cluster_t* c,
-                r3d_pipeline_work_t* work, int cluster, int weight) {
-    rebuilt_corners(mesh, lens, t, *face, work, cluster, weight, NULL);
+                r3d_pipeline_work_t* work, int cluster, int weight, int chart) {
+    side_corners(mesh, lens, t, *face, work, cluster, weight, chart, NULL);
     bool back = false;
     const int n = projected_polygon(lens, c->double_sided, work, &back);
     if (n == 0 || !back || !shows_back(mesh, c)) {
         return n;
     }
-    rebuilt_corners(mesh, lens, t, *face, work, cluster, weight, c);
+    side_corners(mesh, lens, t, *face, work, cluster, weight, chart, c);
     *face = side_face(mesh, c, t, *face);
     return projected_polygon(lens, true, work, &back);
 }
@@ -917,7 +947,7 @@ static __attribute__((noinline, cold, flatten)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t face, const r3d_lit_cluster_t* c,
              const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     FRAME_LAP("r3d.draw.clip");
-    const int n = rebuilt_polygon(mesh, lens, t, &face, c, work, 0, 0);
+    const int n = rebuilt_polygon(mesh, lens, t, &face, c, work, 0, 0, UNTEXTURED);
     draw_clipped(n, face, target, work, 0U);
     FRAME_LAP("r3d.draw.cluster");
 }
@@ -926,7 +956,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t
 static __attribute__((noinline, cold)) int
 morphed_polygon(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint32_t* face, const r3d_lit_cluster_t* c,
                 r3d_pipeline_work_t* work, int cluster, int weight) {
-    return rebuilt_polygon(mesh, lens, t, face, c, work, cluster, weight);
+    return rebuilt_polygon(mesh, lens, t, face, c, work, cluster, weight, UNTEXTURED);
 }
 
 /* draw_rebuilt() of a cluster in a blend: moved its work->clip.blend weight
@@ -1042,20 +1072,6 @@ draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* con
     FRAME_LAP("r3d.draw.cluster");
 }
 
-/* Triangle `t`'s corners rebuilt with the colours of the side `back` names,
- * and its UVs in chart `chart`. */
-static inline __attribute__((always_inline)) void
-textured_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, int cluster, int chart,
-                 r3d_pipeline_work_t* work, const r3d_lit_cluster_t* back) {
-    rebuilt_corners(mesh, lens, t, R3D_SPAN_FACE_NONE, work, 0, 0, back);
-    clip_vertex_t* poly = work->clip.poly;
-    for (int k = 0; k < 3; k++) {
-        const vec2f_t uv = r3d_texture_uv(mesh->texturing, cluster, chart, mesh->triangles[t][k]);
-        poly[k].u = uv.x;
-        poly[k].v = uv.y;
-    }
-}
-
 /* A textured triangle the near plane cuts, rebuilt and clipped as a plain
  * one is, its UVs cut with it. */
 static __attribute__((noinline, cold)) void
@@ -1063,13 +1079,8 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, con
                   const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     const int cluster = (int)(c - mesh->clusters);
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
-    textured_corners(mesh, lens, t, cluster, chart, work, NULL);
-    bool back = false;
-    int n = projected_polygon(lens, c->double_sided, work, &back);
-    if (n != 0 && back && shows_back(mesh, c)) {
-        textured_corners(mesh, lens, t, cluster, chart, work, c);
-        n = projected_polygon(lens, true, work, &back);
-    }
+    uint32_t face = R3D_SPAN_FACE_NONE;
+    const int n = rebuilt_polygon(mesh, lens, t, &face, c, work, cluster, 0, chart);
     const clip_vertex_t* poly = work->clip.poly;
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {

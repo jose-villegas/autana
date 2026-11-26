@@ -568,6 +568,31 @@ test_a_batch_draws_each_copy_as_the_instance_its_rows_place(void) {
 }
 
 static void
+test_a_copy_in_a_later_set_reads_that_set_s_front_and_back_colours(void) {
+    /* Two sets of a mesh with two vertices and one back colour: each set its
+     * front colours, then its back ones, colour_stride elements apart. */
+    enum { VERTICES = 2, BACKS = 1, STRIDE = VERTICES + BACKS, SETS = 2 };
+
+    static const uint8_t colours[SETS * STRIDE][3] = {{1, 0, 0}, {2, 0, 0}, {3, 0, 0}, {4, 0, 0}, {5, 0, 0}, {6, 0, 0}};
+    static const uint16_t faces[SETS * STRIDE] = {10, 20, 30, 40, 50, 60};
+    static const r3d_copy_place_t places[] = {{{0, 0, 0}, 0}, {{0, 0, 0}, 1}};
+    const r3d_batch_t batch = {.places = places, .colour_stride = STRIDE, .copy_count = SETS};
+    const r3d_lit_mesh_t mesh = {.colors = colours,
+                                 .back_colors = colours + VERTICES,
+                                 .face_colors = faces,
+                                 .back_face_colors = faces + VERTICES,
+                                 .back_count = BACKS};
+    r3d_lit_mesh_t copy;
+    r3d_batch_copy_mesh(&batch, &mesh, 1, &copy);
+    TEST_ASSERT_EQUAL_UINT8(4, copy.colors[0][0]);
+    TEST_ASSERT_EQUAL_UINT8(6, copy.back_colors[0][0]);
+    TEST_ASSERT_EQUAL_UINT16(40, copy.face_colors[0]);
+    TEST_ASSERT_EQUAL_UINT16(60, copy.back_face_colors[0]);
+    r3d_batch_copy_mesh(&batch, &mesh, 0, &copy);
+    TEST_ASSERT_EQUAL_UINT8(3, copy.back_colors[0][0]);
+}
+
+static void
 test_a_chunk_off_screen_draws_none_of_its_copies(void) {
     batch_rig_t* rig = batch_rig();
     /* One chunk far to the side, a full one, then one copy in view. */
@@ -635,6 +660,7 @@ suite_r3d_instance(void) {
     RUN_TEST(test_a_world_box_through_a_model_holds_every_transformed_corner);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
     RUN_TEST(test_a_batch_draws_each_copy_as_the_instance_its_rows_place);
+    RUN_TEST(test_a_copy_in_a_later_set_reads_that_set_s_front_and_back_colours);
     RUN_TEST(test_a_chunk_off_screen_draws_none_of_its_copies);
     RUN_TEST(test_a_copy_off_screen_in_a_kept_chunk_is_skipped);
 }
