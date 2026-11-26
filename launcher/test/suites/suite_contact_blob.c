@@ -16,23 +16,22 @@ enum { BLOB_WIDTH = 9, BLOB_HEIGHT = 9, BLOB_CENTRE = 4, BLOB_DEPTH = 4 };
 
 static void
 draw_disc_fixture(const r3d_span_target_t* target, const r3d_lens_t* lens, vec3f_t centre, vec3f_t up, float radius,
-                  float strength) {
-    void* work = malloc(contact_blobs_work_bytes());
-    TEST_ASSERT_NOT_NULL(work);
+                  float strength, void* work) {
     const vec3f_t axis = fabsf(up.x) < fabsf(up.y) ? vec3f_unit_x() : vec3f_unit_y();
     const vec3f_t u = vec3f_scale(vec3f_normalize(vec3f_cross(up, axis)), radius);
     const vec3f_t v = vec3f_scale(vec3f_normalize(vec3f_cross(up, u)), radius);
     const contact_blob_t blob = {.centre = centre, .u = u, .v = v, .strength = strength};
     contact_blobs_draw(target, lens, &blob, 1, work);
-    free(work);
 }
 
 static void
 test_blob_depth_radius_rows_strength(void) {
     uint16_t* color = malloc(BLOB_WIDTH * BLOB_HEIGHT * sizeof *color);
     uint16_t* depth = calloc(BLOB_WIDTH * BLOB_HEIGHT, sizeof *depth);
+    void* work = malloc(contact_blobs_work_bytes());
     TEST_ASSERT_NOT_NULL(color);
     TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(work);
     for (int i = 0; i < BLOB_WIDTH * BLOB_HEIGHT; i++) {
         color[i] = RGB565BE(0xffffff);
     }
@@ -44,10 +43,10 @@ test_blob_depth_radius_rows_strength(void) {
     const vec3f_t ground = {(BLOB_CENTRE + 0.5F - lens.project.cx) * BLOB_DEPTH / lens.focal_x,
                             -(BLOB_CENTRE + 0.5F - lens.project.cy) * BLOB_DEPTH / lens.focal_y, BLOB_DEPTH};
     r3d_span_target_t target = r3d_span_target(color, depth, BLOB_WIDTH, 0, BLOB_HEIGHT);
-    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 0, work);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_NEAREST;
-    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1, work);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     depth[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE] = R3D_DEPTH_EMPTY;
     for (int i = 0; i < BLOB_WIDTH * BLOB_HEIGHT; i++) {
@@ -55,13 +54,14 @@ test_blob_depth_radius_rows_strength(void) {
     }
     target = r3d_span_target(color + BLOB_CENTRE * BLOB_WIDTH, depth + BLOB_CENTRE * BLOB_WIDTH, BLOB_WIDTH,
                              BLOB_CENTRE, BLOB_CENTRE + 1);
-    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+    draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1, work);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(15, 31, 15), color[BLOB_CENTRE * BLOB_WIDTH + BLOB_CENTRE]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[0]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[(BLOB_CENTRE - 1) * BLOB_WIDTH + BLOB_CENTRE]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xffffff), color[BLOB_CENTRE * BLOB_WIDTH]);
     free(depth);
     free(color);
+    free(work);
 }
 
 static void
@@ -70,8 +70,10 @@ test_blob_squared_falloff(void) {
     static const int covered[] = {BAYER4_LEVELS, 9, 0, 0};
     uint16_t* color = malloc(BLOB_WIDTH * BLOB_HEIGHT * sizeof *color);
     uint16_t* depth = calloc(BLOB_WIDTH * BLOB_HEIGHT, sizeof *depth);
+    void* work = malloc(contact_blobs_work_bytes());
     TEST_ASSERT_NOT_NULL(color);
     TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(work);
     const transformf_t pose = transformf_identity();
     const render_view_t view = render_view_make(&pose, 1, 1, (viewport_t){BLOB_WIDTH, BLOB_HEIGHT, 0});
     const r3d_span_target_t target = r3d_span_target(color, depth, BLOB_WIDTH, 0, BLOB_HEIGHT);
@@ -86,7 +88,7 @@ test_blob_squared_falloff(void) {
                 const vec3f_t ground = {distances[d] * BLOB_RADIUS, 0, BLOB_DEPTH};
                 const int pixel = y * BLOB_WIDTH + x;
                 color[pixel] = RGB565BE(0xffffff);
-                draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1);
+                draw_disc_fixture(&target, &lens, ground, vec3f_unit_z(), BLOB_RADIUS, 1, work);
                 count += color[pixel] != RGB565BE(0xffffff);
             }
         }
@@ -94,25 +96,31 @@ test_blob_squared_falloff(void) {
     }
     free(depth);
     free(color);
+    free(work);
 }
+
+typedef struct {
+    bool occluded;
+    bool aligned;
+} floor_fixture_t;
 
 static void
 floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* scratch, void* user) {
-    TEST_ASSERT_NOT_NULL(scratch);
-    TEST_ASSERT_EQUAL_UINT(0, (uintptr_t)scratch % _Alignof(max_align_t));
-    const bool* occluded = user;
-    r3d_span_target_t clear = *target;
-    if (!*occluded) {
-        for (int y = clear.rows.first_row; y < gfx_target_end_row(&clear.rows); y++) {
-            uint16_t* depth = gfx_target_depth(&clear.rows, y);
+    floor_fixture_t* floor = user;
+    floor->aligned &= scratch != NULL && (uintptr_t)scratch % _Alignof(max_align_t) == 0;
+    if (!floor->aligned) {
+        return;
+    }
+    if (!floor->occluded) {
+        for (int y = target->rows.first_row; y < gfx_target_end_row(&target->rows); y++) {
+            uint16_t* depth = gfx_target_depth(&target->rows, y);
             for (int x = 0; x < lens->width; x++) {
                 depth[x] = R3D_DEPTH_EMPTY;
             }
         }
     }
     const float radius = 2;
-    const contact_blob_t blob = {.u = {0, 0, radius}, .v = {radius, 0, 0}, .strength = 1};
-    contact_blobs_draw(target, lens, &blob, 1, scratch);
+    draw_disc_fixture(target, lens, vec3f_zero(), vec3f_unit_y(), radius, 1, scratch);
 }
 
 static void
@@ -127,23 +135,32 @@ test_blob_coplanar_floor_matches_unoccluded_disc(void) {
     const r3d_instance_t instance = {.mesh = &quad.mesh};
     raster_t raster = {.instances = &instance, .instance_count = 1, .width = SIZE, .height = SIZE};
     const size_t geometry_bytes = raster_scratch_bytes(&raster);
-    bool occluded = false;
-    const raster_post_t post = {.draw = floor_blob, .scratch_bytes = contact_blobs_work_bytes(), .user = &occluded};
+    floor_fixture_t floor = {.aligned = true};
+    raster_post_t post = {.draw = floor_blob, .user = &floor};
     raster.post = &post;
+    TEST_ASSERT_EQUAL_UINT(geometry_bytes, raster_scratch_bytes(&raster));
+    post.scratch_bytes = contact_blobs_work_bytes();
     const size_t scratch_bytes = raster_scratch_bytes(&raster);
-    TEST_ASSERT_EQUAL_UINT(mathi_size_ceil(geometry_bytes, _Alignof(max_align_t)) + post.scratch_bytes, scratch_bytes);
-    raster.scratch = malloc(scratch_bytes);
+    const size_t geometry_align = _Alignof(r3d_span_target_t);
+    char* allocation = malloc(scratch_bytes + geometry_align);
     uint16_t* expected = malloc(SIZE * SIZE * sizeof *expected);
-    TEST_ASSERT_NOT_NULL(raster.scratch);
-    TEST_ASSERT_NOT_NULL(expected);
+    if (allocation == NULL || expected == NULL) {
+        free(expected);
+        free(allocation);
+        TEST_FAIL_MESSAGE("coplanar fixture allocation failed");
+        return;
+    }
+    const bool max_aligned = (uintptr_t)allocation % _Alignof(max_align_t) == 0;
+    raster.scratch = allocation + (max_aligned && geometry_align < _Alignof(max_align_t) ? geometry_align : 0);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     (void)raster_draw(&raster, &view);
     memcpy(expected, raster_color(&raster), SIZE * SIZE * sizeof *expected);
-    occluded = true;
+    floor.occluded = true;
     (void)raster_draw(&raster, &view);
     const bool same = memcmp(expected, raster_color(&raster), SIZE * SIZE * sizeof *expected) == 0;
     free(expected);
-    free(raster.scratch);
+    free(allocation);
+    TEST_ASSERT_TRUE_MESSAGE(floor.aligned, "post scratch must be aligned independently of the raster base");
     TEST_ASSERT_TRUE(same);
 }
 
@@ -177,7 +194,7 @@ test_round_disc_golden(void) {
     enum { SIZE = 32 };
 
     blob_fixture_t f = blob_fixture_make(SIZE);
-    draw_disc_fixture(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1);
+    draw_disc_fixture(&f.target, &f.lens, (vec3f_t){0, 0, BLOB_DEPTH}, vec3f_unit_z(), BLOB_RADIUS, 1, f.work);
     const uint32_t crc = crc32_update(0, f.color, SIZE * SIZE * sizeof *f.color);
     free(f.work);
     free(f.depth);

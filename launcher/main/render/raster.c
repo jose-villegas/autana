@@ -375,19 +375,19 @@ raster_capacity(const raster_t* raster) {
     return most;
 }
 
-static size_t
-raster_post_offset(const raster_t* raster, const void* draw) {
-    const size_t end = (size_t)((uintptr_t)draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
-                       + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES)
-                       + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
-    return raster->post != NULL && raster->post->scratch_bytes != 0 ? mathi_size_ceil(end, _Alignof(max_align_t)) : end;
+static uintptr_t
+raster_geometry_end(const void* draw) {
+    return (uintptr_t)draw + sizeof(draw_work_t) + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES)
+           + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
 }
 
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count + raster->batch_count > 0); /* with nothing to draw it would clear nothing */
-    const size_t end = raster_post_offset(raster, raster_carve(raster).draw);
-    return end + (raster->post != NULL ? raster->post->scratch_bytes : 0);
+    const size_t geometry = raster_geometry_end(raster_carve(raster).draw) - (uintptr_t)raster->scratch;
+    const size_t post = raster->post != NULL ? raster->post->scratch_bytes : 0;
+    /* Size is queried before the allocator supplies the base address. */
+    return post == 0 ? geometry : geometry + (_Alignof(max_align_t) - 1) + post;
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -960,21 +960,22 @@ batch_fill(const raster_t* raster, draw_work_t* work, int first, int end, uint16
     return culled;
 }
 
-/* Keep the post-draw lens and target off the geometry draw chain's frame. */
+/* Geometry has joined both slices, so its lens and row target can be reused. */
 static __attribute__((noinline)) void
-draw_post(const raster_t* raster, const render_view_t* view, const draw_work_t* work) {
+draw_post(const raster_t* raster, const render_view_t* view, draw_work_t* work) {
     if (raster->post != NULL) {
         FRAME_COST_BEGIN(post_from);
-        r3d_lens_t lens;
-        raster_lens(raster, view, 1, &lens);
-        r3d_lens_set_depth_near(&lens, *work->buffers.depth_near);
-        r3d_span_target_t target = {0};
-        gfx_target_window(&target.rows, &work->buffers.picture, work->first_row, work->end_row);
+        r3d_lens_t* lens = &work->picture.lens;
+        raster_lens(raster, view, 1, lens);
+        r3d_lens_set_depth_near(lens, *work->buffers.depth_near);
+        r3d_span_target_t* target = &work->targets[0];
+        memset(target, 0, sizeof *target);
+        gfx_target_window(&target->rows, &work->buffers.picture, work->first_row, work->end_row);
         void* scratch = NULL;
         if (raster->post->scratch_bytes != 0) {
-            scratch = (char*)raster->scratch + raster_post_offset(raster, work);
+            scratch = (void*)mathi_size_ceil(raster_geometry_end(work), _Alignof(max_align_t));
         }
-        raster->post->draw(&target, &lens, scratch, raster->post->user);
+        raster->post->draw(target, lens, scratch, raster->post->user);
         FRAME_COST_END(post_from, R3D_STAGE_DRAW_NAME);
     }
 }

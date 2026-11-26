@@ -25,7 +25,7 @@ struct r3d_lens;
 
 typedef struct raster_post {
     void (*draw)(const struct r3d_span_target* target, const struct r3d_lens* lens, void* scratch, void* user);
-    size_t scratch_bytes; /* aligned as malloc provides, or zero for NULL */
+    size_t scratch_bytes; /* scratch aligned to max_align_t; zero passes NULL */
     void* user;
 } raster_post_t;
 
