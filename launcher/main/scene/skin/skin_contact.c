@@ -7,13 +7,7 @@
 
 vec3f_t
 skin_contact_bind_position(const r3d_skin_t* skin, int joint) {
-    mat4f_t inverse = mat4f_identity();
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 4; c++) {
-            inverse.m[r][c] = skin->inverse_binds[joint][(r * 4) + c];
-        }
-    }
-    const mat4f_t bind = mat4f_invert_affine(inverse);
+    const mat4f_t bind = mat4f_invert_affine(r3d_skin_inverse_bind(skin, joint));
     return mat4f_apply(&bind, vec3f_zero());
 }
 
@@ -99,11 +93,11 @@ skin_contacts_find(const anim_skeleton_t* skeleton, const r3d_skin_t* skin, skin
     }
     for (int j = 0; j < skin->joint_count; j++) {
         const float y = skin_contact_bind_position(skin, j).y;
-        if (leaf(skeleton, j) && y <= lowest_leaf + (CONTACT_JOINT_BAND * height)) {
+        if (leaf(skeleton, j) && y <= lowest_leaf + (SKIN_CONTACT_JOINT_BAND * height)) {
             contact_insert(out, skin, j, y);
         }
     }
     const float nearest = contact_spacing(skin, out);
-    out->radius = CONTACT_RADIUS_FRACTION * (nearest < FLT_MAX ? nearest : height);
+    out->radius = SKIN_CONTACT_RADIUS_FRACTION * (nearest < FLT_MAX ? nearest : height);
     return out->count;
 }

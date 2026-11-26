@@ -129,8 +129,8 @@ scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* sk
     r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);
     frame_record_note_skin(&skin->output.mesh, &skin->bind, &skin->skin, skin->palette, skin->skin.joint_count);
     r3d_skin_refit_nodes(&skin->output);
-    if (scene->renderers[scene_renderer_index(scene, entity)].contact_blob_shape == SCENE_CONTACT_FEET) {
-        scene_skin_contact_refresh(scene, entity);
+    if (scene->renderers[scene_renderer_index(scene, entity)].contact.shape == SCENE_CONTACT_FEET) {
+        scene_skin_contacts_find(scene, entity);
     }
     if (skin->light_storage != NULL) {
         skin->output.mesh.colors = skin->colors;
@@ -217,14 +217,19 @@ skin_set_light_mode(entity_t entity, skin_light_mode_t mode) {
 }
 
 void
-scene_skin_contact_refresh(scene_t* scene, scene_row_t entity) {
+scene_skin_contacts_find(scene_t* scene, scene_row_t entity) {
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
     const scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
-    if (r->contact_blob_strength > 0 && r->contact_blob_shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
+    if (r->contact.strength > 0 && r->contact.shape == SCENE_CONTACT_FEET && skin->storage != NULL) {
         (void)skin_contacts_find(&scene->animators[entity].skeleton, &skin->skin, &skin->contacts);
     }
-    if (r->contact_blob_strength <= 0 || r->contact_blob_shape != SCENE_CONTACT_SILHOUETTE || skin->storage == NULL
-        || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
+}
+
+void
+scene_skin_mask_refresh(scene_t* scene, const scene_renderer_t* r) {
+    const scene_row_t entity = r->entity;
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    if (skin->storage == NULL || !(scene->flags[entity] & SCENE_FLAG_ACTIVE) || skin->contact_mask_failed) {
         return;
     }
     if (skin->contact_joints == NULL) {

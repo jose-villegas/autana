@@ -161,6 +161,17 @@ light_intensity(entity_t entity) {
     return scene->lights[row].kind == SCENE_LIGHT_NONE ? 0.0F : scene->lights[row].intensity;
 }
 
+static bool
+light_world(const scene_t* scene, scene_row_t row, vec3f_t* direction, vec3f_t* radiance) {
+    const scene_light_t* light = &scene->lights[row];
+    if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[row] & SCENE_FLAG_ACTIVE)) {
+        return false;
+    }
+    *direction = quatf_rotate(scene_row_world(scene->root, row).rotation, SCENE_LIGHT_AXIS);
+    *radiance = vec3f_scale(light->color, light->intensity);
+    return true;
+}
+
 void
 scene_lights_prepare(scene_t* scene) {
     if (scene->light_transfer == NULL) {
@@ -169,14 +180,8 @@ scene_lights_prepare(scene_t* scene) {
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t l = scene->staged[i];
-        const scene_light_t* light = &scene->lights[l];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
-            continue;
-        }
-        const int at = world.count++;
-        world.direction[at] = quatf_rotate(scene_row_world(scene->root, l).rotation, SCENE_LIGHT_AXIS);
-        world.color[at] = vec3f_scale(light->color, light->intensity);
+        const int at = world.count;
+        world.count += light_world(scene, scene->staged[i], &world.direction[at], &world.color[at]);
     }
     world.table = scene->light_table;
     if (scene->light_table != NULL && scene->light_table_dirty) {
@@ -220,23 +225,21 @@ scene_set_probes(entity_t root, const sh_probes_t* probes) {
 
 vec3f_t
 scene_light_brightest_direction(const scene_t* scene) {
-    scene_row_t brightest = SCENE_ROW_NONE;
+    vec3f_t brightest = vec3f_zero();
     float luminance = 0;
     for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        const scene_light_t* light = &scene->lights[e];
-        if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+        vec3f_t direction;
+        vec3f_t radiance;
+        if (!light_world(scene, scene->staged[i], &direction, &radiance)) {
             continue;
         }
-        const float value = vec3f_dot(vec3f_scale(light->color, light->intensity), LIGHT_LUMA_BT709);
+        const float value = vec3f_dot(radiance, LIGHT_LUMA_BT709);
         if (value > luminance) {
             luminance = value;
-            brightest = e;
+            brightest = direction;
         }
     }
-    return brightest == SCENE_ROW_NONE
-               ? vec3f_zero()
-               : quatf_rotate(scene_row_world(scene->root, brightest).rotation, SCENE_LIGHT_AXIS);
+    return brightest;
 }
 
 vec3f_t

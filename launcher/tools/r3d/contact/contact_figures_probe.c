@@ -60,7 +60,7 @@ static void
 print_shapes(const r3d_span_target_t* target, const r3d_lens_t* lens, void* work) {
     static const vec3f_t feet[] = {
         {-FOOT_X, 0, -FOOT_Z}, {-FOOT_X, 0, FOOT_Z}, {FOOT_X, 0, -FOOT_Z}, {FOOT_X, 0, FOOT_Z}};
-    const float radius = CONTACT_RADIUS_FRACTION * (2 * FOOT_Z);
+    const float radius = SKIN_CONTACT_RADIUS_FRACTION * (2 * FOOT_Z);
     const float strength = SCENE_CONTACT_BLOB_STRENGTH_DEFAULT;
     const contact_blob_t disc = {.u = {BODY_HALF_Z, 0, 0}, .v = {0, 0, BODY_HALF_Z}, .strength = strength};
     printf(",\"shapes\": {\"BLOB\": ");

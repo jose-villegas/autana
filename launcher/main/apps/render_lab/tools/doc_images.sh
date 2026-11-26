@@ -23,14 +23,14 @@ contact_images() {
     CONTACT_FRAMES=60
     CONTACT_DT=100
     CONTACT_CROPS=3
-    for shape in 0 2; do
+    for shape in blob silhouette; do
         run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
             --contact-shape "$shape" --contact-warp 0 \
             --frames "$CONTACT_FRAMES" --dt "$CONTACT_DT" \
             -o "$W/contact-$shape.bmp" > "$W/contact-$shape-console.log" 2> "$W/contact-$shape.log"
     done
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER_OUT/contact-silhouette.png" \
-        --row "Ground contact" "$W/contact-0.bmp" "$W/contact-2.bmp" \
+        --row "Ground contact" "$W/contact-blob.bmp" "$W/contact-silhouette.bmp" \
         --label-a BLOB --label-b SILHOUETTE --crops "$CONTACT_CROPS" > "$W/contact-silhouette-compare.log"
 
     for key in skinned-feet-blobs skinned-blob-warped skinned-silhouette-blobs skinned-silhouette-warped; do
@@ -42,17 +42,15 @@ contact_images() {
     CONTACT_VIDEO_FRAMES=185
     CONTACT_VIDEO_FPS=5
     CONTACT_VIDEO_CROP="112 96 336 320"
-    for entry in 0:blob 1:feet 2:silhouette; do
-        shape=${entry%%:*}
-        name=${entry#*:}
+    for shape in blob feet silhouette; do
         for warp in 0 1; do
-            clip="$W/contact-$name-warp-$warp"
+            clip="$W/contact-$shape-warp-$warp"
             run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara-sponza \
                 --frames "$CONTACT_VIDEO_FRAMES" --dt "$CONTACT_DT" \
                 --contact-shape "$shape" --contact-warp "$warp" \
                 -o "$clip.bmp" --video "$clip.avi" > "$clip-console.log" 2> "$clip.log"
             run "$PYTHON" launcher/tools/docs/figures.py gif "$clip.avi" \
-                "$RENDER_OUT/contact-$name-warp-$warp.gif" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP
+                "$RENDER_OUT/contact-$shape-warp-$warp.gif" --fps "$CONTACT_VIDEO_FPS" --crop-box $CONTACT_VIDEO_CROP
         done
     done
 

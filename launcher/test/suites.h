@@ -68,7 +68,7 @@ void suites_run_all(void);
 #define SUITE_TEST_NAME_MAX 95
 #define SUITE_FILTER_MAX    4
 /* Every legal test-name segment must be selectable as one pattern. */
-#define SUITE_FILTER_LEN    96
+#define SUITE_FILTER_LEN    (SUITE_TEST_NAME_MAX + 1)
 
 typedef struct {
     const char* name; /* the suite asked for, borrowed from the request */

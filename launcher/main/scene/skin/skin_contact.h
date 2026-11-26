@@ -3,11 +3,11 @@
 #include "anim/anim_skeleton.h"
 #include "math/linear/vec3f.h"
 #include "render/r3d_skin.h"
-#define SKIN_CONTACTS_MAX       8
+#define SKIN_CONTACTS_MAX            8
 /* Lowest-leaf band, as a fraction of bind-space rig height. */
-#define CONTACT_JOINT_BAND      0.1F
+#define SKIN_CONTACT_JOINT_BAND      0.1F
 /* Radius relative to positive contact spacing, or rig height. */
-#define CONTACT_RADIUS_FRACTION 0.5F
+#define SKIN_CONTACT_RADIUS_FRACTION 0.5F
 
 typedef struct {
     uint8_t joints[SKIN_CONTACTS_MAX];

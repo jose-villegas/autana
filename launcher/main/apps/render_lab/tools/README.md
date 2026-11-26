@@ -622,7 +622,7 @@ be checked to have measured the same thing.
 
 The [warp comparison](../../../../../docs/render/frame/Contact-Shadows.md#light-warp) pairs clips
 from the same run. Refresh the contact renders with `doc_images.sh OUT WORK --contacts-only`.
-The host harness accepts `--contact-shape 0|1|2` (BLOB, FEET, SILHOUETTE) and `--contact-warp 0|1`.
+The host harness accepts `--contact-shape blob|feet|silhouette` and `--contact-warp 0|1`.
 
 [contact-silhouette.png](../../../../../docs/images/render/contact-silhouette.png) and its crops compare BLOB and SILHOUETTE on
 capybara-sponza at the same pose, with warp off.

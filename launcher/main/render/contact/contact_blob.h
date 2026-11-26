@@ -16,6 +16,6 @@ size_t contact_blobs_work_bytes(void);
 contact_blob_t* contact_blobs_work_footprints(void* scratch);
 
 /* Uses geometry's lens and fitted depth scale. At most CONTACT_BLOBS_MAX coplanar,
- * equal-strength footprints; overlaps darken once. A NULL mask uses radial falloff. */
+ * equal-strength footprints; overlaps darken once. Pass a mask for every footprint, or pass all NULL for radial falloff. */
 void contact_blobs_draw(const r3d_span_target_t* target, const r3d_lens_t* lens, const contact_blob_t* blobs, int count,
                         void* scratch);

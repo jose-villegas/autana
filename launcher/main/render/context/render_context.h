@@ -67,7 +67,6 @@ typedef struct {
     raster_t raster;       /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
-    size_t contact_work_offset;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
     resolution_step_t raster_size;

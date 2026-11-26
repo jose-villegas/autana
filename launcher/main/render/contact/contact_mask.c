@@ -12,7 +12,7 @@ bind_accumulate(contact_joint_t* joints, const r3d_lit_mesh_t* bind, const r3d_s
         const vec3f_t p = {(float)bind->positions[v][0], (float)bind->positions[v][1], (float)bind->positions[v][2]};
         for (int i = 0; i < skin->influences; i++) {
             contact_joint_t* joint = &joints[record[i]];
-            const float w = (float)record[skin->influences + i] * R3D_SKIN_WEIGHT_RECIP;
+            const float w = r3d_skin_weight(record, skin->influences, i);
             if (variance) {
                 const vec3f_t d = vec3f_sub(p, joint->centre);
                 joint->radius = vec3f_add(joint->radius, vec3f_scale((vec3f_t){d.x * d.x, d.y * d.y, d.z * d.z}, w));

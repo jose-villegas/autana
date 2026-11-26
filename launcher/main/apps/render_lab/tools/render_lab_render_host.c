@@ -28,7 +28,7 @@
 #include "render_counts.h"
 #include "render_host.h"
 #include "scene/animator/animator.h"
-#include "scene/scene_internal.h"
+#include "scene/scene.h"
 #include "scene/scene_shell.h"
 #include "scene/transform/transform.h"
 #include "ui/layout/ui_transform.h"
@@ -229,9 +229,26 @@ size_option(const char* size) {
 
 static bool
 contact_options(const char* shape, const char* warp) {
-    contact_shape = shape == NULL ? -1 : atoi(shape);
+    static const char* const shapes[] = {
+        [SCENE_CONTACT_BLOB] = "blob",
+        [SCENE_CONTACT_FEET] = "feet",
+        [SCENE_CONTACT_SILHOUETTE] = "silhouette",
+    };
+    contact_shape = -1;
+    if (shape != NULL) {
+        for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; i++) {
+            if (strcmp(shape, shapes[i]) == 0) {
+                contact_shape = (int)i;
+                break;
+            }
+        }
+        if (contact_shape < 0) {
+            (void)fprintf(stderr, "render_lab_render_host: --contact-shape requires blob, feet or silhouette\n");
+            return false;
+        }
+    }
     contact_warp = warp == NULL ? -1 : atoi(warp);
-    return contact_shape >= -1 && contact_shape <= SCENE_CONTACT_SILHOUETTE && contact_warp >= -1 && contact_warp <= 1;
+    return contact_warp >= -1 && contact_warp <= 1;
 }
 
 /* The stress preset whose scene key is `key`, NULL for another scene. */
@@ -428,18 +445,14 @@ apply_contact_options(void) {
     if (shown->path == NULL || (contact_shape < 0 && contact_warp < 0)) {
         return;
     }
-    const lab_path_t path = shown->path();
-    const entity_t entity = path.entity;
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    const int index = scene == NULL ? -1 : scene_renderer_index(scene, row);
-    if (index < 0) {
-        return;
+    const entity_t entity = shown->path().entity;
+    scene_contact_t contact = scene_contact_get(entity);
+    if (contact_shape >= 0) {
+        contact.shape = (scene_contact_shape_t)contact_shape;
     }
-    const scene_renderer_t* r = &scene->renderers[index];
-    const scene_contact_t contact = {r->contact_blob_ground_y, r->contact_blob_strength,
-                                     contact_shape >= 0 ? (scene_contact_shape_t)contact_shape : r->contact_blob_shape,
-                                     contact_warp >= 0 ? contact_warp != 0 : r->contact_warp};
+    if (contact_warp >= 0) {
+        contact.warp = contact_warp != 0;
+    }
     scene_set_contact(entity, &contact);
 }
 

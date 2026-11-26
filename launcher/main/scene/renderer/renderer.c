@@ -26,6 +26,13 @@ renderer_of(entity_t entity, scene_t** scene) {
     return *scene == NULL ? -1 : scene_renderer_index(*scene, row);
 }
 
+scene_contact_t
+scene_contact_get(entity_t renderer) {
+    scene_t* scene;
+    const int i = renderer_of(renderer, &scene);
+    return i < 0 ? (scene_contact_t){0} : scene->renderers[i].contact;
+}
+
 const char*
 renderer_mesh_id(entity_t entity) {
     scene_t* scene;

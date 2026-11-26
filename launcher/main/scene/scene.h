@@ -85,3 +85,6 @@ typedef struct {
 
 /* Ground-plane contact shadows for this renderer; zero strength disables them. Contact must be non-NULL. */
 void scene_set_contact(entity_t renderer, const scene_contact_t* contact);
+
+/* An entity without a renderer returns a disabled contact shadow. */
+scene_contact_t scene_contact_get(entity_t renderer);

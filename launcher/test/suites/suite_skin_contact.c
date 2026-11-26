@@ -33,7 +33,7 @@ test_contact_leaves_sorted_and_limited(void) {
     for (int i = 0; i < contacts.count; i++) {
         TEST_ASSERT_EQUAL_INT(i + 1, contacts.joints[i]);
     }
-    TEST_ASSERT_FLOAT_WITHIN(0.01F, CONTACT_RADIUS_FRACTION, contacts.radius);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, SKIN_CONTACT_RADIUS_FRACTION, contacts.radius);
     for (int j = 1; j < CONTACT_TEST_JOINTS; j++) {
         inverse[j][7] = -(float)(CONTACT_TEST_JOINTS - j) / CONTACT_TEST_JOINTS;
     }
@@ -44,7 +44,7 @@ test_contact_leaves_sorted_and_limited(void) {
     inverse[1][7] = -1.0F / CONTACT_TEST_JOINTS;
     skeleton.joint_count = skin.joint_count = 2;
     TEST_ASSERT_EQUAL_INT(1, skin_contacts_find(&skeleton, &skin, &contacts));
-    TEST_ASSERT_FLOAT_WITHIN(0.01F, CONTACT_RADIUS_FRACTION * (10 - 1.0F / CONTACT_TEST_JOINTS), contacts.radius);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, SKIN_CONTACT_RADIUS_FRACTION * (10 - 1.0F / CONTACT_TEST_JOINTS), contacts.radius);
     free(inverse);
     free(joints);
 }
@@ -61,10 +61,10 @@ test_coincident_contacts_use_positive_spacing_or_height(void) {
     const r3d_skin_t skin = {.joint_count = 3, .inverse_binds = (const float (*)[R3D_SKIN_MATRIX_WIDTH])inverse};
     skin_contacts_t contacts;
     TEST_ASSERT_EQUAL_INT(2, skin_contacts_find(&skeleton, &skin, &contacts));
-    TEST_ASSERT_EQUAL_FLOAT(2 * CONTACT_RADIUS_FRACTION, contacts.radius);
+    TEST_ASSERT_EQUAL_FLOAT(2 * SKIN_CONTACT_RADIUS_FRACTION, contacts.radius);
     inverse[2][3] = -1;
     TEST_ASSERT_EQUAL_INT(2, skin_contacts_find(&skeleton, &skin, &contacts));
-    TEST_ASSERT_EQUAL_FLOAT(CONTACT_RADIUS_FRACTION, contacts.radius);
+    TEST_ASSERT_EQUAL_FLOAT(SKIN_CONTACT_RADIUS_FRACTION, contacts.radius);
 }
 
 static void
@@ -103,7 +103,7 @@ test_pack_contact_leaves(void) {
         for (int j = 0; j < skeleton.joint_count; j++) {
             TEST_ASSERT_NOT_EQUAL(contacts.joints[i], skeleton.joints[j].parent);
         }
-        TEST_ASSERT_LESS_OR_EQUAL_FLOAT(lowest + CONTACT_JOINT_BAND * (high - low),
+        TEST_ASSERT_LESS_OR_EQUAL_FLOAT(lowest + SKIN_CONTACT_JOINT_BAND * (high - low),
                                         skin_contact_bind_position(&skin, contacts.joints[i]).y);
         const char* path = skeleton.paths + skeleton.joints[contacts.joints[i]].path;
         const char* joint = strrchr(path, '/');

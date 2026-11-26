@@ -3776,7 +3776,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
     }
 }
 
-/* The finest step, debug pixels and contact workspace must fit without reallocating when the step changes. */
+/* The finest step and debug pixels must fit without reallocating when the step changes. */
 static void
 test_the_scratch_is_the_finest_steps_raster_block(void) {
     fixture();
@@ -3802,9 +3802,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     finest.attachments = attached;
     finest.attachment_count = 1;
     const size_t needed = raster_scratch_bytes(&finest);
-    TEST_ASSERT_TRUE(c->contact_work_offset >= needed);
-    TEST_ASSERT_LESS_THAN_UINT(_Alignof(max_align_t), c->contact_work_offset - needed);
-    TEST_ASSERT_EQUAL_UINT(c->contact_work_offset + contact_blobs_work_bytes(), c->scratch_bytes);
+    TEST_ASSERT_EQUAL_UINT(needed, c->scratch_bytes);
     TEST_ASSERT_TRUE(taken >= c->scratch_bytes);
 }
 
@@ -5399,7 +5397,7 @@ test_feet_follow_pose_without_height_fade(void) {
     scene_set_contact(entity, &contact);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     scene_skinned_renderer_t* skin = skin_of(entity);
-    skin->contacts = (skin_contacts_t){.count = 2, .joints = {0, 1}, .radius = CONTACT_RADIUS_FRACTION};
+    skin->contacts = (skin_contacts_t){.count = 2, .joints = {0, 1}, .radius = SKIN_CONTACT_RADIUS_FRACTION};
     contact_blob_t* blobs = calloc(SKIN_CONTACTS_MAX, sizeof *blobs);
     TEST_ASSERT_NOT_NULL(blobs);
     const float radius = skin->contacts.radius;
@@ -5453,8 +5451,8 @@ assert_contact_warp(scene_t* scene, scene_renderer_t* r, vec3f_t light, bool war
     const box3f_t bounds = scene_contact_bounds(scene, r, light);
     const float elevation = warp ? fmaxf(light.y, CONTACT_LIGHT_ELEVATION_MIN) : 1;
     const float area = vec3f_length(vec3f_cross(blob.u, blob.v));
-    const contact_reach_t reach = scene_contact_reach(scene, r);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, reach.x * reach.z / elevation, area);
+    const vec2f_t reach = scene_contact_reach(scene, r);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, reach.x * reach.y / elevation, area);
     TEST_ASSERT_TRUE(blob.centre.x * light.x + blob.centre.z * light.z <= 0);
     static const int8_t signs[][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
     for (size_t i = 0; i < sizeof signs / sizeof signs[0]; i++) {
@@ -5647,7 +5645,7 @@ test_forgetting_another_scene_keeps_the_contact_draw_hook(void) {
     TEST_ASSERT_EQUAL_PTR(post, render_context_main()->raster.post);
     const scene_t* scene = columns(root);
     const int index = scene_renderer_index(scene, row_of(renderer));
-    TEST_ASSERT_EQUAL_FLOAT(SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, scene->renderers[index].contact_blob_strength);
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, scene->renderers[index].contact.strength);
 }
 
 static void

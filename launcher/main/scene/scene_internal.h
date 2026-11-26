@@ -77,7 +77,7 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
-    float contact_blob_ground_y, contact_blob_strength;
+    scene_contact_t contact;
     box3f_t drawn_bounds; /* geometry and contact bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;        /* false while the transform is the identity: drawn as it is */
@@ -86,8 +86,6 @@ typedef struct {
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
     r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
     uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
-    uint8_t contact_blob_shape;
-    bool contact_warp;
     vec3f_t contact_light;
     void* texturing;      /* its pack mesh's textures once opened (render/texture/), at load when they cut, or NULL */
     bool texturing_owner; /* the renderer that opened them: the scene holds one block per mesh id */
@@ -386,7 +384,8 @@ bool scene_lights_allocate(scene_t* scene);
 void scene_lights_prepare(scene_t* scene);
 vec3f_t scene_light_brightest_direction(const scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
-void scene_skin_contact_refresh(scene_t* scene, scene_row_t entity);
+void scene_skin_contacts_find(scene_t* scene, scene_row_t entity);
+void scene_skin_mask_refresh(scene_t* scene, const scene_renderer_t* renderer);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
 /* Entity `entity`'s memory for `doing` did not fit when it became ACTIVE: it
@@ -399,13 +398,9 @@ bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t as
 
 #define CONTACT_LIGHT_ELEVATION_MIN 0.3F
 
-typedef struct {
-    float x, z;
-} contact_reach_t;
-
 int scene_contact_blobs(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blobs);
 box3f_t scene_contact_bounds(const scene_t* scene, scene_renderer_t* renderer, vec3f_t light);
 
 vec3f_t scene_contact_light(const scene_t* scene, vec3f_t world, scene_t* const* drawn_scenes, int drawn_scene_count);
-contact_reach_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
+vec2f_t scene_contact_reach(const scene_t* scene, const scene_renderer_t* renderer);
 bool scene_contact_blob(const scene_t* scene, const scene_renderer_t* renderer, vec3f_t light, contact_blob_t* blob);

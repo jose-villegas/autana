@@ -97,7 +97,9 @@ test_blob_squared_falloff(void) {
 }
 
 static void
-floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) {
+floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* scratch, void* user) {
+    TEST_ASSERT_NOT_NULL(scratch);
+    TEST_ASSERT_EQUAL_UINT(0, (uintptr_t)scratch % _Alignof(max_align_t));
     const bool* occluded = user;
     r3d_span_target_t clear = *target;
     if (!*occluded) {
@@ -108,7 +110,9 @@ floor_blob(const r3d_span_target_t* target, const r3d_lens_t* lens, void* user) 
             }
         }
     }
-    draw_disc_fixture(target, lens, vec3f_zero(), vec3f_unit_y(), 2, 1);
+    const float radius = 2;
+    const contact_blob_t blob = {.u = {0, 0, radius}, .v = {radius, 0, 0}, .strength = 1};
+    contact_blobs_draw(target, lens, &blob, 1, scratch);
 }
 
 static void
@@ -122,13 +126,16 @@ test_blob_coplanar_floor_matches_unoccluded_disc(void) {
     r3d_quad_init(&quad, corners);
     const r3d_instance_t instance = {.mesh = &quad.mesh};
     raster_t raster = {.instances = &instance, .instance_count = 1, .width = SIZE, .height = SIZE};
-    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    const size_t geometry_bytes = raster_scratch_bytes(&raster);
+    bool occluded = false;
+    const raster_post_t post = {.draw = floor_blob, .scratch_bytes = contact_blobs_work_bytes(), .user = &occluded};
+    raster.post = &post;
+    const size_t scratch_bytes = raster_scratch_bytes(&raster);
+    TEST_ASSERT_EQUAL_UINT(mathi_size_ceil(geometry_bytes, _Alignof(max_align_t)) + post.scratch_bytes, scratch_bytes);
+    raster.scratch = malloc(scratch_bytes);
     uint16_t* expected = malloc(SIZE * SIZE * sizeof *expected);
     TEST_ASSERT_NOT_NULL(raster.scratch);
     TEST_ASSERT_NOT_NULL(expected);
-    bool occluded = false;
-    const raster_post_t post = {.draw = floor_blob, .user = &occluded};
-    raster.post = &post;
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     (void)raster_draw(&raster, &view);
     memcpy(expected, raster_color(&raster), SIZE * SIZE * sizeof *expected);

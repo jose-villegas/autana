@@ -375,11 +375,19 @@ raster_capacity(const raster_t* raster) {
     return most;
 }
 
+static size_t
+raster_post_offset(const raster_t* raster, const void* draw) {
+    const size_t end = (size_t)((uintptr_t)draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
+                       + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES)
+                       + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
+    return raster->post != NULL && raster->post->scratch_bytes != 0 ? mathi_size_ceil(end, _Alignof(max_align_t)) : end;
+}
+
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count + raster->batch_count > 0); /* with nothing to draw it would clear nothing */
-    return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
-           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES) + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
+    const size_t end = raster_post_offset(raster, raster_carve(raster).draw);
+    return end + (raster->post != NULL ? raster->post->scratch_bytes : 0);
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -962,7 +970,11 @@ draw_post(const raster_t* raster, const render_view_t* view, const draw_work_t* 
         r3d_lens_set_depth_near(&lens, *work->buffers.depth_near);
         r3d_span_target_t target = {0};
         gfx_target_window(&target.rows, &work->buffers.picture, work->first_row, work->end_row);
-        raster->post->draw(&target, &lens, raster->post->user);
+        void* scratch = NULL;
+        if (raster->post->scratch_bytes != 0) {
+            scratch = (char*)raster->scratch + raster_post_offset(raster, work);
+        }
+        raster->post->draw(&target, &lens, scratch, raster->post->user);
         FRAME_COST_END(post_from, R3D_STAGE_DRAW_NAME);
     }
 }

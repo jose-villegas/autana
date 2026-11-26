@@ -2,9 +2,9 @@
 
 ![Ground coverage for one disc, four foot contacts and a joint mask at the same scale and strength](../../images/render/contact-shapes.png)
 
-Skinned movers can darken the ground with a contact shadow. The footprint
-lies on a flat plane and draws after geometry, against its depth. Covered
-pixels have each RGB565 channel halved.
+Any renderer can cast a BLOB contact shadow. The footprint lies on a flat
+plane and draws after geometry, against its depth. Covered pixels have each
+RGB565 channel halved.
 
 ## Choose a shape
 
@@ -28,8 +28,8 @@ Coverage falls to zero at the rim.
 
 ### FEET
 
-Contacts are leaf joints within `CONTACT_JOINT_BAND` times rig height of
-the lowest leaf. The rig uses a common radius of `CONTACT_RADIUS_FRACTION`
+Contacts are leaf joints within `SKIN_CONTACT_JOINT_BAND` times rig height of
+the lowest leaf. The rig uses a common radius of `SKIN_CONTACT_RADIUS_FRACTION`
 times the nearest positive horizontal contact spacing.
 
 With one contact or coincident contacts, rig height supplies the spacing.
