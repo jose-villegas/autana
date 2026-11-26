@@ -51,7 +51,13 @@ BUMP = 3 * SPACING  # how far the patch's one raised vertex stands off its plane
 ROUNDING_TICKS = 1.0
 # The coarsest cloth must cover at least this fraction of its finest projected area.
 COARSE_AREA_MIN = 0.9
+
+# A folded two-skin cloth whose closed coarse levels cut its outline.
 CLOTH_CELLS = 12
+CLOTH_WAVE = "zigzag"
+CLOTH_AMPLITUDE = 0.2
+CLOTH_FREQUENCY = (2, 0)
+CLOTH_THICKNESS = 0.025
 CLOTH_TICK_SCALE = 1024
 AREA_SAMPLES_PER_AXIS = 256
 
@@ -166,7 +172,8 @@ class ClothOutlineTest(unittest.TestCase):
         from r3d.ray_query import RayQuery
         from r3d.source import midsurface
 
-        cloth = sheet(CLOTH_CELLS, shape="zigzag", amplitude=0.2, frequency=(2, 0), layers=2, thickness=0.025)
+        cloth = sheet(CLOTH_CELLS, shape=CLOTH_WAVE, amplitude=CLOTH_AMPLITUDE, frequency=CLOTH_FREQUENCY,
+                      layers=2, thickness=CLOTH_THICKNESS)
         collapsed = midsurface.collapse(cloth.positions, cloth.tris, cloth.layer == BACK,
                                         np.zeros(len(cloth.tris), dtype=int), RayQuery)
         np.testing.assert_array_equal(collapsed.drawn, cloth.layer == FRONT)

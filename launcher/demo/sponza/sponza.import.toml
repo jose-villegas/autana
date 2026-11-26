@@ -72,6 +72,9 @@ seam = "free"
 # the rest plus every stored copy prototype. Unpinned free repeats derive
 # their detail from the camera's closest view within that ceiling.
 #
+# The total is 12716 (13313 less the 597 triangles saved by collapsing each
+# drape's two skins to one sheet), leaving those triangles unspent to keep
+# the fit's columns off the plants in held-out views.
 # The rest gets 12716 - 1448 = 11268 to keep the finest drawn total.
 # Carve rules have no share key, so recompute both budgets if the variant's
 # budget changes.
