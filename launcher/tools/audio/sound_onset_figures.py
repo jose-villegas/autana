@@ -8,7 +8,7 @@ from audio_doc_tables import MIX_CAPTURES, ROOT, US_PER_MS, onset_data
 from audio.sound_onset_capture import DECLICK_TUNABLE
 from docs.plot_style import FIGURE_SIZE, SLOTS, save_themed_plot, subplots
 
-EVENT_ORDER = ("start", "stop", "steal", "amp-on", "amp-off")
+EVENT_ORDER = ("start", "stop", "steal", "amp-on")
 BAND_ALPHA = 0.15
 
 

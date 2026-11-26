@@ -1,7 +1,7 @@
 """Sweep low tones and record how hard the board shakes (IMU) against how loud it sounds (mic).
 
 Board flat on a desk, untouched, quiet room, on a screen without a motion reader. Run it inside one lock run:
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id>
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "folded cloth, face up"
 """
 import argparse
 from datetime import date
@@ -35,6 +35,7 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--autana", default="autana")
     result.add_argument("--board", required=True)
+    result.add_argument("--surface", required=True, help="supporting surface and board orientation")
     result.add_argument("--out", type=Path, default=ROOT / CAPTURE)
     result.add_argument("--hz", type=numbers, default=tuple(range(FIRST_HZ, LAST_HZ + 1, STEP_HZ)))
     result.add_argument("--volumes", type=numbers, default=numbers("10,30,60"))
@@ -101,7 +102,7 @@ def capture(args):
         raise ValueError(f"tone length must be 1..{MAX_MS} ms")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(f"# autana --json replies on {args.board}, {date.today()}, "
+        output.write(f"# autana --json replies on {args.board}, {date.today()}, surface={args.surface}, "
                      "one command per line: <command>\t<reply>\n")
         record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
         tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
