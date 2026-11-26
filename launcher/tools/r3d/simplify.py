@@ -98,8 +98,8 @@ class Allocation:
     shade_shared: object = None
     report: object = None
     shapes: object = None
-    # With seal_seams, where the probes that look for sky through walls stand: (camera region or None, near plane),
-    # then optionally the camera path's views, as leaks.LeakProbes takes them.
+    # Where the probes that look for views past a surface the source closes stand: (camera region or None, near
+    # plane), then optionally the camera path's views, as leaks.LeakProbes takes them; None runs no probes.
     camera: object = None
     detail: object = None
     split: object = None
@@ -142,7 +142,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
     locks[tris[held]] = True
     parts, taken = [], np.zeros(len(tris), dtype=bool)
     probes = None
-    if seal_seams and allocation.camera is not None:
+    if allocation.camera is not None:
         from .leaks import LeakProbes
 
         probes = LeakProbes(pos, tris, *allocation.camera)
@@ -180,7 +180,7 @@ def _run_pass(pos, rgb, tris, labels, budget, deviation, options, locks=None, le
     """One meshoptimizer pass over `tris`. `leaks` is (the scene's LeakProbes, this pass's rows of its triangles):
     while a view shows sky through the result, the pass runs again with one more source vertex locked per hole.
     A round whose locks leave the pass more triangles than its budget, or than its first run when that is
-    already over, is tried again with the half that answers the widest holes, and ends the pass when not one lock
+    already over, is tried again with the half that answers the largest holes, and ends the pass when not one lock
     fits. `record`, a dict, takes the rounds run, the vertices locked and
     the holes the result still shows."""
     used, local = np.unique(tris, return_inverse=True)

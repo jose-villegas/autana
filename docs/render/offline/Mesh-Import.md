@@ -410,21 +410,20 @@ Allocation mesh and pass rows include the choice:
 
 #### seal_seams
 
-`seal_seams = true` joins touching pieces before simplification, and simplifies
-again while a view shows sky through a wall.
+`seal_seams = true` joins touching pieces before simplification. Sealed or not,
+an import whose scene has a camera simplifies again while a view sees past a
+surface the source closes.
 
 ```mermaid
 flowchart LR
     load[Load and light] --> join[Join touching pieces]
     join --> pass[Simplify pass]
-    pass --> probe{Sky through<br/>a wall?}
+    pass --> probe{View past a surface<br/>the source closes?}
     probe -- "yes: lock one<br/>vertex per hole" --> pass
     probe -- no --> merge[Merge near colours]
     merge --> bake[Quantise, meshlets, cluster tree]
     subgraph seal_seams
         join
-        pass
-        probe
         merge
     end
 ```
@@ -432,7 +431,7 @@ flowchart LR
 | Step | What it does |
 |---|---|
 | Join | Welds border vertices within one quantisation step and splits border edges at the vertices lying on them, so a shared edge is one edge. |
-| Pass | Runs meshoptimizer with light regularizing instead of regularizing. |
+| Pass | Runs meshoptimizer; with `seal_seams`, light regularizing instead of regularizing. |
 | Probe | Looks for holes (defined below) in views of the source and locks one source vertex per hole; the pass then runs again, up to [`ROUNDS`](../../../launcher/tools/r3d/leaks.py) times. |
 | Merge | Gives vertices at one quantised position one colour when they differ by at most one and a half RGB565 steps. |
 
@@ -447,12 +446,13 @@ path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_
 
 | Term | Meaning |
 |---|---|
-| Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
+| Open pixel | Where the source hits and the simplified mesh shows sky, or lies beyond [`BEHIND`](../../../launcher/tools/r3d/leaks.py) times the source's distance in a region that holds an [`OPENING`](../../../launcher/tools/r3d/leaks.py) square whole. |
+| Hole | In one view, a connected region of open pixels that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
 | Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[141]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
 
 A lock keeps triangles the rest of the mesh then goes without, so the rest is a
 little coarser. A round whose locks would leave the pass over its budget is tried again
-with half of them, the widest holes first, and the pass ends when none fits. Each round adds a ray trace and a
+with half of them, the largest holes (most pixels) first, and the pass ends when none fits. Each round adds a ray trace and a
 simplify run to the bake.
 
 A gap no view sees stays open: the probes bound what a free camera meets, and
@@ -470,6 +470,10 @@ The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
 
 ![seal_seams off against on](../images/import-seal-seams.png)
+
+Whether or not an import seals, the Bakes workflow's see-through test traces each
+scene's camera path through the source and the drawn bundles, and fails a scene
+whose bake lets the view past more of the source than its pegged ceiling.
 
 ### Geometry variants
 
