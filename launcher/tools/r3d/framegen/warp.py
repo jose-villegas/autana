@@ -6,8 +6,9 @@ The raster is the render size, stretched to the panel on the way out, so a
 pixel's ray is the one poses.camera_rays casts through the same place of
 the panel. A pixel's view depth is depth_near / iz, with iz its stored depth
 over R3D_DEPTH_NEAREST and depth_near the frame's own depth scale, which the
-renderer fits to the nearest bound in view (raster_depth_near()); R3D_DEPTH_EMPTY marks the sky, which warps as a
-direction (rotation only) and loses to anything drawn.
+renderer fits to the nearest bound in view (raster_depth_near());
+R3D_DEPTH_EMPTY marks the sky, which warps as a direction (rotation only)
+and loses to anything drawn.
 """
 import pathlib
 import struct

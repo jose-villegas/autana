@@ -28,7 +28,9 @@ STEP = 100.0
 @unittest.skipIf(np is None, "numpy is not installed")
 class DumpDepthScaleTests(unittest.TestCase):
     def dump(self, depth_near, depth):
-        path = pathlib.Path(tempfile.mkdtemp(prefix="framegen_warp_")) / "0000.raw"
+        folder = tempfile.TemporaryDirectory(prefix="framegen_warp_")
+        self.addCleanup(folder.cleanup)
+        path = pathlib.Path(folder.name) / "0000.raw"
         height, width = depth.shape
         colour = np.zeros(depth.shape, dtype="<u2")
         path.write_bytes(warp.DUMP_HEADER.pack(width, height, depth_near) + colour.tobytes()

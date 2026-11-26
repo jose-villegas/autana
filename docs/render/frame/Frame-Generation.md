@@ -72,8 +72,8 @@ scored beside it.
 </details>
 
 - The warp beats repeating the frame on every scene and size: the mean dE
-  drops by a quarter to a half, and the worst frames' dE (p95) by a third to
-  over a half, most at two steps ahead.
+  drops by a fifth to a half, and the worst frames' dE (p95) by over a
+  quarter to over a half, most at two steps ahead.
 - One step ahead leaves 2-3% holes, most of them pinholes; two steps ahead
   doubles both.
 - Smaller render heights keep the gain; the warp's error grows a little with
