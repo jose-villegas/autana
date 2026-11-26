@@ -52,28 +52,28 @@ scored beside it.
 
 <details><summary>Every scene and size</summary>
 
-<!-- generated: framegen-scores sha256=3ffd65de2466cb71e1c09f315153d68504fec162538d4363ec16e4644596e151 -->
+<!-- generated: framegen-scores sha256=b714a6dbc93bb01bb2f94eee66db9f6bace88f9bb2b957137a4de8bd6276e2f0 -->
 | Scene | Size | Ahead | Holes % (pinholes) | dE warp, row fill | dE warp, previous fill | dE repeat | p95 frame dE warp / repeat | SSIM warp / repeat |
 |---|---|---|---|---|---|---|---|---|
-| bistro | 184x224 | 1 | 13.9 (6.7) | 5.62 | 4.05 | 2.38 | 20.03 / 4.89 | 0.705 / 0.873 |
-| bistro | 184x224 | 2 | 21.5 (8.6) | 7.46 | 4.84 | 3.68 | 24.00 / 7.49 | 0.636 / 0.793 |
-| bistro | 184x149 | 1 | 13.8 (6.7) | 5.77 | 4.10 | 2.37 | 19.95 / 4.92 | 0.691 / 0.876 |
-| bistro | 184x149 | 2 | 21.5 (8.6) | 7.65 | 4.90 | 3.67 | 24.04 / 7.51 | 0.619 / 0.797 |
-| bistro | 184x112 | 1 | 13.9 (6.8) | 5.90 | 4.11 | 2.37 | 19.80 / 4.87 | 0.680 / 0.879 |
-| bistro | 184x112 | 2 | 21.4 (8.6) | 7.86 | 4.96 | 3.67 | 24.54 / 7.48 | 0.608 / 0.800 |
-| sponza | 184x224 | 1 | 7.8 (5.4) | 5.02 | 4.19 | 2.89 | 11.28 / 5.85 | 0.761 / 0.884 |
-| sponza | 184x224 | 2 | 13.8 (8.6) | 6.82 | 5.31 | 4.49 | 15.79 / 8.82 | 0.682 / 0.806 |
-| sponza | 184x149 | 1 | 7.8 (5.4) | 5.13 | 4.26 | 2.88 | 11.35 / 5.83 | 0.756 / 0.885 |
-| sponza | 184x149 | 2 | 13.8 (8.6) | 6.98 | 5.41 | 4.48 | 15.75 / 8.82 | 0.671 / 0.806 |
-| sponza | 184x112 | 1 | 7.7 (5.3) | 5.19 | 4.30 | 2.87 | 11.04 / 5.79 | 0.749 / 0.888 |
-| sponza | 184x112 | 2 | 13.8 (8.5) | 7.10 | 5.50 | 4.47 | 15.82 / 8.82 | 0.664 / 0.809 |
+| bistro | 184x224 | 1 | 2.9 (2.2) | 1.73 | 1.68 | 2.36 | 2.88 / 4.89 | 0.910 / 0.873 |
+| bistro | 184x224 | 2 | 5.6 (4.1) | 2.24 | 2.17 | 3.67 | 3.32 / 7.65 | 0.879 / 0.793 |
+| bistro | 184x149 | 1 | 2.7 (2.1) | 1.81 | 1.76 | 2.36 | 3.07 / 4.92 | 0.907 / 0.877 |
+| bistro | 184x149 | 2 | 5.5 (4.1) | 2.39 | 2.31 | 3.66 | 3.55 / 7.68 | 0.871 / 0.798 |
+| bistro | 184x112 | 1 | 2.8 (2.2) | 1.88 | 1.81 | 2.36 | 3.28 / 4.93 | 0.904 / 0.879 |
+| bistro | 184x112 | 2 | 5.4 (4.0) | 2.51 | 2.42 | 3.66 | 3.73 / 7.61 | 0.865 / 0.801 |
+| sponza | 184x224 | 1 | 2.2 (1.3) | 2.04 | 1.93 | 2.88 | 3.76 / 5.83 | 0.919 / 0.884 |
+| sponza | 184x224 | 2 | 4.4 (2.7) | 2.41 | 2.24 | 4.47 | 4.02 / 8.76 | 0.902 / 0.806 |
+| sponza | 184x149 | 1 | 2.1 (1.3) | 2.17 | 2.05 | 2.87 | 3.98 / 5.83 | 0.916 / 0.886 |
+| sponza | 184x149 | 2 | 4.4 (2.7) | 2.60 | 2.42 | 4.46 | 4.25 / 8.77 | 0.895 / 0.807 |
+| sponza | 184x112 | 1 | 2.0 (1.3) | 2.25 | 2.13 | 2.86 | 4.18 / 5.79 | 0.914 / 0.888 |
+| sponza | 184x112 | 2 | 4.3 (2.6) | 2.77 | 2.59 | 4.45 | 4.44 / 8.75 | 0.889 / 0.810 |
 <!-- /generated: framegen-scores -->
 
 </details>
 
 - The warp beats repeating the frame on every scene and size: the mean dE
-  drops by a quarter to a half, and the worst frames' dE (p95) by a quarter
-  to over two thirds, most at two steps ahead.
+  drops by a quarter to a half, and the worst frames' dE (p95) by a third to
+  over a half, most at two steps ahead.
 - One step ahead leaves 2-3% holes, most of them pinholes; two steps ahead
   doubles both.
 - Smaller render heights keep the gain; the warp's error grows a little with
