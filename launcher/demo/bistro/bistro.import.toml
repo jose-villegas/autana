@@ -18,24 +18,8 @@ simplify = { dense_edge = 300.0, props = ["Streetlight_Metal"], props_share = 0.
 # The fits train on probes over the street, the camera path adding its views.
 probes = {}
 
-# Each variant's triangles budget the rest; its ceiling caps the rest plus
-# every stored copy prototype. The fitted variants' triangles are their fits'
-# budgets, so a probe fit stays closed (Appearance-Fit.md).
-[[variants]]
-name = "bistro"
-triangles = 18678
-ceiling = 20000
-
-[[variants]]
-name = "bistro_lite"
-triangles = 9350
-ceiling = 10000
-
-[[variants]]
-name = "bistro_fitted"
-triangles = 9350
-ceiling = 15500
-
+# The variant's triangles budget the rest and its fit; its ceiling caps the
+# rest plus every stored copy prototype.
 [[variants]]
 name = "bistro_fitted_full"
 triangles = 18678

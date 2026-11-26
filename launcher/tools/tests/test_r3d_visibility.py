@@ -26,7 +26,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 EYE = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
@@ -55,7 +55,7 @@ def visible(positions, tris, intersector, poses=(EYE,), size=(16, 12), lens=0.62
                              margin, **options)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class CoincidentFaceTests(unittest.TestCase):
     def test_twins_need_the_other_winding_and_duplicates_share_a_group(self):
@@ -129,13 +129,13 @@ class CoincidentFaceTests(unittest.TestCase):
         positions, tris, intersector = scene(*(card([0, 0, -z], half=100) for z in range(layers)))
         origin, direction = camera_rays(16, 12, 0.62, EYE[:3], EYE[3:], 2, 0)
         counted = []
-        first_hits = intersector._first_hits
+        first_hits = intersector.first_hits
 
         def counting(origins, directions):
             counted.append(len(origins))
             return first_hits(origins, directions)
 
-        with mock.patch.object(intersector, "_first_hits", side_effect=counting):
+        with mock.patch.object(intersector, "first_hits", side_effect=counting):
             all_hits(intersector, origin, direction)
             all_rays = sum(counted)
             counted.clear()
@@ -147,12 +147,12 @@ class CoincidentFaceTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class FrustumTests(unittest.TestCase):
-    @needs_mitsuba
+    @needs_llvm
     def test_a_card_beside_the_view_is_dropped_and_one_inside_kept(self):
         positions, tris, intersector = scene(card([0, 0, 0], half=0.5), card([9.0, 0, 0], half=0.5))
         self.assertEqual(visible(positions, tris, intersector).tolist(), [True, True, False, False])
 
-    @needs_mitsuba
+    @needs_llvm
     def test_the_margin_reaches_a_card_just_outside_the_edge(self):
         # The view's right edge at depth 5 is x = 5 * lens * width / height; a card a little past it.
         width, height, lens = 16, 12, 0.62
@@ -261,7 +261,7 @@ class ImportWiringTests(unittest.TestCase):
             np.testing.assert_allclose(pose, [x, 0, 0, 0, 0, -1], atol=1e-6)
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class BetweenPoseTests(unittest.TestCase):
     def test_what_is_kept_covers_the_poses_between_the_samples(self):
@@ -284,7 +284,7 @@ class BetweenPoseTests(unittest.TestCase):
             self.assertTrue(kept[drawn].all(), f"a face drawn from {pose[:3]} was culled")
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class RegionTests(unittest.TestCase):
     BOX = ([-0.5, -0.5, 5.0], [0.5, 0.5, 6.0])
@@ -337,7 +337,7 @@ class RegionTests(unittest.TestCase):
 
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ExactRegionTests(unittest.TestCase):
     # Output digest from main e9dc4d138f, including the generator state after every call.

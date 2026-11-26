@@ -2,7 +2,7 @@
 `<scene>.scene.toml`, one row per renderer, named by its scene object.
 
     [[renderers]]
-    object = "street"                 # a scene object with a baked mesh_renderer
+    object = "street_fitted_full"     # a scene object with a baked mesh_renderer
     materials = ["Brick_*"]           # source materials, matched as objects.meshes match them
     size = 64                         # each texture's side in texels, level 0
 

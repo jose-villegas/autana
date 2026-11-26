@@ -12,6 +12,7 @@ package, [math](../math/README.md) (`set(kinematics_requires math)` in
 | `include/kinematics/fly/` | A transform flown freely from keys, a drag and a wheel; [fly reference](../../../docs/kinematics/Fly.md) |
 | `include/kinematics/profile/` | A move along a line in time: rest, ease up, cruise, ease down; [profile reference](../../../docs/kinematics/Profile.md) |
 | `include/kinematics/hinge/` | A joint turned about its rest-frame axis within angular limits; [hinge reference](../../../docs/kinematics/Hinge.md) |
+| `include/kinematics/rig/` | Stateless follow positions and look rotations; [rig reference](../../../docs/kinematics/Rig.md) |
 | `src/` | The functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
 
@@ -31,4 +32,5 @@ target. Host scripts discover sources and suites through
 | [include/kinematics/hinge/hinge.h](include/kinematics/hinge/hinge.h) | hinge: a joint's local transform from a prescribed angle about its rest-frame axis, within limits. |
 | [include/kinematics/orbit/orbit_motion.h](include/kinematics/orbit/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/kinematics/profile/motion_profile.h](include/kinematics/profile/motion_profile.h) | motion_profile: a move along a line as a function of time, an S-curve motion profile. |
+| [include/kinematics/rig/rig.h](include/kinematics/rig/rig.h) | rig: stateless camera follow positions and look rotations. |
 <!-- /generated: package-kinematics-headers -->

@@ -46,6 +46,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.math_constants import macro_calls, split_args  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
+from markdown_fences import blank_fences  # noqa: E402
 
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
@@ -88,7 +90,6 @@ HAND_WRITTEN = re.compile(
     r"(?!typedef\b)[A-Za-z_]\w*(?:[ \t*]+[A-Za-z_]\w*)*[ \t\r\n*]+)([A-Za-z_]\w*)[ \t]*\(", re.M)
 PUBLIC_TYPE = re.compile(r"^typedef struct\s*\{.*?\}\s*(\w+);", re.M | re.S)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
-FENCE = re.compile(r"^```.*?^```", re.M | re.S)
 INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$|(`+).*?(?<!`)\2(?!`)|(?<![\\$])\$(?!\$)([^$\n]*)\$(?!\$)")
 PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
@@ -177,7 +178,7 @@ def page_problems(pages, index):
     for path, text in pages.items():
         if path != index and not re.search(r"\]\(" + re.escape(path.name) + r"(?:#[^)]*)?\)", pages[index]):
             problems.append("%s: index lacks a link to %s" % (index.as_posix(), path.name))
-        for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text).splitlines(), start=1):
+        for line_number, line in enumerate(blank_fences(text.splitlines()), start=1):
             for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
                 formula = quoted_formula or plain_formula
                 if len(formula) > MAX_INLINE_MATH_CHARS:
@@ -270,7 +271,7 @@ def check(root):
 
     valid = set(defined) | standalone | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
-    for name in sorted(set(PAGE_CALL.findall(FENCE.sub("", page)))):
+    for name in sorted(set(PAGE_CALL.findall("\n".join(blank_fences(page.splitlines()))))):
         if name not in valid:
             problems.append("%s names %s(, which no header defines" % (PAGE.as_posix(), name))
     return problems + package_problems(root)

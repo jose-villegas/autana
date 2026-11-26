@@ -47,7 +47,8 @@ sink_write(void* state, const uint8_t* bytes, size_t count) {
 
 /* From the stream's task, once it has sent everything. */
 static void
-ended(uint64_t sent, void* arg) {
+ended(uint64_t sent, uint64_t packets, void* arg) {
+    (void)packets;
     (void)arg;
     char line[FRAMEREC_LINE_MAX];
     (void)snprintf(line, sizeof line, "FRAMEREC_END frames=%lu dropped=%lu bytes=%llu", (unsigned long)counts.frames,

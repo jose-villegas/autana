@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "collections/bits.h"
+#include "collections/bytes_write.h"
 #include "core/tune.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
@@ -414,7 +415,7 @@ stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose) {
 }
 
 bool
-stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
+stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_mesh_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
     if (!make(p, b, &m)) {
         return false;
@@ -426,7 +427,7 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         }
         texture_uvs(p, m.vertex_count, b);
     }
-    *out = (r3d_dynamic_source_t){
+    *out = (r3d_mesh_source_t){
         .positions = b->positions,
         .colors = (const uint8_t (*)[3])b->colors,
         .vertex_count = m.vertex_count,
@@ -563,11 +564,6 @@ stress_texture_bytes(stress_surface_t surface) {
     return bytes;
 }
 
-static void
-put_u32(uint8_t* at, uint32_t value) {
-    memcpy(at, &value, sizeof value);
-}
-
 /* Texel (x, y) of the mask's level 0: inside the disc and not a hole.
  * Doubled coordinates put the disc's centre between the middle texels. */
 static bool
@@ -644,8 +640,8 @@ stress_texture_write(stress_surface_t surface, uint8_t* ltex) {
     ltex[R3D_TEXTURE_AT_SIZE_LOG2] = (uint8_t)e.size_log2;
     ltex[R3D_TEXTURE_AT_LEVELS] = (uint8_t)e.levels;
     memset(ltex + R3D_TEXTURE_AT_TINT, e.tint, R3D_TEXTURE_TINT_RGB);
-    put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
-    put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + (uint32_t)palette_bytes(e));
+    bytes_write_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
+    bytes_write_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + (uint32_t)palette_bytes(e));
     uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;
     if (surface == STRESS_SURFACE_MASKED) {
         write_mask(palette, palette + palette_bytes(e));

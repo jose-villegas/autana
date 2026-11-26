@@ -30,6 +30,7 @@
 #include "shell/ui/ui_ridge.h"
 #include "sound/sound_engine.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
+#include "app/console/console_panelcap_device.h"
 #include "sound/console/console_sound.h"
 #endif
 #include "ui/layout/ui_anchor.h"
@@ -176,6 +177,9 @@ static handle_t app_pack = HANDLE_NONE;
 
 void
 shell_exit_app(const app_t** current) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    console_panelcap_end_visit();
+#endif
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     sound_stop_app_voices();
     (*current)->exit();
@@ -227,6 +231,9 @@ shell_leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge,
 
 void
 shell_start_app(const app_t** current, const app_t* next) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    console_panelcap_leave_launcher();
+#endif
     *current = next;
     ESP_LOGI(TAG, "Starting %s", (*current)->name);
     gfx_request_full_redraw();

@@ -7,6 +7,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from tests.r3d_env import needs_llvm  # noqa: E402
+
 try:
     import numpy as np
 
@@ -72,6 +74,26 @@ class ProbeFigureViewTests(unittest.TestCase):
         xy, front = probe_figures.project(origin[rows] + direction[rows] * 7.0, eye, forward, LENS)
         self.assertTrue(front.all())
         np.testing.assert_allclose(xy, np.array(pixels) + 0.5, atol=1e-6)
+
+
+@needs_llvm
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SeeThroughTests(unittest.TestCase):
+    def test_the_source_is_drawn_in_its_albedo_through_its_own_ray_query(self):
+        from r3d.ray_query import RayQuery
+        from tests.test_r3d_reference import plane_source, square
+
+        source = plane_source(square())
+        source.materials = {"plane": {"Kd": (1.0, 0.0, 0.0)}}
+        source.tri_o = np.zeros(len(source.tri_v), int)
+        source.intersector = RayQuery(source.p, source.tri_v, "llvm_ad_rgb")
+        image = np.asarray(probe_figures.see_through(source, np.array([0.0, 0.0, 5.0]), np.array([0.0, 0.0, -1.0]),
+                                                     LENS))
+        width, height = probe_figures.VIEW_SIZE
+        door = probe_figures.DOOR
+        centre = image[height // 2 // door * door, width // 2 // door * door]
+        self.assertEqual(centre.tolist(), [255, 0, 0], "a door pixel over the quad is not its albedo")
+        self.assertEqual(image[0, 0].tolist(), list(probe_figures.BACKGROUND), "a ray past the quad is not background")
 
 
 if __name__ == "__main__":
