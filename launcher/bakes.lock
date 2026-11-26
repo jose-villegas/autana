@@ -10,6 +10,16 @@ run = 45843330378
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "1611f23bfba601d660f385c9ff0719b05ddcd51b25186d8f0454b1570c045e21"
+sha256 = "90a3e362ffc7548179912cc6fb37f3f833e338c917f9ef7140878ebccca7900c"
+size = 903299
+run = 45853980814
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+
+[[bake]]
 output = "bistro.street_fitted_full.reference.tar.xz"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "989206cdee9048952054981b19fed614b88c4bf15e6862887331bfcf880a965c"
@@ -90,6 +100,16 @@ sha256 = "7de82f27aae4195dfe133536b5301b53878beb98e037080832d20c3391910ff8"
 size = 280
 run = 45843330378
 host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted_full.fit.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "7e79848056e3bb899570bd0e3c68820b045b7352e62b784793579d662711be72"
+sha256 = "d5fc4e22d644b254c9ed2377902723079a019697754b0e9e422cfd7571b38d79"
+size = 579688
+run = 45853980814
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.reference.tar.xz"
