@@ -29,8 +29,9 @@ PROBE_COUNT_MAX = 4096
 CANDIDATE_COUNT_MAX = 256
 # Small buffers screen occluded copies before tracing the full geometry faces.
 SELECT_SIZE = 16
-# Bound stored buffers and the full-resolution CPU tracing cost independently of colour views.
-FACE_COUNT_MAX = 64
+# Bound stored buffers and the full-resolution CPU tracing cost independently of colour views. 64 left Sponza's
+# columns free to cover the plants in one held-out view once its fabric was a single sheet.
+FACE_COUNT_MAX = 128
 # Close geometry views need less resolution than colour references.
 FACE_SIZE = 128
 # A separate draw leaves the colour training sequence unchanged.
