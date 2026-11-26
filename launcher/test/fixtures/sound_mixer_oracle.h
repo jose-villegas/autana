@@ -34,7 +34,15 @@ oracle_amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
     if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_started_ms >= startup_ms) {
         mixer->amp = SOUND_AMP_ON;
     }
-    return mixer->amp == SOUND_AMP_ON;
+    if (mixer->amp != SOUND_AMP_ON) {
+        return false;
+    }
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        if (mixer->voices[i].playing) {
+            return true;
+        }
+    }
+    return mixer->residual != 0;
 }
 
 static void

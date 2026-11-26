@@ -82,8 +82,12 @@ test_sound_amp_starts_without_voice_and_stays_on(void) {
     render(f, 0, TEST_FRAMES);
     render(f, TEST_STARTUP_MS, TEST_FRAMES);
     TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
+    f->accumulator[0] = TEST_SAMPLE;
+    f->out[0] = TEST_SAMPLE;
     render(f, TEST_LONG_IDLE_MS, TEST_FRAMES);
     TEST_ASSERT_EQUAL_INT(SOUND_AMP_ON, f->mixer.amp);
+    TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
+    TEST_ASSERT_EQUAL_INT32(TEST_SAMPLE, f->accumulator[0]);
     (void)play(f, NULL);
     render(f, TEST_LONG_IDLE_MS, TEST_FRAMES);
     TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
