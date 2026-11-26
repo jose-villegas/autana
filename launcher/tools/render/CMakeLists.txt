@@ -4,10 +4,12 @@ project(autana_render_host LANGUAGES C)
 include("${CMAKE_CURRENT_LIST_DIR}/engine_sources.cmake")
 
 # The engine with no main() and no hooks: what a host build of the firmware
-# drawing code links.
+# drawing code links. render_host_panel.c is the panel and its capture hooks,
+# which a host program has none of; the host tests, which read the source list
+# rather than link this target, define their own.
 add_library(render_engine INTERFACE)
 add_library(autana::render_engine ALIAS render_engine)
-target_sources(render_engine INTERFACE ${render_engine_sources})
+target_sources(render_engine INTERFACE ${render_engine_sources} "${CMAKE_CURRENT_LIST_DIR}/render_host_panel.c")
 target_include_directories(render_engine INTERFACE
     "${launcher}/../third_party/tlsf" "${launcher}/../third_party/tlsf/include"
     "${launcher}/main" "${board_include_dir}" "${launcher}/components/microui/include"
@@ -54,14 +56,12 @@ endforeach()
 target_link_libraries(render_engine INTERFACE ${launcher_packages})
 
 # The renderer and its scene shell, which asks display_quarter_now (display/display.h):
-# render_host_quarter.c answers with the run's quarter, and render_host_panel.c is
-# the panel and its capture hooks, which a render_host program has none of. A
-# render_host_core consumer defines its own.
+# render_host_quarter.c answers with the run's quarter. A render_host_core consumer
+# defines its own.
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
 target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
-    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c"
-    "${CMAKE_CURRENT_LIST_DIR}/render_host_panel.c")
+    "${CMAKE_CURRENT_LIST_DIR}/render_host_settings.c" "${CMAKE_CURRENT_LIST_DIR}/render_host_quarter.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer

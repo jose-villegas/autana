@@ -1,4 +1,4 @@
-/* The panel and its capture hooks for a render_host program, which has neither:
+/* The panel and its capture hooks for a host program, which has neither:
  * a panel send draws nothing and no capture runs. Strong definitions, since some
  * MinGW linkers leave a call to a weak one unresolved. */
 #include <stdbool.h>
