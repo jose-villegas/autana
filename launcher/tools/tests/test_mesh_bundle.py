@@ -83,20 +83,47 @@ class MeshBundleTests(unittest.TestCase):
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
                          [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
 
-    def test_a_bundle_without_textures_decodes_without_numpy(self):
-        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy."""
+    def decode_without_numpy(self, data):
+        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy: `data` decoded there, its
+        entry names and copy count."""
         import subprocess
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "start.bundle"
-            data = bundle_fixture(directory)[0]
             path.write_bytes(data)
             script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
                       "from r3d import mesh_bundle; import pathlib; "
-                      "print(len(mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes())[1]))")
+                      "rows, copies = mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes()); "
+                      "print(' '.join(row[0] for row in rows), len(copies))")
             result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).parents[1]), str(path)],
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(int(result.stdout), len(mesh_bundle.decode(data)[1]))
+        rows, copies = mesh_bundle.decode(data)
+        self.assertEqual(result.stdout.split(), [row[0] for row in rows] + [str(len(copies))])
+
+    def test_a_bundle_without_textures_decodes_without_numpy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.decode_without_numpy(bundle_fixture(directory)[0])
+
+    def test_a_carded_bundle_decodes_without_numpy(self):
+        """Cards put an LUVS and a MASK1 LTEX page beside their mesh."""
+        from r3d.texture import texture_asset, uv_transfer
+        mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
+        luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
+        page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+        self.decode_without_numpy(mesh_bundle.encode([
+            ("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, luvs),
+            (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, page)], []))
+
+    def test_a_truncated_card_page_or_uvs_is_refused(self):
+        from r3d.texture import texture_asset, uv_transfer
+        mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
+        luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
+        page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+        for short_luvs, short_page in ((luvs[:-1], page), (luvs, page[:-1])):
+            entries = [("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, short_luvs),
+                       (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, short_page)]
+            with self.subTest(luvs=len(short_luvs), page=len(short_page)),                     self.assertRaisesRegex(PackError, "do not match the entry size"):
+                mesh_bundle.decode(mesh_bundle.encode(entries, []))
 
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:

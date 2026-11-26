@@ -9,36 +9,21 @@ exactly. A triangle draws with the first chart whose material it lies on and who
 cluster draws plain, so a texture ends where its material does, not at a cluster's edge."""
 import dataclasses
 import fnmatch
-import pathlib
-import struct
 
 import numpy as np
 
 from build.c_header import read_define
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
-from r3d.lcol_asset import sibling_name
-from r3d.mesh_asset import checked_struct
-from r3d.texture import texture_asset
+from r3d.texture import luvs_layout, texture_asset
+from r3d.texture.luvs_layout import (CHARTS, HEADER, MATERIALS_MAX, NAME_SUFFIX, NONE, OWNER, PAIR, TEXTURE_SUFFIX,
+                                     TRIANGLES_PER_BYTE, VERSION, name_for_mesh, texture_name)
 
-OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/texture/r3d_texture.h"
 TYPE = texture_asset.UVS_TYPE
-VERSION = read_define(OWNER, "R3D_TEXTURE_UVS_VERSION")
-NAME_SUFFIX = read_define(OWNER, "R3D_TEXTURE_UVS_NAME_SUFFIX")
-NONE = read_define(OWNER, "R3D_TEXTURE_NONE")
 UV_SHIFT = read_define(OWNER, "R3D_TEXTURE_UV_SHIFT")
-MATERIALS_MAX = NONE
-TEXTURE_SUFFIX = read_define(OWNER, "R3D_TEXTURE_MATERIAL_SUFFIX")
-CHARTS = read_define(OWNER, "R3D_TEXTURE_CHARTS")
 PLAIN = read_define(OWNER, "R3D_TEXTURE_PLAIN")
-TRIANGLES_PER_BYTE = read_define(OWNER, "R3D_TEXTURE_UVS_TRIANGLES_PER_BYTE")
 CODE_BITS = read_define(OWNER, "R3D_TEXTURE_UVS_CODE_BITS")
-HEADER_FIELDS = (("VERSION", "H"), ("MATERIAL_COUNT", "H"), ("VERTEX_COUNT", "I"), ("CLUSTER_COUNT", "I"),
-                 ("TRIANGLE_COUNT", "I"), ("UV_COUNT", "I"), ("UVS_OFF", "I"),
-                 ("SHIFTS_OFF", "I"), ("CLUSTERS_OFF", "I"), ("TRIANGLES_OFF", "I"))
-HEADER = checked_struct(OWNER, "R3D_TEXTURE_UVS", HEADER_FIELDS)
-PAIR = struct.Struct("<2h")
 INT16 = np.iinfo(np.int16)
-SHIFT = np.dtype("<i4")
+SHIFT = np.dtype(luvs_layout.SHIFT.format)
 # A baked triangle takes its nearest source triangle's material, and draws textured on a chart, when their normals
 # agree within this.
 NORMAL_DEGREES = 10.0
@@ -204,28 +189,14 @@ def pack_luvs(luvs):
 
 def decode(entry):
     """The Luvs an LUVS entry holds."""
-    (version, count, vertices, clusters, triangles, uv_count, uvs_off, shifts_off, clusters_off,
-     triangles_off) = HEADER.unpack_from(entry)
-    if version != VERSION:
-        raise ValueError("LUVS version is invalid")
+    (_, count, vertices, clusters, triangles, uv_count, uvs_off, shifts_off, clusters_off,
+     triangles_off) = luvs_layout.header(entry)
     uvs = np.frombuffer(entry, "<i2", uv_count * 2, uvs_off).reshape(-1, 2)
     shifts = np.frombuffer(entry, SHIFT, clusters, shifts_off)
     materials = np.frombuffer(entry, np.uint8, clusters * CHARTS, clusters_off).reshape(-1, CHARTS)
-    size = -(-triangles // TRIANGLES_PER_BYTE)
-    if triangles_off + size != len(entry):
-        raise ValueError("LUVS sections do not match the entry size")
+    size = len(entry) - triangles_off
     codes = unpack_codes(np.frombuffer(entry, np.uint8, size, triangles_off), triangles)
     return Luvs(uvs.copy(), shifts.astype(np.int32), materials.copy(), codes, vertices, count)
-
-
-def name_for_mesh(mesh):
-    return sibling_name(mesh, NAME_SUFFIX)
-
-
-def texture_name(mesh, index):
-    """The pack id of the mesh's `index`th material texture: a sibling of the mesh, as a material's own name may
-    not fit a pack name."""
-    return sibling_name(mesh, f"{TEXTURE_SUFFIX}{index}")
 
 
 def textured_entries(mesh, mesh_id, source, patterns, size):
