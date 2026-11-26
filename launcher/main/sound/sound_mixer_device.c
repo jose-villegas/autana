@@ -144,6 +144,18 @@ sound_voice_audible(sound_voice_t voice) {
     return audible;
 }
 
+bool
+sound_voice_wait_audible(sound_voice_t voice, uint32_t timeout_ms) {
+    const int64_t deadline = timing_now_us() + ((int64_t)timeout_ms * MATH_US_PER_MS);
+    while (!sound_voice_audible(voice)) {
+        if (!sound_is_playing(voice) || timing_now_us() >= deadline) {
+            return false;
+        }
+        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+    }
+    return true;
+}
+
 sound_bus_t
 sound_bus_create(const char* name) {
     uint32_t generation;
