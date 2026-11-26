@@ -172,7 +172,12 @@ jobs:
 
       - name: Check this run's levels for see-through where the source is closed
         if: steps.missing.outputs.levels != '0' && steps.missing.outputs.waiting == '0'
-        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py
+        # A scene whose source the LFS pull missed skips rather than fails; here a skip is a failure.
+        shell: bash
+        run: |
+          python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py 2>&1 |
+            tee "$RUNNER_TEMP/see-through.log"
+          ! grep -q skipped "$RUNNER_TEMP/see-through.log"
 
   # Every missing reference set in one job: it selects each set's probe faces on the CPU, traces all its poses on
   # Mitsuba's CUDA variant, in worker processes side by side, and packs it on the CPU.
@@ -290,7 +295,12 @@ jobs:
         run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
       - name: Check the camera paths for see-through where the source is closed
-        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py
+        # A scene whose source the LFS pull missed skips rather than fails; here a skip is a failure.
+        shell: bash
+        run: |
+          python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_see_through.py 2>&1 |
+            tee "$RUNNER_TEMP/see-through.log"
+          ! grep -q skipped "$RUNNER_TEMP/see-through.log"
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}
