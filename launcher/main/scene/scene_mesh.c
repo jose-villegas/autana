@@ -73,8 +73,8 @@ mesh_array_count(const scene_renderer_t* r, size_t array) {
     const r3d_lit_mesh_t* mesh = &r->mesh;
     switch (mesh_arrays[array].role) {
         case ARRAY_FRONT:
-            return (set_front(mesh, array) + (back_follows(mesh, array) ? (size_t)mesh->back_count : 0U))
-                   * r->colour_sets;
+            return (back_follows(mesh, array) ? r3d_lit_mesh_colour_stride(mesh) : set_front(mesh, array))
+                   * (size_t)r->colour_sets;
         case ARRAY_BACK: return back_follows(mesh, (size_t)mesh_arrays[array].pair) ? 0U : (size_t)mesh->back_count;
         case ARRAY_PLAIN:
         default: return set_front(mesh, array);

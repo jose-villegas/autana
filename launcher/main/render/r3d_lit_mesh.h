@@ -165,6 +165,10 @@ asset_status_t r3d_lit_mesh_open_sibling(const asset_pack_t* pack, const char* i
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
 
+/* The entries of one colour set of `mesh`: a colour per vertex (or per
+ * triangle, with face colours), then its back colours. */
+uint32_t r3d_lit_mesh_colour_stride(const r3d_lit_mesh_t* mesh);
+
 /* Recomputes every node's bounds from its children's. An inner node's
  * children come after it, so walking from the last node back meets every
  * child before its parent. For a mesh whose vertices move. */

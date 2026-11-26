@@ -432,6 +432,11 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     return status;
 }
 
+uint32_t
+r3d_lit_mesh_colour_stride(const r3d_lit_mesh_t* mesh) {
+    return (uint32_t)((mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count) + mesh->back_count);
+}
+
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
     asset_view_t view;

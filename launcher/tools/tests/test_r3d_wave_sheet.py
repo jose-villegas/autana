@@ -280,33 +280,21 @@ class WaveSheetTests(unittest.TestCase):
 
     @needs_llvm
     def test_the_far_skin_leaves_the_light_too_where_the_sheet_casts_it(self):
-        from unittest import mock
-
-        from r3d import mesh_import
         from r3d.import_settings import albedo_jobs, load_import_settings
         from r3d.ray_query import RayQuery
+        from tests.bake_stubs import unlit_bake_geometry
 
         cloth = wave_sheet.sheet(CLOTH_COUNT, layers=2, thickness=CLOTH_THICKNESS, **CLOTH)
-        built, shaded = [], []
 
-        def ray_query(points, tris, *rest, **options):
-            built.append(len(tris))
+        def named_query(points, tris, *rest, **options):
             query = RayQuery(points, tris, *rest, **options)
             query.name = f"query of {len(tris)}"
             return query
 
-        def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
-            shaded.append(intersector)
-            return (*mesh_import.shade_unlit(src, material, mp, mt, double), labels)
-
         with tempfile.TemporaryDirectory() as directory:
             job = albedo_jobs(load_import_settings(write_import(directory, cloth, "cloth", every_material(cloth))))[0]
-            job = SimpleNamespace(settings=job.settings, renderer=job.renderer,
-                                  bake=SimpleNamespace(ray_offset=0.0, ao=None, indirect=None))
-            scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(intensity=1.0), tonemap_white=1.0,
-                                    region=np.array([[-50.0, -50.0, 150.0], [50.0, 50.0, 250.0]]))
-            with mock.patch.object(mesh_import, "RayQuery", side_effect=ray_query),                     mock.patch.object(mesh_import, "shade_lit", side_effect=shade_lit),                     mock.patch.object(mesh_import, "light", side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, "path_light_for", side_effect=lambda *rest: None):
-                geometry = mesh_import.bake_geometry(job, scene)
+            region = np.array([[-50.0, -50.0, 150.0], [50.0, 50.0, 250.0]])
+            geometry, built, shaded = unlit_bake_geometry(job, {"region": region}, named_query)
         far = int((cloth.layer == wave_sheet.BACK).sum())
         drawn = len(geometry.src.tri_v)
         self.assertLessEqual(drawn, len(cloth.tris) - far, "the far skin is still drawn")
