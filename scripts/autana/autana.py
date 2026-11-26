@@ -16,6 +16,7 @@ file; docs/cli/ shows it, written by scripts/autana/cli_reference.py.
 import contextlib
 import gzip
 import importlib
+import importlib.util
 import json
 import math
 import os
@@ -196,15 +197,27 @@ PROJECT_ENV = autana_config.PROJECT_ENV
 INTERRUPT_GRACE_SECONDS = 5
 
 
+def has_pyserial():
+    return importlib.util.find_spec("serial") is not None
+
+
+def device_python():
+    """This interpreter when it has pyserial, the one module device.py needs,
+    else ESP-IDF's Python. device.py finds ESP-IDF itself for the tools that
+    need it (esptool, parttool, coredump), so a command that never builds or
+    flashes, such as devices or status, never pays for finding ESP-IDF: a
+    dozen git calls."""
+    return sys.executable if has_pyserial() else idf_python()
+
+
 def device_command(*args, wait=None):
-    """device.py imports pyserial, so it runs under ESP-IDF's Python even
-    when some other interpreter started this file. `--owner`/`--wait` are
+    """device.py runs under device_python(). `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
     command: owner() names the lock holder, and `--wait` is a caller's own
     `wait` when it gives one (send()'s short fail-fast window, used only
     without a global `--wait`), else the global `--wait` (WAIT_ENV), else
     left to device.py's own 600 s default."""
-    command = [idf_python(), "-u", str(device_tool()), "--owner", owner()]
+    command = [device_python(), "-u", str(device_tool()), "--owner", owner()]
     wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
         command += ["--wait", str(wait)]

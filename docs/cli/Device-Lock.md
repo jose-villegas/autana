@@ -478,8 +478,8 @@ directly only for what `autana` does not offer: a
 `send` with its own `--reply` and `--until`, `stream`, or `report`. `stream`
 holds the lock and the open port until its standard input ends, writing each
 line to the board as it arrives and printing every line the board writes: a
-desktop tool steering the board live pipes into it. It runs under
-ESP-IDF's Python (a different interpreter re-runs it under that one). On
+desktop tool steering the board live pipes into it. It needs pyserial: an
+interpreter without it re-runs it under ESP-IDF's Python. On
 Windows, `flash`, `suite --flash` and `selftest` run `build.sh` and
 `flash_image.sh` with Git for Windows' own `bash.exe`, never whatever `bash`
 comes first on `PATH`, which from a native shell is WSL's launcher.

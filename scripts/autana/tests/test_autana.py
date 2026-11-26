@@ -569,6 +569,40 @@ class DeviceCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("--wait") + 1], "5")
 
 
+class BoardCommandSpawnTests(unittest.TestCase):
+    """A command that never builds or flashes starts device.py and nothing
+    else: finding ESP-IDF's Python costs a dozen git calls, a second or more
+    each on a loaded Windows machine, and listing boards waited on them."""
+
+    def spawns(self, run):
+        """What `run` started: device.py children, then every other process."""
+        device = mock.Mock()
+        device.return_value.wait.return_value = 0
+        device.return_value.poll.return_value = 0
+        device.return_value.returncode = 0
+        device.return_value.communicate.return_value = (json.dumps({"boards": []}), "")
+        with mock.patch.object(autana, "has_pyserial", return_value=True),              mock.patch.object(autana, "launch_process_tree", device),              mock.patch.object(autana, "close_process_tree"),              mock.patch("subprocess.Popen", side_effect=OSError("no other process")) as other,              mock.patch("builtins.print"):
+            run()
+        return device.call_args_list, other.call_args_list
+
+    def test_board_commands_start_device_py_alone(self):
+        for argv in (["devices", "--json"], ["status", "--json"], ["lock", "release", "token"]):
+            with self.subTest(argv=argv), mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+                device, other = self.spawns(lambda: self.assertRaises(SystemExit, autana.main))
+            self.assertEqual(len(device), 1)
+            self.assertEqual(device[0].args[0][0], autana.sys.executable)
+            self.assertEqual(other, [])
+
+    def test_records_busy_check_starts_device_py_alone(self):
+        with without_environment(autana.WAIT_ENV):
+            device, other = self.spawns(autana.refused_as_busy)
+        self.assertEqual((len(device), other), (1, []))
+
+    def test_without_pyserial_device_py_runs_under_idf_python(self):
+        with mock.patch.object(autana, "has_pyserial", return_value=False),              mock.patch.object(autana, "idf_python", return_value="idf-python"):
+            self.assertEqual(autana.device_python(), "idf-python")
+
+
 def make_project(root):
     marker = Path(root) / autana.PROJECT_MARKER
     marker.parent.mkdir(parents=True, exist_ok=True)
