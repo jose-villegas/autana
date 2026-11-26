@@ -7,28 +7,30 @@
 # scripts/add-tools-to-path.sh puts this folder on PATH.
 unset _AUTANA_CALLER_PID
 # With the pinned minor on PATH, nothing here starts a process before the
-# exec: on a loaded Windows machine each one costs a second. Under Git Bash,
-# /proc/<ppid>/winpid is the Windows pid of the shell that ran this; PPID 1
-# means a Windows program started bash, so autana.py finds the caller itself.
-if [ -r "/proc/$PPID/winpid" ]; then
-    read -r _AUTANA_CALLER_PID < "/proc/$PPID/winpid"
-    export _AUTANA_CALLER_PID
-elif [ "$PPID" != 1 ]; then
-    export _AUTANA_CALLER_PID=$PPID
-fi
-# The checkout's own folder, from $0 (a Windows program may pass
-# backslashes), made physical by cd -P and read back from $PWD, then the
-# caller's folder again: builtins, where $(cd ... && pwd -P) is a subshell.
+# exec: on a loaded Windows machine each one costs a second. The checkout's
+# folder comes from $0 (a Windows program may pass backslashes), made
+# physical by cd -P and read back from $PWD, then the caller's folder again.
 case "$0" in
     *[/\\]*) here=${0%[/\\]*}/.. ;;
     *) here=.. ;;
 esac
 caller=$PWD
 cd -P "$here" && here=$PWD && cd "$caller" || exit 1
+# Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that
+# ran this; PPID 1 means a Windows program started bash, so autana.py finds
+# the caller itself.
+. "$here/scripts/lib/process_pid.sh"
+if [ -r "/proc/$PPID/winpid" ] || [ "$PPID" != 1 ]; then
+    host_pid "$PPID"
+    export _AUTANA_CALLER_PID=$HOST_PID
+fi
 # shellcheck source=../scripts/lib/python.sh
 . "$here/scripts/lib/python.sh"
-if pick_python 2>/dev/null; then
+if pinned_python; then
     exec "$PYTHON_PICKED" "$here/scripts/autana/autana.py" "$@"
+fi
+if python=$(find_python 2>/dev/null); then
+    exec "$python" "$here/scripts/autana/autana.py" "$@"
 fi
 # Bootstrapping must not need Python to locate ESP-IDF's Python, so this
 # globs the default tools roots itself (espressif.py owns the full search).

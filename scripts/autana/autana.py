@@ -221,38 +221,60 @@ def device_argv(*args, wait=None):
     return argv + list(args)
 
 
-# device.py's verbs that only read or write the lock store and list the
-# ports, run in this process by call_device and capture_device.
-IN_PROCESS_VERBS = ("status", "devices", "release", "wait-free")
-# device.py's top-level flags, each with its value, before the verb.
-DEVICE_FLAGS = ("--owner", "--wait", "--board", "-b")
+def exit_status(error):
+    """What a process ending on SystemExit `error` would exit with, saying its
+    message on stderr as the interpreter would."""
+    if error.code is None:
+        return 0
+    if isinstance(error.code, int):
+        return error.code
+    print(error.code, file=sys.stderr)
+    return 1
 
 
-def device_here(command, capture=False):
-    """`command` (device_command()) run in this process when it is one of
-    IN_PROCESS_VERBS, so it starts no second Python: its exit status, and
-    with `capture` what it printed. None for any other verb, or when this
-    Python lacks pyserial; device.py then runs as a child, which re-runs
-    itself under ESP-IDF's. device.py's main() sets the global --wait in the
-    environment for its children; this process's own is put back after it."""
-    argv = command[3:]
-    at = 0
-    while at < len(argv) and argv[at] in DEVICE_FLAGS:
-        at += 2
-    if (command[:3] != [sys.executable, "-u", str(device_tool())] or at >= len(argv)
-            or argv[at] not in IN_PROCESS_VERBS or importlib.util.find_spec("serial") is None):
+def device_here(*args, capture=False):
+    """device.py's verb `args` run in this process when device.py lists it
+    in IN_PROCESS_VERBS and this Python has pyserial, so it starts no second
+    Python: its exit status, and with `capture` what it printed on stdout
+    and on stderr. None otherwise; device.py then runs as a child, which
+    re-runs itself under ESP-IDF's when pyserial is missing. device.py's
+    main() sets the global --wait in the environment for its children; this
+    process's own is put back after it."""
+    if importlib.util.find_spec("serial") is None:
         return None
-    printed = io.StringIO()
+    device = device_module()
+    if args[0] not in device.IN_PROCESS_VERBS:
+        return None
+    out, err = io.StringIO(), io.StringIO()
     saved = dict(os.environ)
     try:
-        with contextlib.redirect_stdout(printed) if capture else contextlib.nullcontext():
-            status = device_module().main(argv)
-    except SystemExit as error:
-        status = error.code if isinstance(error.code, int) else 1
+        with contextlib.ExitStack() as streams:
+            if capture:
+                streams.enter_context(contextlib.redirect_stdout(out))
+                streams.enter_context(contextlib.redirect_stderr(err))
+            try:
+                status = device.main(device_argv(*args))
+            except SystemExit as error:
+                status = exit_status(error)
     finally:
         os.environ.clear()
         os.environ.update(saved)
-    return status, printed.getvalue()
+    return status, out.getvalue(), err.getvalue()
+
+
+def run_device(*args):
+    """device.py's verb `args`, here when device_here() takes it, else as a
+    child: its exit status."""
+    done = device_here(*args)
+    return done[0] if done is not None else call_device(device_command(*args))
+
+
+def read_device(*args):
+    """run_device() with what it printed captured, as a CompletedProcess of text."""
+    done = device_here(*args, capture=True)
+    if done is None:
+        return capture_device(device_command(*args), text=True)
+    return subprocess.CompletedProcess(list(args), *done)
 
 
 @contextlib.contextmanager
@@ -275,18 +297,11 @@ def device_process(command, **options):
 
 
 def call_device(command):
-    done = device_here(command)
-    if done is not None:
-        return done[0]
     with device_process(command) as process:
         return process.wait()
 
 
 def capture_device(command, **options):
-    done = device_here(command, capture=True)
-    if done is not None:
-        printed = done[1] if options.get("text") else done[1].encode()
-        return subprocess.CompletedProcess(command, done[0], printed, "" if options.get("text") else b"")
     with device_process(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         **options) as process:
         stdout, stderr = process.communicate()
@@ -931,14 +946,14 @@ def status(args):
     """Every board, whether it is free, and if not who has it and until when."""
     reject_unknown("status", args, ("--json",))
     if read_json_flag(args, "usage: autana status [--json]"):
-        return call_device(device_command("status", "--json"))
-    return call_device(device_command("status"))
+        return run_device("status", "--json")
+    return run_device("status")
 
 
 def devices(args):
     reject_unknown("devices", args, ("--json",))
     read_json_flag(args, "usage: autana devices [--json]")
-    return call_device(device_command("devices", *args))
+    return run_device("devices", *args)
 
 
 def release(args):
@@ -949,7 +964,7 @@ def release(args):
     if len(args) > 1 or not token:
         sys.exit("usage: autana lock release [<token>] - without one, the "
                  "token of the command that holds the lock, inside that command")
-    return call_device(device_command("release", "--token", token))
+    return run_device("release", "--token", token)
 
 
 def take(args):
@@ -963,7 +978,7 @@ def lock_wait(args):
     if args:
         sys.exit("usage: autana lock wait [--wait <seconds>]")
     cap = os.environ.get(WAIT_ENV)
-    return call_device(device_command("wait-free", *(["--cap", cap] if cap is not None else [])))
+    return run_device("wait-free", *(["--cap", cap] if cap is not None else []))
 
 
 def lock_run(args):
@@ -1183,7 +1198,7 @@ def board_holder():
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
-    result = capture_device(device_command("status", "--json"), text=True)
+    result = read_device("status", "--json")
     try:
         boards = json.loads(result.stdout)["boards"]
     except (ValueError, KeyError, TypeError):

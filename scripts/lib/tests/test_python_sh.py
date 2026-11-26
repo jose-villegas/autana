@@ -87,8 +87,7 @@ class FindPythonTests(unittest.TestCase):
                 candidate.chmod(0o755)
             script = f'. "{(LIB / "python.sh").as_posix()}"; find_python "$@"'
             for case, modules, available, expected, count in (
-                    # The pinned name says its version: taken without being started.
-                    ("preferred", [], True, pinned, 0),
+                    ("preferred", [], True, pinned, 1),
                     ("module fallback", ["venv_only_marker"], True, older, 2),
                     ("absent", [], False, older, 1)):
                 with self.subTest(case=case):
@@ -103,6 +102,22 @@ class FindPythonTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(Path(result.stdout.strip()).parts[-2:], expected.parts[-2:])
                     self.assertEqual(len(probes.read_text().splitlines()), count)
+
+    def test_pinned_python_takes_the_pinned_name_without_starting_it(self):
+        minor = (LIB.parents[1] / ".python-version").read_text().strip().rsplit(".", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="python pinned ") as temporary:
+            root = Path(temporary)
+            started = root / "started"
+            pinned = root / f"python{minor}"
+            pinned.write_text(f'#!/bin/sh\necho started > "{started.as_posix()}"\n')
+            pinned.chmod(0o755)
+            script = f'. "{(LIB / "python.sh").as_posix()}"; pinned_python && printf "%s\\n" "$PYTHON_PICKED"'
+            result = subprocess.run([self.shell, "-c", script, str(LIB / "python.sh")],
+                                    env=dict(os.environ, PATH=str(root)), capture_output=True, text=True,
+                                    timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(Path(result.stdout.strip()).name, pinned.name)
+            self.assertFalse(started.exists(), "the pinned Python was started")
 
     def test_an_older_python3_is_passed_over(self):
         older = Path(self.temp.name) / "older"
@@ -150,7 +165,7 @@ exec "{Path(sys.executable).as_posix()}" -c 'import sys; sys.version_info = (3, 
     def test_bootstrap_skips_an_older_idf_python(self):
         root = Path(self.temp.name) / "bootstrap"
         for relative in ("tools/autana", "scripts/lib/python.sh",
-                         "scripts/lib/python-min-version"):
+                         "scripts/lib/python-min-version", "scripts/lib/process_pid.sh"):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(LIB.parents[1] / relative, target)
@@ -159,6 +174,9 @@ exec "{Path(sys.executable).as_posix()}" -c 'import sys; sys.version_info = (3, 
         app.write_text('import sys; print(sys.version_info[:2])\n')
         binary = root / "bin"
         binary.mkdir()
+        dirname = binary / "dirname"
+        dirname.write_text(f'#!/bin/sh\nprintf "%s\\n" "{root.as_posix()}/tools"\n')
+        dirname.chmod(0o755)
         for name, code in (("idf_a_old_env", "import sys; sys.version_info = (3, 9, 0); "),
                            ("idf_b_matching_env", "")):
             python = root / "idf/python_env" / name / "Scripts/python.exe"

@@ -2406,6 +2406,12 @@ def print_statuses(entries, now):
             print("  " + line)
 
 
+# The verbs that only read or write the lock store and list the ports, take
+# no lock tied to a pid and start nothing: autana runs these in its own
+# process when it has pyserial, rather than starting this file.
+IN_PROCESS_VERBS = frozenset({"status", "devices", "release", "wait-free"})
+
+
 def main(argv=None):
     install_console_interrupt_handler()
     try:
