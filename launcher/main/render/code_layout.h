@@ -16,12 +16,12 @@
 /* IRAM draw entry points avoid flash stalls that cost about a tenth of draw
  * cycles in dense scenes. The once-per-frame cull setup also misses the
  * instruction cache. IRAM entries need only 4-byte alignment.
- * IRAM budget: 7380 B */
+ * IRAM budget: 7392 B */
 #define RENDER_IRAM_ATTR   IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: release 4471 B, dev 4475 B, diag 4475 B */
+ * IRAM budget: release 4487 B, dev 4491 B, diag 4491 B */
 #define RENDER_SKIP_ATTR   RENDER_IRAM_ATTR
 /* The fill and row walk of a textured triangle that divides u and v by
  * depth, placed with the draw path as RENDER_SKIP_ATTR is: in IRAM they take
