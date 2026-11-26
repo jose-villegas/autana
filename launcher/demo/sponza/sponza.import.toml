@@ -64,9 +64,12 @@ seam = "free"
 # are its fit's budget, so a probe fit stays closed (Appearance-Fit.md); its
 # ceiling caps the rest plus every stored copy prototype. Unpinned free
 # repeats derive their detail from the camera's closest view within that
-# ceiling.
+# ceiling. 12716 is the 13313 this variant had before the drape's two skins
+# collapsed to one sheet, less the 597 start triangles that saved the fabric
+# (2110 to 1513): spent elsewhere, they let the fit move columns over the
+# plants in held-out views.
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 13313
+triangles = 12716
 objects_scale = 0.92
 ceiling = 30000
