@@ -81,9 +81,14 @@ and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
 | `-ffp-contract=off` | the host builds [Build-Variants.md](../tools/Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
-| Hot-call link gate | [Release build rules](../tools/Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) require a reason for C-runtime calls in hot functions |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |
 
-Xtensa lacks unaligned loads. The compiler emitted a per-pixel call for
-`memcpy(&v, p, 2)`. Reading the two bytes separately made blitting about
-6× faster in the cited benchmark.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>
+### C-runtime calls in hot code
+
+| Rule | Where |
+|---|---|
+| [Hot-call link gate](../tools/Build-Variants.md#hot-call-link-gate) | [`check_hot_calls.py`](../../launcher/tools/build/check_hot_calls.py) requires a reason for C-runtime calls in hot functions |
+
+Hot code loads unaligned 16-bit values bytewise. Xtensa has no unaligned load,
+so `memcpy(&v, p, 2)` emits a call. A published measurement found bytewise loads
+made blitting about six times faster.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>

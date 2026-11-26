@@ -181,7 +181,8 @@ class MemoryMapTests(unittest.TestCase):
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        for name, value in (("symbols", {}), ("find_tool", "nm"), ("run", json.dumps({"layout": []})),
+        (build / "build.ninja").touch()
+        for name, value in (("symbols", []), ("find_tool", "nm"), ("run", json.dumps({"layout": []})),
                             ("idf_commit", "pin"), ("iram_entries", [])):
             self.enterContext(patch.object(memory, name, return_value=value))
         return header, elf, build
@@ -910,7 +911,7 @@ print(m.render(builds))
         fragment = build / "linker.lf"
         fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
         (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
-        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
+        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value=[]), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps([["libchosen.a", "foo.*", "foo"]]), json.dumps({"layout": []})]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")

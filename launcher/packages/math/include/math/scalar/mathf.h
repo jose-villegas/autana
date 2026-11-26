@@ -273,8 +273,6 @@ mathf_repeat(float v, float len) {
         return rem < len ? rem : 0.0F;
     }
 #endif
-    /* Library call: only past the fast path's quotient bound, |v / len| >= 2^22 on the board; a measured
-     * textured span fill wrapped |v| <= 282 against len 256 and never reached it. */
     float r = fmodf(v, len);
     if (r < 0.0F) {
         r += len;

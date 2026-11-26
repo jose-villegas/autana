@@ -167,13 +167,8 @@ ten times a float's cost.
 |---|---|---|
 | Firmware: `main` and each package | `-Werror=double-promotion -Werror=float-conversion` | a float widened to double, or a double constant in float maths, does not compile |
 | `diag` objects | `launcher/tools/build/check_no_soft_double.py` | fails a function that calls a soft-double routine unless it also logs or formats |
-| Release ELF | `launcher/tools/build/check_hot_calls.py` | fails unannotated C-runtime calls in code-layout pins, active baseline functions and first-party IRAM attribute functions |
 | Host tests, render, camera-path sampler | `-ffp-contract=off` | a pinned pixel or sampled pose never depends on a fused multiply-add |
 | QEMU | `MATH_FPU_RECIP=n`, `MATH_FPU_FUSED_MADD=n` | QEMU lacks the reciprocal seeds and rounds the fused product |
-
-For a deliberate runtime call, write `Library call: <reason>` in a comment
-on its source line, or directly above the statement or signature holding it.
-The gate rejects empty reasons, stale notes and calls without a source line.
 
 - Code that needs a double on purpose casts it explicitly, in the function
   that logs it. A `%f` argument is a double by the language, hence the logging
@@ -184,6 +179,20 @@ The gate rejects empty reasons, stale notes and calls without a source line.
   `double` on purpose.
 - The firmware keeps fused operations, which are faster. So a host pixel and
   a device pixel can differ by one at a truncation boundary.
+
+## Hot-call link gate
+
+| Build | Check | Effect |
+|---|---|---|
+| Release ELF | [`check_hot_calls.py`](../../launcher/tools/build/check_hot_calls.py) | requires a reason for C-runtime calls in code-layout pins and active first-party IRAM functions, including inline instances |
+
+For a deliberate runtime call, put `Library call: <reason>` on the source line
+or in the comment directly above its statement or signature. The gate uses
+the innermost inline frame in the containing function's source file.
+
+The gate rejects empty or stale notes and calls without a source line. A hot
+function using soft double needs both the logging exemption in
+`check_no_soft_double.py` and a `Library call:` note.
 
 ## Development-only instrumentation is its own flag, not SELFTEST
 

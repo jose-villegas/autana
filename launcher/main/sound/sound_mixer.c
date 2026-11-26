@@ -570,7 +570,7 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
             continue;
         }
         const uint32_t gain = (uint32_t)voice->gain_pct * factors[voice->bus.id];
-        /* Library call: a 64-bit divide, once per playing voice per mixed block. */
+        /* Library call: a uint64_t divide, once per playing voice per mixed block. */
         const int32_t factor =
             (int32_t)(((uint64_t)gain * SOUND_GAIN_ONE) / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
         mix_voice(mixer, voice, accumulator, scratch, frames, factor);

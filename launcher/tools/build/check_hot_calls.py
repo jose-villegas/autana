@@ -3,18 +3,20 @@
 
     python launcher/tools/build/check_hot_calls.py [build-dir]
 
-The hot set comes from code layout pins and baseline rows for this build
-and active first-party IRAM attributes. The link map and loaded ROM scripts
-identify runtime targets in the ELF. The default build is launcher/build.
+The hot set comes from code layout pins and active first-party IRAM
+attributes. The link map and loaded ROM scripts identify runtime targets
+in the ELF. The default build is launcher/build.
 
-Put `Library call: <reason>` in a comment on the call's source line or in
-the comment block ending directly above the statement or signature holding
-it, which the note covers through its closing `;` or `{`. Empty and unused
-notes fail.
+Calls are attributed to the innermost inline frame in the containing
+function's source file. Put `Library call: <reason>` in a comment on that
+line or in the comment block directly above the statement or signature.
+The note covers it through its closing `;`, `{` or `}`. Empty and
+unused notes fail.
+
+Exit codes: 0 clean, 1 violations, 2 tool or input error.
 """
 
 import argparse
-import json
 import re
 import subprocess
 import sys
@@ -42,44 +44,28 @@ LITERAL_TARGET = re.compile(r"(a\d+),.*\(" + NAMED_TARGET + r"\)")
 ANNOTATION = "Library call:"
 # A note above a statement or signature covers it through the line ending it.
 STATEMENT_ENDS = (";", "{", "}")
-SOURCE_LOCATION = re.compile(r"(.+):(\d+)(?:\s.*)?$")
 
 
-def hot_functions(root, sources, build, sdkconfig, records, map_text, elf=None):
-    hot_names = set()
-    for baseline, pins in code_layout.baselines(sources).items():
-        hot_names.update(pins)
-        if baseline.is_file():
-            contents = baseline.read_text(encoding="utf-8")
-            if code_layout.baseline_applies(contents, sdkconfig):
-                hot_names.update(row.function for row in code_layout.parse_layout(contents))
-
-    functions = [record for record in records if record.section.lower() in ("t", "w") and record.size]
+def hot_functions(root, sources, link):
+    hot_names = {pin for pins in code_layout.baselines(sources).values() for pin in pins}
+    functions = [record for record in link["records"] if record.section.lower() in ("t", "w") and record.size]
     hot = {record: [] for record in functions if record.name in hot_names}
     missing = hot_names - {record.name for record in hot}
     by_address = {record.address: record for record in functions}
-    inputs, sections, _ = memory_map.map_inputs(
-        map_text, {address: (record.name, record.size) for address, record in by_address.items()}
-    )
     starts = sorted(by_address)
-    inlines = {}
-    if elf is not None:
-        for source, name, _, start, end in memory_map.inline_instances(elf, sections):
-            inlines.setdefault((source, memory_map.clone_base(name)), []).append((start, end))
-    sites, active = memory_map.build_sites(root, build)
+    sites, active = memory_map.build_sites(root, link)
     for site in sites:
         if not site.path.endswith((".c", ".h")) or not site.path.startswith(packages.FIRST_PARTY) or not active(site):
             continue
-        for obj, symbol, path, _ in site.required:
-            copies = {by_address[item.address] for item in inputs
-                      if not item.literal and item.address in by_address
-                      and memory_map.matches_entry(item, site.archive, obj, symbol)
+        for required in site.required:
+            _, symbol, path, _ = required
+            inputs, instances = memory_map.required_copies(site, required, link["placed_inputs"], link["inlines"])
+            copies = {by_address[item.address] for item in inputs if item.address in by_address
                       and memory_map.clone_base(by_address[item.address].name) == symbol}
-            ranges = inlines.get(((root / path).as_posix(), symbol), ())
-            if not copies and not ranges:
+            if not copies and not instances:
                 missing.add(f"{path}: {symbol}")
             hot.update((copy, []) for copy in copies)
-            for start, end in ranges:
+            for _, _, _, start, end in instances:
                 index = bisect_right(starts, start)
                 caller = by_address[starts[index - 1]] if index else None
                 if caller is None or end > caller.address + caller.size:
@@ -104,11 +90,9 @@ def runtime_ranges(map_text, ninja, idf, target, code_sections):
     ranges = [(address, address + size)
               for output, _, address, size, origin in placed_sections(map_text.splitlines())
               if output in code_sections and size and RUNTIME_ARCHIVE.search(origin)]
-    rule = re.search(r"^build launcher\.elf:[^\n]*\n((?:[ \t]+[^\n]*\n?)*)", ninja, re.M)
-    if rule is None:
-        raise ValueError("build.ninja has no launcher.elf link rule")
+    rule = memory_map.ninja_rule(ninja, "launcher.elf")
     script_name = re.compile(re.escape(target) + r"\.rom\.(?:" + "|".join(ROM_RUNTIME) + r")[\w.-]*\.ld")
-    flags = re.search(r"^  LINK_FLAGS = (.*)$", rule[1], re.M)
+    flags = re.search(r"^  LINK_FLAGS = (.*)$", rule, re.M)
     scripts = set()
     if flags:
         for quoted, bare in re.findall(r'(?:^|\s)-T\s*(?:"([^"]+)"|(\S+))', flags[1]):
@@ -152,6 +136,8 @@ def linked_calls(objdump, elf, function, ranges, runtime):
 def statement_lines(source, first):
     """The lines from `first` through the one closing its statement or signature."""
     lines = source.splitlines()
+    if first > len(lines) or not lines[first - 1].strip():
+        return range(first, first)
     end = first
     while end <= len(lines) and lines[end - 1].strip() and not lines[end - 1].rstrip().endswith(STATEMENT_ENDS):
         end += 1
@@ -190,12 +176,23 @@ def annotations(root):
     return covered, notes
 
 
+def own_source(frames):
+    """Select the innermost line in the containing function's source file."""
+    outer = code_layout.SOURCE_LOCATION.fullmatch(frames[-1])
+    if outer:
+        for frame in frames:
+            inner = code_layout.SOURCE_LOCATION.fullmatch(frame)
+            if inner and Path(inner[1]) == Path(outer[1]) and int(inner[2]):
+                return frame
+    return frames[-1]
+
+
 def violations(root, calls, locations):
     covered, notes = annotations(root)
     used = set()
     bad = []
     for (function, callee, address), location in zip(calls, locations, strict=True):
-        match = SOURCE_LOCATION.fullmatch(location)
+        match = code_layout.SOURCE_LOCATION.fullmatch(location)
         label = "??:0"
         if match and match[1] != "??" and int(match[2]):
             path = (root / match[1]).resolve()
@@ -217,29 +214,21 @@ def main(argv=None):
     parser.add_argument("build", nargs="?", type=Path, default=code_layout.LAUNCHER / "build")
     build = parser.parse_args(argv).build.resolve()
     root = code_layout.REPO
-    elf = build / "launcher.elf"
     try:
-        if not elf.is_file():
-            raise code_layout.LayoutError(f"no {elf} - build the release image first")
-        sdkconfig = (build / "sdkconfig").read_text(encoding="utf-8")
-        config = memory_map.configuration(sdkconfig)
-        metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
-        sites = dict(build=build, config=config, owned=memory_map.components(root, metadata))
-        map_text = elf.with_suffix(".map").read_text(encoding="utf-8")
-        runtime = runtime_ranges(map_text, (build / "build.ninja").read_text(encoding="utf-8"),
+        if not (build / "launcher.elf").is_file():
+            raise code_layout.LayoutError(f"no {build / 'launcher.elf'} - build the release image first")
+        link = memory_map.read_link(build, root, inspect_inline=True)
+        elf = link["elf"]
+        metadata = link["metadata"]
+        runtime = runtime_ranges(link["maptext"], link["ninja"],
                                  Path(metadata["idf_path"]), metadata["target"], executable_sections(elf))
-        records = code_layout.symbols(code_layout.find_tool("nm"), elf, records=True)
-        hot = hot_functions(root, code_layout.SOURCES, sites, sdkconfig, records, map_text, elf)
+        hot = hot_functions(root, code_layout.SOURCES, link)
         objdump = code_layout.find_tool("objdump")
         addr2line = code_layout.find_tool("addr2line")
-        calls = set()
-        for function, ranges in hot.items():
-            calls.update(linked_calls(objdump, elf, function, ranges, runtime))
-        ordered = sorted(calls)
-        locations = subprocess.run([addr2line, "-e", str(elf)], capture_output=True, text=True, check=True,
-                                   input="".join(f"{address:#x}\n" for _, _, address in ordered)).stdout.splitlines()
-        if len(ordered) != len(locations):
-            raise code_layout.LayoutError(f"addr2line returned an incomplete source map for {elf}")
+        ordered = sorted({call for function, ranges in hot.items()
+                          for call in linked_calls(objdump, elf, function, ranges, runtime)})
+        frames = code_layout.source_frames(addr2line, elf, (address for _, _, address in ordered))
+        locations = [own_source(frames[address]) for _, _, address in ordered]
         bad = violations(root, ordered, locations)
     except (ImportError, OSError, RuntimeError, ValueError, KeyError, code_layout.LayoutError, subprocess.CalledProcessError) as exc:
         print(f"check_hot_calls.py: {exc}", file=sys.stderr)

@@ -13,7 +13,6 @@
 /* The C reference simd_copy() matches bit for bit (the C library's memcpy). */
 static inline void
 simd_copy_ref(void* dst, const void* src, size_t bytes) {
-    /* Library call: the reference and the short copies below SIMD_COPY_MIN, where memcpy wins on the board. */
     memcpy(dst, src, bytes);
 }
 

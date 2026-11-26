@@ -159,6 +159,36 @@ class PoolTests(unittest.TestCase):
         self.assertEqual(code_layout.skip_pools([entry, body, skip, pool, end], again),
                          [entry, body, skip, back, end])
 
+    def test_aligned_jump_target_does_not_need_redecoding(self):
+        entry = (0x1000, 3, "j", "1006 <f+0x6>")
+        pool = (0x1003, 3, "nop", "")
+        end = (0x1006, 2, "retw.n", "")
+        again = mock.Mock(side_effect=AssertionError("target already decoded"))
+        self.assertEqual(code_layout.skip_pools([entry, pool, end], again), [entry, end])
+        again.assert_not_called()
+        self.assertEqual(code_layout.skip_pools([entry, pool, end], None), [entry, end])
+
+    def test_jump_target_is_tried_once_across_pool_removal_and_resync(self):
+        entry = (0x1000, 3, "j", "100a <f+0xa>")
+        pool = (0x1009, 3, "nop", "")
+        end = (0x100f, 2, "retw.n", "")
+        again = mock.Mock(return_value=[end])
+        self.assertEqual(code_layout.skip_pools([entry, pool, end], again), [entry, end])
+        again.assert_called_once_with(0x100a)
+
+    def test_overlapping_branch_targets_are_redecoded_once(self):
+        entry = (0x1000, 3, "beqz", "a2, 1007 <f+0x7>")
+        branch = (0x1003, 3, "bnez", "a3, 1008 <f+0x8>")
+        data = (0x1006, 3, "nop", "")
+        end = (0x100a, 2, "retw.n", "")
+        found = [entry, branch, data, end]
+        first = (0x1007, 3, "nop", "")
+        second = (0x1008, 2, "nop.n", "")
+        again = mock.Mock(side_effect=[[first, end], [second, end]])
+        self.assertEqual(code_layout.skip_pools(found, again), [entry, branch, second, end])
+        self.assertEqual(again.call_args_list, [mock.call(0x1007), mock.call(0x1008)])
+        self.assertEqual(code_layout.skip_pools(found, None), found)
+
     def misdecoded_pool(self, start, branch, jump, pool, end):
         return [
             (start, 3, *branch),
@@ -433,7 +463,7 @@ class ResyncTests(unittest.TestCase):
         swept = [(0x1010, 3, "bnez", "a9, 1016 <f+0x6>"), (0x1013, 3, "mul16u", "a1, a0, a0"),
                  (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
         entry = [(0x1014, 2, "addi.n", "a5, a5, 1"), (0x1016, 3, "bne", "a5, a8, 1014 <f+0x4>")]
-        self.assertEqual([ins[2] for ins in code_layout._resync(swept, lambda start: entry)], ["bnez", "addi.n", "bne"])
+        self.assertEqual([ins[2] for ins in code_layout.skip_pools(swept, lambda start: entry)], ["bnez", "addi.n", "bne"])
 
     def test_targets_inside_each_other_are_tried_once(self):
         # Decoding from either target swallows the other's start; untried
@@ -443,7 +473,7 @@ class ResyncTests(unittest.TestCase):
         def again(start):
             return [(start, 3, "nop", ""), (0x2016, 3, "bnez", "a3, 2014 <g+0x4>")]
 
-        self.assertEqual([ins[2] for ins in code_layout._resync(found, again)], ["beqz", "nop"])
+        self.assertEqual([ins[2] for ins in code_layout.skip_pools(found, again)], ["beqz", "nop"])
 
 if __name__ == "__main__":
     unittest.main()

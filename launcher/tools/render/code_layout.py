@@ -33,6 +33,7 @@ SOURCES = LAUNCHER / "main"
 PINNED = re.compile(r"CODE_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
 CONFIG_HEADER = "# Config: "
 DEFAULT_BASELINE_CONFIG = "CONFIG_LAUNCHER_SELFTEST"
+SOURCE_LOCATION = re.compile(r"(.+):(\d+)(?:\s.*)?$")
 LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines\tsource_line"
 # Larger loop bodies are dominated by code size, not cache-line placement.
 SMALL_LOOP_MAX_LINES = 4
@@ -158,15 +159,18 @@ def skip_pools(found, decode_from=None, jump_pools=True):
     start = found[0][0]
     end = found[-1][0] + found[-1][1]
     pools = set()
-    synced_ends = set()
-    while True:
+    tried = set()
+    # Each repair tries a fresh byte address or drops instructions. Between
+    # decodes, at most one instruction per byte can be dropped.
+    span = end - start
+    for _ in range((2 * span + 1) * (span + 1)):
         literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
         pending = sorted(address for address in literals
                          if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
         if not pending:
-            repaired = _skip_jump_pools(found, decode_from, synced_ends) if jump_pools else found
+            repaired = _skip_jump_pools(found, decode_from, tried, start, end) if jump_pools else found
             if repaired == found:
-                return _resync(found, decode_from) if decode_from else found
+                break
             found = repaired
             continue
         for address in pending:
@@ -175,9 +179,22 @@ def skip_pools(found, decode_from=None, jump_pools=True):
             prefix = [ins for ins in found if ins[0] + ins[1] <= address]
             suffix = decode_from(resume) if decode_from else [ins for ins in found if ins[0] >= resume]
             found = prefix + [ins for ins in suffix if ins[0] < end]
+    else:
+        raise AssertionError("literal and jump pool decoding did not converge")
+
+    if decode_from:
+        for _ in range(span + 1):
+            targets = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r"} - {None}
+            repaired = _resync(found, ((target, target) for target in targets), decode_from, tried, start, end)
+            if repaired == found:
+                break
+            found = repaired
+        else:
+            raise AssertionError("branch target decoding did not converge")
+    return found
 
 
-def _skip_jump_pools(found, decode_from, synced_ends):
+def _skip_jump_pools(found, decode_from, tried, start, end):
     """A skipped span with no incoming branch is a pool. An entry past its
     start marks code decoded out of step after a pool or alignment bytes."""
     spans = []
@@ -189,31 +206,37 @@ def _skip_jump_pools(found, decode_from, synced_ends):
     def inside(address, span):
         return span[0] <= address < span[1]
 
-    def entries(span):
-        return sorted(
+    # An unaligned jump destination can hide a backedge into the skipped span.
+    repaired = _resync(found, ((target, target) for _, target in spans), decode_from, tried, start, end)
+    if repaired != found:
+        return repaired
+    kept = list(found)
+    for span in spans:
+        entered = sorted(
             target_of(operands)
             for address, _, _, operands in found
             if target_of(operands) is not None and not inside(address, span) and inside(target_of(operands), span)
         )
-
-    starts = {ins[0] for ins in found}
-    # An unaligned jump destination can hide a backedge into the skipped span.
-    if decode_from and spans:
-        end = found[-1][0] + found[-1][1]
-        for _, target in spans:
-            if target < end and target not in starts and target not in synced_ends:
-                synced_ends.add(target)
-                repaired = _decode_again(found, target, target, decode_from)
-                if repaired != found:
-                    return repaired
-    kept = list(found)
-    for span in spans:
-        entered = entries(span)
         if not entered:
             kept = [ins for ins in kept if not inside(ins[0], span)]
-        elif entered[0] not in starts and decode_from is not None:
-            kept = _decode_again(kept, span[0], entered[0], decode_from)
+        else:
+            kept = _resync(kept, [(entered[0], span[0])], decode_from, tried, start, end)
     return kept
+
+
+def _resync(found, targets, decode_from, tried, start, end):
+    """Repair the first missed target that changes the decode."""
+    if decode_from is None:
+        return found
+    starts = {ins[0] for ins in found}
+    # Overlapping misdecoded targets can otherwise undo each other.
+    for target, cut in sorted(targets):
+        if start <= target < end and target not in starts and target not in tried:
+            tried.add(target)
+            repaired = _decode_again(found, cut, target, decode_from)
+            if repaired != found:
+                return repaired
+    return found
 
 
 def _decode_again(found, cut, start, decode_from):
@@ -229,25 +252,26 @@ def _decode_again(found, cut, start, decode_from):
     return [ins for ins in found if ins[0] + ins[1] <= cut] + again + [ins for ins in found if ins[0] >= resume]
 
 
-def _resync(found, decode_from):
-    """Decode again from each branch target the sweep stepped over, as
-    alignment bytes before a loop entered only from inside a skipped span."""
-    tried = set()
-    while True:
-        skip = {ins[0] for ins in found} | tried
-        end = found[-1][0] + found[-1][1]
-        # Each target is tried once: two that land inside each other's
-        # instructions would otherwise undo each other forever.
-        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
-                        if target is not None and found[0][0] <= target < end and target not in skip)
-        if not missed:
-            return found
-        tried.add(missed[0])
-        found = _decode_again(found, missed[0], missed[0], decode_from)
-
-
 def line_span(start, end, line_size):
     return ((end - 1) // line_size) - (start // line_size) + 1
+
+
+def source_frames(addr2line, elf, addresses):
+    """Map each requested address to its inline frames, innermost first."""
+    addresses = list(dict.fromkeys(addresses))
+    if not addresses:
+        return {}
+    frames = {}
+    for location in run(addr2line, "-a", "-i", "-e", str(elf),
+                        *(f"{address:#x}" for address in addresses)).splitlines():
+        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
+            address = int(location, 16)
+            frames[address] = []
+        elif frames:
+            frames[address].append(location)
+    if list(frames) != addresses or not all(frames.values()):
+        raise LayoutError(f"addr2line returned an incomplete source map for {elf}")
+    return frames
 
 
 def layout_entries(elf, nm, objdump, line_size, functions=None):
@@ -276,19 +300,12 @@ def layout_entries(elf, nm, objdump, line_size, functions=None):
             if end > start and line_span(start, end, line_size) <= SMALL_LOOP_MAX_LINES:
                 entries.append(LayoutEntry(function, kind, start, end - start, line_span(start, end, line_size), 0))
                 source_addresses.append(instruction_address)
-    locations = []
     # Inline instructions need the caller's line in the pinned function.
-    for location in run(find_tool("addr2line"), "-a", "-i", "-e", str(elf),
-                        *("0x%x" % address for address in source_addresses)).splitlines():
-        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
-            locations.append("")
-        elif locations:
-            locations[-1] = location
-    if len(locations) != len(entries):
-        raise LayoutError("addr2line returned an incomplete source map for %s" % elf)
+    frames = source_frames(find_tool("addr2line"), elf, source_addresses)
     first_lines = {}
-    for index, (entry, location) in enumerate(zip(entries, locations)):
-        match = re.match(r"(.+):(\d+)(?:\s.*)?$", location)
+    for index, (entry, address) in enumerate(zip(entries, source_addresses, strict=True)):
+        location = frames[address][-1]
+        match = SOURCE_LOCATION.fullmatch(location)
         if not match or int(match[2]) == 0:
             raise LayoutError("no source line for %s at 0x%x" % (entry.function, source_addresses[index]))
         source, line = match[1], int(match[2])

@@ -9,8 +9,6 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
 
-/* Library call: a mat4f returned by value is a 64-byte copy; measured hot callers make one per lens or
- * per transform call, never per vertex. */
 MATH_DEFINE_MAT4(mat4f, vec3f, quatf, float, mathf)
 MATH_DEFINE_MAT4_INVERT_AFFINE(mat4f, float, mathf)
 
