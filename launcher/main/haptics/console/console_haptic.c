@@ -20,15 +20,7 @@ console_verb_haptic(const char* args, console_reply_fn reply) {
         return;
     }
     const int64_t began = timing_now_us();
-    haptic_pulse(strength);
-    sound_stats_t stats;
-    sound_get_stats(&stats);
-    sound_voice_t voice = SOUND_VOICE_NULL;
-    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        if (stats.control.voices[i].playing && stats.control.voices[i].opts.bus.id == SOUND_BUS_HAPTIC.id) {
-            voice = stats.control.voices[i].handle;
-        }
-    }
+    const sound_voice_t voice = haptic_pulse(strength);
     if (!sound_voice_wait_audible(voice, SOUND_CAPTURE_TIMEOUT_MS)) {
         reply("HAPTIC error: pulse not audible");
         return;

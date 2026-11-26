@@ -6,7 +6,8 @@ resonance and usable gains.
 
 ## API and rules
 
-Include `haptics/haptics.h`. The API is `void haptic_pulse(haptic_t strength)`:
+Include `haptics/haptics.h`. The API `sound_voice_t haptic_pulse(haptic_t strength)`
+returns the new voice or `SOUND_VOICE_NULL` if playback could not start.
 
 ```c fragment
 if (ui_button(ui, "Start")) {

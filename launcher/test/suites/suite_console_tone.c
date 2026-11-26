@@ -254,9 +254,6 @@ haptic_fixture(void) {
 void
 sound_get_stats(sound_stats_t* out) {
     *out = (sound_stats_t){0};
-    if (haptic_rig) {
-        out->control = haptic_rig->control;
-    }
 }
 
 static void
@@ -302,7 +299,7 @@ test_haptic_console_latency_and_errors(void) {
 static void
 test_haptic_strengths_and_restart(void) {
     haptic_fixture();
-    haptic_pulse(HAPTIC_LIGHT);
+    const sound_voice_t first = haptic_pulse(HAPTIC_LIGHT);
     TEST_ASSERT_EQUAL_UINT16(HAPTIC_HZ, haptic_rig->last.tone.hz);
     TEST_ASSERT_EQUAL_UINT16(HAPTIC_LIGHT_MS, haptic_rig->last.tone.ms);
     TEST_ASSERT_EQUAL_UINT8(HAPTIC_LIGHT_GAIN_PCT, haptic_rig->last.gain_pct);
@@ -314,9 +311,8 @@ test_haptic_strengths_and_restart(void) {
     haptic_assert_silence();
     TEST_ASSERT_FALSE(sound_control_is_audible(&haptic_rig->control, haptic_rig->last.voice));
     haptic_render(AUDIO_OUT_AMP_STARTUP_MS);
-    const sound_voice_t first = haptic_rig->last.voice;
     TEST_ASSERT_TRUE(sound_control_is_audible(&haptic_rig->control, first));
-    haptic_pulse(HAPTIC_FIRM);
+    const sound_voice_t next = haptic_pulse(HAPTIC_FIRM);
     TEST_ASSERT_FALSE(sound_control_is_playing(&haptic_rig->control, first));
     TEST_ASSERT_EQUAL_UINT16(HAPTIC_FIRM_MS, haptic_rig->last.tone.ms);
     TEST_ASSERT_EQUAL_UINT8(HAPTIC_FIRM_GAIN_PCT, haptic_rig->last.gain_pct);
@@ -324,14 +320,14 @@ test_haptic_strengths_and_restart(void) {
     size_t left = audio_out_samples(HAPTIC_FIRM_MS) - HAPTIC_TEST_FRAMES;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         if (haptic_rig->mixer.voices[i].playing) {
-            TEST_ASSERT_EQUAL_UINT32(haptic_rig->last.voice.id, haptic_rig->mixer.voices[i].handle.id);
+            TEST_ASSERT_EQUAL_UINT32(next.id, haptic_rig->mixer.voices[i].handle.id);
             TEST_ASSERT_EQUAL_UINT32(left, haptic_rig->mixer.voices[i].source.tone.frames_left);
         }
     }
     while (left) {
         haptic_render(AUDIO_OUT_AMP_STARTUP_MS);
         left = left > HAPTIC_TEST_FRAMES ? left - HAPTIC_TEST_FRAMES : 0;
-        TEST_ASSERT_EQUAL(left != 0, sound_control_is_playing(&haptic_rig->control, haptic_rig->last.voice));
+        TEST_ASSERT_EQUAL(left != 0, sound_control_is_playing(&haptic_rig->control, next));
     }
 }
 

@@ -1,6 +1,8 @@
 /* haptics: named speaker pulses that shake the case. */
 #pragma once
 
+#include "sound/sound_play.h"
+
 /* Case resonance measured in docs/audio/Low-Frequency-Buzz.md. */
 #define HAPTIC_HZ             202
 #define HAPTIC_LIGHT_GAIN_PCT 30
@@ -12,4 +14,4 @@
 
 typedef enum { HAPTIC_LIGHT, HAPTIC_FIRM } haptic_t;
 
-void haptic_pulse(haptic_t strength);
+sound_voice_t haptic_pulse(haptic_t strength);
