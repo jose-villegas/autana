@@ -361,8 +361,6 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
         if not candidates:
             continue
         for shape in rule_shapes(candidates, selected[int(candidates[0].name)], held):
-            if len(shape.instances) == 1 and shapes is None:
-                continue
             first = int(shape.instances[0].object_name)
             if len(shape.instances) == 1:
                 sel = parts[single[first]][0]
