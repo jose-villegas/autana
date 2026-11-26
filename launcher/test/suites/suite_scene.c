@@ -777,7 +777,8 @@ release_fixture(void) {
 
 /* Every test starts from an empty engine, so the order of tests is no one's
  * business. */
-static void
+/* Not inlined: the pack it builds stays off every test's frame chain. */
+static __attribute__((noinline)) void
 fixture_with_skin(const skin_fixture_options_t* options) {
     scene_unload_all();
 #ifndef DEVICE_BUILD
@@ -1409,28 +1410,28 @@ test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for(void)
     entity_t scene = show("test_sky");
     render_context_set_scale(render_context_main(), 50);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_main()->frame.width);
 
     const resolution_step_t quarter = {SIZE / 4, SIZE / 4};
     const resolution_config_t one = resolution_config(&quarter, 1, 1, INT32_MAX);
     render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(0, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 4, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 4, render_context_main()->frame.width);
 
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_main()->frame.width);
 
     render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     (void)scene;
     scene_unload_all();
     scene = show("test_sky");
     frame(0);
-    TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
-    TEST_ASSERT_EQUAL_INT(SIZE, render_context_frame(render_context_main()).width);
+    TEST_ASSERT_EQUAL_INT(-1, render_context_main()->frame.step);
+    TEST_ASSERT_EQUAL_INT(SIZE, render_context_main()->frame.width);
 }
 
 static void
@@ -1914,6 +1915,15 @@ drawn_renderer(const scene_t* scene, int instance) {
 /* Renderers of test_family. */
 #define FAMILY_RENDERERS_MAX 4
 
+static __attribute__((noinline)) void
+copy_poses(entity_t root, entity_t fresh_root, int count) {
+    for (int e = 0; e < count; e++) {
+        const entity_t from = entity_at(root, e), to = entity_at(fresh_root, e);
+        transform_set_local(to, transform_local(from));
+        entity_set_enabled(to, entity_enabled(from));
+    }
+}
+
 /* `scene`'s last frame and instances equal a fresh load put in the same state,
  * drawn with `root` hidden: every renderer CHANGED, so the reference walks
  * them all. */
@@ -1922,17 +1932,14 @@ assert_draws_as_fresh(entity_t root, int drawn) {
     memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
     const scene_t* scene = columns(root);
     TEST_ASSERT_TRUE(drawn <= FAMILY_RENDERERS_MAX);
-    int held[FAMILY_RENDERERS_MAX];
+    int* const held = malloc(FAMILY_RENDERERS_MAX * sizeof *held);
+    TEST_ASSERT_NOT_NULL(held);
     for (int i = 0; i < drawn; i++) {
         held[i] = drawn_renderer(scene, i);
     }
     const entity_t fresh_root = show("test_family");
     const scene_t* fresh = columns(fresh_root);
-    for (int e = 0; e < scene->asset.entity_count; e++) {
-        const entity_t from = entity_at(root, e), to = entity_at(fresh_root, e);
-        transform_set_local(to, transform_local(from));
-        entity_set_enabled(to, entity_enabled(from));
-    }
+    copy_poses(root, fresh_root, scene->asset.entity_count);
     entity_set_enabled(root, false);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.pixels, fx.held, SIZE * SIZE);
@@ -1950,6 +1957,7 @@ assert_draws_as_fresh(entity_t root, int drawn) {
     scene_release(fresh_root);
     entity_set_enabled(root, true);
     TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    free(held);
 }
 
 /* Disabling, moving and re-enabling a parent with a drawn child, and an
@@ -5398,33 +5406,25 @@ test_contact_joints_allocate_only_for_silhouette(void) {
     TEST_ASSERT_NULL(skin->contact_mask.coverage);
 }
 
-static void
-test_silhouette_mask_repose_and_lifetime(void) {
-    fixture_with_skin(&SKIN_OPTIONS);
-    show("test_pair");
-    const entity_t root = load("test_skin");
-    const entity_t entity = entity_find(root, name_hash("red"));
-    scene_t* scene = columns(root);
-    transformf_t tilted = transform_local(entity);
-    transformf_set_rotation(&tilted, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 4));
-    transform_set_local(entity, tilted);
-    scene_resolve(scene);
-    scene_skinned_renderer_t* skin = skin_of(entity);
-    TEST_ASSERT_NULL(skin->contact_mask.coverage);
-    scene_contact_t contact = {0};
-    contact = (scene_contact_t){0, 1, SCENE_CONTACT_SILHOUETTE, contact.warp};
+/* Not inlined, like the helpers below it: their temporaries stay off the frame chain of the test that draws. */
+static __attribute__((noinline)) void
+turn_entity(entity_t entity, vec3f_t axis, float angle) {
+    transformf_t pose = transform_local(entity);
+    transformf_set_rotation(&pose, quatf_from_axis_angle(axis, angle));
+    transform_set_local(entity, pose);
+}
+
+static __attribute__((noinline)) void
+set_contact_shape(entity_t entity, float strength, scene_contact_shape_t shape, bool warp) {
+    const scene_contact_t contact = {0, strength, shape, warp};
     scene_set_contact(entity, &contact);
-    frame(0);
-    TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
-    uint8_t* saved = malloc(CONTACT_MASK_BYTES);
-    TEST_ASSERT_NOT_NULL(saved);
-    memcpy(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
-    memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
-    frame(0);
-    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, skin->contact_mask.coverage[0]);
-    scene->animators[row_of(entity)].dirty = true;
-    frame(0);
-    TEST_ASSERT_EQUAL_MEMORY(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
+}
+
+/* `saved` is the mask of `entity` at rest: its contact bounds sit inside the renderer's, and after a move
+ * the blob follows while the mask stays as it was. */
+static __attribute__((noinline)) void
+assert_contact_follows_a_move(scene_t* scene, entity_t entity, const uint8_t* saved) {
+    scene_skinned_renderer_t* skin = skin_of(entity);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
     const box3f_t bounds = scene_contact_bounds(scene, r, vec3f_unit_y());
     TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(bounds.lo.x, r->world_bounds.lo.x);
@@ -5443,6 +5443,32 @@ test_silhouette_mask_repose_and_lifetime(void) {
     const box3f_t moved_bounds = scene_contact_bounds(scene, r, vec3f_unit_y());
     TEST_ASSERT_GREATER_OR_EQUAL_FLOAT(moved_bounds.lo.x, after.centre.x - after.u.x);
     TEST_ASSERT_LESS_OR_EQUAL_FLOAT(moved_bounds.hi.x, after.centre.x + after.u.x);
+}
+
+static void
+test_silhouette_mask_repose_and_lifetime(void) {
+    fixture_with_skin(&SKIN_OPTIONS);
+    show("test_pair");
+    const entity_t root = load("test_skin");
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    turn_entity(entity, vec3f_unit_x(), MATH_PI / 4);
+    scene_resolve(scene);
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    TEST_ASSERT_NULL(skin->contact_mask.coverage);
+    set_contact_shape(entity, 1, SCENE_CONTACT_SILHOUETTE, false);
+    frame(0);
+    TEST_ASSERT_NOT_NULL(skin->contact_mask.coverage);
+    uint8_t* saved = malloc(CONTACT_MASK_BYTES);
+    TEST_ASSERT_NOT_NULL(saved);
+    memcpy(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
+    memset(skin->contact_mask.coverage, UINT8_MAX, CONTACT_MASK_BYTES);
+    frame(0);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, skin->contact_mask.coverage[0]);
+    scene->animators[row_of(entity)].dirty = true;
+    frame(0);
+    TEST_ASSERT_EQUAL_MEMORY(saved, skin->contact_mask.coverage, CONTACT_MASK_BYTES);
+    assert_contact_follows_a_move(scene, entity, saved);
     free(saved);
     entity_set_enabled(entity, false);
     TEST_ASSERT_NULL(skin->contact_mask.coverage);
@@ -5651,6 +5677,30 @@ test_contact_warp_and_bounds_sweep(void) {
     }
 }
 
+/* The drawn bounds of the mover's renderer `r` take in its contact under `light`, to 0.001. */
+static __attribute__((noinline)) void
+assert_drawn_bounds_take_in_the_contact(scene_t* scene, scene_renderer_t* r, vec3f_t light) {
+    const box3f_t bounds = box3f_union(r->world_bounds, scene_contact_bounds(scene, r, light));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.hi.x, r->drawn_bounds.hi.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.lo.x, r->drawn_bounds.lo.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.lo.z, r->drawn_bounds.lo.z);
+}
+
+/* The blob cast along `light` lies on the far side of the mover from `towards`. */
+static __attribute__((noinline)) void
+assert_blob_faces_away(scene_t* scene, scene_renderer_t* r, vec3f_t light, vec3f_t towards) {
+    contact_blob_t blob;
+    TEST_ASSERT_TRUE(scene_contact_blob(scene, r, light, &blob));
+    TEST_ASSERT_TRUE(blob.centre.x * towards.x + blob.centre.z * towards.z <= 0);
+}
+
+/* The contact light `scene` picks at `at` among `drawn` is `want`, exactly. */
+static __attribute__((noinline)) void
+assert_contact_light_is(vec3f_t want, scene_t* scene, vec3f_t at, scene_t* const* drawn) {
+    const vec3f_t got = scene_contact_light(scene, at, drawn, 2);
+    TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof got);
+}
+
 static void
 test_contact_receiver_light_and_bounds(void) {
     fixture_with_skin(&SKIN_OPTIONS);
@@ -5662,63 +5712,43 @@ test_contact_receiver_light_and_bounds(void) {
     scene_t* scene = columns(mover_root);
     TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
     TEST_ASSERT_TRUE(light_set_intensity(mover, 2));
-    transformf_t pose = transform_local(sun);
-    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 3));
-    transform_set_local(sun, pose);
-    scene_contact_t contact = {0};
-    contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, contact.warp};
-    scene_set_contact(mover, &contact);
-    contact.warp = true;
-    scene_set_contact(mover, &contact);
+    turn_entity(sun, vec3f_unit_z(), MATH_PI / 3);
+    set_contact_shape(mover, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, false);
+    set_contact_shape(mover, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, true);
     frame(0);
     scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, row_of(mover))];
     const vec3f_t want = scene_light_brightest_direction(receiver);
-    const box3f_t bounds = box3f_union(r->world_bounds, scene_contact_bounds(scene, r, want));
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.hi.x, r->drawn_bounds.hi.x);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, bounds.lo.x, r->drawn_bounds.lo.x);
-    scene_t* drawn[] = {receiver, scene};
-    const vec3f_t selected = scene_contact_light(scene, box3f_centre(r->world_bounds), drawn, 2);
-    TEST_ASSERT_EQUAL_MEMORY(&want, &selected, sizeof want);
+    assert_drawn_bounds_take_in_the_contact(scene, r, want);
+    scene_t* const drawn[] = {receiver, scene};
+    assert_contact_light_is(want, scene, box3f_centre(r->world_bounds), drawn);
     r->world_bounds = (box3f_t){{-1, 0, -1}, {1, 2, 1}};
     static const scene_contact_shape_t shapes[] = {SCENE_CONTACT_BLOB, SCENE_CONTACT_SILHOUETTE};
     for (size_t shape = 0; shape < sizeof shapes / sizeof shapes[0]; shape++) {
-        contact = (scene_contact_t){0, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape], contact.warp};
-        scene_set_contact(mover, &contact);
+        set_contact_shape(mover, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, shapes[shape], true);
         frame(0);
-        contact_blob_t blob;
-        TEST_ASSERT_TRUE(scene_contact_blob(scene, r, selected, &blob));
-        TEST_ASSERT_TRUE(blob.centre.x * want.x + blob.centre.z * want.z <= 0);
+        assert_blob_faces_away(scene, r, want, want);
     }
     entity_set_enabled(sun, false);
     frame(0);
-    const box3f_t fallback =
-        box3f_union(r->world_bounds, scene_contact_bounds(scene, r, scene_light_brightest_direction(scene)));
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, fallback.hi.x, r->drawn_bounds.hi.x);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, fallback.lo.z, r->drawn_bounds.lo.z);
-    const vec3f_t other = scene_contact_light(scene, vec3f_zero(), drawn, 2);
-    const vec3f_t mover_light = scene_light_brightest_direction(scene);
-    TEST_ASSERT_EQUAL_MEMORY(&mover_light, &other, sizeof other);
+    assert_drawn_bounds_take_in_the_contact(scene, r, scene_light_brightest_direction(scene));
+    assert_contact_light_is(scene_light_brightest_direction(scene), scene, vec3f_zero(), drawn);
     entity_set_enabled(mover, false);
     scene_lights_prepare(scene);
     frame(0);
     static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}};
     static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
     scene_set_probes(mover_root, &probes);
-    const vec3f_t probe = scene_contact_light(scene, vec3f_zero(), drawn, 2);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, probe.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, scene_contact_light(scene, vec3f_zero(), drawn, 2).x);
     entity_set_enabled(mover, true);
     TEST_ASSERT_TRUE(light_set_intensity(mover, 0));
     frame(0);
-    vec3f_t dark = scene_contact_light(scene, vec3f_zero(), drawn, 2);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, dark.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, scene_contact_light(scene, vec3f_zero(), drawn, 2).x);
     TEST_ASSERT_TRUE(light_set_intensity(mover, 1));
     TEST_ASSERT_TRUE(light_set_color(mover, vec3f_zero()));
     frame(0);
-    dark = scene_contact_light(scene, vec3f_zero(), drawn, 2);
-    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, dark.x);
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 1, scene_contact_light(scene, vec3f_zero(), drawn, 2).x);
     scene_set_probes(mover_root, NULL);
-    const vec3f_t overhead = scene_contact_light(scene, vec3f_zero(), drawn, 2);
-    TEST_ASSERT_EQUAL_FLOAT(1, overhead.y);
+    TEST_ASSERT_EQUAL_FLOAT(1, scene_contact_light(scene, vec3f_zero(), drawn, 2).y);
 }
 
 static void
@@ -7259,6 +7289,62 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     test_free_aligned(raw);
 }
 
+static __attribute__((noinline)) void
+check_scene_light_rotation(entity_t scene, vec3f_t sun_angles) {
+    const entity_t entity = entity_find(scene, name_hash("red"));
+    const entity_t light = entity_find(scene, name_hash("camera"));
+    const entity_t baked = entity_find(scene, name_hash("green"));
+    scene_skinned_renderer_t* skin = skin_of(entity);
+    const r3d_lit_mesh_t* mesh = renderer_mesh(entity);
+    const r3d_lit_mesh_t* static_mesh = renderer_mesh(baked);
+    uint8_t baked_colors[QUAD_VERTICES][3];
+    memcpy(baked_colors, static_mesh->colors, sizeof baked_colors);
+    TEST_ASSERT_EQUAL_PTR(skin->bind.colors, mesh->colors);
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_TONEMAP_WHITE_NONE, columns(scene)->tonemap_white);
+    TEST_ASSERT_TRUE(light_set_intensity(light, 1));
+    transformf_t pose = transform_local(light);
+    pose.rotation = quatf_from_euler(sun_angles);
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x,
+                             columns(scene)->world_lights.direction[0].x);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y,
+                             columns(scene)->world_lights.direction[0].y);
+    TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z,
+                             columns(scene)->world_lights.direction[0].z);
+    TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
+    TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
+    uint8_t lit_colors[RIG_VERTICES][3];
+    memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+    const size_t bytes = r3d_skin_output_bytes(&skin->bind);
+    void* block = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(block);
+    r3d_skin_output_t output;
+    TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
+    uint8_t expected[RIG_VERTICES][3];
+    r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
+                          skin->normal_palette, &columns(scene)->world_lights, expected);
+    TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
+    free(block);
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
+    pose.rotation = quatf_identity();
+    transform_set_local(light, pose);
+    scene_animation_step(columns(scene), 0);
+    memcpy(lit_colors, mesh->colors, sizeof lit_colors);
+    const quatf_t turn = quatf_from_euler(sun_angles);
+    pose.rotation = turn;
+    transform_set_local(light, pose);
+    transformf_t renderer = transform_local(entity);
+    renderer.rotation = turn;
+    transform_set_local(entity, renderer);
+    scene_animation_step(columns(scene), 0);
+    TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+}
+
 static void
 test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
     static const char* const skins[] = {"rig.skin2", "rig.skin4"};
@@ -7268,58 +7354,7 @@ test_scene_light_rotation_shades_only_skin_and_matches_kernel(void) {
     const vec3f_t sun_angles = {40.0F * MATH_PI / DEGREES_HALF_TURN, 30.0F * MATH_PI / DEGREES_HALF_TURN, 0};
     for (size_t i = 0; i < sizeof skins / sizeof skins[0]; i++) {
         entity_t scene = rig_fixture(skins[i], NULL);
-        const entity_t entity = entity_find(scene, name_hash("red"));
-        const entity_t light = entity_find(scene, name_hash("camera"));
-        const entity_t baked = entity_find(scene, name_hash("green"));
-        scene_skinned_renderer_t* skin = skin_of(entity);
-        const r3d_lit_mesh_t* mesh = renderer_mesh(entity);
-        const r3d_lit_mesh_t* static_mesh = renderer_mesh(baked);
-        uint8_t baked_colors[QUAD_VERTICES][3];
-        memcpy(baked_colors, static_mesh->colors, sizeof baked_colors);
-        TEST_ASSERT_EQUAL_PTR(skin->bind.colors, mesh->colors);
-        TEST_ASSERT_EQUAL_FLOAT(SCENE_TONEMAP_WHITE_NONE, columns(scene)->tonemap_white);
-        TEST_ASSERT_TRUE(light_set_intensity(light, 1));
-        transformf_t pose = transform_local(light);
-        pose.rotation = quatf_from_euler(sun_angles);
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).x,
-                                 columns(scene)->world_lights.direction[0].x);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).y,
-                                 columns(scene)->world_lights.direction[0].y);
-        TEST_ASSERT_FLOAT_WITHIN(0.01F, quatf_rotate(pose.rotation, SCENE_LIGHT_AXIS).z,
-                                 columns(scene)->world_lights.direction[0].z);
-        TEST_ASSERT_EQUAL_PTR(skin->colors, mesh->colors);
-        TEST_ASSERT_EQUAL_MEMORY(baked_colors, static_mesh->colors, sizeof baked_colors);
-        uint8_t lit_colors[RIG_VERTICES][3];
-        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
-        const size_t bytes = r3d_skin_output_bytes(&skin->bind);
-        void* block = malloc(bytes);
-        TEST_ASSERT_NOT_NULL(block);
-        r3d_skin_output_t output;
-        TEST_ASSERT_TRUE(r3d_skin_output_init(&skin->bind, block, bytes, &output));
-        uint8_t expected[RIG_VERTICES][3];
-        r3d_skin_clusters_lit(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &output,
-                              skin->normal_palette, &columns(scene)->world_lights, expected);
-        TEST_ASSERT_EQUAL_MEMORY(expected, mesh->colors, sizeof expected);
-        free(block);
-        TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
-        pose.rotation = quatf_from_euler((vec3f_t){MATH_PI, 0, 0});
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_NOT_EQUAL(0, memcmp(lit_colors, mesh->colors, sizeof lit_colors));
-        pose.rotation = quatf_identity();
-        transform_set_local(light, pose);
-        scene_animation_step(columns(scene), 0);
-        memcpy(lit_colors, mesh->colors, sizeof lit_colors);
-        const quatf_t turn = quatf_from_euler(sun_angles);
-        pose.rotation = turn;
-        transform_set_local(light, pose);
-        transformf_t renderer = transform_local(entity);
-        renderer.rotation = turn;
-        transform_set_local(entity, renderer);
-        scene_animation_step(columns(scene), 0);
-        TEST_ASSERT_EQUAL_MEMORY(lit_colors, mesh->colors, sizeof lit_colors);
+        check_scene_light_rotation(scene, sun_angles);
         release_fixture();
     }
 }

@@ -423,8 +423,7 @@ def panel_colour(rgb):
 def rgb888(panel):
     """The 0..255 channels a panel colour stands for, with the low bits
     refilled from the high ones so panel_colour() returns the same value."""
-    p = gfx_color.swap(np.asarray(panel, dtype=np.int64))
-    return np.stack(gfx_color.expand(p >> 11, (p >> 5) & 63, p & 31), axis=1)
+    return np.stack(gfx_color.rgb888_of_rgb565(gfx_color.swap(np.asarray(panel, dtype=np.int64))), axis=1)
 
 
 def mesh_blob(mesh):

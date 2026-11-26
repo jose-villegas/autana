@@ -1051,35 +1051,55 @@ test_the_sweeps_gas_scenes_put_work_in_both_gas_passes(void) {
         TEST_ASSERT_NOT_NULL(box);
         TEST_ASSERT_NOT_NULL(before);
 
-        sand_t cs;
-        sand_t bs;
-        sand_init(&cs, column, GW, GH, SWEEP_SEED);
-        sand_init(&bs, box, GW, GH, SWEEP_SEED);
-        const int cw = build_layout_gas_column_scene(&cs);
-        const int bw = build_layout_gas_box_scene(&bs);
-        const int cells_before = sweep_cells_of(&cs, MAT_GAS);
-        const int packed_before = sweep_cells_of(&bs, MAT_GAS);
+        sand_t* const cs = malloc(sizeof *cs);
+        TEST_ASSERT_NOT_NULL(cs);
+        sand_t* const bs = malloc(sizeof *bs);
+        TEST_ASSERT_NOT_NULL(bs);
+        sand_init(cs, column, GW, GH, SWEEP_SEED);
+        sand_init(bs, box, GW, GH, SWEEP_SEED);
+        const int cw = build_layout_gas_column_scene(cs);
+        const int bw = build_layout_gas_box_scene(bs);
+        const int cells_before = sweep_cells_of(cs, MAT_GAS);
+        const int packed_before = sweep_cells_of(bs, MAT_GAS);
 
-        run_steps(&cs, cw, gx[g], gy[g]);
-        run_steps(&bs, bw, gx[g], gy[g]);
+        run_steps(cs, cw, gx[g], gy[g]);
+        run_steps(bs, bw, gx[g], gy[g]);
         memcpy(before, column, GW * GH);
         for (int i = 0; i < SWEEP_STEPS; i++) {
-            sand_step(&cs, gx[g], gy[g], 0);
-            sand_step(&bs, gx[g], gy[g], 0);
+            sand_step(cs, gx[g], gy[g], 0);
+            sand_step(bs, gx[g], gy[g], 0);
         }
 
         char why[160];
         snprintf(why, sizeof why, "gravity %d,%d", gx[g], gy[g]);
         TEST_ASSERT_TRUE_MESSAGE(memcmp(before, column, GW * GH) != 0, why);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(cells_before, sweep_cells_of(&cs, MAT_GAS), why);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(packed_before, sweep_cells_of(&bs, MAT_GAS), why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(cells_before, sweep_cells_of(cs, MAT_GAS), why);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(packed_before, sweep_cells_of(bs, MAT_GAS), why);
         TEST_ASSERT_GREATER_THAN_INT_MESSAGE(GW * GH / 2, packed_before, why);
 
         free(before);
         free(box);
         free(column);
+        free(bs);
+        free(cs);
     }
 }
+
+/* A present-cost scene's grid and sim, with what app_sand.c keeps per row to
+ * mark a frame: the dirty flags the sim writes, the dirty column span
+ * (dirty_x0/dirty_x1, NULL unless opened for the span mirror) and the runs
+ * last sent. */
+typedef struct {
+    uint8_t* big;
+    uint8_t* blocks;
+    uint8_t* dirty;
+    uint16_t* dirty_x0;
+    uint16_t* dirty_x1;
+    uint16_t* x0;
+    uint16_t* x1;
+    uint8_t* n;
+    sand_t* sim;
+} present_board_t;
 
 #ifdef DEVICE_BUILD
 
@@ -1116,8 +1136,10 @@ typedef struct {
     void* scratch;
 } sweep_board_t;
 
-static void
-sweep_board_open(sweep_board_t* b, int w, int h) {
+static sweep_board_t*
+sweep_board_open(int w, int h) {
+    sweep_board_t* const b = malloc(sizeof *b);
+    TEST_ASSERT_NOT_NULL(b);
     const size_t blocks = sand_sleep_block_bytes(w, h);
 
     b->cells = malloc((size_t)w * (size_t)h);
@@ -1131,6 +1153,7 @@ sweep_board_open(sweep_board_t* b, int w, int h) {
     sand_enable_sleeping(&b->s, b->blocks);
     sand_enable_step_stamps(&b->s, b->stamps);
     b->scratch = lane_scratch_open(&b->s);
+    return b;
 }
 
 static void
@@ -1139,6 +1162,7 @@ sweep_board_close(sweep_board_t* b) {
     free(b->stamps);
     free(b->blocks);
     free(b->cells);
+    free(b);
 }
 
 /* The scene is painted with the split off, so every arm starts on the same
@@ -1171,11 +1195,9 @@ sweep_pass_add(sweep_pass_us_t* into, const sand_t* s) {
 static void
 sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, const sweep_orient_t* o,
            sweep_arm_t arm) {
-    sweep_board_t b;
-
-    sweep_board_open(&b, q->w, q->h);
+    sweep_board_t* const b = sweep_board_open(q->w, q->h);
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side[0], side[1]), "every swept side must clear the floor");
-    const int warm = sc->build(&b.s);
+    const int warm = sc->build(&b->s);
     const int chunks = ((q->w + side[0] - 1) / side[0]) * ((q->h + side[1] - 1) / side[1]);
 
     const two_core_scope_t core = two_core_scope_begin(arm >= SWEEP_ARM_SOLO);
@@ -1186,13 +1208,13 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
     const sand_chunk_share_t share = sand_chunk_share_for_test(SAND_CHUNK_SHARE_ALWAYS);
     sand_force_hashed_rng(arm == SWEEP_ARM_SERIAL_HASHED);
     sand_chunk_pass_set_driver_for_test(arm == SWEEP_ARM_SOLO ? SAND_CHUNK_PASS_SOLO : SAND_CHUNK_PASS_CORE1);
-    run_steps(&b.s, warm, o->gx, o->gy);
-    b.s.split_lane_aborts = 0;
+    run_steps(&b->s, warm, o->gx, o->gy);
+    b->s.split_lane_aborts = 0;
     sweep_pass_us_t pass = {0};
     const int64_t start = timing_now_us();
     for (int i = 0; i < SWEEP_STEPS; i++) {
-        sand_step(&b.s, o->gx, o->gy, 0);
-        sweep_pass_add(&pass, &b.s);
+        sand_step(&b->s, o->gx, o->gy, 0);
+        sweep_pass_add(&pass, &b->s);
     }
     const int64_t took = timing_now_us() - start;
     sand_chunk_pass_set_driver_for_test(SAND_CHUNK_PASS_CORE1);
@@ -1209,12 +1231,12 @@ sweep_cell(const sweep_quality_t* q, const sweep_scene_t* sc, const int* side, c
              "CHUNK_SWEEP quality=%s grid=%dx%d side=%dx%d scene=%s orient=%s arm=%s us_per_step=%lld aborts=%u "
              "chunks=%d sweep_us=%lld liquid_us=%lld gas_us=%lld react_us=%lld other_us=%lld took_us=%lld steps=%d",
              q->name, q->w, q->h, side[0], side[1], sc->name, o->name, sweep_arm_names[arm], (long long)per_step,
-             b.s.split_lane_aborts, chunks, (long long)(pass.sweep / SWEEP_STEPS),
+             b->s.split_lane_aborts, chunks, (long long)(pass.sweep / SWEEP_STEPS),
              (long long)(pass.liquid / SWEEP_STEPS), (long long)(pass.gas / SWEEP_STEPS),
              (long long)(pass.react / SWEEP_STEPS), (long long)(other / SWEEP_STEPS), (long long)took, SWEEP_STEPS);
 
     (void)sand_chunk_side_for_test(0, 0);
-    sweep_board_close(&b);
+    sweep_board_close(b);
 }
 
 /* Settled is a grid that stopped changing, not a step count: a pile takes
@@ -1243,10 +1265,8 @@ sweep_floor_settle(sweep_board_t* b, size_t cells) {
 
 static int64_t
 sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) {
-    sweep_board_t b;
-
-    sweep_board_open(&b, q->w, q->h);
-    (void)build_layout_settling_pile_scene(&b.s);
+    sweep_board_t* const b = sweep_board_open(q->w, q->h);
+    (void)build_layout_settling_pile_scene(&b->s);
 
     /* The shipped cut, named rather than left to the table: this pulls
      * gravity, so the class is the one every quality's second column holds,
@@ -1259,17 +1279,17 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
     TEST_ASSERT_TRUE(sand_chunk_side_for_test(side_x, side_y));
 
     const two_core_scope_t core = two_core_scope_begin(two_core);
-    const int settled_in = sweep_floor_settle(&b, (size_t)q->w * (size_t)q->h);
+    const int settled_in = sweep_floor_settle(b, (size_t)q->w * (size_t)q->h);
     const int64_t start = timing_now_us();
     for (int i = 0; i < SWEEP_FLOOR_STEPS; i++) {
-        sand_step(&b.s, 0, SCENE_GRAVITY, 0);
+        sand_step(&b->s, 0, SCENE_GRAVITY, 0);
     }
     const int64_t per_step = (timing_now_us() - start) / SWEEP_FLOOR_STEPS;
     two_core_scope_end(core);
     collect_core1_lane();
     (void)sand_chunk_side_for_test(0, 0);
 
-    sweep_board_close(&b);
+    sweep_board_close(b);
     if (settled_in > *out_settle_steps) {
         *out_settle_steps = settled_in;
     }
@@ -2627,15 +2647,14 @@ mirror_app_sand_marking(const uint8_t* cells, int w, int h, uint8_t* dirty_rows,
  * ratio tests measure the un-pipelined price; the two do not convert by a
  * band count. */
 static int64_t
-run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t* dirty_rows, uint16_t* row_x0,
-                          uint16_t* row_x1, uint8_t* row_n, int gx, int gy, int gz, int settle_steps,
-                          int measured_steps, int* full_bands, int* gathered, int* partial_bands, int64_t* sim_us_out,
-                          int64_t* mark_us_out, int64_t* present_us_out) {
+run_present_against_scene(present_board_t* b, int gx, int gy, int gz, int settle_steps, int measured_steps,
+                          int* full_bands, int* gathered, int* partial_bands, int64_t* sim_us_out, int64_t* mark_us_out,
+                          int64_t* present_us_out) {
     const two_core_scope_t core = two_core_scope_begin(true);
     test_panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
-        sand_step(s, gx, gy, gz);
-        mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
+        sand_step(b->sim, gx, gy, gz);
+        mirror_app_sand_marking(b->big, REAL_W, REAL_H, b->dirty, b->x0, b->x1, b->n);
         test_present();
     }
 
@@ -2646,9 +2665,9 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
     int64_t present_us = 0;
     for (int i = 0; i < measured_steps; i++) {
         const int64_t t0 = timing_now_us();
-        sand_step(s, gx, gy, gz);
+        sand_step(b->sim, gx, gy, gz);
         const int64_t t1 = timing_now_us();
-        mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
+        mirror_app_sand_marking(b->big, REAL_W, REAL_H, b->dirty, b->x0, b->x1, b->n);
         const int64_t t2 = timing_now_us();
         test_present();
         const int64_t t3 = timing_now_us();
@@ -2691,27 +2710,13 @@ log_frame_time(const char* frame, int64_t sim_us, int64_t mark_us, int64_t prese
 
 #endif /* DEVICE_BUILD */
 
-/* A present-cost scene's grid and sim, with what app_sand.c keeps per row to
- * mark a frame: the dirty flags the sim writes, the dirty column span
- * (dirty_x0/dirty_x1, NULL unless opened for the span mirror) and the runs
- * last sent. */
-typedef struct {
-    uint8_t* big;
-    uint8_t* blocks;
-    uint8_t* dirty;
-    uint16_t* dirty_x0;
-    uint16_t* dirty_x1;
-    uint16_t* x0;
-    uint16_t* x1;
-    uint8_t* n;
-    sand_t* sim;
-} present_board_t;
-
 /* Allocates the grid (and with `blocks` its block map), REAL_H rows of each
  * per-row buffer, then the sim, in that order; every row is seeded as last
  * sending the full width. The caller builds the scene into sim. */
-static void
-present_board_open(present_board_t* b, bool blocks, bool span) {
+static present_board_t*
+present_board_open(bool blocks, bool span) {
+    present_board_t* b = malloc(sizeof *b);
+    TEST_ASSERT_NOT_NULL(b);
     b->blocks = NULL;
     if (blocks) {
         sand_test_grid_buffers_open(&b->big, &b->blocks, REAL_W, REAL_H);
@@ -2738,6 +2743,7 @@ present_board_open(present_board_t* b, bool blocks, bool span) {
     }
     b->sim = malloc(sizeof *b->sim);
     TEST_ASSERT_NOT_NULL(b->sim);
+    return b;
 }
 
 static void
@@ -2751,6 +2757,7 @@ present_board_close(present_board_t* b) {
     free(b->x1);
     free(b->n);
     free(b->sim);
+    free(b);
 }
 
 /* DENSE, CONTIGUOUS shape. Checkerboard exceeds ROW_MAX_RUNS (2).
@@ -2770,21 +2777,19 @@ build_falling_sand_present_scene(sand_t* real, uint8_t* big, uint8_t* dirty_rows
  * mark and present means. */
 static void
 present_falling_sand_scene(int bands[3], int64_t phase_us[3]) {
-    present_board_t b;
-    present_board_open(&b, false, false);
-    build_falling_sand_present_scene(b.sim, b.big, b.dirty);
-    TEST_ASSERT_EQUAL_UINT8(1, b.dirty[(REAL_H / 2) - 1]);
+    present_board_t* b = present_board_open(false, false);
+    build_falling_sand_present_scene(b->sim, b->big, b->dirty);
+    TEST_ASSERT_EQUAL_UINT8(1, b->dirty[(REAL_H / 2) - 1]);
 
 #ifdef DEVICE_BUILD
-    (void)run_present_against_scene(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, 0, 1, 0, 5,
-                                    FALLING_SAND_PRESENT_FRAMES, &bands[0], &bands[1], &bands[2], &phase_us[0],
-                                    &phase_us[1], &phase_us[2]);
+    (void)run_present_against_scene(b, 0, 1, 0, 5, FALLING_SAND_PRESENT_FRAMES, &bands[0], &bands[1], &bands[2],
+                                    &phase_us[0], &phase_us[1], &phase_us[2]);
 #else
     (void)bands;
     (void)phase_us;
 #endif
 
-    present_board_close(&b);
+    present_board_close(b);
 }
 
 static void
@@ -2844,13 +2849,12 @@ test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene(void) {
 static int64_t
 present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps, int measured_steps, const char* frame,
                       const char* scene) {
-    present_board_t b;
-    present_board_open(&b, true, false);
-    sand_t* const real = b.sim;
-    sand_init(real, b.big, REAL_W, REAL_H, seed);
-    sand_enable_sleeping(real, b.blocks);
+    present_board_t* b = present_board_open(true, false);
+    sand_t* const real = b->sim;
+    sand_init(real, b->big, REAL_W, REAL_H, seed);
+    sand_enable_sleeping(real, b->blocks);
     use_app_rates(real);
-    sand_track_dirty_rows(real, b.dirty);
+    sand_track_dirty_rows(real, b->dirty);
 
     build(real);
 
@@ -2860,8 +2864,7 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
     int64_t sim_us = 0;
     int64_t mark_us = 0;
     int64_t present_us = 0;
-    const int64_t mean_us = run_present_against_scene(real, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, 0,
-                                                      SCENE_GRAVITY, 0, settle_steps, measured_steps, &full_bands,
+    const int64_t mean_us = run_present_against_scene(b, 0, SCENE_GRAVITY, 0, settle_steps, measured_steps, &full_bands,
                                                       &gathered, &partial_bands, &sim_us, &mark_us, &present_us);
 
     log_frame_time(frame, sim_us, mark_us, present_us);
@@ -2870,7 +2873,7 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
              "partial-band strip-sends)",
              scene, REAL_W, REAL_H, (long long)mean_us, measured_steps, full_bands, gathered, partial_bands);
 
-    present_board_close(&b);
+    present_board_close(b);
     return mean_us;
 }
 
@@ -2961,17 +2964,16 @@ mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_
  * added and routed through sand_track_dirty_cols() so the sim itself
  * starts recording a span, not just which rows changed. */
 static int64_t
-run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, uint8_t* dirty_rows, uint16_t* dirty_x0,
-                               uint16_t* dirty_x1, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n, int gx, int gy,
-                               int gz, int settle_steps, int measured_steps, int* full_bands, int* gathered,
-                               int* partial_bands, int64_t* pixels_sent_out) {
-    sand_track_dirty_cols(s, dirty_x0, dirty_x1);
+run_present_against_scene_span(present_board_t* b, int gx, int gy, int gz, int settle_steps, int measured_steps,
+                               int* full_bands, int* gathered, int* partial_bands, int64_t* pixels_sent_out) {
+    sand_track_dirty_cols(b->sim, b->dirty_x0, b->dirty_x1);
 
     const two_core_scope_t core = two_core_scope_begin(true);
     test_panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
-        sand_step(s, gx, gy, gz);
-        mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, NULL);
+        sand_step(b->sim, gx, gy, gz);
+        mirror_app_sand_marking_span(b->big, REAL_W, REAL_H, b->dirty, b->dirty_x0, b->dirty_x1, b->x0, b->x1, b->n,
+                                     NULL);
         test_present();
     }
 
@@ -2980,8 +2982,9 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
     int64_t present_us = 0;
     int64_t pixels_sent = 0;
     for (int i = 0; i < measured_steps; i++) {
-        sand_step(s, gx, gy, gz);
-        mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, &pixels_sent);
+        sand_step(b->sim, gx, gy, gz);
+        mirror_app_sand_marking_span(b->big, REAL_W, REAL_H, b->dirty, b->dirty_x0, b->dirty_x1, b->x0, b->x1, b->n,
+                                     &pixels_sent);
         const int64_t t0 = timing_now_us();
         test_present();
         present_us += timing_now_us() - t0;
@@ -3038,21 +3041,28 @@ build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks
 static int64_t
 measure_present_cost(void (*build)(sand_t*, uint8_t*, uint8_t*), int gx, int gy, bool span, int bands[3],
                      int64_t* pixels_sent) {
-    present_board_t b;
-    present_board_open(&b, true, span);
-    build(b.sim, b.big, b.blocks);
-    sand_track_dirty_rows(b.sim, b.dirty);
+    present_board_t* b = present_board_open(true, span);
+    build(b->sim, b->big, b->blocks);
+    sand_track_dirty_rows(b->sim, b->dirty);
 
-    const int64_t us =
-        span
-            ? run_present_against_scene_span(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.dirty_x0, b.dirty_x1, b.x0, b.x1,
-                                             b.n, gx, gy, 0, 20, PRESENT_COST_MEASURED_STEPS, &bands[0], &bands[1],
-                                             &bands[2], pixels_sent)
-            : run_present_against_scene(b.sim, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, gx, gy, 0, 20,
-                                        PRESENT_COST_MEASURED_STEPS, &bands[0], &bands[1], &bands[2], NULL, NULL, NULL);
+    const int64_t us = span ? run_present_against_scene_span(b, gx, gy, 0, 20, PRESENT_COST_MEASURED_STEPS, &bands[0],
+                                                             &bands[1], &bands[2], pixels_sent)
+                            : run_present_against_scene(b, gx, gy, 0, 20, PRESENT_COST_MEASURED_STEPS, &bands[0],
+                                                        &bands[1], &bands[2], NULL, NULL, NULL);
 
-    present_board_close(&b);
+    present_board_close(b);
     return us;
+}
+
+static __attribute__((noinline)) void
+log_present_comparison(const char* scene_name, const int row[3], int64_t row_us, const int span[3], int64_t span_us,
+                       int64_t pixels_sent) {
+    ESP_LOGI("device_tests",
+             "present cost, %s, %dx%d: ROW-only %lld us/frame (%d full, %d "
+             "gathered, %d partial) vs COLUMN-span %lld us/frame (%d full, "
+             "%d gathered, %d partial, %lld px/frame)",
+             scene_name, REAL_W, REAL_H, (long long)row_us, row[0], row[1], row[2], (long long)span_us, span[0],
+             span[1], span[2], (long long)pixels_sent);
 }
 
 /* Runs `build` under both mirrors, back to back, so the before/after numbers
@@ -3066,12 +3076,7 @@ report_span_vs_row_present_cost(const char* scene_name, void (*build)(sand_t*, u
     int64_t pixels_sent = 0;
     const int64_t span_us = measure_present_cost(build, gx, gy, true, span, &pixels_sent);
 
-    ESP_LOGI("device_tests",
-             "present cost, %s, %dx%d: ROW-only %lld us/frame (%d full, %d "
-             "gathered, %d partial) vs COLUMN-span %lld us/frame (%d full, "
-             "%d gathered, %d partial, %lld px/frame)",
-             scene_name, REAL_W, REAL_H, (long long)row_us, row[0], row[1], row[2], (long long)span_us, span[0],
-             span[1], span[2], (long long)pixels_sent);
+    log_present_comparison(scene_name, row, row_us, span, span_us, pixels_sent);
 }
 
 static void

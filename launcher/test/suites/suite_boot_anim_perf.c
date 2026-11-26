@@ -120,8 +120,10 @@ clamp_below(uint32_t ms, uint32_t exclusive_max) {
  * reveal is strictly between 0 and 255. It sits at 90% through the window,
  * not at the edge, so tween rounding cannot drop the frame into the cheap
  * memcpy branch. */
-static void
-build_checkpoints(perf_checkpoint_t out[7]) {
+#define PERF_CHECKPOINT_COUNT 7
+
+static __attribute__((noinline)) void
+build_checkpoints(perf_checkpoint_t out[PERF_CHECKPOINT_COUNT]) {
     const uint32_t grid_settled =
         BOOT_ANIM_GRID_START_MS + (uint32_t)BOOT_ANIM_GRID_BANDS * BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS;
     const uint32_t image_start = (uint32_t)BOOT_ANIM_IMAGE_START_MS;
@@ -305,7 +307,7 @@ report_checkpoint(const perf_checkpoint_t* cp, const char* mode) {
     }
 }
 
-static void
+static __attribute__((noinline)) void
 run_checkpoint(const boot_anim_motion_t* motion, const image_t* photo, const perf_checkpoint_t* cp, const char* mode,
                bool contend, bool clear_on_send) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
@@ -320,19 +322,21 @@ run_checkpoint(const boot_anim_motion_t* motion, const image_t* photo, const per
                           "two failed to allocate");
     }
 
-    checkpoint_frame_t frame;
-    sample_checkpoint(motion, photo, cp->now_ms, &frame);
+    checkpoint_frame_t* frame = malloc(sizeof *frame);
+    TEST_ASSERT_NOT_NULL(frame);
+    sample_checkpoint(motion, photo, cp->now_ms, frame);
     boot_anim_draw_frame(motion, photo, cp->now_ms);
     gfx_present();
     TEST_ASSERT_EQUAL_INT(clear_on_send ? GFX_READBACK_UNAVAILABLE : GFX_READBACK_READY, gfx_readback_begin());
     gfx_readback_end();
-    time_frames(&frame, contend, clear_on_send);
+    time_frames(frame, contend, clear_on_send);
     report_checkpoint(cp, mode);
 
     free(samples);
     free(stat_scratch);
     samples = NULL;
     stat_scratch = NULL;
+    free(frame);
 }
 
 void
@@ -343,28 +347,40 @@ test_boot_anim_performance_by_checkpoint(void) {
     draw_clear_clip();
     gfx_invalidate();
 
-    perf_checkpoint_t checkpoints[7];
+    perf_checkpoint_t* const checkpoints = malloc(PERF_CHECKPOINT_COUNT * sizeof *checkpoints);
+    TEST_ASSERT_NOT_NULL(checkpoints);
     build_checkpoints(checkpoints);
 
     /* What boot draws through, loaded as boot loads it. */
-    boot_anim_motion_t motion;
-    boot_anim_motion_load(&motion);
-    if (!motion.from_pack) {
+    struct {
+        boot_anim_motion_t motion;
+        image_t photo;
+    }* const assets = malloc(sizeof *assets);
+
+    if (assets == NULL) {
+        free(checkpoints);
+        TEST_FAIL_MESSAGE("boot animation fixture allocation failed");
+    }
+    boot_anim_motion_load(&assets->motion);
+    if (!assets->motion.from_pack) {
+        free(checkpoints);
+        free(assets);
         TEST_FAIL_MESSAGE("the boot clip did not load: this would time the rest pose");
     }
     /* Boot mounts the photograph's pack inside frame
      * BOOT_ANIM_PHOTO_MOUNT_FRAME, which costs this on top of its drawing. */
-    image_t photo;
     const int64_t mount_start = timing_now_us();
-    boot_anim_photo_load(&photo);
+    boot_anim_photo_load(&assets->photo);
     const int64_t mount_us = timing_now_us() - mount_start;
-    if (photo.pixels == NULL) {
-        boot_anim_motion_release(&motion);
+    if (assets->photo.pixels == NULL) {
+        boot_anim_motion_release(&assets->motion);
+        free(checkpoints);
+        free(assets);
         TEST_FAIL_MESSAGE("the boot picture did not load: this would time boot without the photograph");
     }
     ESP_LOGI(TAG, "Photo mount: %lldus", (long long)mount_us);
 
-    const struct {
+    static const struct {
         gfx_layout_t layout;
         const char* name;
         bool contend;
@@ -379,15 +395,17 @@ test_boot_anim_performance_by_checkpoint(void) {
     for (size_t pass = 0; pass < sizeof passes / sizeof passes[0]; pass++) {
         const gfx_mode_request_t request = boot_anim_mode_request(passes[pass].layout, passes[pass].clear_on_send);
         TEST_ASSERT_EQUAL_INT(passes[pass].layout, gfx_mode_enter(&request)->layout);
-        for (size_t i = 0; i < sizeof checkpoints / sizeof checkpoints[0]; i++) {
-            run_checkpoint(&motion, &photo, &checkpoints[i], passes[pass].name, passes[pass].contend,
+        for (size_t i = 0; i < PERF_CHECKPOINT_COUNT; i++) {
+            run_checkpoint(&assets->motion, &assets->photo, &checkpoints[i], passes[pass].name, passes[pass].contend,
                            passes[pass].clear_on_send);
         }
         gfx_mode_exit();
     }
-    boot_anim_photo_release(&photo);
-    boot_anim_motion_release(&motion);
+    boot_anim_photo_release(&assets->photo);
+    boot_anim_motion_release(&assets->motion);
 
+    free(assets);
+    free(checkpoints);
     TEST_PASS();
 }
 

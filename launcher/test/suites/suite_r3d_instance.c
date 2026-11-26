@@ -84,22 +84,25 @@ typedef struct {
 static drawn_t
 draw_set(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* batches, int batch_count,
          const render_settings_t* settings) {
-    raster_t raster = {.instances = instances,
-                       .instance_count = count,
-                       .batches = batches,
-                       .batch_count = batch_count,
-                       .width = SIZE,
-                       .height = SIZE,
-                       .clear = CLEAR,
-                       .settings = settings};
-    drawn_t out = {.scratch = malloc(raster_scratch_bytes(&raster))};
+    raster_t* const raster = malloc(sizeof *raster);
+    TEST_ASSERT_NOT_NULL(raster);
+    *raster = (raster_t){.instances = instances,
+                         .instance_count = count,
+                         .batches = batches,
+                         .batch_count = batch_count,
+                         .width = SIZE,
+                         .height = SIZE,
+                         .clear = CLEAR,
+                         .settings = settings};
+    drawn_t out = {.scratch = malloc(raster_scratch_bytes(raster))};
     TEST_ASSERT_NOT_NULL(out.scratch);
-    raster.scratch = out.scratch;
-    const render_view_t frame_view = render_view_fixture(&CAMERA, &raster, 0);
-    out.stats = raster_draw(&raster, &frame_view);
-    out.color = raster_color(&raster);
-    out.depth = raster_depth(&raster);
-    out.drawn_count = raster_drawn_count(&raster);
+    raster->scratch = out.scratch;
+    const render_view_t frame_view = render_view_fixture(&CAMERA, raster, 0);
+    out.stats = raster_draw(raster, &frame_view);
+    out.color = raster_color(raster);
+    out.depth = raster_depth(raster);
+    out.drawn_count = raster_drawn_count(raster);
+    free(raster);
     return out;
 }
 
@@ -142,12 +145,19 @@ test_a_mesh_with_no_model_draws_where_it_is(void) {
 
 static void
 test_two_instances_appear_at_their_own_models(void) {
-    quad_t red;
-    quad_t green;
-    make_quad(&red, 255, 0, 0, 0);
-    make_quad(&green, 0, 255, 0, 0);
-    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL, NULL};
-    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL, NULL};
+    struct {
+        quad_t red;
+        quad_t green;
+        mat4f_t left;
+        mat4f_t right;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
+
+    make_quad(&work->red, 255, 0, 0, 0);
+    make_quad(&work->green, 0, 255, 0, 0);
+    const r3d_instance_t red_alone = {&work->red.mesh, NULL, NULL, NULL};
+    const r3d_instance_t green_alone = {&work->green.mesh, NULL, NULL, NULL};
     drawn_t alone = draw(&red_alone, 1);
     const uint16_t red_pixel = pixel(alone.color, 0.0F);
     free(alone.scratch);
@@ -156,34 +166,42 @@ test_two_instances_appear_at_their_own_models(void) {
     free(alone.scratch);
     TEST_ASSERT_NOT_EQUAL_HEX16(red_pixel, green_pixel);
 
-    const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
-    const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t both[] = {{&red.mesh, &left, NULL, NULL}, {&green.mesh, &right, NULL, NULL}};
+    work->left = placed(-3.0F, 0.0F, 1.0F);
+    work->right = placed(3.0F, 0.0F, 1.0F);
+    const r3d_instance_t both[] = {{&work->red.mesh, &work->left, NULL, NULL},
+                                   {&work->green.mesh, &work->right, NULL, NULL}};
     const drawn_t drawn = draw(both, 2);
     TEST_ASSERT_EQUAL_HEX16(red_pixel, pixel(drawn.color, -3.0F));
     TEST_ASSERT_EQUAL_HEX16(green_pixel, pixel(drawn.color, 3.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
     free(drawn.scratch);
+    free(work);
 }
 
 static void
 test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     enum { POSITION_SCALE = 8 };
 
-    quad_t unit, ticks;
-    make_quad(&unit, 255, 0, 0, 0);
-    make_quad(&ticks, 255, 0, 0, 0);
+    struct {
+        quad_t unit;
+        quad_t ticks;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
+    make_quad(&work->unit, 255, 0, 0, 0);
+    make_quad(&work->ticks, 255, 0, 0, 0);
     for (int i = 0; i < 4; i++) {
         for (int axis = 0; axis < 3; axis++) {
-            ticks.positions[i][axis] *= POSITION_SCALE;
+            work->ticks.positions[i][axis] *= POSITION_SCALE;
         }
     }
-    ticks.cluster.bounds.lo = vec3s_scale(ticks.cluster.bounds.lo, POSITION_SCALE);
-    ticks.cluster.bounds.hi = vec3s_scale(ticks.cluster.bounds.hi, POSITION_SCALE);
-    ticks.node.bounds = ticks.cluster.bounds;
-    ticks.mesh.position_scale = POSITION_SCALE;
+    work->ticks.cluster.bounds.lo = vec3s_scale(work->ticks.cluster.bounds.lo, POSITION_SCALE);
+    work->ticks.cluster.bounds.hi = vec3s_scale(work->ticks.cluster.bounds.hi, POSITION_SCALE);
+    work->ticks.node.bounds = work->ticks.cluster.bounds;
+    work->ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &model, NULL, NULL}, scaled = {&ticks.mesh, &model, NULL, NULL};
+    const r3d_instance_t reference = {&work->unit.mesh, &model, NULL, NULL},
+                         scaled = {&work->ticks.mesh, &model, NULL, NULL};
     const drawn_t expected = draw(&reference, 1);
     const drawn_t actual = draw(&scaled, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(actual.color, 3.0F));
@@ -191,6 +209,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(expected.color, actual.color, SIZE * SIZE);
     free(expected.scratch);
     free(actual.scratch);
+    free(work);
 }
 
 static void
@@ -252,13 +271,17 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
 
 static void
 test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
-    quad_t red;
+    struct {
+        quad_t red;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
     quad_t green;
-    make_quad(&red, 255, 0, 0, 0);
+    make_quad(&work->red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
-    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL}, {&red.mesh, NULL, NULL, NULL}};
-    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL, NULL}, {&green.mesh, &nearer, NULL, NULL}};
+    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL}, {&work->red.mesh, NULL, NULL, NULL}};
+    const r3d_instance_t far_first[] = {{&work->red.mesh, NULL, NULL, NULL}, {&green.mesh, &nearer, NULL, NULL}};
     drawn_t drawn = draw(near_first, 2);
     const uint16_t first = pixel(drawn.color, 0.0F);
     free(drawn.scratch);
@@ -267,6 +290,7 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     free(drawn.scratch);
     TEST_ASSERT_EQUAL_HEX16(first, second);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, first);
+    free(work);
 }
 
 /* Copies at many poses: off screen, behind the camera, crossing each edge,

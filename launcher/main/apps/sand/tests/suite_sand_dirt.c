@@ -489,34 +489,35 @@ static void
 test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
     uint8_t* grid = malloc((size_t)DRY_BANK_W * DRY_BANK_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "the drying-bank grid must fit in what the framebuffer leaves");
-    sand_t t;
-    sand_init(&t, grid, DRY_BANK_W, DRY_BANK_H, 12345U);
-    sand_clear(&t);
-    sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
+    sand_t* const t = malloc(sizeof *t);
+    TEST_ASSERT_NOT_NULL(t);
+    sand_init(t, grid, DRY_BANK_W, DRY_BANK_H, 12345U);
+    sand_clear(t);
+    sand_set_soak(t, SAND_SOAK_PER_MATERIAL);
 
     for (int x = 0; x < DRY_BANK_W; x++) {
-        sand_set(&t, x, DRY_BANK_H - 1, STONE);
+        sand_set(t, x, DRY_BANK_H - 1, STONE);
         for (int y = DRY_BANK_H - 6; y < DRY_BANK_H - 1; y++) {
-            sand_set(&t, x, y, CELL_SOIL(MAT_DIRT, 0, 0));
+            sand_set(t, x, y, CELL_SOIL(MAT_DIRT, 0, 0));
         }
         for (int y = DRY_BANK_H - 9; y < DRY_BANK_H - 6; y++) {
-            sand_set(&t, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
+            sand_set(t, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
     }
 
-    run_steps(&t, 3000, 0, 1000);
-    clear_material(&t, DRY_BANK_W, DRY_BANK_H, MAT_WATER);
+    run_steps(t, 3000, 0, 1000);
+    clear_material(t, DRY_BANK_W, DRY_BANK_H, MAT_WATER);
 
     bool wet = true;
     for (int i = 0; i < 40000 && wet; i++) {
-        sand_step(&t, 0, 1000, 0);
-        wet = grid_has_wet_dirt(&t, DRY_BANK_W, DRY_BANK_H);
+        sand_step(t, 0, 1000, 0);
+        wet = grid_has_wet_dirt(t, DRY_BANK_W, DRY_BANK_H);
     }
     TEST_ASSERT_FALSE_MESSAGE(wet, "the bank has to actually finish drying inside the budget, or "
                                    "everything below this is measuring a half-dry pile");
 
     int hist[SOIL_DRY_TONES];
-    const int total = tally_dirt_tones(&t, DRY_BANK_W, DRY_BANK_H, hist);
+    const int total = tally_dirt_tones(t, DRY_BANK_W, DRY_BANK_H, hist);
     const tone_spread_t spread = summarize_tone_histogram(hist);
 
     char why[192];
@@ -534,6 +535,7 @@ test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
     TEST_ASSERT_TRUE_MESSAGE(spread.distinct >= 3 && spread.commonest * 2 < total, why);
 
     free(grid);
+    free(t);
 }
 
 /* ONE MONOTONE RAMP, not two independently-shifted tones that each had to
