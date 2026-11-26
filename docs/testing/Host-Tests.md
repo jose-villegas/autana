@@ -155,7 +155,7 @@ Rules:
 - Runner overhead uses the deepest measured path from the main-task entry to the root's runner. Test paths pass through the suite that registers the test.
 - The runner endpoints are `call_protected`, `shell_step_app`, `scene_shell_render` and `app_boot_init`. The boot root is `boot_anim_run`.
 - Missing paths and non-static frames fail.
-- A root or edge naming a function that is defined only in a first-party source the build did not compile is skipped, so a perf-scoped image is checked against the same specs; a name defined nowhere fails.
+- A root, edge or dispatch path naming a function defined only in a first-party source the build did not compile is skipped, as is any name qualified by such a source (`file.c:name`). A perf-scoped image is so checked against the same specs; a name defined nowhere fails.
 
 Every root has the budget `DP_MAIN_TASK_STACK_BYTES` minus `timing.c`'s
 reserve, the derived runner frames and the target context

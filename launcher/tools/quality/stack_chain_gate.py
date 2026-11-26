@@ -168,9 +168,11 @@ def dispatch_paths(names, titles_by_name, calls):
     return paths
 
 
-def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, bad):
-    """Copy compiled frames along each path that fixes a dispatcher's target."""
-    scoped, ordinary, problems = defaultdict(set), [], []
+def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, bad,
+                     uncompiled=lambda _name: False):
+    """Copy compiled frames along each path that fixes a dispatcher's target.
+    A path through code the build left out, or a target it left out, is skipped."""
+    scoped, ordinary, problems, skipped = defaultdict(set), [], [], 0
     for caller, target in declared:
         names = caller.split(">")
         if len(names) == 1:
@@ -179,7 +181,10 @@ def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, ba
         targets = resolve(target, titles_by_name[target.rsplit(":", 1)[-1]])
         bindings = [path for path in dispatch_paths(names, titles_by_name, calls)
                     if path[-1] in pointer_callers]
-        if not targets or not bindings:
+        if (not bindings and any(uncompiled(name) for name in names)) or (
+                bindings and not targets and uncompiled(target)):
+            skipped += 1
+        elif not targets or not bindings:
             problems.append(f"declared edge {caller} > {target} has no measured dispatch")
         for binding in bindings:
             for length in range(2, len(binding)):
@@ -200,7 +205,7 @@ def bind_dispatchers(declared, titles_by_name, frame, calls, pointer_callers, ba
         calls[bound] = calls.get(dispatcher, set()) | scoped[path]
         calls[parent].remove(dispatcher)
         calls[parent].add(bound)
-    return ordinary, covered, problems
+    return ordinary, covered, problems, skipped
 
 
 def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner_edges=(),
@@ -216,14 +221,13 @@ def check_app(name, spec_path, ci_paths, stack_bytes, reserve, context=0, runner
     bad = set(bad)
     pointer_callers = set(pointer_callers)
     calls = {caller: set(callees) for caller, callees in calls.items()}
-    skipped = 0
 
     titles_by_name = defaultdict(list)
     for title in frame:
         titles_by_name[source_name(title)].append(title)
 
-    declared, covered, problems = bind_dispatchers(
-        declared, titles_by_name, frame, calls, pointer_callers, bad)
+    declared, covered, problems, skipped = bind_dispatchers(
+        declared, titles_by_name, frame, calls, pointer_callers, bad, uncompiled)
     for caller, callee in declared + list(runner_edges):
         callers = resolve(caller, titles_by_name[caller.rsplit(":", 1)[-1]])
         callees = resolve(callee, titles_by_name[callee.rsplit(":", 1)[-1]])
@@ -313,7 +317,9 @@ def definition_re(names):
 
 def uncompiled_definitions(db_path):
     """A test of whether a function is defined in a first-party source the build
-    did not compile; a misspelt name is defined nowhere and still fails."""
+    did not compile; a misspelt name is defined nowhere and still fails. A name
+    qualified by a left-out source is left out whatever it names, since an
+    inlined copy or a macro-made function has no definition of its own there."""
     with open(db_path, "r", encoding="utf-8") as fh:
         compiled = {os.path.normcase(os.path.realpath(e["file"])) for e in json.load(fh)}
     sources = [path for top in (MAIN_DIR, os.path.join(LAUNCHER, "test"),
@@ -324,10 +330,10 @@ def uncompiled_definitions(db_path):
 
     def uncompiled(name):
         qualifier, _, function = name.rpartition(":")
+        if qualifier:
+            return any(path.as_posix().endswith("/" + qualifier) for path in sources)
         definition = definition_re([function])
         for path in sources:
-            if qualifier and not path.as_posix().endswith(qualifier):
-                continue
             if path not in texts:
                 texts[path] = path.read_text(encoding="utf-8", errors="replace")
             if definition.search(texts[path]):

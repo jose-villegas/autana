@@ -18,7 +18,6 @@ indirect ui_toggle_id : measure_text_height
 indirect lab_test_enter : app_render_lab.c:render_lab_enter
 indirect lab_test_frame_dt : app_render_lab.c:render_lab_update app_render_lab.c:render_lab_frame render_lab_apply_raster_settings
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
-indirect suite_sponza_perf.c:run_with_sponza : suite_sponza_perf.c:perf_tests suite_sponza_perf.c:bake_tests
 
 indirect test_console_scene_requests_survive_expanded_frames : app_render_lab.c:render_lab_enter render_lab_console app_render_lab.c:render_lab_exit
 

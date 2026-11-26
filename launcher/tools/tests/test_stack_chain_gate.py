@@ -106,6 +106,20 @@ class StackChainTests(unittest.TestCase):
                           "function that is not in the graph",
                           "root misspelt is not in the graph"], problems)
 
+    def test_a_dispatch_path_through_left_out_code_is_skipped_but_a_misspelt_one_fails(self):
+        graph = ({"main_task": 32, "shell_step_app": 48, "dispatch": 16, "x": 16},
+                 {"main_task": {"shell_step_app"}}, {"dispatch"}, [])
+        left_out = {"scoped_out", "gone"}
+        self.assertEqual([], check("indirect scoped_out>dispatch : x\n", graph,
+                                   uncompiled=lambda name: name in left_out))
+        self.assertEqual([], check("indirect shell_step_app>dispatch : gone\n",
+                                   ({**graph[0]}, {"main_task": {"shell_step_app"},
+                                                   "shell_step_app": {"dispatch"}}, {"dispatch"}, []),
+                                   uncompiled=lambda name: name in left_out))
+        self.assertEqual(["declared edge misspelt>dispatch > x has no measured dispatch"],
+                         check("indirect misspelt>dispatch : x\n", graph,
+                               uncompiled=lambda name: name in left_out))
+
     def test_a_function_counts_as_uncompiled_only_when_a_left_out_source_defines_it(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -121,6 +135,8 @@ class StackChainTests(unittest.TestCase):
                 uncompiled = gate.uncompiled_definitions(str(db))
             self.assertTrue(uncompiled("scoped"))
             self.assertTrue(uncompiled("scoped.c:scoped"))
+            self.assertTrue(uncompiled("scoped.c:inlined_copy"))
+            self.assertFalse(uncompiled("kept.c:kept"))
             self.assertFalse(uncompiled("other.c:scoped"))
             self.assertFalse(uncompiled("kept"))
             self.assertFalse(uncompiled("only_called"))
