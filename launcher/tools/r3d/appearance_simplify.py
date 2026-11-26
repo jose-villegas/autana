@@ -1242,8 +1242,7 @@ def main(argv=None):
             geometry["geometry_views"] = select(source, carved, camera.region, camera.near_z,
                                                  job.settings.fit.probes.spacing)
         fit_start = fitted
-        # The start's leak probes stand where the object's import sealed its seams, for snap_back after the fit.
-        sealed = next(item for item in scene.renderers if args.object in (None, item.object.name))
+        # The start's leak probes stand where its import sealed its seams, for snap_back after the fit.
         probes = seal.start_probes(fit_start, copies, seal_camera(scene))
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
