@@ -279,11 +279,6 @@ fixture(int budget, bool levels, bool coarse_near) {
         f->c[k] = RENDER_CONTEXT_DEFAULT;
         render_context_set_scale(&f->c[k], 100);
         render_settings_t settings = k == 1 ? render_settle_quality(&f->settings) : f->settings;
-        if (levels && k == 1) {
-            settings.lod.tolerance_px = 0.0F;
-            settings.lod.triangle_budget = 0;
-            settings.lod.blend = RENDER_LOD_BLEND_SWITCH;
-        }
         if (levels) {
             memcpy(f->instances[k], r->instance, sizeof r->instance);
             f->instances[k][CARD].lod_coarse = f->lod[k];
