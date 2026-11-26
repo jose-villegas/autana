@@ -10,6 +10,15 @@ run = 45590273257
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted_full.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "c1635e8f8f493b4ce43705b9ab694177b78829a509dd73823ee03d906277a852"
+sha256 = "a19f4ced92d983cd2c182d349bd6c2c93d9576119bf6b4da0c1bba31cda6a24b"
+size = 1125843
+run = 45742652069
+host = "Linux x86_64"
+
+[[bake]]
 output = "bistro.street_fitted_full.fit.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "5b0c417bef88d0512ad2e4ca5859e1e5162be83c7a97d5265e5196335fbcdc53"
@@ -36,6 +45,15 @@ key = "ecfbb8575325855e30409efaa4eaffab01784dde43cc58c8347ed61090b0d4e6"
 sha256 = "5edefbabce6079f2cb548e806c54a9f136a2f517a6ef647ffeae946fa7ac2737"
 size = 1026147
 run = 45711505863
+host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.texture.pack"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "4cb7bb7ded98bd3adf410363215412f29a1866408af8908c7519e72726a5c90d"
+sha256 = "04b3efac72e970939924dada82cca6efb7a27b873ac07f5f9cd2d61d1c09fb81"
+size = 311787
+run = 45742652069
 host = "Linux x86_64"
 
 [[bake]]
