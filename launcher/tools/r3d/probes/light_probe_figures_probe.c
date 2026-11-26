@@ -214,7 +214,7 @@ static const vec3f_t AXIS_NORMALS[] = {{0, 1, 0}, {0, -1, 0}, {1, 0, 0}, {-1, 0,
 static unsigned char*
 read_file(const char* path, long* size) {
     FILE* file = fopen(path, "rb");
-    if (file == NULL || fseek(file, 0, SEEK_END) != 0 || (*size = ftell(file)) < SH_PROBES_HEADER_SIZE
+    if (file == NULL || fseek(file, 0, SEEK_END) != 0 || (*size = ftell(file)) < (long)SH_PROBES_HEADER_SIZE
         || fseek(file, 0, SEEK_SET) != 0) {
         exit(1);
     }
@@ -231,13 +231,13 @@ load_grid(const unsigned char* bytes, long size) {
     sh_probes_t probes = {0};
     float fields[AXES];
     uint16_t flags = 0;
-    memcpy(&flags, bytes + SH_PROBES_FLAGS_OFFSET, sizeof flags);
-    memcpy(fields, bytes + SH_PROBES_ORIGIN_OFFSET, sizeof fields);
+    memcpy(&flags, bytes + SH_PROBES_AT_FLAGS, sizeof flags);
+    memcpy(fields, bytes + SH_PROBES_AT_ORIGIN, sizeof fields);
     probes.origin = (vec3f_t){fields[0], fields[1], fields[2]};
-    memcpy(fields, bytes + SH_PROBES_SPACING_OFFSET, sizeof fields);
+    memcpy(fields, bytes + SH_PROBES_AT_SPACING, sizeof fields);
     probes.spacing = (vec3f_t){fields[0], fields[1], fields[2]};
-    memcpy(probes.dims, bytes + SH_PROBES_DIMS_OFFSET, sizeof probes.dims);
-    memcpy(&probes.scale, bytes + SH_PROBES_SCALE_OFFSET, sizeof probes.scale);
+    memcpy(probes.dims, bytes + SH_PROBES_AT_DIMS, sizeof probes.dims);
+    memcpy(&probes.scale, bytes + SH_PROBES_AT_SCALE, sizeof probes.scale);
     const long count = (long)probes.dims[0] * probes.dims[1] * probes.dims[2];
     const long mask_at = SH_PROBES_HEADER_SIZE + (count * SH_PROBES_RECORD_SIZE);
     const long mask_size = (flags & SH_PROBES_FLAG_INSIDE_MASK)
