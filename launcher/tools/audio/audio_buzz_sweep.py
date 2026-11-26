@@ -4,25 +4,66 @@ Board flat on a desk, untouched, quiet room, on a screen without a motion reader
 autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up"
 """
 import argparse
+import ast
 from datetime import date
 import json
 from pathlib import Path
+import re
 from statistics import median
 import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_drc_sweep import numbers
-from build.c_header import read_define
+from build.c_header import LITERAL_SUFFIX, read_define
+from build.math_constants import INTEGER_DEFINE, OPERATORS, blank_comments
 from autana_runner import autana_run, record_line
+
+UINT16_CAST = re.compile(r"^([\s(]*)\(uint16_t\)\s*")
+
+
+def read_imu_define(header, name, constants):
+    """Read IMU timing arithmetic over numeric defines with an optional outer uint16_t cast."""
+    defines = dict(INTEGER_DEFINE.findall(blank_comments(header.read_text(encoding="utf-8"))))
+
+    def fold(node):
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return node.value
+        if isinstance(node, ast.Name):
+            return constants[node.id] if node.id in constants else read_define(header, node.id)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            operand = fold(node.operand)
+            return -operand if isinstance(node.op, ast.USub) else operand
+        if isinstance(node, ast.BinOp):
+            left, right = fold(node.left), fold(node.right)
+            if isinstance(node.op, ast.Div):
+                if type(left) is int and type(right) is int:
+                    quotient = abs(left) // abs(right)
+                    return -quotient if (left < 0) != (right < 0) else quotient
+                return left / right
+            return OPERATORS[type(node.op)](left, right)
+        raise ValueError("unsupported numeric expression")
+
+    try:
+        value, cast = UINT16_CAST.subn(r"\1", defines[name].strip())
+        value = LITERAL_SUFFIX.sub(lambda match: match[1] or match[2], value)
+        number = fold(ast.parse(value, mode="eval").body)
+        return int(number) if cast else number
+    except (ArithmeticError, KeyError, SyntaxError, TypeError, ValueError) as error:
+        raise RuntimeError(f"{header}: cannot read IMU define {name}") from error
+
 
 TONE_PARSE = ROOT / "launcher/main/sound/console/console_tone_parse.h"
 PULSE_WINDOW_MAX_MS = read_define(TONE_PARSE, "CONSOLE_TONE_PULSE_WINDOW_MAX_MS")
 IMU = ROOT / "launcher/main/input/motion/imu.h"
-BUZZ_HZ = read_define(IMU, "IMU_ODR_BASE_HZ") / (1 << read_define(IMU, "IMU_BUZZ_ODR_CODE"))
-MS_PER_SECOND = read_define(ROOT / "launcher/packages/math/include/math/scalar/units.h", "MATH_MS_PER_S")
-PULSE_WINDOW_MIN_MS = int(read_define(IMU, "IMU_FIFO_SAMPLES") * MS_PER_SECOND / BUZZ_HZ) + 1
+UNITS = ROOT / "launcher/packages/math/include/math/scalar/units.h"
+BUZZ_HZ = read_imu_define(IMU, "IMU_BUZZ_ODR_HZ", {})
+PULSE_WINDOW_MIN_MS = read_imu_define(IMU, "IMU_BUZZ_WINDOW_MS", {
+    "IMU_BUZZ_ODR_HZ": BUZZ_HZ,
+    "MATH_MS_PER_S": read_define(UNITS, "MATH_MS_PER_S"),
+})
 CAPTURE = Path("docs/audio/data/audio_buzz_capture.txt")
 FIRST_HZ, LAST_HZ, STEP_HZ = 20, 300, 10
 # Safety: the speaker is rated 1 W. Long, loud, low tones are what push a small cone past its travel.
@@ -32,8 +73,7 @@ LOW_MAX_VOLUME = 60
 # The fine pass: this many coarse shake peaks, each walked in FINE_STEP_HZ steps to its coarse neighbours.
 PEAKS = 3
 FINE_STEP_HZ = 2
-# At the buzz rate the sensor FIFO holds 143 ms; a busy core 1 can delay the IMU task's
-# default 100 ms drain past that, and the overflow gap empties the window. Drain faster.
+# A busy core 1 can delay the IMU task's default drain past the FIFO window and cause an overflow gap.
 DRAIN_TUNABLE = "imu.drain_ms"
 DRAIN_MS = 40
 

@@ -1,16 +1,23 @@
 """Pulse point expansion and speaker safety for the buzz sweep."""
-import importlib.util
 import io
 from pathlib import Path
+import sys
+import tempfile
 import unittest
 from unittest import mock
 
-SPEC = importlib.util.spec_from_file_location("buzz", Path(__file__).resolve().parents[1] / "audio_buzz_sweep.py")
-buzz = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(buzz)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import audio_buzz_sweep as buzz
 
 
 class PulseSweepTests(unittest.TestCase):
+    def test_pulse_window_define_accepts_fixed_width_cast(self):
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / "imu.h"
+            header.write_text("#define SAMPLES 5u\n#define WINDOW ((uint16_t)((SAMPLES * SCALE / RATE) + 1))\n",
+                              encoding="utf-8")
+            self.assertEqual(buzz.read_imu_define(header, "WINDOW", {"SCALE": 10, "RATE": 4.0}), 13)
+
     def test_pulse_points(self):
         args = buzz.parser().parse_args(["--board", "test", "--surface", "desk", "--hz", "202", "--volumes", "30,60",
                                         "--pulse", "30,60,100,200", "--runs", "1", "--loud", "0"])
