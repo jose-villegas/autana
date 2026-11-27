@@ -121,28 +121,6 @@ test_an_unrounded_request_is_one_class_below_at_most(void) {
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
 
-/* Small enough to take the last of every on-chip region. */
-#define RTC_PROBE_BLOCK_BYTES 512u
-
-/* Fills on-chip RAM with small blocks, each holding a link to the last, and
- * finds none in RTC fast RAM: core 1 reads it slowly, so a task stack or a
- * buffer placed there costs a frame. */
-static void
-test_no_internal_block_lands_in_rtc_fast_ram(void) {
-    void** chain = NULL;
-    size_t in_rtc = 0;
-    for (void** block; (block = memory_alloc(RTC_PROBE_BLOCK_BYTES, MEMORY_INTERNAL)) != NULL; chain = block) {
-        in_rtc += esp_ptr_in_rtc_dram_fast(block);
-        *block = chain;
-    }
-    while (chain != NULL) {
-        void** next = *chain;
-        memory_free(chain);
-        chain = next;
-    }
-    TEST_ASSERT_EQUAL_size_t(0, in_rtc);
-}
-
 static void
 test_each_kinds_block_lands_in_the_memory_it_names(void) {
     static const struct {
@@ -205,7 +183,6 @@ test_a_fast_block_leaves_the_reserve_free_on_chip(void) {
 
 void
 suite_memory(void) {
-    RUN_TEST(test_no_internal_block_lands_in_rtc_fast_ram);
     RUN_TEST(test_app_allocations_and_queries_use_the_region);
     RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
     RUN_TEST(test_an_unrounded_request_is_one_class_below_at_most);

@@ -25,9 +25,7 @@ RTC fast RAM is kept out of the heap (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_H
 The charts read the generated tables below and `data/runtime-heap.txt`.
 Capture the board readings with `bash launcher/tools/device/capture_runtime_heap.sh docs/memory/data/runtime-heap.txt`.
 The refresh command reads the three builds; `--write` refreshes the generated
-blocks, both charts and the diag boot heap values in the device profile:
-A smaller boot heap refreshes the blocks and charts but fails the profile
-update, retaining the validated host arena.
+blocks and both charts:
 
 ```sh
 python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write
