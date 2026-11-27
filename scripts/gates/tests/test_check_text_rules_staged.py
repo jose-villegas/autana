@@ -1,5 +1,6 @@
 """Compressed generator inputs are retained in staged gate snapshots; a large commit's
 paths reach each file-scoped gate in command lines Windows accepts."""
+import subprocess
 import sys
 import unittest
 import gzip
@@ -63,11 +64,13 @@ class SnapshotDataTests(unittest.TestCase):
 
 class PathBatchTests(unittest.TestCase):
     def test_a_thousand_staged_paths_reach_the_gate_once_each_in_short_command_lines(self):
-        files = [f"launcher/main/apps/render_lab/tools/tests/fixture_{i:04d}_with_a_long_name.c" for i in range(1000)]
+        # Every other path has a space, which Windows quoting widens by two.
+        files = [f"launcher/main/apps/render_lab/tools/tests/fixture {i:04d}_with_a_long_name.c" if i % 2 else
+                 f"launcher/main/apps/render_lab/tools/tests/fixture_{i:04d}_with_a_long_name.c" for i in range(1000)]
         seen = []
         def gate(command, **kwargs):
-            # Windows' CreateProcess limit is 32767 characters for the whole line.
-            self.assertLess(len(" ".join(command)), 32767)
+            # Windows' CreateProcess limit is 32767 characters for the whole line, as it quotes it.
+            self.assertLess(len(subprocess.list2cmdline(command)), 32767)
             self.assertEqual("--paths", command[2])
             seen.extend(command[3:])
         run_staged(self, files, b'"true"', b"", b"", gate)

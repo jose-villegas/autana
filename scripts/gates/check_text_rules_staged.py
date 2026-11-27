@@ -21,21 +21,25 @@ from tracked import repository
 from workflow_marks import is_workflow, marked_commands
 
 
-# Windows refuses a command line past 32767 characters; a merge from main can
-# stage a thousand paths. The gates and the interpreter's path take the rest.
-COMMAND_LINE_PATHS_CHARS = 24000
+# Windows refuses a command line of this many characters or more; a merge from
+# main can stage a thousand paths.
+WINDOWS_COMMAND_LINE_CHARS = 32767
 
 
-def path_batches(files):
-    """--paths lists that each fit COMMAND_LINE_PATHS_CHARS: a file-scoped gate
-    judges each file alone, so batches report what one run would."""
-    batches, batch, length = [], [], 0
+def path_batches(command, files):
+    """--paths lists that each keep `command`'s line, quoted as Windows quotes it,
+    under WINDOWS_COMMAND_LINE_CHARS: a file-scoped gate judges each file alone,
+    so batches report what one run would."""
+    # list2cmdline quotes each argument alone and joins them with one space.
+    head = len(subprocess.list2cmdline([*command, '--paths']))
+    batches, batch, length = [], [], head
     for path in files:
-        if batch and length + len(path) + 1 > COMMAND_LINE_PATHS_CHARS:
+        width = 1 + len(subprocess.list2cmdline([path]))
+        if batch and length + width >= WINDOWS_COMMAND_LINE_CHARS:
             batches.append(['--paths', *batch])
-            batch, length = [], 0
+            batch, length = [], head
         batch.append(path)
-        length += len(path) + 1
+        length += width
     return batches + [['--paths', *batch]]
 
 
@@ -94,7 +98,7 @@ def main():
             # CI requires the SDK; local machines without it still check the
             # project vocabulary and print the citation gate's skipped notice.
             command = [arg for arg in command if arg != '--require-idf']
-            for selected in path_batches(files) if scoped else [[]]:
+            for selected in path_batches(command, files) if scoped else [[]]:
                 running.append(subprocess.Popen([*command, *selected], cwd=snapshot, env=env,
                                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
         for gate in running:
