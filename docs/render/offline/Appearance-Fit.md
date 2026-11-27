@@ -88,10 +88,11 @@ An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
 and held-out faces from a second seed. Placement and face selection use the
 source alone, so the reference set depends only on its own inputs.
 
-A probe fit caps the fitted rest, including T-junction splits, at the start's rest
-triangle count. The import's [`triangles` setting](Mesh-Import.md#variants-triangles)
-controls simplification of the start.
+A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
+The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
+and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
+It keeps every triangle: one no coverage view shows may still face a camera they miss.
 A border point within the seam tolerance that the hold rule refuses stays at its start.
 
 A hole pixel shows no fitted surface where the reference differs from the clear

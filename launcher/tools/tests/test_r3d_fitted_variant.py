@@ -350,7 +350,7 @@ class SweepTests(unittest.TestCase):
         def fitter(command):
             out = pathlib.Path(command[command.index("--out") + 1])
             out.mkdir(parents=True)
-            self.assertEqual(command[command.index("--budget") + 1], str(recipe.budget))
+            self.assertNotIn("--budget", command)
             self.assertIn("--held-out-poses", command)
             self.assertEqual(command[command.index("--object") + 1], job.object.name)
             for key in ("surface_weight", "surface_margin"):
@@ -359,8 +359,8 @@ class SweepTests(unittest.TestCase):
 
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
-                              settings=SimpleNamespace(fit=UNSHAPED), renderer=SimpleNamespace(
-            fit=recipe, variant=SimpleNamespace(name="variant_name", triangles=recipe.budget)))
+                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())), renderer=SimpleNamespace(
+            fit=recipe, variant=SimpleNamespace(name="variant_name")))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
             work.mkdir()

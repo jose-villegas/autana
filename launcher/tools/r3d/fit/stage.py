@@ -23,9 +23,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
-    variant's ceiling caps the fitted bundle. A probe fit caps the fitted rest, including T-junction splits, at
-    its start's rest triangle count. Other fits prune their rest to the ceiling less the copy prototypes, or to the
-    recipe's budget when the variant has no ceiling; `budget` overrides both."""
+    variant's ceiling caps the fitted bundle. A probe fit's start is its budget, so it prunes only what no view
+    shows; any other fit prunes its rest to the ceiling less the copy prototypes, or to the recipe's budget when
+    the variant has no ceiling; `budget` overrides both."""
     from r3d.appearance_simplify import main as fit_main
     from r3d.objects.budget import bundle_count, ceiling_split, rest_target
     from r3d.import_settings import SettingsError
@@ -44,9 +44,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     shapes = [row["mesh"] for row in copies]
     ceiling = getattr(variant, "ceiling", None)
     copied = bundle_count(bundle_entries, shapes)
-    if job.settings.fit.probes is not None:
-        budget = bundle_count(bundle_entries, [job.asset_name])
-    elif budget is None:
+    if budget is None and job.settings.fit.probes is None:
         budget = rest_target(ceiling_split(renderer), copied)
     if budget is not None and budget < 1:
         raise SettingsError(f"copies total {copied} leave the fitted rest no triangle under ceiling {ceiling}")

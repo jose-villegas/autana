@@ -339,7 +339,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
     start_path(work, job).write_bytes(data)
     job.renderer.variant = SimpleNamespace(name='fixture')
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                       surface_weight=0, surface_margin=0, budget=2)
+                                       surface_weight=0, surface_margin=0, budget=1)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
         stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
@@ -347,7 +347,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
 
 
 class FitCommandTests(unittest.TestCase):
-    """The fit command's budget, reference sets and closure views."""
+    """The command line the fit stage hands the fit: which sets, in which order, and the closure views."""
 
     def command(self, path=True, probes=None):
         asked = []
@@ -360,14 +360,6 @@ class FitCommandTests(unittest.TestCase):
     @staticmethod
     def values(args, flag):
         return [args[i + 1] for i, arg in enumerate(args) if arg == flag]
-
-    def test_probe_budget_counts_only_the_start_rest(self):
-        args = self.command(probes=SimpleNamespace())
-        self.assertEqual(self.values(args, '--budget'), ['1'])
-
-    def test_non_probe_budget_uses_the_recipe(self):
-        args = self.command()
-        self.assertEqual(self.values(args, '--budget'), ['2'])
 
     def test_the_path_sets_come_before_the_probe_sets(self):
         args = self.command(probes=SimpleNamespace())

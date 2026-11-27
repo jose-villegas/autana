@@ -334,12 +334,9 @@ way up at `fit.poses.size`. `fit` fits with
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
-`fit` prunes the fitted rest to its triangle budget, including T-junction splits.
-[Probe fits](../../../docs/render/offline/Appearance-Fit.md#probes-and-closure)
-use the start's rest triangle count.
-
-The fit writes the renderer's mesh into the work folder. It uses deterministic
-reductions and seeded sampling. The lock pins the fitted mesh bytes.
+`fit` prunes the fitted geometry to `fit.prune.budget`
+and writes the renderer's mesh into the work folder. The fit uses deterministic
+reductions and seeded sampling; the lock pins the bytes a fit made.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
