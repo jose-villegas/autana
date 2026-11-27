@@ -828,7 +828,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
         while deadline is None or time.monotonic() < deadline:
             require_unlost()
             try:
-                chunk = connection.read(4096)
+                chunk = board_serial.read_ready(connection)
             except OSError:
                 require_live_lock()
                 # The USB serial port re-enumerates under the reader now and
@@ -1789,7 +1789,6 @@ def decode_coredump(core, elf=None):
 
 
 EXCHANGE_MAX_SECONDS = 600.0
-EXCHANGE_READ_BYTES = 4096
 
 
 def exchange(connection, line, reply, until, seconds):
@@ -1807,7 +1806,7 @@ def exchange(connection, line, reply, until, seconds):
     deadline = min(started + seconds, overall_deadline)
     while time.monotonic() < deadline:
         require_unlost()
-        chunk = connection.read(EXCHANGE_READ_BYTES)
+        chunk = board_serial.read_ready(connection)
         if not chunk:
             continue
         pending.extend(chunk)
@@ -1922,7 +1921,6 @@ def send(args, store, board):
                        " s - is a development build running?")
 
 
-STREAM_READ_BYTES = 4096
 # How often a stream waiting on its next line looks for a lost lock or a
 # reader that failed, so neither leaves it holding the board.
 STREAM_CHECK_SECONDS = 0.25
@@ -1935,7 +1933,7 @@ def echo_board(connection, stop, out, failed):
     pending = bytearray()
     try:
         while not stop.is_set():
-            pending.extend(connection.read(STREAM_READ_BYTES))
+            pending.extend(board_serial.read_ready(connection))
             end = pending.rfind(b"\n") + 1
             if end:
                 out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
@@ -2084,7 +2082,7 @@ def capture_stream(args, store, board, tag, on_data, lines=None, log=None, openi
             if rx_bytes is not None and hasattr(connection, "set_buffer_size"):
                 connection.set_buffer_size(rx_size=rx_bytes)
             while not stop.is_set() and not ended.is_set():
-                chunk = connection.read(STREAM_READ_BYTES)
+                chunk = board_serial.read_ready(connection)
                 while True:
                     try:
                         deliver(packets.feed(chunk))

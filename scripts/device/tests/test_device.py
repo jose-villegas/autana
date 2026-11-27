@@ -30,7 +30,7 @@ DEVICE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEVICE))
 import device
 from console_protocol import TUNE_REPLY_ENDS, TUNE_VALUE_MAX
-from fake_serial import FakeConnection, FakeUsbBoard
+from fake_serial import FakeConnection, FakeUsbBoard, VanishingConnection
 import fake_flash  # noqa: E402
 import device_lock
 import device_hook
@@ -281,6 +281,30 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(arrived, list(sent))
         self.assertIn(reply, out.getvalue())
+
+    @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
+                         "needs a pseudo-terminal and pyserial")
+    def test_a_read_returns_what_the_board_sent_without_waiting_out_the_timeout(self):
+        line = b"FRAMEREC 1\n"
+        with port_guard.fake_port() as (board, name), \
+                mock.patch.object(device, "locked_port", return_value=name):
+            connection = device.open_serial()
+            try:
+                os.write(board, line)
+                self.wait_for_waiting(connection, len(line))
+                began = time.monotonic()
+                data = device.board_serial.read_ready(connection)
+                took = time.monotonic() - began
+            finally:
+                connection.close()
+        self.assertEqual(data, line)
+        self.assertLess(took, connection.timeout / 2)
+
+    @staticmethod
+    def wait_for_waiting(connection, count):
+        deadline = time.monotonic() + STREAM_WAIT_SECONDS
+        while connection.in_waiting < count and time.monotonic() < deadline:
+            time.sleep(0.01)
 
     def test_a_line_that_is_not_ascii_is_refused_and_the_lock_released(self):
         store = mock_store()
@@ -731,12 +755,6 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(reason, "timeout")
 
     def test_capture_keeps_what_it_read_when_the_port_goes_away(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, size):
-                if not self.chunks:
-                    raise OSError(22, "ClearCommError failed")
-                return super().read(size)
-
         connection = VanishingConnection([b":1:test_one:PASS\n"])
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "capture.log"
@@ -1790,8 +1808,10 @@ class TuneSetTests(unittest.TestCase):
 
     def test_a_dropped_line_is_asked_again(self):
         class AnswersSecondAsk(FakeConnection):
-            def read(self, unused_size):
-                return b"TUNE_OK r3d.side=3\n" if len(self.writes) == 2 else b""
+            def write(self, data):
+                super().write(data)
+                if len(self.writes) == 2:
+                    self.chunks.append(b"TUNE_OK r3d.side=3\n")
 
         connection = AnswersSecondAsk()
         with mock.patch.object(device, "EXCHANGE_SECONDS", 0.05), mock.patch("builtins.print"):
@@ -3362,10 +3382,6 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(args.seconds, 15.0)
 
     def test_capture_reconnects_after_a_lost_handle_and_records(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, unused_size):
-                raise OSError("USB device disappeared")
-
         store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=1.0, out=None)
@@ -3389,12 +3405,6 @@ class ResetCommandTests(unittest.TestCase):
         self.assertEqual(entry["reason"], "complete")
 
     def test_capture_keeps_data_when_a_later_reconnect_runs_out_of_time(self):
-        class VanishingConnection(FakeConnection):
-            def read(self, unused_size):
-                if self.chunks:
-                    return super().read(unused_size)
-                raise OSError("USB device disappeared")
-
         store = mock_store()
         args = Namespace(owner="agent", purpose="autana reset", wait=0, capture=True,
                          seconds=20.0, out=None)
