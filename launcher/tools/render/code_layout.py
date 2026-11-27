@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
-from objdump_calls import FUNCTION  # noqa: E402
+from objdump_calls import FUNCTION, parse_objdump  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
@@ -125,15 +125,6 @@ def symbols(nm, elf, functions=None, *, records=False):
 
 def decode(objdump, elf, *arguments):
     return parse_objdump(run(objdump, "-d", *arguments, str(elf)))
-
-
-def parse_objdump(text):
-    found = []
-    for line in text.splitlines():
-        match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
-        if match:
-            found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
-    return found
 
 
 def instructions(objdump, elf, function, end):
@@ -256,13 +247,14 @@ def line_span(start, end, line_size):
     return ((end - 1) // line_size) - (start // line_size) + 1
 
 
-def source_frames(addr2line, elf, addresses):
+def source_frames(addr2line, elf, addresses, section=None):
     """Map each requested address to its inline frames, innermost first."""
     addresses = list(dict.fromkeys(addresses))
     if not addresses:
         return {}
     frames = {}
-    for location in run(addr2line, "-a", "-i", "-e", str(elf),
+    section_args = ("-j", section) if section is not None else ()
+    for location in run(addr2line, "-a", "-i", "-e", str(elf), *section_args,
                         *(f"{address:#x}" for address in addresses)).splitlines():
         if re.fullmatch(r"0x[0-9a-fA-F]+", location):
             address = int(location, 16)

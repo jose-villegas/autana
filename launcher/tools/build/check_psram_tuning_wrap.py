@@ -20,7 +20,6 @@ firmware works. Needs the Xtensa objdump from ESP-IDF's toolchain.
 
 import json
 import pathlib
-import re
 import subprocess
 import sys
 
@@ -31,12 +30,11 @@ from objdump_calls import function_addresses, parse_calls  # noqa: E402
 REPO = pathlib.Path(__file__).resolve().parents[3]
 TUNING = "mspi_timing_psram_tuning"
 WRAPPER = "__wrap_" + TUNING
-CALL = re.compile(r"\scall\d+\s+[0-9a-f]+ <([^>+]+)>")
 
 
 def callers(text, callee):
     """The functions in `objdump -d` text that call `callee` directly."""
-    return {function for function, called in parse_calls(text, CALL).items() if callee in called}
+    return {function for function, called in parse_calls(text).items() if callee in called}
 
 
 def holds_word(image, value):

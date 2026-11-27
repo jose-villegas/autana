@@ -172,17 +172,23 @@ def own_source(frames):
     return frames[-1]
 
 
+def source_site(root, location):
+    """Resolve an addr2line frame to the key used by the annotation index."""
+    match = code_layout.SOURCE_LOCATION.fullmatch(location)
+    if match and match[1] != "??" and int(match[2]):
+        return (root / match[1]).resolve(), int(match[2])
+    return None
+
+
 def violations(root, calls, locations):
     covered, notes = annotations(root)
     used = set()
     bad = []
     for (function, callee, address), location in zip(calls, locations, strict=True):
-        match = code_layout.SOURCE_LOCATION.fullmatch(location)
         label = "??:0"
-        if match and match[1] != "??" and int(match[2]):
-            path = (root / match[1]).resolve()
-            line = int(match[2])
-            found = covered.get((path, line))
+        if site := source_site(root, location):
+            path, line = site
+            found = covered.get(site)
             if found:
                 used.update(found)
                 continue

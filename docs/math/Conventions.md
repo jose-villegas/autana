@@ -88,6 +88,6 @@ and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 The [hot-call link gate](../tools/Build-Variants.md#hot-call-link-gate) requires
 a reason for C-runtime calls in hot functions.
 
-In hot functions, read an unaligned 16-bit value as two byte loads,
-`p[0] | p[1] << 8`. `memcpy(&v, p, 2)` compiles to a library call, which the
-hot-call gate rejects without a `Library call:` note.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>
+In hot functions, use [`bytes_read_u16` or `bytes_read_u32`](../../launcher/packages/collections/include/collections/bytes.h)
+for unaligned reads. The hot-call gate rejects the library call from
+`memcpy(&v, p, 2)` without a `Library call:` note.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>
