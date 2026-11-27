@@ -76,6 +76,9 @@ void bench_cache_code_cold(void);
 bool bench_insn_begin(void);
 bool bench_insn_end(uint32_t* insn);
 void* bench_alloc_internal(size_t size, const char* what);
+/* Anywhere the heap has room: for a count of instructions, which no memory
+ * changes, rather than a time. */
+void* bench_alloc_any(size_t size, const char* what);
 void bench_yield(void);
 int64_t bench_now_us(void);
 const char* bench_build_id(void);

@@ -6,6 +6,8 @@
 #include "math/scalar/units.h"
 #include "unity.h"
 
+#include <stdlib.h>
+
 #ifdef ESP_PLATFORM
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -103,6 +105,13 @@ bench_alloc_internal(size_t size, const char* what) {
 #else
     void* ptr = malloc(size);
 #endif
+    TEST_ASSERT_NOT_NULL_MESSAGE(ptr, what);
+    return ptr;
+}
+
+void*
+bench_alloc_any(size_t size, const char* what) {
+    void* ptr = malloc(size);
     TEST_ASSERT_NOT_NULL_MESSAGE(ptr, what);
     return ptr;
 }
