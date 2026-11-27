@@ -103,6 +103,22 @@ class FindPythonTests(unittest.TestCase):
                     self.assertEqual(Path(result.stdout.strip()).parts[-2:], expected.parts[-2:])
                     self.assertEqual(len(probes.read_text().splitlines()), count)
 
+    def test_pinned_python_takes_the_pinned_name_without_starting_it(self):
+        minor = (LIB.parents[1] / ".python-version").read_text().strip().rsplit(".", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="python pinned ") as temporary:
+            root = Path(temporary)
+            started = root / "started"
+            pinned = root / f"python{minor}"
+            pinned.write_text(f'#!/bin/sh\necho started > "{started.as_posix()}"\n')
+            pinned.chmod(0o755)
+            script = f'. "{(LIB / "python.sh").as_posix()}"; pinned_python && printf "%s\\n" "$PYTHON_PICKED"'
+            result = subprocess.run([self.shell, "-c", script, str(LIB / "python.sh")],
+                                    env=dict(os.environ, PATH=str(root)), capture_output=True, text=True,
+                                    timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(Path(result.stdout.strip()).name, pinned.name)
+            self.assertFalse(started.exists(), "the pinned Python was started")
+
     def test_an_older_python3_is_passed_over(self):
         older = Path(self.temp.name) / "older"
         older.mkdir(exist_ok=True)

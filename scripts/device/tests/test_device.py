@@ -75,37 +75,51 @@ class InterpreterTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, self.MISSING), \
                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"), \
                 mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM), \
-                mock.patch.object(device.subprocess, "call", return_value=3) as call:
+                mock.patch.object(device.subprocess, "Popen") as call:
+            call.return_value.wait.return_value = 3
             status = device.rerun_under_idf_python(["status"])
         self.assertEqual(status, 3)
         self.assertEqual(call.call_args.args[0][0], "C:/idf/python.exe")
         self.assertEqual(call.call_args.args[0][-1], "status")
 
     def test_a_tool_reruns_its_own_script_rather_than_device_py(self):
-        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM),                 mock.patch.object(device.subprocess, "call", return_value=0) as call:
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM),                 mock.patch.object(device.subprocess, "Popen") as call:
             device.rerun_under_idf_python(["--plan"], "tools/perf_compare.py")
         self.assertEqual(call.call_args.args[0][1], str(Path("tools/perf_compare.py").resolve()))
         self.assertEqual(call.call_args.args[0][2:], ["--plan"])
 
     def test_an_idf_python_below_the_minimum_is_refused_naming_the_fix(self):
-        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=(3, 11)),                 mock.patch.object(device.subprocess, "call") as call:
+        with mock.patch.dict(sys.modules, self.MISSING),                 mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"),                 mock.patch.object(device, "python_version", return_value=(3, 11)),                 mock.patch.object(device.subprocess, "Popen") as call:
             with self.assertRaises(SystemExit) as refused:
                 device.rerun_under_idf_python(["status"])
         call.assert_not_called()
         for named in ("pyserial", sys.executable, "C:/idf/python.exe", "3.11", device.PYTHON_MINIMUM_TEXT):
             self.assertIn(named, str(refused.exception))
 
+    def test_an_interrupt_waits_for_the_child_to_unwind(self):
+        """Ctrl+Break reaches the child too; killing it would lose its lock
+        release and its capture, so the rerun waits for its own exit."""
+        with mock.patch.dict(sys.modules, self.MISSING), \
+                mock.patch.object(device, "idf_python", return_value="C:/idf/python.exe"), \
+                mock.patch.object(device, "python_version", return_value=device.PYTHON_MINIMUM), \
+                mock.patch.object(device.subprocess, "Popen") as child:
+            child.return_value.wait.side_effect = [KeyboardInterrupt, 130]
+            status = device.rerun_under_idf_python(["status"])
+        self.assertEqual(status, 130)
+        child.return_value.kill.assert_not_called()
+        child.return_value.terminate.assert_not_called()
+
     def test_it_does_not_rerun_when_idf_python_is_this_interpreter(self):
         with mock.patch.dict(sys.modules, self.MISSING), \
                 mock.patch.object(device, "idf_python", return_value=sys.executable), \
-                mock.patch.object(device.subprocess, "call") as call:
+                mock.patch.object(device.subprocess, "Popen") as call:
             status = device.rerun_under_idf_python(["status"])
         self.assertIsNone(status)
         call.assert_not_called()
 
     def test_with_pyserial_it_runs_where_it_is(self):
         with mock.patch.dict(sys.modules, self.PRESENT), \
-                mock.patch.object(device.subprocess, "call") as call:
+                mock.patch.object(device.subprocess, "Popen") as call:
             status = device.rerun_under_idf_python(["status"])
         self.assertIsNone(status)
         call.assert_not_called()

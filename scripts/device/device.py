@@ -106,7 +106,13 @@ def rerun_under_idf_python(argv, script=__file__):
         raise SystemExit(f"pyserial is not installed for {sys.executable}, and ESP-IDF's Python {python} is "
                          f"{'.'.join(map(str, version))}, older than {PYTHON_MINIMUM_TEXT}: install pyserial "
                          f"(scripts/gates/requirements.txt) for {sys.executable}")
-    return subprocess.call([python, str(Path(script).resolve()), *argv])
+    child = subprocess.Popen([python, str(Path(script).resolve()), *argv])
+    try:
+        return child.wait()
+    except KeyboardInterrupt:
+        # The console's interrupt reached the child too: it unwinds, releasing
+        # its lock and saving its capture, where subprocess.call would kill it.
+        return child.wait()
 
 
 class NoBoard(RuntimeError):
@@ -2404,6 +2410,12 @@ def print_statuses(entries, now):
         print(board_heading(entry))
         for line in device_lock.status_lines(entry, now):
             print("  " + line)
+
+
+# The verbs that only read or write the lock store and list the ports, take
+# no lock tied to a pid and start nothing: autana runs these in its own
+# process when it has pyserial, rather than starting this file.
+IN_PROCESS_VERBS = frozenset({"status", "devices", "release", "wait-free"})
 
 
 def main(argv=None):
