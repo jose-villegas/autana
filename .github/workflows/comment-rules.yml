@@ -265,7 +265,7 @@ jobs:
 
   tool-tests-windows-shard:
     needs: [inputs, tool-tests-windows-times]
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.comment-rules == 'true') }}
+    if: ${{ !cancelled() && needs.tool-tests-windows-times.result == 'success' }}
     name: Tool tests (Windows) ${{ matrix.shard }}/2
     runs-on: windows-2025
     timeout-minutes: 90
