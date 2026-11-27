@@ -266,6 +266,9 @@ run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/inp
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
+run "$PYTHON" launcher/tools/input/motion_calibration_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_calibration_figures.log"
+# --orphans scans this runner: motion-calibration-round.gif, motion-calibration-fit.png
 # The producers that declare their images (launcher/tools/docs/producer.py) and need only this machine and the
 # bake cache, in parallel. A run whose inputs match its record is skipped and leaves the committed images in
 # $OUT; deleting launcher/tools/results/doc_images/fingerprints.json runs them all.

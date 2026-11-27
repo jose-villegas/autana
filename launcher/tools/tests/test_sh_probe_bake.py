@@ -27,6 +27,38 @@ def golden_record():
 
 
 class ProbeTests(unittest.TestCase):
+    def test_pack_mirrors_each_axis_and_its_l1_coefficient(self):
+        from asset import engine_frame
+        from r3d.build_pack import SH_PROBES
+
+        dims = (2, 3, 4)
+        origin, spacing = (1., 2., 3.), (2., 3., 4.)
+        values = np.arange(math.prod(dims) * sh.COEFFICIENTS * sh.CHANNELS).reshape(
+            *reversed(dims), sh.COEFFICIENTS, sh.CHANNELS) + 1
+        raw = asset.encode(origin, spacing, dims, values)
+        for signs in ((1, 1, -1), (-1, 1, 1), (1, -1, 1), (-1, -1, -1)):
+            with self.subTest(signs=signs), mock.patch.object(engine_frame, 'AXIS_SIGNS', signs):
+                converted = engine_frame.to_engine(SH_PROBES, raw)
+                got_origin, got_spacing, got_dims, scale, got, _ = asset.decode(converted)
+                expected_origin = tuple(o if s > 0 else -(o + step * (n - 1))
+                                        for o, step, n, s in zip(origin, spacing, dims, signs))
+                self.assertEqual(tuple(got_origin), expected_origin)
+                self.assertEqual(tuple(got_spacing), spacing)
+                self.assertEqual(tuple(got_dims), dims)
+                expected = np.empty_like(values)
+                for z in range(dims[2]):
+                    for y in range(dims[1]):
+                        for x in range(dims[0]):
+                            source = tuple(i if s > 0 else n - 1 - i
+                                           for i, n, s in zip((x, y, z), dims, signs))
+                            row = values[source[2], source[1], source[0]].copy()
+                            row[1] *= signs[1]
+                            row[2] *= signs[2]
+                            row[3] *= signs[0]
+                            expected[z, y, x] = row
+                np.testing.assert_allclose(got.reshape(expected.shape), expected, atol=scale / 2)
+                self.assertEqual(engine_frame.to_engine(SH_PROBES, converted), raw)
+
     def test_constant_sphere(self):
         directions = sphere_directions(DIRECTIONS)
         colour = np.array([0.2, 0.6, 1.0])
@@ -58,6 +90,42 @@ class ProbeTests(unittest.TestCase):
         expected = sh.project(directions, visible[:, None] * colour)
         got = asset.decode(data)[4][0]
         np.testing.assert_allclose(got, expected, atol=0.02)
+
+    @needs_llvm
+    def test_sky_transport_through_checker_cutout(self):
+        from types import SimpleNamespace
+        from tests.test_r3d_alpha_reference import checker_source
+        from tests.test_r3d_alpha_cutout import KEEP_ALPHA, CARD_Z
+        from r3d.light import AlphaTest
+        from r3d.ray_query import RayQuery
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = checker_source(directory)
+            source.tri_v, source.tri_t, source.tri_m = source.tri_v[:2], source.tri_t[:2], source.tri_m[:2]
+            source.materials['card']['Kd'] = (0., 0., 0.)
+            points = np.array([[0., 0., CARD_Z / 2]])
+            settings = SimpleNamespace(seed=0, alpha_keep=KEEP_ALPHA, double_sided={'card'})
+            requested = SimpleNamespace(spacing=None, directions=DIRECTIONS, spp=1)
+            job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.01, indirect=SimpleNamespace(bounces=2, rays=1)))
+            colour = np.array([0.4, 0.6, 1.0])
+            scene = SimpleNamespace(path=None,
+                                    lights=[dict(type='sky', mode=LIGHT_MODE_BAKED, color=colour.tolist(), intensity=1.0)],
+                                    camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),
+                                    indirect=SimpleNamespace(albedo_boost=1.0))
+            directions = sphere_directions(DIRECTIONS)
+            origins = np.broadcast_to(points, directions.shape).copy()
+            opaque = RayQuery(source.p, source.tri_v).blocked(origins, directions)
+            query = RayQuery(source.p, source.tri_v, hit_filter=AlphaTest(source, KEEP_ALPHA))
+            visible = ~query.blocked(origins, directions)
+            self.assertTrue(np.any(opaque & visible))
+            self.assertTrue(np.any(~visible))
+            lattice = (points, 1.0, points[0], np.ones(3), np.ones(3, dtype=int))
+            with mock.patch.object(sh, 'load', return_value=requested), \
+                    mock.patch.object(sh, 'load_source', return_value=source), \
+                    mock.patch.object(sh, 'grid', return_value=lattice):
+                data = sh.bake(job, scene)
+            np.testing.assert_allclose(asset.decode(data)[4][0],
+                                       sh.project(directions, visible[:, None] * colour), atol=0.02)
 
     @needs_llvm
     def test_grid_wire_order(self):
@@ -197,6 +265,20 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sh.dilate(values, np.ones_like(inside))
 
+    def test_header_layout_follows_its_c_owner(self):
+        import re
+        from r3d.mesh_asset import checked_struct
+
+        text = asset.OWNER.read_text(encoding='utf-8')
+        self.assertEqual(checked_struct(asset.OWNER, 'SH_PROBES', asset.HEADER_FIELDS).format, asset.HEADER.format)
+        moved_text, moves = re.subn(r'(#define SH_PROBES_AT_SCALE\s+)\d+', r'\g<1>30', text)
+        self.assertEqual(moves, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            moved = pathlib.Path(directory) / asset.OWNER.name
+            moved.write_text(moved_text, encoding='utf-8')
+            with self.assertRaises(ValueError):
+                checked_struct(moved, 'SH_PROBES', asset.HEADER_FIELDS)
+
     def test_record_round_trip_and_golden(self):
         coefficients = np.arange(24).reshape(2, sh.COEFFICIENTS, sh.CHANNELS) - 12
         data = asset.encode([1, 2, 3], [4, 5, 6], [2, 1, 1], coefficients)
@@ -210,6 +292,9 @@ class ProbeTests(unittest.TestCase):
         fixture = pathlib.Path(__file__).parent / 'data/sh_probes.shpr'
         golden = fixture.read_bytes()
         self.assertEqual(golden, golden_record())
+        self.assertEqual(len(golden), 89)
+        self.assertEqual(asset.HEADER.pack(*asset.HEADER.unpack_from(golden))
+                         + golden[asset.HEADER.size:], golden)
         self.assertEqual(golden[:4], struct.pack('<HH', asset.VERSION, asset.SH_PROBES_FLAG_INSIDE_MASK))
         _, _, dims, scale, decoded, inside = asset.decode(golden)
         self.assertEqual(tuple(dims), (2, 1, 1))
@@ -320,9 +405,38 @@ class ProbeTests(unittest.TestCase):
         for item in after:
             with self.subTest(output=item.output):
                 if item.kind == 'sh_probes':
+                    self.assertTrue(item.packed)
                     self.assertNotEqual(keys[item.output], item.key)
                 else:
                     self.assertEqual(keys[item.output], item.key)
+
+    def test_pack_mirrors_source_record_once(self):
+        from types import SimpleNamespace
+        from asset.asset_pack import parse_pack
+        from asset import table_asset
+        from r3d import build_pack
+        from r3d.sh_probe_asset import SUFFIX, TYPE
+
+        with tempfile.TemporaryDirectory() as work:
+            root = pathlib.Path(work)
+            source = root / 'scene.dat'
+            source.write_bytes(b'')
+            cached = root / 'cached.shpr'
+            record = (pathlib.Path(__file__).parent / 'data/sh_probes.shpr').read_bytes()
+            cached.write_bytes(record)
+            found = bake.Bake(packed=True, output='scene' + SUFFIX, suffix=SUFFIX,
+                              source=source, holder='scene', key='probe',
+                              tree=root / ('scene' + SUFFIX), kind='sh_probes',
+                              scene=SimpleNamespace(path=source))
+            with mock.patch.object(build_pack, 'pack_jobs', return_value=({'scene': {'scene': source}}, {})), \
+                    mock.patch.object(bake, 'bakes_in', return_value=[found]), \
+                    mock.patch.object(bake, 'fetch_all', return_value={found: cached}), \
+                    mock.patch.object(build_pack, 'pack_entry', return_value=('scene', table_asset.TYPE, b'')), \
+                    mock.patch.object(build_pack.skin_pack, 'entries', return_value=[]):
+                packed = build_pack.pack_bytes([source], offline=True)
+            from asset.engine_frame import to_engine
+            self.assertEqual(parse_pack(packed['scene'])[found.output], (TYPE, to_engine(TYPE, record)))
+            self.assertEqual(cached.read_bytes(), record)
 
     def test_probe_pins_include_source_image_decoder(self):
         owner = bake.entry_file(bake.STAGES['sh_probes'][0]).parent / bake.REQUIREMENTS_NAME

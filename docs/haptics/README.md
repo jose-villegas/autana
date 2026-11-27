@@ -9,11 +9,9 @@ resonance and usable gains.
 Include `haptics/haptics.h`. The API `sound_voice_t haptic_pulse(haptic_t strength)`
 returns the new voice or `SOUND_VOICE_NULL` if playback could not start.
 
-```c fragment
-if (ui_button(ui, "Start")) {
-    haptic_pulse(HAPTIC_FIRM);
-}
-```
+The UI face's `button()` helper requests one `HAPTIC_FIRM` pulse for each
+confirmed press through `ui_button()`, `ui_button_icon()`, `ui_tile()` or
+`ui_tile_icon()`.
 
 | Rule | Behavior |
 |---|---|
@@ -44,4 +42,6 @@ Remove these pieces together:
 |---|---|
 | Pulse module and development verb | `launcher/main/haptics/`, its CMake entry and `suite_haptics.c` |
 | Built-in bus | `SOUND_BUS_HAPTIC`, built-in count and name in `launcher/main/sound/` |
+| Button confirmation | The `haptic_pulse()` call in `launcher/main/ui/face/ui_face.c` |
+| Host stand-in | `launcher/tools/render/render_host_haptics.c` and its `scene_ui` line in `launcher/tools/render/render_scene.sh` |
 | Registration and verification | haptics layer entry, host tests and documentation links |

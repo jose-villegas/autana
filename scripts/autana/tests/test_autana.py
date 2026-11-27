@@ -32,6 +32,19 @@ import autana  # noqa: E402
 sys.path.insert(0, str(AUTANA.parent / "device"))
 import device_lock  # noqa: E402
 
+# The real one, for the tests that run device.py's verbs in this process.
+DEVICE_HERE = autana.device_here
+# device.py itself, under the isolation above: a temporary lock store, and no real port.
+DEVICE = autana.device_module()
+
+
+def setUpModule():
+    """Most tests here check the command a device.py verb is sent as a
+    child; the in-process run is off for them, and on where a test asks."""
+    patcher = mock.patch.object(autana, "device_here", return_value=None)
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
 
 def busy_status(owner="someone-else@0001", port="COM3"):
     """`device.py status --json` with one board that `owner` holds."""
@@ -78,7 +91,6 @@ def status_command(argv, environ, handler):
 def run_main(argv, environ=None, handler=None):
     handler = handler or mock.Mock(return_value=0)
     with status_command(argv, environ or {}, handler), \
-         mock.patch.object(autana, "idf_python", return_value="python"), \
          mock.patch.object(autana, "device_tool", return_value=Path("device.py")):
         with unittest.TestCase().assertRaises(SystemExit) as stop:
             autana.main()
@@ -535,9 +547,6 @@ class DeviceCommandTests(unittest.TestCase):
     word, in place of a flag every command used to parse for itself."""
 
     def setUp(self):
-        patcher = mock.patch.object(autana, "idf_python", return_value="python")
-        patcher.start()
-        self.addCleanup(patcher.stop)
         patcher = mock.patch.object(autana, "device_tool", return_value=Path("device.py"))
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -567,6 +576,100 @@ class DeviceCommandTests(unittest.TestCase):
         with mock.patch.dict(autana.os.environ, {autana.WAIT_ENV: "90"}):
             command = autana.device_command("send", wait=5)
         self.assertEqual(command[command.index("--wait") + 1], "5")
+
+
+class BoardCommandSpawnTests(unittest.TestCase):
+    """A command that never builds or flashes starts no process when this
+    Python has pyserial: device.py's verb runs in this one. Without pyserial
+    it starts device.py alone, never ESP-IDF's lookup, a dozen git calls, a
+    second or more each on a loaded Windows machine."""
+
+    BOARD_COMMANDS = (["devices", "--json"], ["status", "--json"], ["status"], ["lock", "release", "token"],
+                      ["lock", "wait"])
+
+    def setUp(self):
+        patcher = mock.patch.object(autana, "device_here", DEVICE_HERE)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def spawns(self, run, pyserial):
+        """What `run` started (device.py children, then every other process)
+        and the device.py verbs it ran in this process."""
+        device = mock.Mock()
+        device.return_value.wait.return_value = 0
+        device.return_value.poll.return_value = 0
+        device.return_value.returncode = 0
+        device.return_value.communicate.return_value = (json.dumps({"boards": []}), "")
+        here = mock.Mock(IN_PROCESS_VERBS=DEVICE.IN_PROCESS_VERBS)
+        here.main.side_effect = lambda argv: print(json.dumps({"boards": []})) or 0
+        spec = mock.Mock() if pyserial else None
+        with mock.patch.object(autana, "launch_process_tree", device), \
+             mock.patch.object(autana, "close_process_tree"), \
+             mock.patch.object(autana, "device_module", return_value=here), \
+             mock.patch.object(autana.importlib.util, "find_spec", return_value=spec), \
+             mock.patch("subprocess.Popen", side_effect=OSError("no other process")) as other, \
+             mock.patch("builtins.print"):
+            run()
+        return device.call_args_list, other.call_args_list, [call.args[0] for call in here.main.call_args_list]
+
+    def main_spawns(self, argv, pyserial):
+        with mock.patch.object(autana.sys, "argv", ["autana", *argv]):
+            return self.spawns(lambda: self.assertRaises(SystemExit, autana.main), pyserial)
+
+    def test_board_commands_start_no_process_with_pyserial(self):
+        for argv in self.BOARD_COMMANDS:
+            with self.subTest(argv=argv):
+                device, other, ran = self.main_spawns(argv, pyserial=True)
+                self.assertEqual((device, other), ([], []))
+                self.assertEqual(len(ran), 1)
+                self.assertEqual(ran[0][:2], ["--owner", autana.owner()])
+
+    def test_board_commands_start_device_py_alone_without_pyserial(self):
+        for argv in self.BOARD_COMMANDS:
+            with self.subTest(argv=argv):
+                device, other, ran = self.main_spawns(argv, pyserial=False)
+                self.assertEqual((len(device), other, ran), (1, [], []))
+                self.assertEqual(device[0].args[0][0], autana.sys.executable)
+
+    def test_records_busy_check_starts_no_process(self):
+        for pyserial, children in ((True, 0), (False, 1)):
+            with self.subTest(pyserial=pyserial), without_environment(autana.WAIT_ENV):
+                device, other, ran = self.spawns(autana.refused_as_busy, pyserial)
+                self.assertEqual((len(device), other, len(ran)), (children, [], 1 - children))
+
+
+@unittest.skipIf(autana.importlib.util.find_spec("serial") is None, "pyserial is not installed here")
+class DeviceHereTests(unittest.TestCase):
+    """device.py's own main() run in this process, against the test lock store."""
+
+    def here(self, *args):
+        with mock.patch.object(DEVICE, "plugged_boards", return_value=[]), \
+             without_environment(autana.WAIT_ENV):
+            done = DEVICE_HERE(*args, capture=True)
+            self.assertNotIn(autana.WAIT_ENV, autana.os.environ, "device.py's --wait stays in device.py")
+        return done
+
+    def test_status_json_prints_the_boards(self):
+        status, out, _ = self.here("status", "--json")
+        self.assertEqual(status, 0)
+        self.assertIn("boards", json.loads(out))
+
+    def test_a_bad_flag_exits_as_argparse_would(self):
+        status, _, err = self.here("status", "--no-such-flag")
+        self.assertEqual(status, 2)
+        self.assertIn("--no-such-flag", err)
+
+    def test_a_verb_that_holds_a_lock_runs_as_a_child(self):
+        self.assertIsNone(DEVICE_HERE("take"))
+
+    def test_a_system_exit_says_its_message_and_exits_1(self):
+        def main(argv):
+            raise SystemExit("device: the lock store is unreadable")
+
+        with mock.patch.object(DEVICE, "main", side_effect=main):
+            self.assertEqual(DEVICE_HERE("status", capture=True), (1, "", "device: the lock store is unreadable\n"))
+        with mock.patch.object(DEVICE, "main", side_effect=SystemExit(None)):
+            self.assertEqual(DEVICE_HERE("status")[0], 0)
 
 
 def make_project(root):
@@ -1845,7 +1948,6 @@ class OneShotForwardingTests(MainTest):
                 with mock.patch.dict(os.environ), \
                      mock.patch.object(autana, "capture_device", side_effect=capture), \
                      mock.patch.object(autana, "refused_as_busy", return_value=False), \
-                     mock.patch.object(autana, "idf_python", return_value=sys.executable), \
                      mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
                      mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
                      mock.patch.object(device, "open_when_free", return_value=FakeConnection([transcript])), \

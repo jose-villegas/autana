@@ -45,7 +45,7 @@ main(void) {
     for (int f = 0; f <= frames; f++) {
         const float t = (float)f / PROBE_FRAME_HZ;
         const probe_pose_t p = pose(t);
-        const input_motion_t sample = probe_motion_sample(pose, t, dt, none, NULL);
+        const input_motion_t sample = probe_motion_sample(pose, t, dt, none, NULL, NULL);
         const vec3i_t acceleration = sample.acceleration;
         const vec3i_t rotation = sample.rotation;
         float rate[3];

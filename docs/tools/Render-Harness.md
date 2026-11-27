@@ -372,6 +372,7 @@ allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, a
 `launcher/main/renderer_sources.cmake` lists, and answers `display_quarter_now()`
 (`display/display.h`) with the run's quarter (`render_host_quarter.c`); a `render_host_core`
 consumer defines its own. The scene-file provider is `scene_target=scene_provider` (`scene_viewer.c`).
+UI scenes link `render_host_haptics.c` for device-free `haptic_pulse()` calls.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;

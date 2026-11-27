@@ -1,15 +1,4 @@
-/*
- * Specification for the touch state machine.
- *
- * This is the logic that turns "the controller reported a point / reported
- * nothing" into press and release events. It is deliberately free of I2C and
- * FreeRTOS so it can be exercised here in microseconds, with time as a plain
- * argument rather than a clock we would have to wait for.
- *
- * The debounce cases below are not hypothetical: the FT5x06's INT line signals
- * "data ready" rather than "finger down" and drops briefly mid-touch, which
- * made a held finger flicker between pressed and released.
- */
+/* Touch samples and their timestamps drive the press and release edge tests. */
 
 #include "input/touch/touch_fsm.h"
 #include "suites.h"
@@ -46,7 +35,7 @@ test_starts_with_nothing_pressed(void) {
 void
 test_first_contact_reports_a_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){100, 200}, MS(0));
 
     input_t in;
     touch_fsm_take(&fsm, &in);
@@ -60,7 +49,7 @@ test_first_contact_reports_a_press(void) {
 void
 test_press_is_reported_only_once(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){100, 200}, MS(0));
 
     input_t first, second;
     touch_fsm_take(&fsm, &first);
@@ -73,11 +62,11 @@ test_press_is_reported_only_once(void) {
 void
 test_holding_does_not_repeat_the_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){100, 200}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, true, (vec2i_t){100, 200}, MS(10));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){100, 200}, MS(10));
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE(in.pressed);
@@ -87,9 +76,9 @@ test_holding_does_not_repeat_the_press(void) {
 void
 test_press_position_is_where_the_touch_began(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){50, 400}, MS(0));
-    touch_fsm_update(&fsm, true, (vec2i_t){55, 300}, MS(20));
-    touch_fsm_update(&fsm, true, (vec2i_t){60, 200}, MS(40));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){50, 400}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){55, 300}, MS(20));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){60, 200}, MS(40));
 
     input_t in;
     touch_fsm_take(&fsm, &in);
@@ -102,14 +91,104 @@ test_press_position_is_where_the_touch_began(void) {
 
 /* releasing, and the debounce that makes it reliable */
 
-void
-test_release_is_reported_after_the_quiet_period(void) {
+static void
+test_lift_releases_on_the_same_sample(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
+    touch_fsm_update(&fsm, true, false, vec2i_one(), MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, vec2i_zero(), MS(0) + TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(10));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_FALSE(in.down);
+}
+
+static void
+test_contact_after_a_lift_presses_again(void) {
+    fixture();
+    touch_fsm_update(&fsm, true, false, vec2i_one(), MS(0));
+    input_t in;
+    touch_fsm_take(&fsm, &in);
+
+    touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(10));
+    touch_fsm_take(&fsm, &in);
+    touch_fsm_update(&fsm, true, false, vec2i_one(), MS(20));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.pressed);
+    TEST_ASSERT_TRUE(in.down);
+    TEST_ASSERT_FALSE(in.released);
+}
+
+static void
+test_contact_waits_for_the_latched_release(void) {
+    fixture();
+    const vec2i_t old_point = {100, 200};
+    const vec2i_t new_point = {50, 300};
+    input_t in;
+    touch_fsm_update(&fsm, true, false, old_point, MS(0));
+    touch_fsm_take(&fsm, &in);
+
+    touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(10));
+    touch_fsm_update(&fsm, true, false, new_point, MS(20));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.released);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_FALSE(in.down);
+    TEST_ASSERT_TRUE_MESSAGE(vec2i_equal(old_point, in.press), "release retains the old press position");
+    TEST_ASSERT_TRUE_MESSAGE(vec2i_equal(old_point, in.point), "release retains the old contact position");
+
+    touch_fsm_update(&fsm, true, false, new_point, MS(30));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.pressed);
+    TEST_ASSERT_TRUE(in.down);
+    TEST_ASSERT_FALSE(in.released);
+    TEST_ASSERT_TRUE(vec2i_equal(new_point, in.press));
+    TEST_ASSERT_TRUE(vec2i_equal(new_point, in.point));
+}
+
+static void
+test_lift_while_idle_produces_no_edge(void) {
+    fixture();
+    touch_fsm_update(&fsm, false, true, vec2i_zero(), MS(0));
+    input_t in;
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_FALSE(in.down);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_FALSE(in.released);
+}
+
+static void
+test_contact_with_lift_flag_keeps_the_touch_down(void) {
+    fixture();
+    touch_fsm_update(&fsm, true, false, vec2i_one(), MS(0));
+    input_t in;
+    touch_fsm_take(&fsm, &in);
+
+    const vec2i_t moved = vec2i_add(vec2i_one(), vec2i_one());
+    touch_fsm_update(&fsm, true, true, moved, MS(10));
+    touch_fsm_take(&fsm, &in);
+
+    TEST_ASSERT_TRUE(in.down);
+    TEST_ASSERT_FALSE(in.pressed);
+    TEST_ASSERT_FALSE(in.released);
+    TEST_ASSERT_EQUAL_INT(moved.x, in.point.x);
+    TEST_ASSERT_EQUAL_INT(moved.y, in.point.y);
+}
+
+void
+test_release_is_reported_after_the_quiet_period(void) {
+    fixture();
+    touch_fsm_update(&fsm, true, false, (vec2i_t){10, 10}, MS(0));
+    input_t in;
+    touch_fsm_take(&fsm, &in);
+
+    touch_fsm_update(&fsm, false, false, vec2i_zero(), MS(0) + TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_TRUE(in.released);
@@ -119,13 +198,11 @@ test_release_is_reported_after_the_quiet_period(void) {
 void
 test_brief_dropout_is_not_a_release(void) {
     fixture();
-    /* The exact failure that made a held finger flicker: the controller goes
-     * quiet for a few milliseconds mid-touch. That must not look like a lift. */
-    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, vec2i_zero(), MS(10));
+    touch_fsm_update(&fsm, false, false, vec2i_zero(), MS(10));
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE_MESSAGE(in.released, "a short gap is not a release");
@@ -135,12 +212,12 @@ test_brief_dropout_is_not_a_release(void) {
 void
 test_contact_resuming_after_a_dropout_does_not_re_press(void) {
     fixture();
-    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, vec2i_zero(), MS(10));     /* dropout */
-    touch_fsm_update(&fsm, true, (vec2i_t){12, 12}, MS(20)); /* back again */
+    touch_fsm_update(&fsm, false, false, vec2i_zero(), MS(10));     /* dropout */
+    touch_fsm_update(&fsm, true, false, (vec2i_t){12, 12}, MS(20)); /* back again */
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE_MESSAGE(in.pressed, "a dropout mid-touch must not produce a second press");
@@ -153,12 +230,12 @@ test_quiet_period_is_measured_from_the_last_contact(void) {
     fixture();
     /* Contact keeps arriving, each time restarting the clock, so the total
      * elapsed time far exceeds the quiet period without ever releasing. */
-    touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){10, 10}, MS(0));
     input_t in;
     touch_fsm_take(&fsm, &in);
 
     for (int t = 10; t <= 500; t += 10) {
-        touch_fsm_update(&fsm, true, (vec2i_t){10, 10}, MS(t));
+        touch_fsm_update(&fsm, true, false, (vec2i_t){10, 10}, MS(t));
     }
     touch_fsm_take(&fsm, &in);
 
@@ -172,10 +249,10 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
     int presses = 0, releases = 0;
     input_t in;
 
-    touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(0));
-    touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(20));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){80, 90}, MS(0));
+    touch_fsm_update(&fsm, true, false, (vec2i_t){80, 90}, MS(20));
     for (int t = 40; t <= 400; t += 10) {
-        touch_fsm_update(&fsm, false, vec2i_zero(), MS(t));
+        touch_fsm_update(&fsm, false, false, vec2i_zero(), MS(t));
     }
 
     /* Drain everything the sequence produced. */
@@ -202,16 +279,16 @@ test_touch_example_counts_edges_and_tracks_held_position(void) {
     const int64_t step_us = TOUCH_RELEASE_QUIET_US;
     touch_example_t state = {0};
     input_t input;
-    touch_fsm_update(&fsm, true, start, 0);
+    touch_fsm_update(&fsm, true, false, start, 0);
     touch_fsm_take(&fsm, &input);
     touch_example(&state, &input);
-    touch_fsm_update(&fsm, true, middle, step_us);
+    touch_fsm_update(&fsm, true, false, middle, step_us);
     touch_fsm_take(&fsm, &input);
     touch_example(&state, &input);
-    touch_fsm_update(&fsm, true, last, step_us + step_us);
+    touch_fsm_update(&fsm, true, false, last, step_us + step_us);
     touch_fsm_take(&fsm, &input);
     touch_example(&state, &input);
-    touch_fsm_update(&fsm, false, start, step_us + step_us + TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_update(&fsm, false, false, start, step_us + step_us + TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &input);
     TEST_ASSERT_TRUE(input.released);
     /* Distinct release coordinates prove the example follows only while down. */
@@ -220,7 +297,7 @@ test_touch_example_counts_edges_and_tracks_held_position(void) {
     TEST_ASSERT_EQUAL_INT(1, state.taps);
     TEST_ASSERT_EQUAL_INT(last.x, state.point.x);
     TEST_ASSERT_EQUAL_INT(last.y, state.point.y);
-    touch_fsm_update(&fsm, true, start, step_us * 4);
+    touch_fsm_update(&fsm, true, false, start, step_us * 4);
     touch_fsm_take(&fsm, &input);
     TEST_ASSERT_TRUE(input.pressed);
     touch_example(&state, &input);
@@ -241,6 +318,11 @@ run_touch_fsm_suite(void) {
     RUN_TEST(test_holding_does_not_repeat_the_press);
     RUN_TEST(test_press_position_is_where_the_touch_began);
 
+    RUN_TEST(test_lift_releases_on_the_same_sample);
+    RUN_TEST(test_contact_after_a_lift_presses_again);
+    RUN_TEST(test_contact_waits_for_the_latched_release);
+    RUN_TEST(test_lift_while_idle_produces_no_edge);
+    RUN_TEST(test_contact_with_lift_flag_keeps_the_touch_down);
     RUN_TEST(test_release_is_reported_after_the_quiet_period);
     RUN_TEST(test_brief_dropout_is_not_a_release);
     RUN_TEST(test_contact_resuming_after_a_dropout_does_not_re_press);

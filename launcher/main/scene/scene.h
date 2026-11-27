@@ -71,6 +71,8 @@ void scene_set_paused(bool paused);
 
 /* Borrowed until changed or unloaded; NULL restores flat ambient. Only a loaded root accepts it. */
 void scene_set_probes(entity_t root, const sh_probes_t* probes);
+/* Borrowed until this root is unloaded. */
+const sh_probes_t* scene_probes(entity_t root);
 
 #define SCENE_CONTACT_BLOB_STRENGTH_DEFAULT 0.75F
 

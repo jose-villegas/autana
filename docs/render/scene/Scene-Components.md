@@ -33,21 +33,23 @@ false for a non-camera entity or an invalid value.
 | | `camera_cut()` | after a jump of the active camera, the renderer drops what it carried from earlier frames |
 | | `camera_set_present()`, `_set_skip_hidden()` | per-camera settings |
 | | `camera_set_shift()` | an off-axis view along the camera's right and up, in picture short sides ([Camera](Camera.md#lens-shift)) |
-| `scene/light/light.h` | `light_set_color()` / `_set_intensity()` | attach or update one directional light: color finite linear RGB in [0,1], intensity finite and nonnegative; a full light array or a skin without vertex colors fails without mutation |
-| | `light_color()` / `_intensity()` | read it; zero when none |
+| `scene/light/light.h` | `light_set_color()` / `_set_intensity()` / `_set_mode()` | attach or update one directional light: color finite linear RGB in [0,1], intensity finite and nonnegative; a full light array or a skin without vertex colors fails without mutation |
+| | `light_color()` / `_intensity()` / `_mode()` | read it; zero colour/intensity and realtime mode when none |
 | not the scene's | `render_context_set_scale()`, `_set_dynamic_resolution()`, `_frame()` | the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](../Mesh-Rendering.md#the-render-context)) |
 
 `transformf_*` is the transform value; `transform_*` is the component.
 `lens_t` (`scene/camera/lens.h`) is a camera's lens value; `camera_*` is the
 component.
 
-A new light starts white with zero intensity. Its world direction is its
-entity's rotated +Y axis; moving its rotation changes skin shading next frame,
-including while the pose is paused. Scene ambient and tone map are private;
-SCNE settings apply ambient and tone map before authored lights attach.
-All lit skins share world-space lights. Their normal palettes include entity
-and joint scale through an inverse-transpose transform. Skin dirty bits are
-consumed by the skin stage even when another scene is active.
+New lights are realtime, white and zero intensity. Rotating their +Y axis
+relights skins next frame, even while paused. SCNE applies ambient and tone
+map before attaching lights.
+
+Lit skins share world lights; probes exclude baked lights from that table.
+A BAKED light still lights skins when the scene has no probes.
+Normal palettes take joint scale through an inverse-transpose; a uniform
+entity scale cancels out of them.
+The skin stage consumes dirty bits even when another scene is active.
 
 Exactly one camera is active engine-wide, and it draws the active renderers of
 its own scene. Several scenes may be loaded at once; activating another scene's

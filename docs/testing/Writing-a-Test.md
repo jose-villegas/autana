@@ -15,19 +15,18 @@ bundles. Same API, so suites do not care which they build against.
 ### Prove a test can fail
 
 A green suite that was never red proves nothing. **Break the implementation
-deliberately, watch the test go red, then restore.** For the touch debounce:
-set `TOUCH_RELEASE_QUIET_US` to `0` and confirm exactly
-`test_brief_dropout_is_not_a_release` and
-`test_contact_resuming_after_a_dropout_does_not_re_press` fail, with messages
-that explain why.
+deliberately, watch the test go red, then restore.**
+
+A controller lift releases immediately. Set `TOUCH_RELEASE_QUIET_US` to `0`
+to check the fallback for a missing lift flag. Both dropout tests below should
+fail.
 
 ## What to test first
 
-Bias toward what has already hurt. Every current test exists because of a
-real bug:
+Bias toward bugs and boundary cases that affect what the user sees.
 
-- `test_brief_dropout_is_not_a_release`: the FT5x06's INT line means "data ready", not "finger down", and drops mid-touch. Reading that as a lift made a held finger flicker.
-- `test_contact_resuming_after_a_dropout_does_not_re_press`: the same fault from the other side.
+- `test_brief_dropout_is_not_a_release` keeps a touch down during a short gap without a lift flag.
+- `test_contact_resuming_after_a_dropout_does_not_re_press` checks that contact can resume within the quiet window without a second press.
 - The gesture boundary tests: thresholds forgiving enough for a fingertip, strict enough never to fire in normal use.
 
 A bug found on hardware becomes a test **before** it is fixed: a host test if
@@ -66,13 +65,12 @@ it.
 
 <!-- generated: declaration-touch-fsm-update check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-void touch_fsm_update(touch_fsm_t* fsm, bool have_point, vec2i_t point, int64_t now_us);
+void touch_fsm_update(touch_fsm_t* fsm, bool have_point, bool lifted, vec2i_t point, int64_t now_us);
 ```
 <!-- /generated: declaration-touch-fsm-update -->
 
-Taking `now_us` instead of calling `timing_now_us()` lets a test assert a 60 ms
-debounce instantly, and build sequences (a dropout mid-touch) that are awkward
-on real hardware. Any timeout, debounce, animation or rate limit takes time as
+Passing `now_us` lets tests check the quiet window for a missing lift flag
+without waiting. Any timeout, debounce, animation or rate limit takes time as
 a parameter.
 
 ### Pass the environment in
