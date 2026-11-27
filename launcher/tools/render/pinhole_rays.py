@@ -31,7 +31,7 @@ from anim import track_host
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import finest_triangles, read_lit_mesh
 from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, parse_poses, sample_camera_rows
-from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
+from r3d.ray_query import RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
 
@@ -45,12 +45,21 @@ FRONT_DEPTH_TOLERANCE = 0.15
 FIT_RENDER_SCALE = 2
 
 
+class FrontMesh:
+    """A mesh with face planes ready for culling from a pinhole camera."""
+
+    def __init__(self, positions, triangles, double):
+        self.positions, self.triangles, self.double = positions, triangles, double
+        a, b, c = (positions[triangles[:, corner]] for corner in range(3))
+        self.anchors = a
+        self.normals = np.cross(b - a, c - a)
+
+
 def mesh_query(path):
     mesh = read_lit_mesh(path)
     positions, _, triangles, double, _ = finest_triangles(mesh)
     positions = positions / float(mesh.position_scale)
-    a, b, c = (positions[triangles[:, corner]] for corner in range(3))
-    return RayQuery(positions, triangles), np.cross(b - a, c - a), double.astype(bool)
+    return FrontMesh(positions, triangles, double.astype(bool))
 
 
 def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
@@ -60,28 +69,19 @@ def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
     return origins, directions
 
 
-def front_hits(query, normals, double, origins, directions):
-    """First drawable triangle and near-plane distance; back faces are transparent."""
+def front_hits(mesh, eye, origins, directions):
+    """Original triangle IDs and near-plane distances to the first drawable faces."""
     triangles = np.full(len(origins), -1, dtype=np.int64)
     depths = np.full(len(origins), np.inf)
-    start = origins.copy()
-    alive = np.arange(len(origins))
-    for _ in range(MAX_HITS):
-        if not len(alive):
-            break
-        hit, distance, tri = query.first_hits(start[alive], directions[alive])
-        alive, distance, tri = alive[hit], distance[hit], tri[hit]
-        points = start[alive] + directions[alive] * distance[:, None]
-        front = double[tri] | ((normals[tri] * directions[alive]).sum(axis=1) < 0)
-        accepted = alive[front]
-        triangles[accepted] = tri[front]
-        depths[accepted] = ((points[front] - origins[accepted]) * directions[accepted]).sum(axis=1)
-        alive, points = alive[~front], points[~front]
-        step = np.maximum(STEP, STEP_RELATIVE * np.abs(points).max(axis=1, initial=0.0))
-        start[alive] = points + directions[alive] * step[:, None]
-    else:
-        if len(alive):
-            raise RuntimeError(f'{len(alive)} rays exceed the {MAX_HITS}-intersection limit')
+    if not len(origins):
+        return triangles, depths
+    # A culled face must stay out of the intersection tree because it can share a depth with a drawable face.
+    kept = np.flatnonzero(mesh.double | (np.einsum('ij,ij->i', mesh.normals, eye - mesh.anchors) > 0))
+    if len(kept):
+        query = RayQuery(mesh.positions, mesh.triangles[kept])
+        hit, distance, tri = query.first_hits(origins, directions)
+        triangles[hit] = kept[tri[hit]]
+        depths[hit] = distance[hit]
     return triangles, depths
 
 
@@ -121,7 +121,7 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
                   if not mask[yy, xx]]
         neighbourhoods.append(pixels)
     wanted = np.unique(np.concatenate([holes, sample, *[np.asarray(n, dtype=int) for n in neighbourhoods]]))
-    triangles, distances = front_hits(*drawn, origins[wanted], directions[wanted])
+    triangles, distances = front_hits(drawn, pose[:3], origins[wanted], directions[wanted])
     ids = np.full(width * height, -1, dtype=int)
     depths = np.full(width * height, np.inf)
     ids[wanted], depths[wanted] = triangles, distances
@@ -134,8 +134,8 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
         values = depths[pixels]
         values = values[np.isfinite(values)]
         neighbours.append(float(np.median(values)) if len(values) else np.inf)
-    for name, query in against:
-        _, other_depths = front_hits(*query, origins[holes], directions[holes])
+    for name, mesh in against:
+        _, other_depths = front_hits(mesh, pose[:3], origins[holes], directions[holes])
         counts = classify_against(other_depths, neighbours)
         print(f'  {name}: ' + '; '.join(f'{key} {value}' for key, value in counts.items()))
 
@@ -190,11 +190,11 @@ def grid_rays(width, height, lens, near, pose, grid):
 
 def count_shown(path, coverage, grid):
     width, height, lens, near, poses = coverage
-    query, normals, double = mesh_query(path)
-    seen = np.zeros(len(normals), bool)
+    mesh = mesh_query(path)
+    seen = np.zeros(len(mesh.triangles), bool)
     for pose in poses:
         origins, directions = grid_rays(width, height, lens, near, pose, grid)
-        triangles, _ = front_hits(query, normals, double, origins, directions)
+        triangles, _ = front_hits(mesh, pose[:3], origins, directions)
         seen[triangles[triangles >= 0]] = True
     return int(seen.sum()), len(seen)
 
