@@ -25,6 +25,7 @@ WINDOW_ALPHA = 0.17
 TRACE_LIMITS = (-0.33, 1.85)
 ANNOTATION_HEIGHT = 1.55
 CONTACT_DOT_SIZE = 3.5
+LIFT_LEVEL = 2
 
 
 def event_markers(axis, x, y, events, styles):
@@ -50,7 +51,7 @@ def binary_traces(axes, time, raw, down, titles, raw_labels, xlabel, *, raw_samp
 
 
 def touch_figure(data, us_per_ms, render, out):
-    us, contact, down, x, y, *flags = np.array(data["rows"]).T
+    us, contact, lifted, down, x, y, *flags = np.array(data["rows"]).T
     events = [flag.astype(bool) for flag in flags]
     time = us / us_per_ms
     width, height, zone = (data[key] for key in ("width", "height", "zone"))
@@ -74,14 +75,17 @@ def touch_figure(data, us_per_ms, render, out):
     style_axes(panel, "Touch screen")
     panel.set_axis_off()
 
-    binary_traces((raw, fsm), time, contact, down, ("Controller contact", "Touch FSM · down"), ("No point", "Point"),
+    raw_samples = np.where(lifted, LIFT_LEVEL, contact)
+    binary_traces((raw, fsm), time, raw_samples, down, ("Controller contact", "Touch FSM · down"), ("No point", "Point"),
                   f"Time (ms) · {data['poll_hz']} Hz polling", raw_samples=True)
+    raw.set(yticks=(0, 1, LIFT_LEVEL), yticklabels=("No point", "Point", "Lift flag"),
+            ylim=(TRACE_LIMITS[0], LIFT_LEVEL - TRACE_LIMITS[0]))
     quiet = data["quiet_us"] / us_per_ms
     last_contact = 0
-    for t, have_point, released in zip(time, contact, events[1]):
+    for t, have_point, lift_flag, released in zip(time, contact, lifted, events[1]):
         if have_point:
             last_contact = t
-        if released:
+        if released and not lift_flag:
             for axis in (raw, fsm):
                 axis.axvspan(last_contact, last_contact + quiet, color=SLOTS[0], alpha=WINDOW_ALPHA)
             raw.text(last_contact + quiet / 2, ANNOTATION_HEIGHT, f"Quiet {quiet:g} ms", ha="center",
@@ -120,18 +124,24 @@ def button_figure(data, us_per_ms, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", default="cc")
-    parser.add_argument("--random-tap", type=Path, required=True)
-    parser.add_argument("--tap", metavar="X,Y", required=True, help="tap point in screen pixels")
-    parser.add_argument("--touch", type=Path, required=True)
-    parser.add_argument("--button", type=Path, required=True)
+    parser.add_argument("--random-tap", type=Path)
+    parser.add_argument("--tap", metavar="X,Y", help="tap point in screen pixels")
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--touch", type=Path)
+    output.add_argument("--button", type=Path)
     args = parser.parse_args()
+    if args.button:
+        data = run_probe(args.cc, SOURCES)
+        button_figure(data["trace"], data["us_per_ms"], args.button)
+        return
+    if args.random_tap is None or args.tap is None:
+        parser.error("--touch requires --random-tap and --tap")
     try:
         x, y = map(int, args.tap.split(","))
     except ValueError:
         parser.error("--tap must be two integers separated by a comma")
     data = run_probe(args.cc, SOURCES, x, y)
-    touch_figure(data["touch"], data["us_per_ms"], args.random_tap, args.touch)
-    button_figure(data["button"], data["us_per_ms"], args.button)
+    touch_figure(data["trace"], data["us_per_ms"], args.random_tap, args.touch)
 
 
 if __name__ == "__main__":

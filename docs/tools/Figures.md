@@ -12,7 +12,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 |---|---|---|---|
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
-| [input](#input) | 13 | 0 | 0 |
+| [input](#input) | 15 | 0 | 0 |
 | [kinematics](#kinematics) | 8 | 4 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 49 | 0 | 0 |

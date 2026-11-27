@@ -34,6 +34,7 @@ touch_trace(vec2i_t tap) {
         const int swipe_poll = poll - swipe_start;
         const bool tapping = tap_poll >= 0 && tap_poll < TAP_POLLS && tap_poll != DROPOUT_POLL;
         const bool dragging = swipe_poll >= 0 && swipe_poll < SWIPE_POLLS && swipe_poll != DROPOUT_POLL;
+        const bool lifted = tap_poll == TAP_POLLS;
         vec2i_t point = vec2i_zero();
         if (tapping) {
             point = (vec2i_t){tap.x + tap_poll * TAP_STEP_PX, tap.y};
@@ -43,12 +44,12 @@ touch_trace(vec2i_t tap) {
                               GFX_HEIGHT - GESTURE_HOME_ZONE_DEPTH / 2 - swipe_poll * travel / (SWIPE_POLLS - 1)};
         }
         const unsigned us = poll * TOUCH_POLL_US;
-        touch_fsm_update(&fsm, tapping || dragging, point, us);
+        touch_fsm_update(&fsm, tapping || dragging, lifted, point, us);
         input_t sample = {0};
         touch_fsm_take(&fsm, &sample);
         const bool swipe = !swiped && gesture_is_home_swipe(&sample, GESTURE_EDGE_BOTTOM, GFX_WIDTH, GFX_HEIGHT);
         swiped |= swipe;
-        printf("%s[%u,%d,%d,%d,%d,%d,%d,%d]", poll == 0 ? "" : ",", us, tapping || dragging, sample.down,
+        printf("%s[%u,%d,%d,%d,%d,%d,%d,%d,%d]", poll == 0 ? "" : ",", us, tapping || dragging, lifted, sample.down,
                sample.point.x, sample.point.y, sample.pressed, sample.released, swipe);
     }
     printf("]}");
@@ -92,8 +93,14 @@ button_trace(void) {
 
 int
 main(int argc, char** argv) {
+    if (argc == 1) {
+        printf("{\"us_per_ms\":%u,\"trace\":", MATH_US_PER_MS);
+        button_trace();
+        puts("}");
+        return EXIT_SUCCESS;
+    }
     if (argc != 3) {
-        fputs("usage: contact_figures_probe X Y\n", stderr);
+        fputs("usage: contact_figures_probe [X Y]\n", stderr);
         return EXIT_FAILURE;
     }
     char* x_end;
@@ -105,10 +112,8 @@ main(int argc, char** argv) {
         fputs("tap coordinates must be decimal pixels within the screen\n", stderr);
         return EXIT_FAILURE;
     }
-    printf("{\"us_per_ms\":%u,\"touch\":", MATH_US_PER_MS);
+    printf("{\"us_per_ms\":%u,\"trace\":", MATH_US_PER_MS);
     touch_trace((vec2i_t){(int)x, (int)y});
-    printf(",\"button\":");
-    button_trace();
     puts("}");
     return 0;
 }

@@ -33,7 +33,7 @@ touch_example(touch_example_t* s, const input_t* input) {
 
 ![Touch sample positions and the timeline of a scripted tap and home swipe](../images/input/touch-trace.png)
 
-A one-poll dropout leaves the touch down; it releases only after the quiet interval with no sample, and the home swipe fires while the drag is still in progress.
+A one-poll dropout leaves the touch down. The tap releases immediately on the lift flag, while the drag triggers the home swipe before releasing after the quiet interval.
 
 | Rule | Owner |
 |---|---|
