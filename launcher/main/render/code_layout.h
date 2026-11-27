@@ -13,10 +13,11 @@
 
 #define CODE_ENTRY_OFFSET(slots)                                                                                       \
     __attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE), patchable_function_entry(slots, slots)))
-/* IRAM draw entry points avoid flash stalls that cost about a tenth of draw
- * cycles in dense scenes. The once-per-frame cull setup also misses the
- * instruction cache. IRAM entries need only 4-byte alignment.
- * IRAM budget: 7392 B */
+/* IRAM saves about a tenth of draw cycles in dense scenes and avoids
+ * instruction cache misses in cull setup. Entries need 4-byte alignment.
+ * Matching GCC assembly and symbol sizes under --no-target-align identify
+ * 4 B of Xtensa branch-target alignment.
+ * IRAM budget: 7396 B */
 #define RENDER_IRAM_ATTR   IRAM_ATTR __attribute__((aligned(4)))
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
