@@ -236,9 +236,13 @@ scene_row_world_matrix(const scene_root_t* root, scene_row_t row) {
         return world;
     }
     for (scene_row_t e = parent_of(root->scene, row); e != SCENE_ROW_NONE; e = parent_of(root->scene, e)) {
-        world = mat4f_mul_affine(transformf_compute_matrix(&root->scene->locals[e]), world);
+        const mat4f_t parent = transformf_compute_matrix(&root->scene->locals[e]);
+        mat4f_pre_mul_affine(&parent, &world);
     }
-    return root->placed ? mat4f_mul_affine(root->world, world) : world;
+    if (root->placed) {
+        mat4f_pre_mul_affine(&root->world, &world);
+    }
+    return world;
 }
 
 void

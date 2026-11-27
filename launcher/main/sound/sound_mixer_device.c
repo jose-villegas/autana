@@ -144,6 +144,18 @@ sound_voice_audible(sound_voice_t voice) {
     return audible;
 }
 
+bool
+sound_voice_wait_audible(sound_voice_t voice, uint32_t timeout_ms) {
+    const int64_t deadline = timing_now_us() + ((int64_t)timeout_ms * MATH_US_PER_MS);
+    while (!sound_voice_audible(voice)) {
+        if (!sound_is_playing(voice) || timing_now_us() >= deadline) {
+            return false;
+        }
+        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+    }
+    return true;
+}
+
 sound_bus_t
 sound_bus_create(const char* name) {
     uint32_t generation;
@@ -307,25 +319,17 @@ apply_tuning(uint32_t* generation) {
     *generation = TUNE_GENERATION(sound);
 }
 
-static bool
-update_amp(sound_amp_state_t* previous) {
-    if (mixer.amp == *previous) {
-        return true;
-    }
-    if ((mixer.amp == SOUND_AMP_OFF || *previous == SOUND_AMP_OFF)
-        && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
-        return false;
-    }
-    *previous = mixer.amp;
-    return true;
-}
-
 static void
 mixer_task(void* unused) {
     int16_t out[SOUND_MIXER_BLOCK_FRAMES];
     int16_t scratch[SOUND_MIXER_BLOCK_FRAMES];
     int32_t accumulator[SOUND_MIXER_BLOCK_FRAMES];
-    sound_amp_state_t previous_amp = SOUND_AMP_OFF;
+    if (!audio_out_amp_enable(true)) {
+        fail("amplifier");
+        vTaskDelete(NULL);
+        return;
+    }
+    mixer.amp_started_ms = (uint64_t)timing_now_us() / MATH_US_PER_MS;
     uint32_t tuning_generation = UINT32_MAX;
     for (;;) {
         apply_tuning(&tuning_generation);
@@ -353,10 +357,6 @@ mixer_task(void* unused) {
         _Static_assert(sizeof(SOUND_MIXER_FRAME_COST_NAME) - 1 <= FRAME_COST_NAME_MAX,
                        "mixer frame-cost name exceeds report capacity");
         FRAME_COST_EXTERNAL(SOUND_MIXER_FRAME_COST_NAME, mix_us);
-        if (!update_amp(&previous_amp)) {
-            fail("amplifier");
-            break;
-        }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         const size_t stack_free = uxTaskGetStackHighWaterMark(NULL);
 #endif

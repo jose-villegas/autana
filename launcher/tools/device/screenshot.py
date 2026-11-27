@@ -42,7 +42,9 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 
+import board_serial  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 
 # autana runs this and asks the device, never launcher/main, so the size comes from the vendor
@@ -247,7 +249,7 @@ def read_screenshot(port, timeout, on_status=None):
     last_trigger_sent = time.monotonic()
 
     while time.monotonic() < deadline:
-        chunk = port.read(4096)
+        chunk = board_serial.read_ready(port)
         if chunk:
             buffer += chunk.decode("utf-8", errors="replace")
 

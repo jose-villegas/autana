@@ -15,6 +15,7 @@
 #define SOUND_BUS_SYSTEM      ((sound_bus_t){.id = 0})
 #define SOUND_BUS_SFX         ((sound_bus_t){.id = 1})
 #define SOUND_BUS_MUSIC       ((sound_bus_t){.id = 2})
+#define SOUND_BUS_HAPTIC      ((sound_bus_t){.id = 3})
 #define SOUND_BUS_MASTER      ((sound_bus_t){.id = SOUND_BUS_COUNT_MAX})
 #define SOUND_BUS_INVALID     ((sound_bus_t){.id = UINT8_MAX})
 #define SOUND_VOICE_NULL      ((sound_voice_t){0})

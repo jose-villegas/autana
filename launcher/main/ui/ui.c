@@ -119,36 +119,24 @@ mu_color_to_gfx(mu_Color c) {
     return RGB565BE(ui_rgb_value(c));
 }
 
+/* Rotate the logical text box so a quarter turn keeps the glyph run in its bounds. */
+static __attribute__((noinline)) vec2i_t
+text_origin(const mu_Command* cmd, const affine2x_t* t, const draw_font_t* font, int scale, int quarter) {
+    const int tw = draw_font_text_width(font, cmd->text.str, -1, scale);
+    const int th = draw_font_height(font, scale);
+    const mu_Rect box = ui_transform_mu_rect(*t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
+    return ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale);
+}
+
 static __attribute__((noinline)) void
-draw_text_command(const mu_Command* cmd, affine2x_t t) {
+draw_text_command(const mu_Command* cmd, const affine2x_t* t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
     const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
     const draw_font_t* font = fs.font;
     const int scale = fs.scale;
-    const int quarter = ui_transform_quarter(t);
-
-    /* WHY THE WHOLE STRING'S BOX IS MAPPED, NOT ITS ORIGIN: every
-     * other command maps its rect through ui_transform_rect(), proven
-     * exact under any quarter turn. A point does not commute with
-     * "walk N glyphs, take the far edge" under rotation, so mapping
-     * just the origin and walking per-glyph from there drifts a
-     * string off at quarter turns 1-3. Mapping the LOGICAL box
-     * instead (the same one used to size it) keeps it exact, like
-     * every other command. */
-    const int tw = draw_font_text_width(font, cmd->text.str, -1, scale);
-    const int th = draw_font_height(font, scale);
-    const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
-
-    /* draw_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
-     * corner of the box; see ui_text_glyph0_origin()'s own comment
-     * (ui_transform.h) for the full derivation. Extracted there, not
-     * kept inline, so it's testable against a synthetic proportional
-     * font on a host: a port of the same origin math an app's own
-     * label-drawing code solves for itself, ported rather than called
-     * directly because ui/ sits below apps/, so reaching into an
-     * app's source would be a backwards layering dependency. */
-    const vec2i_t origin = ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale);
+    const int quarter = ui_transform_quarter(*t);
+    const vec2i_t origin = text_origin(cmd, t, font, scale, quarter);
 
     /* A text colour's alpha is dithered coverage. No halo has a
      * dithered form, so a fading string is drawn as ink alone. */
@@ -168,8 +156,8 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
         return;
     }
 
-    ui_text_pass_t passes[UI_TEXT_MAX_PASSES];
-    const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_MAX_PASSES);
+    ui_text_pass_t passes[UI_TEXT_SHADOW_PASSES];
+    const int n = ui_text_passes(ui_text_style, passes, UI_TEXT_SHADOW_PASSES);
     for (int i = 0; i < n; i++) {
         const mu_Color c = passes[i].ink ? ink : halo;
         const gfx_color_t color = mu_color_to_gfx(c);
@@ -208,12 +196,25 @@ draw_image_command(const mu_Command* cmd, affine2x_t t) {
     }
 }
 
+typedef struct {
+    recti_t rect;
+    int quarter, scale;
+} sprite_placement_t;
+
 /* An integer UI scale scales the border with the face. */
 static __attribute__((noinline)) void
-draw_sprite_command(const mu_Command* cmd, affine2x_t t) {
+sprite_placement(sprite_placement_t* placement, const affine2x_t* t, mu_Rect rect) {
+    placement->rect = ui_recti_from_mu(ui_transform_mu_rect(*t, rect));
+    placement->quarter = ui_transform_quarter(*t);
+    placement->scale = ui_transform_scale(*t);
+}
+
+static __attribute__((noinline)) void
+draw_sprite_command(const mu_Command* cmd, const affine2x_t* t) {
     const ui_sprite_command_t* face = (const ui_sprite_command_t*)cmd;
-    const mu_Rect r = ui_transform_mu_rect(t, face->rect);
-    draw_sprite_scaled(face->sprite, ui_recti_from_mu(r), ui_transform_quarter(t), ui_transform_scale(t));
+    sprite_placement_t placement;
+    sprite_placement(&placement, t, face->rect);
+    draw_sprite_scaled(face->sprite, placement.rect, placement.quarter, placement.scale);
 }
 
 static __attribute__((noinline)) void
@@ -257,15 +258,15 @@ command_clip(const mu_Command* cmd) {
  * and a UI paint's stack carries it. */
 static void
 draw_command(const mu_Command* cmd) {
-    const affine2x_t t = ui_effective_transform();
+    const affine2x_t* t = ui_effective_transform_ref();
 
     switch (cmd->type) {
-        case MU_COMMAND_RECT: draw_rect_command(cmd, t); break;
-        case UI_COMMAND_IMAGE: draw_image_command(cmd, t); break;
+        case MU_COMMAND_RECT: draw_rect_command(cmd, *t); break;
+        case UI_COMMAND_IMAGE: draw_image_command(cmd, *t); break;
         case UI_COMMAND_SPRITE: draw_sprite_command(cmd, t); break;
-        case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, t); break;
+        case UI_COMMAND_SWATCHES: draw_swatches_command(cmd, *t); break;
         case MU_COMMAND_TEXT: draw_text_command(cmd, t); break;
-        case MU_COMMAND_ICON: draw_icon_command(cmd, t); break;
+        case MU_COMMAND_ICON: draw_icon_command(cmd, *t); break;
         case MU_COMMAND_CLIP: {
             const recti_t r = command_clip(cmd);
             draw_set_clip(r.x, r.y, r.w, r.h);
@@ -400,17 +401,29 @@ replay_command(const mu_Command* cmd, recti_t clip, replay_area_t* area) {
     }
 }
 
-/* `area` NULL paints the whole canvas; otherwise it is replayed there. */
-static void
-paint_canvas(const mu_Container* cnt, replay_area_t* area) {
+static __attribute__((noinline)) void
+paint_canvas_area(const mu_Container* cnt, replay_area_t* area) {
     recti_t clip = GFX_SCREEN_RECT;
     mu_Command* cmd = NULL;
     while (next_clipped_command(cnt, &cmd, &clip)) {
-        if (area == NULL || cmd->type == MU_COMMAND_CLIP) {
+        if (cmd->type == MU_COMMAND_CLIP) {
             draw_command(cmd);
         } else {
             replay_command(cmd, clip, area);
         }
+    }
+}
+
+/* `area` NULL paints the whole canvas; otherwise it is replayed there. */
+static void
+paint_canvas(const mu_Container* cnt, replay_area_t* area) {
+    if (area == NULL) {
+        mu_Command* cmd = NULL;
+        while (next_canvas_command(cnt, &cmd)) {
+            draw_command(cmd);
+        }
+    } else {
+        paint_canvas_area(cnt, area);
     }
     draw_clear_clip();
 #ifndef ESP_PLATFORM
@@ -686,8 +699,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop, const ui_fresh_t* fresh) {
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
-    mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
-    bool changed = take_vanished_canvases(vanished) > 0;
+    bool changed = take_vanished_canvases(NULL) > 0;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         changed = changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }

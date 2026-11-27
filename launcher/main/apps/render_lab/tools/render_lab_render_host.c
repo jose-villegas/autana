@@ -28,11 +28,14 @@
 #include "render_counts.h"
 #include "render_host.h"
 #include "scene/animator/animator.h"
+#include "scene/scene.h"
 #include "scene/scene_shell.h"
 #include "scene/transform/transform.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
+static int contact_shape = -1;
+static int contact_warp = -1;
 /* Frames drawn when neither --frames nor --perf-poses says. */
 #define RENDER_LAB_FRAMES 30
 
@@ -74,7 +77,8 @@ static int console_step_count;
 static recti_t size_rect;
 
 /* --dump DIR: each frame's raster colour then depth, before the upscale, as
- * DIR/NNNN.raw: width and height as int32, then width x height RGB565, then
+ * DIR/NNNN.raw: width and height as int32, the frame's depth scale
+ * (raster_depth_near()) as float32, then width x height RGB565, then
  * width x height inverse depth (r3d_span.h), all little-endian. For the frame
  * generation experiment (launcher/tools/r3d/framegen/); host only. */
 #define DUMP_PATH_MAX 512
@@ -224,6 +228,30 @@ size_option(const char* size) {
     return true;
 }
 
+static bool
+contact_options(const char* shape, const char* warp) {
+    static const char* const shapes[] = {
+        [SCENE_CONTACT_BLOB] = "blob",
+        [SCENE_CONTACT_FEET] = "feet",
+        [SCENE_CONTACT_SILHOUETTE] = "silhouette",
+    };
+    contact_shape = -1;
+    if (shape != NULL) {
+        for (size_t i = 0; i < sizeof shapes / sizeof shapes[0]; i++) {
+            if (strcmp(shape, shapes[i]) == 0) {
+                contact_shape = (int)i;
+                break;
+            }
+        }
+        if (contact_shape < 0) {
+            (void)fprintf(stderr, "render_lab_render_host: --contact-shape requires blob, feet or silhouette\n");
+            return false;
+        }
+    }
+    contact_warp = warp == NULL ? -1 : atoi(warp);
+    return contact_warp >= -1 && contact_warp <= 1;
+}
+
 /* The stress preset whose scene key is `key`, NULL for another scene. */
 static const stress_params_t*
 stress_params_of(const char* key) {
@@ -285,6 +313,8 @@ options(int argc, char** argv) {
     const char* scale;
     const char* size;
     const char* small_fill;
+    const char* shape;
+    const char* warp;
     if (!tap_option(argc, argv)) {
         return false;
     }
@@ -303,6 +333,8 @@ options(int argc, char** argv) {
         {"--counts", &counts_path},
         {"--path-hits", &path_hits_path},
         {"--transforms", &transforms_path},
+        {"--contact-shape", &shape},
+        {"--contact-warp", &warp},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -314,6 +346,9 @@ options(int argc, char** argv) {
         return false;
     }
     if (!scene_options(argc, argv, scene, view)) {
+        return false;
+    }
+    if (!contact_options(shape, warp)) {
         return false;
     }
     option_count = argc;
@@ -377,9 +412,11 @@ dump_raster(int index) {
     (void)snprintf(path, sizeof path, "%s/%04d.raw", dump_dir, index);
     /* The raster's own size: the one its colour and depth rows are laid out at. */
     const int32_t size[2] = {raster->width, raster->height};
+    const float depth_near = raster_depth_near(raster);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     FILE* out = fopen(path, "wb");
     const bool written = out != NULL && fwrite(size, sizeof size[0], 2, out) == 2
+                         && fwrite(&depth_near, sizeof depth_near, 1, out) == 1
                          && fwrite(raster_color(raster), sizeof(gfx_color_t), pixels, out) == pixels
                          && fwrite(raster_depth(raster), sizeof(uint16_t), pixels, out) == pixels;
     if (out == NULL || fclose(out) != 0 || !written) {
@@ -403,6 +440,23 @@ seek_perf_pose(int index) {
 static int
 frame_count(void) {
     return perf_poses != NULL ? perf_poses->perf_poses : RENDER_LAB_FRAMES;
+}
+
+static void
+apply_contact_options(void) {
+    const lab_scene_t* shown = render_lab.scenes[render_lab.state.scene];
+    if (shown->path == NULL || (contact_shape < 0 && contact_warp < 0)) {
+        return;
+    }
+    const entity_t entity = shown->path().entity;
+    scene_contact_t contact = scene_contact_get(entity);
+    if (contact_shape >= 0) {
+        contact.shape = (scene_contact_shape_t)contact_shape;
+    }
+    if (contact_warp >= 0) {
+        contact.warp = contact_warp != 0;
+    }
+    scene_set_contact(entity, &contact);
 }
 
 static void
@@ -445,6 +499,9 @@ draw(const provider_frame_t* frame) {
         if (console_steps[i].frame == frame->index) {
             (void)render_lab_console(console_steps[i].words);
         }
+    }
+    if (frame->index == 0) {
+        apply_contact_options();
     }
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);

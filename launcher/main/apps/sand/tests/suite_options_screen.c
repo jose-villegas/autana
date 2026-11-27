@@ -51,7 +51,7 @@ canvas_h(bool landscape) {
     return landscape ? GFX_WIDTH : GFX_HEIGHT;
 }
 
-static options_screen_layout_t
+static __attribute__((noinline)) options_screen_layout_t
 layout_for(bool landscape) {
     options_screen_layout_t lay;
     options_screen_layout(canvas_w(landscape), canvas_h(landscape), &lay);
@@ -194,7 +194,7 @@ test_tiles_run_sixteen_then_256_then_full(void) {
 static sand_menu_t menu;
 static sand_options_t committed;
 
-static sand_options_hits_t
+static __attribute__((noinline)) sand_options_hits_t
 options_frame(bool down, bool pressed, bool released, vec2i_t point) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .point = point};
     ui_begin(&in);
@@ -233,7 +233,7 @@ tap(recti_t r) {
     return tap_at(r.x + (r.w / 2), r.y + (r.h / 2));
 }
 
-static void
+static __attribute__((noinline)) void
 tap_fixture(sand_colour_mode_t colour, bool landscape) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT));
@@ -313,12 +313,12 @@ dither_rect(bool landscape) {
 
 #define TOUCH_HOLD_FRAMES 4
 
-static bool
+static __attribute__((noinline)) bool
 apply_fired(sand_options_hits_t h) {
     return h.apply;
 }
 
-static bool
+static __attribute__((noinline)) bool
 cancel_fired(sand_options_hits_t h) {
     return h.cancel;
 }
@@ -336,13 +336,19 @@ assert_fires_on_release_only(recti_t r, bool (*fired)(sand_options_hits_t)) {
     TEST_ASSERT_TRUE_MESSAGE(fired(options_frame(false, false, true, at)), "did not fire on the release");
 }
 
+static __attribute__((noinline)) recti_t
+release_button(bool apply) {
+    const options_screen_layout_t layout = layout_for(false);
+    return apply ? layout.apply : layout.cancel;
+}
+
 static void
 test_apply_and_cancel_fire_on_release_only(void) {
     tap_fixture(SAND_COLOUR_256, false);
     menu.draft.quality = 0;
-    assert_fires_on_release_only(layout_for(false).apply, apply_fired);
+    assert_fires_on_release_only(release_button(true), apply_fired);
     tap_fixture(SAND_COLOUR_256, false);
-    assert_fires_on_release_only(layout_for(false).cancel, cancel_fired);
+    assert_fires_on_release_only(release_button(false), cancel_fired);
 }
 
 /* Picking the row that already is the draft changes nothing, so reports nothing. */

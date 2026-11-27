@@ -7,7 +7,7 @@
 #include "audio/audio_tone.h"
 #include "sound/sound_play.h"
 
-#define SOUND_BUS_BUILTIN_COUNT     3
+#define SOUND_BUS_BUILTIN_COUNT     4
 #define SOUND_BUS_NAME_MAX          24
 #define SOUND_APP_GENERATION_NONE   0u
 #define SOUND_APP_GENERATION_ENGINE 1u
@@ -15,7 +15,6 @@
 /* Exponential decay time constant (tau = converted frames), not a fade length.
  * The shortest decay that removed stop/steal clicks was half this; doubled for margin. */
 #define SOUND_DECLICK_US            1000
-#define SOUND_AMP_IDLE_MS           2000
 #define SOUND_VOICE_GENERATIONS     (UINT32_MAX / SOUND_VOICE_COUNT)
 #define SOUND_GAIN_SHIFT            15
 #define SOUND_GAIN_ONE              (1u << SOUND_GAIN_SHIFT)
@@ -137,15 +136,14 @@ typedef struct {
     int32_t last_sample;
 } sound_mix_voice_t;
 
-typedef enum { SOUND_AMP_OFF, SOUND_AMP_WARMING, SOUND_AMP_ON } sound_amp_state_t;
+typedef enum { SOUND_AMP_WARMING, SOUND_AMP_ON } sound_amp_state_t;
 
 typedef struct {
     sound_mix_voice_t voices[SOUND_VOICE_COUNT];
     uint8_t bus_gain[SOUND_BUS_COUNT_MAX];
     uint8_t master_gain;
     sound_amp_state_t amp;
-    uint64_t amp_changed_ms;
-    uint64_t last_active_ms;
+    uint64_t amp_started_ms;
     uint32_t declick_frames;
     int32_t residual;
 } sound_mixer_t;

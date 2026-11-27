@@ -1,7 +1,8 @@
 """What the doc-figure producers share: a C probe built against the engine's libraries, a scene viewer run,
 and the one way to write a PNG or a GIF.
 
-    python launcher/tools/docs/figures.py gif AVI GIF --fps 15 [--rate R] [--first N] [--end N] [--seconds S] [--quarter Q]
+    python launcher/tools/docs/figures.py gif AVI GIF --fps 15 [--rate R] [--first N] [--end N] [--seconds S]
+        [--quarter Q] [--crop-box LEFT TOP RIGHT BOTTOM]
     python launcher/tools/docs/figures.py png PICTURE PNG [--quarter Q]
 """
 import argparse
@@ -259,12 +260,13 @@ def clip(frames, rate, fps, *, first=0, end=None, seconds=None):
     return [frames[bisect.bisect_right(landed, tick) - 1] for tick in range(count)]
 
 
-def gif_from_avi(avi, out, fps, *, rate=None, first=0, end=None, seconds=None, quarter=0):
+def gif_from_avi(avi, out, fps, *, rate=None, first=0, end=None, seconds=None, quarter=0, crop=None):
     """A host render's AVI as a doc GIF at `fps`, turned `quarter` quarters counterclockwise. `rate` replaces the
     AVI's own frame rate, so rate == fps shows every frame once."""
     source_rate, frames = read_video(avi)
     shown = clip(frames, rate or source_rate, fps, first=first, end=end, seconds=seconds)
-    save_gif([np.rot90(frame, quarter) for frame in shown], out, 1000 / fps)
+    frames = [Image.fromarray(np.rot90(frame, quarter)) for frame in shown]
+    save_gif([frame.crop(crop) for frame in frames] if crop else frames, out, 1000 / fps)
 
 
 def main(argv=None):
@@ -279,6 +281,8 @@ def main(argv=None):
     gif.add_argument("--end", type=int, help="the AVI frame after the last one shown")
     gif.add_argument("--seconds", type=float, help="show at most this much of the AVI")
     gif.add_argument("--quarter", type=int, default=0, help="quarter turns counterclockwise")
+    gif.add_argument("--crop-box", nargs=4, type=int, metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"),
+                     help="crop after rotation")
     png = commands.add_parser("png", help="any picture Pillow opens to a PNG with no metadata")
     png.add_argument("picture", type=pathlib.Path)
     png.add_argument("png", type=pathlib.Path)
@@ -288,7 +292,7 @@ def main(argv=None):
         save_png(Image.open(args.picture).rotate(90 * args.quarter, expand=True), args.png)
         return
     gif_from_avi(args.avi, args.gif, args.fps, rate=args.rate, first=args.first, end=args.end, seconds=args.seconds,
-                 quarter=args.quarter)
+                 quarter=args.quarter, crop=args.crop_box)
 
 
 if __name__ == "__main__":

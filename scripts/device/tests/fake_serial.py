@@ -3,13 +3,30 @@
 import subprocess
 
 
+def check_read_size(connection, size):
+    available = max(connection.in_waiting, 1)
+    if size > available:
+        raise AssertionError(f"read({size}) exceeds the {available} bytes it can request without waiting")
+
+
 class FakeConnection:
     def __init__(self, chunks=()):
         self.chunks = list(chunks)
         self.writes = []
 
-    def read(self, unused_size):
-        return self.chunks.pop(0) if self.chunks else b""
+    @property
+    def in_waiting(self):
+        """What a read would return now, as pyserial counts it."""
+        return len(self.chunks[0]) if self.chunks else 0
+
+    def read(self, size):
+        check_read_size(self, size)
+        if not self.chunks:
+            return b""
+        chunk = self.chunks.pop(0)
+        if len(chunk) > size:
+            self.chunks.insert(0, chunk[size:])
+        return chunk[:size]
 
     def write(self, data):
         self.writes.append(data)
@@ -30,6 +47,16 @@ class FakeConnection:
         return False
 
 
+class VanishingConnection(FakeConnection):
+    """A handle whose port goes away once its chunks are read, as a board
+    that resets or is unplugged mid-capture."""
+
+    def read(self, size):
+        if self.chunks:
+            return super().read(size)
+        raise OSError("USB device disappeared")
+
+
 class Replies(FakeConnection):
     """One reply, with a writable pending buffer for console subclasses."""
 
@@ -37,8 +64,13 @@ class Replies(FakeConnection):
         super().__init__()
         self.data = data
 
-    def read(self, unused_size):
-        data, self.data = self.data, b""
+    @property
+    def in_waiting(self):
+        return len(self.data)
+
+    def read(self, size):
+        check_read_size(self, size)
+        data, self.data = self.data[:size], self.data[size:]
         return data
 
 
@@ -118,11 +150,18 @@ class FakeUsbBoard:
                 self.boot = board.open(self.port, self.dtr, self.rts, clock())
                 self.unread = board.boot_line
 
-            def read(self, unused_size):
+            @property
+            def in_waiting(self):
+                if not board.alive(self.boot, clock()):
+                    raise OSError(22, "ClearCommError failed")
+                return len(self.unread)
+
+            def read(self, size):
+                check_read_size(self, size)
                 sleep(self.timeout)
                 if not board.alive(self.boot, clock()):
                     raise OSError(22, "ClearCommError failed")
-                data, self.unread = self.unread, b""
+                data, self.unread = self.unread[:size], self.unread[size:]
                 return data
 
             def close(self):

@@ -3,6 +3,8 @@
 Each row may include any lower row, never a higher row or another folder in its
 own row.
 
+`haptics/` sits below `ui/` and `scene/` so they can request pulses, and above `sound/`, which plays them.
+
 - Project apps under `apps/` and system apps under `shell/apps/` share the apps
   tier; other folders use their first path component.
 - `main.c` starts the board and calls `shell_run()`; the shell reaches apps through
@@ -37,6 +39,9 @@ flowchart TB
         subgraph R5["UI and scenes"]
             Ui["ui/<br/><i>the UI toolkit, microui behind its face</i>"]
             Scene["scene/<br/><i>entities, components, the active camera</i>"]
+        end
+        subgraph HapticRow["haptics"]
+            Haptics["haptics/<br/><i>named speaker pulses</i>"]
         end
         subgraph R6["rendering"]
             Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
@@ -87,7 +92,7 @@ flowchart TB
         Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
-    R1 --> R2 --> R3 --> LabRow --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> LabRow --> R4 --> R5 --> HapticRow --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 

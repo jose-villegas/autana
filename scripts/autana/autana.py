@@ -16,6 +16,8 @@ file; docs/cli/ shows it, written by scripts/autana/cli_reference.py.
 import contextlib
 import gzip
 import importlib
+import importlib.util
+import io
 import json
 import math
 import os
@@ -36,7 +38,7 @@ from process_tree import launch_process_tree, close_process_tree, install_consol
 from console_protocol import parse_assignment, reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
+from espressif import idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT, parse_apps  # noqa: E402
 
@@ -197,18 +199,82 @@ INTERRUPT_GRACE_SECONDS = 5
 
 
 def device_command(*args, wait=None):
-    """device.py imports pyserial, so it runs under ESP-IDF's Python even
-    when some other interpreter started this file. `--owner`/`--wait` are
+    """device.py runs under this interpreter: it re-runs itself under ESP-IDF's
+    Python when this one lacks pyserial, and finds ESP-IDF itself for the tools
+    that need it (esptool, parttool, coredump), so a command that never builds
+    or flashes, such as devices or status, never pays for finding ESP-IDF, a
+    dozen git calls. `--owner`/`--wait` are
     device.py's own top-level flags, filled in one place for every board
     command: owner() names the lock holder, and `--wait` is a caller's own
     `wait` when it gives one (send()'s short fail-fast window, used only
     without a global `--wait`), else the global `--wait` (WAIT_ENV), else
     left to device.py's own 600 s default."""
-    command = [idf_python(), "-u", str(device_tool()), "--owner", owner()]
+    return [sys.executable, "-u", str(device_tool()), *device_argv(*args, wait=wait)]
+
+
+def device_argv(*args, wait=None):
+    """device.py's arguments for `args`, its top-level flags first (device_command)."""
+    argv = ["--owner", owner()]
     wait = wait if wait is not None else os.environ.get(WAIT_ENV)
     if wait:
-        command += ["--wait", str(wait)]
-    return command + list(args)
+        argv += ["--wait", str(wait)]
+    return argv + list(args)
+
+
+def exit_status(error):
+    """What a process ending on SystemExit `error` would exit with, saying its
+    message on stderr as the interpreter would."""
+    if error.code is None:
+        return 0
+    if isinstance(error.code, int):
+        return error.code
+    print(error.code, file=sys.stderr)
+    return 1
+
+
+def device_here(*args, capture=False):
+    """device.py's verb `args` run in this process when device.py lists it
+    in IN_PROCESS_VERBS and this Python has pyserial, so it starts no second
+    Python: its exit status, and with `capture` what it printed on stdout
+    and on stderr. None otherwise; device.py then runs as a child, which
+    re-runs itself under ESP-IDF's when pyserial is missing. device.py's
+    main() sets the global --wait in the environment for its children; this
+    process's own is put back after it."""
+    if importlib.util.find_spec("serial") is None:
+        return None
+    device = device_module()
+    if args[0] not in device.IN_PROCESS_VERBS:
+        return None
+    out, err = io.StringIO(), io.StringIO()
+    saved = dict(os.environ)
+    try:
+        with contextlib.ExitStack() as streams:
+            if capture:
+                streams.enter_context(contextlib.redirect_stdout(out))
+                streams.enter_context(contextlib.redirect_stderr(err))
+            try:
+                status = device.main(device_argv(*args))
+            except SystemExit as error:
+                status = exit_status(error)
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+    return status, out.getvalue(), err.getvalue()
+
+
+def run_device(*args):
+    """device.py's verb `args`, here when device_here() takes it, else as a
+    child: its exit status."""
+    done = device_here(*args)
+    return done[0] if done is not None else call_device(device_command(*args))
+
+
+def read_device(*args):
+    """run_device() with what it printed captured, as a CompletedProcess of text."""
+    done = device_here(*args, capture=True)
+    if done is None:
+        return capture_device(device_command(*args), text=True)
+    return subprocess.CompletedProcess(list(args), *done)
 
 
 @contextlib.contextmanager
@@ -572,13 +638,23 @@ def read_numeric_options(args, usage, allowed_flags, counts):
 
 
 def tone(args):
-    usage = "usage: autana tone <hz> <ms> [volume] [--internal] [--json]"
+    usage = "usage: autana tone <hz> <ms> [volume] [--pulse MS] [--internal] [--json]"
+    args = list(args)
+    pulse = None
+    if "--pulse" in args:
+        index = args.index("--pulse")
+        if index + 1 >= len(args) or not re.fullmatch(r"[0-9]+", args[index + 1]):
+            sys.exit(usage)
+        pulse = args[index + 1]
+        del args[index:index + 2]
     rest, flags = read_numeric_options(args, usage, ("--json", "--internal"), (2, 3))
+    if pulse is not None and not 0 < int(pulse) <= int(rest[1]):
+        sys.exit(usage)
     json_output = "--json" in flags
     internal = "--internal" in flags
     ms = int(rest[1])
     seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
-    code, replies = send("TONE " + " ".join(rest) + (" internal" if internal else ""), reply="TONE", seconds=seconds)
+    code, replies = send("TONE " + " ".join(rest) + (" pulse " + pulse if pulse is not None else "") + (" internal" if internal else ""), reply="TONE", seconds=seconds)
     if code != 0 or not replies:
         return code or 1
     if replies[-1].startswith(("TONE usage:", "TONE error:")):
@@ -681,25 +757,50 @@ def sound(args):
 
 
 def parse_tone(reply):
+    pulse = {}
+    if ", silence_pulse " in reply:
+        reply, suffix = reply.split(", silence_pulse ", 1)
+        match = re.fullmatch(
+            r"(clean|gap|short|read_failed|unavailable), silence_take_gaps ([0-9]+), silence_take_ms (-?[0-9]+\.[0-9]+), "
+            r"silence_pulse_gaps ([0-9]+), silence_pulse_gap_ms (-?[0-9]+\.[0-9]+), silence_lost_samples ([0-9]+), silence_lost_ms (-?[0-9]+\.[0-9]+), "
+            r"tone_pulse (clean|gap|short|read_failed|unavailable), tone_take_gaps ([0-9]+), tone_take_ms (-?[0-9]+\.[0-9]+), "
+            r"tone_pulse_gaps ([0-9]+), tone_pulse_gap_ms (-?[0-9]+\.[0-9]+), tone_lost_samples ([0-9]+), tone_lost_ms (-?[0-9]+\.[0-9]+)", suffix)
+        if not match:
+            raise ValueError(f"invalid TONE pulse reply: {suffix}")
+        values = match.groups()
+        for offset, window in ((0, "silence"), (7, "tone")):
+            status, take, take_ms, inside, inside_ms, lost, lost_ms = values[offset:offset + 7]
+            pulse[f"{window}_pulse"] = {
+                "status": status, "take_gaps": int(take), "pulse_gaps": int(inside),
+                "pulse_gap_ms": float(inside_ms) if int(inside) else None,
+                "take_ms": float(take_ms) if int(take) else None,
+                "lost_samples": int(lost), "lost_ms": float(lost_ms) if int(lost) else None}
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
         r"\(silence (-?[0-9]+\.[0-9]+) dB\), (?:noise (-?[0-9]+\.[0-9]+) dBFS, )?path (internal|acoustic), "
         r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA"
         r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?"
-        r"(?:, shake (?:n/a|([0-9]+\.[0-9]+) mg rms ([0-9]+\.[0-9]+) mg peak \(silence ([0-9]+\.[0-9]+) mg rms\)))?", reply)
+        r"(?:, pulse_ms ([0-9]+))?"
+        r"(?:, shake (?:n/a|([0-9]+\.[0-9]+) mg rms ([0-9]+\.[0-9]+) mg peak \(silence ([0-9]+\.[0-9]+) mg rms\)))?"
+        r"(?:, gx_mg (-?[0-9]+\.[0-9]+), gy_mg (-?[0-9]+\.[0-9]+), gz_mg (-?[0-9]+\.[0-9]+))?"
+        r"(?:, imu_gaps ([0-9]+))?(?:, shake_reason ([^,\r\n]+))?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, noise_dbfs, path, measured_hz, dma, thd_db, peak_dbfs, *shake = match.groups()
-    shake_rms_mg, shake_peak_mg, silence_shake_rms_mg = (None if value is None else float(value) for value in shake)
+    heard, hz, tone_db, silence_db, noise_dbfs, path, measured_hz, dma, thd_db, peak_dbfs, pulse_ms, *shake = match.groups()
+    *shake, imu_gaps, shake_reason = shake
+    shake_rms_mg, shake_peak_mg, silence_shake_rms_mg, gx_mg, gy_mg, gz_mg = (
+        None if value is None else float(value) for value in shake)
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
-    return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+    return {**pulse, "imu_gaps": None if imu_gaps is None else int(imu_gaps), "shake_reason": shake_reason,
+            "pulse_ms": int(pulse_ms or 0), "hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
             "noise_dbfs": None if noise_dbfs is None else float(noise_dbfs),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
             "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz),
             # Board vibration (IMU, mean removed) during the tone and the silence before it; None without an IMU.
-            "shake_rms_mg": shake_rms_mg, "shake_peak_mg": shake_peak_mg, "silence_shake_rms_mg": silence_shake_rms_mg}
+            "shake_rms_mg": shake_rms_mg, "shake_peak_mg": shake_peak_mg, "silence_shake_rms_mg": silence_shake_rms_mg,
+            "gx_mg": gx_mg, "gy_mg": gy_mg, "gz_mg": gz_mg}
 
 
 def parse_heap(reply):
@@ -880,14 +981,14 @@ def status(args):
     """Every board, whether it is free, and if not who has it and until when."""
     reject_unknown("status", args, ("--json",))
     if read_json_flag(args, "usage: autana status [--json]"):
-        return call_device(device_command("status", "--json"))
-    return call_device(device_command("status"))
+        return run_device("status", "--json")
+    return run_device("status")
 
 
 def devices(args):
     reject_unknown("devices", args, ("--json",))
     read_json_flag(args, "usage: autana devices [--json]")
-    return call_device(device_command("devices", *args))
+    return run_device("devices", *args)
 
 
 def release(args):
@@ -898,7 +999,7 @@ def release(args):
     if len(args) > 1 or not token:
         sys.exit("usage: autana lock release [<token>] - without one, the "
                  "token of the command that holds the lock, inside that command")
-    return call_device(device_command("release", "--token", token))
+    return run_device("release", "--token", token)
 
 
 def take(args):
@@ -912,7 +1013,7 @@ def lock_wait(args):
     if args:
         sys.exit("usage: autana lock wait [--wait <seconds>]")
     cap = os.environ.get(WAIT_ENV)
-    return call_device(device_command("wait-free", *(["--cap", cap] if cap is not None else [])))
+    return run_device("wait-free", *(["--cap", cap] if cap is not None else []))
 
 
 def lock_run(args):
@@ -1132,7 +1233,7 @@ def board_holder():
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
-    result = capture_device(device_command("status", "--json"), text=True)
+    result = read_device("status", "--json")
     try:
         boards = json.loads(result.stdout)["boards"]
     except (ValueError, KeyError, TypeError):
@@ -1861,8 +1962,8 @@ COMMAND_GROUPS = (
             "build the autorun diagnostics image, flash, run every suite; 3000 s when omitted"),
         one("melody", melody, "melody [volume] [--check] [--internal] [--json]",
             "development builds: play the phrase, or check every note with --check; --internal selects silent codec feedback"),
-        one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
-            "development builds: play <hz> for <ms> at volume % (firmware default 30) and report the level against a silence baseline, whether it was heard and the measured frequency; --internal uses silent codec feedback"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--pulse MS] [--internal] [--json]",
+            "development builds: measure <hz> over <ms> at volume % (firmware default 30) and report the level against a silence baseline, whether it was heard and the measured frequency; --pulse MS limits playback within the measurement window; --internal uses silent codec feedback"),
     )),
     ("watch", "Watch the board", (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",

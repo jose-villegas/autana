@@ -305,7 +305,8 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "texture.affine_level": [1],
                                                     "texture.far_level": [4],
                                                     "small_fill.ceiling": [4], "small_fill.gate": [0],
-                                                    "small_fill.style": [0]}, 4))
+                                                    "small_fill.style": [0],
+                                                    "settle.frame_us": [4000], "settle.hold_frames": [6]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:
