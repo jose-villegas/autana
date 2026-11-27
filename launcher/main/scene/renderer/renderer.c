@@ -90,18 +90,15 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
 }
 
 static asset_status_t
-open_renderer_skin(scene_t* scene, scene_row_t entity, int renderer, const char* id, scene_skinned_renderer_t* next) {
-    asset_status_t status = r3d_skin_open(scene->pack, id, &next->skin);
+open_renderer_skin(const scene_t* scene, scene_row_t entity, const r3d_lit_mesh_t* bind, const char* id,
+                   r3d_skin_t* skin) {
+    const asset_status_t status = r3d_skin_open(scene->pack, id, skin);
     const scene_animator_t* animator = &scene->animators[entity];
-    const scene_skinned_renderer_t* old = &scene->skinned_renderers[entity];
-    next->bind = old->bound ? old->bind : scene->renderers[renderer].mesh;
     if (status == ASSET_OK
-        && (next->skin.joint_count != animator->skeleton.joint_count
-            || next->skin.vertex_count != (uint32_t)next->bind.vertex_count)) {
-        status = ASSET_ERR_FORMAT;
+        && (skin->joint_count != animator->skeleton.joint_count
+            || skin->vertex_count != (uint32_t)bind->vertex_count)) {
+        return ASSET_ERR_FORMAT;
     }
-    next->light_mode = (skin_light_mode_t)next->skin.lighting_mode;
-    next->bound = true;
     return status;
 }
 
@@ -148,20 +145,33 @@ scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool t
     if (scene_row_parent(scene, row) != SCENE_ROW_NONE) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id);
     }
-    scene_skinned_renderer_t next = {0};
-    const asset_status_t status = open_renderer_skin(scene, row, renderer, id, &next);
+    const scene_skinned_renderer_t* old = &scene->skinned_renderers[row];
+    const r3d_lit_mesh_t* bind = old->bound ? &old->bind : &scene->renderers[renderer].mesh;
+    r3d_skin_t skin;
+    const asset_status_t status = open_renderer_skin(scene, row, bind, id, &skin);
     if (status != ASSET_OK) {
         return scene_report(why, SCENE_ERR_ASSET, status, id);
     }
     const bool lit = scene_is_lit(scene);
-    if (lit && next.bind.colors == NULL) {
+    if (lit && bind->colors == NULL) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
-    if (!take_skin_memory(scene, row, &next, lit, take)) {
+    /* Keep the live slot until the replacement has all its buffers. */
+    scene_skinned_renderer_t* next = memory_alloc(sizeof *next, MEMORY_PSRAM);
+    if (next == NULL) {
         return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
-    install_skin(scene, row, &next);
-    return scene_report(why, SCENE_OK, ASSET_OK, id);
+    memset(next, 0, sizeof *next);
+    next->bind = *bind;
+    next->skin = skin;
+    next->light_mode = (skin_light_mode_t)skin.lighting_mode;
+    next->bound = true;
+    const bool ready = take_skin_memory(scene, row, next, lit, take);
+    if (ready) {
+        install_skin(scene, row, next);
+    }
+    memory_free(next);
+    return scene_report(why, ready ? SCENE_OK : SCENE_ERR_MEMORY, ASSET_OK, id);
 }
 
 bool

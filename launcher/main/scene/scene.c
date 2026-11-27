@@ -259,12 +259,9 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
         }
         /* The highest set opens only when every lower one is there too; the
          * sets' count fits the renderer's. */
-        r3d_lit_mesh_t highest = r->mesh;
-        highest.colors = NULL;
-        highest.face_colors = NULL;
         const asset_status_t status = asset->renderers[row->renderer].colour_set != 0 || sets > UINT16_MAX
                                           ? ASSET_ERR_FORMAT
-                                          : r3d_lit_mesh_open_colours(pack, mesh, (uint16_t)(sets - 1U), &highest);
+                                          : r3d_lit_mesh_validate_colours(pack, mesh, (uint16_t)(sets - 1U), &r->mesh);
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }

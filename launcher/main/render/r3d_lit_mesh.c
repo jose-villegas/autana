@@ -447,8 +447,9 @@ r3d_lit_mesh_colour_stride(const r3d_lit_mesh_t* mesh) {
     return (uint32_t)((mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count) + mesh->back_count);
 }
 
-asset_status_t
-r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
+static asset_status_t
+open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, const r3d_lit_mesh_t* mesh,
+             r3d_lit_mesh_t* out) {
     asset_view_t view;
     asset_status_t status = r3d_lit_mesh_open_sibling(pack, mesh_id, LCOL_NAME_SUFFIX, LCOL_ASSET, true, &view);
     if (status == ASSET_OK) {
@@ -468,7 +469,8 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
     const bool vertex = encoding == LCOL_ENCODING_RGB888;
     const uint32_t expected = (uint32_t)(vertex ? mesh->vertex_count : mesh->triangle_count);
     const uint32_t stride = vertex ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
-    if (sets == 0 || set >= sets || count != expected || mesh->colors != NULL || mesh->face_colors != NULL
+    if (sets == 0 || set >= sets || count != expected
+        || (out != NULL && (mesh->colors != NULL || mesh->face_colors != NULL))
         || (back_count != 0 && (int64_t)back_count != back_entries(mesh, vertex))) {
         return ASSET_ERR_FORMAT;
     }
@@ -477,14 +479,27 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
     if (LCOL_HEADER_SIZE + (bytes * sets) != asset->size) {
         return ASSET_ERR_BOUNDS;
     }
+    if (out == NULL) {
+        return ASSET_OK;
+    }
     const uint8_t* colors = asset->data + LCOL_HEADER_SIZE + (bytes * set);
     const void* back = back_count == 0 ? NULL : colors + ((size_t)count * stride);
-    mesh->colors = vertex ? (const void*)colors : NULL;
-    mesh->face_colors = vertex ? NULL : (const void*)colors;
-    mesh->back_colors = vertex ? back : NULL;
-    mesh->back_face_colors = vertex ? NULL : back;
-    mesh->back_count = (int)back_count;
+    out->colors = vertex ? (const void*)colors : NULL;
+    out->face_colors = vertex ? NULL : (const void*)colors;
+    out->back_colors = vertex ? back : NULL;
+    out->back_face_colors = vertex ? NULL : back;
+    out->back_count = (int)back_count;
     return ASSET_OK;
+}
+
+asset_status_t
+r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
+    return open_colours(pack, mesh_id, set, mesh, mesh);
+}
+
+asset_status_t
+r3d_lit_mesh_validate_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, const r3d_lit_mesh_t* mesh) {
+    return open_colours(pack, mesh_id, set, mesh, NULL);
 }
 
 spheref_t
