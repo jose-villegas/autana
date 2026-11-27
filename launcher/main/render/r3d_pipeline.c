@@ -886,7 +886,7 @@ rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, uint3
 
 /* Triangle `t`'s corners rebuilt with the colours of the side `back` names,
  * and its UVs in chart `chart`. */
-static inline __attribute__((always_inline)) void
+static __attribute__((noinline, cold)) void
 textured_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int t, int cluster, int chart,
                  r3d_pipeline_work_t* work, const r3d_lit_cluster_t* back) {
     rebuilt_corners(mesh, lens, t, R3D_SPAN_FACE_NONE, work, 0, 0, back);
