@@ -21,7 +21,7 @@ console_verb_haptic(const char* args, console_reply_fn reply) {
         ++strength;
     }
     if (strength == HAPTIC_COUNT) {
-        reply("HAPTIC usage: haptic <light|firm>");
+        reply("HAPTIC usage: haptic <strength>");
         return;
     }
     const int64_t began = timing_now_us();
