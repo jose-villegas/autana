@@ -12,6 +12,6 @@
 #define HAPTIC_LIGHT_MS       100
 #define HAPTIC_FIRM_MS        100
 
-typedef enum { HAPTIC_LIGHT, HAPTIC_FIRM } haptic_t;
+typedef enum { HAPTIC_LIGHT, HAPTIC_FIRM, HAPTIC_COUNT } haptic_t;
 
 sound_voice_t haptic_pulse(haptic_t strength);

@@ -12,16 +12,16 @@ static const char* const strength_names[] = {
     [HAPTIC_LIGHT] = "light",
     [HAPTIC_FIRM] = "firm",
 };
+_Static_assert(sizeof strength_names / sizeof strength_names[0] == HAPTIC_COUNT, "Haptic strengths need names");
 
 static void
 console_verb_haptic(const char* args, console_reply_fn reply) {
-    const size_t strength_count = sizeof strength_names / sizeof strength_names[0];
     size_t strength = 0;
-    while (strength < strength_count && console_name_cmp(args, strength_names[strength]) != 0) {
+    while (strength < HAPTIC_COUNT && console_name_cmp(args, strength_names[strength]) != 0) {
         ++strength;
     }
-    if (strength == strength_count) {
-        reply("HAPTIC usage: haptic <light|firm>");
+    if (strength == HAPTIC_COUNT) {
+        reply("HAPTIC usage: haptic <strength>");
         return;
     }
     const int64_t began = timing_now_us();

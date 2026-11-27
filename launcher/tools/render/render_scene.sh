@@ -155,7 +155,7 @@ render_scene_build() {
     _rs_tools="$_rs_launcher/tools"
     if [ "${scene_ui:-0}" = 1 ]; then
         render_scene_source "$_rs_tools/build/ui_sources.sh"
-        scene_sources="$scene_sources $UI_SOURCES"
+        scene_sources="$scene_sources $UI_SOURCES tools/render/render_host_haptics.c"
     fi
 
     # Results belong to whichever tools/ folder owns the scene (the shared
