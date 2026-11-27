@@ -1,5 +1,5 @@
 #include "render/r3d_pipeline.h"
-#include "render/texture/r3d_texture.h"
+#include "render/texture/r3d_span_textured_internal.h"
 
 #include "render/r3d_span_internal.h"
 
@@ -28,9 +28,12 @@
 
 RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
+    /* Library call: one position scale divide, once per lens setup. */
     const float ticks_to_units = 1.0F / (float)position_scale;
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
+    /* Library call: one matrix copy for row scaling, once per lens setup. */
     const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
+    /* Library call: one matrix copy for column scaling, once per lens setup. */
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->focal_x = view->lens.fx;
     lens->focal_y = view->lens.fy;
@@ -44,8 +47,11 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
 
 RENDER_IRAM_ATTR __attribute__((noinline)) void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
+    /* Library call: one horizontal scale divide, once per refit. */
     const float scale_x = (float)width / (float)lens->width;
+    /* Library call: one vertical scale divide, once per refit. */
     const float scale_y = (float)height / (float)lens->height;
+    /* Library call: one matrix copy for row scaling, once per refit. */
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
     lens->focal_x *= scale_x;
     lens->focal_y *= scale_y;
@@ -93,6 +99,8 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
+            r3d_span_texture_setup_t texture;
+            vec2f_t uv[R3D_SPAN_CORNERS];
 
             /* The cluster a blended draw is on: its index, its morph weight and its
              * dither screen, held here so they take no registers across the draw. */
@@ -517,6 +525,7 @@ static inline __attribute__((always_inline)) void
 transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lod_morph_t* morph,
                    const uint16_t* clusters, int count, r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows,
                    bool boxed) {
+    /* Library call: one matrix copy per transform call, never per vertex. */
     const mat4f_t screen = mat4f_scale_rows(lens->m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
     const uint32_t lo_bits = mathf_bits(FAST_LO);
     const uint32_t hi_bits = mathf_bits(FAST_HI);
@@ -535,7 +544,8 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
     }
 }
 
-/* The transform of a view that skips hidden clusters, boxing each one. */
+/* The transform of a view that skips hidden clusters, boxing each one.
+ * Library call: one matrix copy per transform call, inlined from the cluster transform, never per vertex. */
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 transform_boxed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {
@@ -942,23 +952,24 @@ draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint1
 
 /* A triangle wholly in front of the near plane, textured with chart
  * `chart` of its cluster. */
-static void
+static __attribute__((noinline)) void
 draw_textured_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target) {
+                    int cluster, int chart, bool double_sided, const r3d_span_target_t* target,
+                    r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)
         || facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
     const r3d_texture_t* texture = r3d_texture_chart_material(mesh->texturing, cluster, chart);
-    r3d_span_vertex_t s[3];
-    vec2f_t uv[3];
+    r3d_span_vertex_t* const s = work->clip.projected;
+    vec2f_t* const uv = work->clip.uv;
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = mesh->colors[tri[k]];
         s[k] = span_corner(v[k], rgb);
         uv[k] = r3d_texture_uv(mesh->texturing, cluster, chart, tri[k]);
     }
     FRAME_LAP("r3d.draw.set_up");
-    r3d_span_textured_triangle(target, &s[0], &s[1], &s[2], uv, texture);
+    r3d_span_textured_triangle_with(target, &s[0], &s[1], &s[2], uv, texture, &work->clip.texture);
     FRAME_LAP("r3d.draw.cluster");
 }
 
@@ -978,9 +989,12 @@ draw_textured_cut(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     const int n = projected_polygon(lens, double_sided, work);
     const r3d_span_vertex_t* s = work->clip.projected;
     for (int i = 1; i + 1 < n; i++) {
-        const vec2f_t uv[3] = {{poly[0].u, poly[0].v}, {poly[i].u, poly[i].v}, {poly[i + 1].u, poly[i + 1].v}};
+        vec2f_t* const uv = work->clip.uv;
+        uv[0] = (vec2f_t){poly[0].u, poly[0].v};
+        uv[1] = (vec2f_t){poly[i].u, poly[i].v};
+        uv[2] = (vec2f_t){poly[i + 1].u, poly[i + 1].v};
         FRAME_LAP("r3d.draw.set_up");
-        r3d_span_textured_triangle(target, &s[0], &s[i], &s[i + 1], uv, texture);
+        r3d_span_textured_triangle_with(target, &s[0], &s[i], &s[i + 1], uv, texture, &work->clip.texture);
         FRAME_LAP("r3d.draw.cluster");
     }
 }
@@ -993,7 +1007,7 @@ draw_textured(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipe
               const uint16_t* tri, int cluster, int chart, bool double_sided, bool bounded,
               const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     if (bounded || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target);
+        draw_textured_whole(mesh, v, tri, cluster, chart, double_sided, target, work);
     } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
         draw_textured_cut(mesh, lens, tri, cluster, chart, double_sided, target, work);
     }

@@ -19,6 +19,8 @@ typedef struct {
     int width, height;
     raster_stats_t stats;
     int32_t draw_us, upscale_us;
+    int32_t settle_us;
+    int settled_rows;
     int32_t predicted_us;
     int32_t unscaled_us; /* under dynamic resolution, the learned cost outside draw and upscale */
     bool generated;      /* warped from the last drawn frame, not drawn */

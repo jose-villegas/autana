@@ -110,6 +110,22 @@ class ExampleTests(unittest.TestCase):
         self.assertIn(path.name, output)
         self.assertEqual(path.read_bytes(), before)
 
+    def test_dotted_toml_example_emits_a_fence_and_reports_stale_block(self):
+        name = "test/anim_examples/path.keys.toml"
+        self.source(name)
+        source = self.root / name
+        source.write_text('animation = "path"\n', encoding="utf-8")
+        block = "anim-path-keys-example"
+        self.document(block)
+        self.assertTrue(self.run_tool()[0])
+        doc = self.root / f"{block}.md"
+        self.assertIn('```toml\nanimation = "path"\n```', doc.read_text(encoding="utf-8"))
+        source.write_text('animation = "other"\n', encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(1, main(["--check"], root=self.root))
+        self.assertIn(doc.name, output.getvalue())
+        self.assertIn('animation = "path"', doc.read_text(encoding="utf-8"))
+
     def test_source_without_owner(self):
         self.source("test/input_examples/gravity.c")
         with self.assertRaisesRegex(ValueError, "input_examples/gravity.c"):

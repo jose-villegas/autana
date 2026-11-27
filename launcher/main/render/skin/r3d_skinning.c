@@ -58,15 +58,16 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
 bool
 r3d_skin_normal_palette(const mat4f_t* palette, int joints, mat4f_t world, mat3f_t* normals) {
     const mat3f_t linear = mat3f_from_mat4(world);
+    /* One factor for the instance keeps differently scaled joints in proportion when blended. */
+    const float world_scale = cbrtf(fabsf(mat3f_det(linear)));
     for (int joint = 0; joint < joints; joint++) {
         const mat3f_t matrix = mat3f_mul(linear, mat3f_from_mat4(palette[joint]));
         const mat3f_t cofactor = mat3f_cofactor(matrix);
-        const float det = (matrix.m[0][0] * cofactor.m[0][0]) + (matrix.m[0][1] * cofactor.m[0][1])
-                          + (matrix.m[0][2] * cofactor.m[0][2]);
+        const float det = mat3f_det(matrix);
         if (det == 0.0F || !isfinite(det)) {
             return false;
         }
-        const float reciprocal = 1.0F / det;
+        const float reciprocal = world_scale / det;
         float sum = 0.0F;
         for (int row = 0; row < MAT3F_AXES; row++) {
             for (int col = 0; col < MAT3F_AXES; col++) {
@@ -90,18 +91,11 @@ void
 r3d_skin_palette(const r3d_skin_t* skin, const mat4f_t* model, int position_scale, mat4f_t* palette) {
     assert(position_scale > 0);
     for (int j = 0; j < skin->joint_count; j++) {
-        mat4f_t inverse = mat4f_identity();
-        memcpy(inverse.m, skin->inverse_binds[j], sizeof skin->inverse_binds[j]);
-        palette[j] = mat4f_mul(model[j], inverse);
+        palette[j] = mat4f_mul(model[j], r3d_skin_inverse_bind(skin, j));
         for (int axis = 0; axis < POSITION_AXES; axis++) {
             palette[j].m[axis][POSITION_AXES] *= (float)position_scale;
         }
     }
-}
-
-static inline __attribute__((always_inline)) float
-skin_weight(const uint8_t* record, int influences, int influence) {
-    return (float)record[influences + influence] * R3D_SKIN_WEIGHT_RECIP;
 }
 
 static inline __attribute__((always_inline)) void
@@ -125,7 +119,7 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
     float posed[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
         const mat4f_t* joint = &palette[record[i]];
-        const float weight = skin_weight(record, influences, i);
+        const float weight = r3d_skin_weight(record, influences, i);
         for (int axis = 0; axis < POSITION_AXES; axis++) {
             skin_blend_position_axis(joint, bind, axis, weight, &posed[axis]);
         }
@@ -142,7 +136,7 @@ skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, c
                        (float)packed[2] * R3D_SKIN_NORMAL_RECIP};
     float blended[POSITION_AXES] = {0};
     for (int i = 0; i < influences; i++) {
-        const float weight = skin_weight(record, influences, i);
+        const float weight = r3d_skin_weight(record, influences, i);
         const mat3f_t* matrix = &normals[record[i]];
         for (int axis = 0; axis < POSITION_AXES; axis++) {
             const vec3f_t row = {matrix->m[axis][0], matrix->m[axis][1], matrix->m[axis][2]};

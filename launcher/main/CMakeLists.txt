@@ -1,6 +1,7 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
+    "haptics/haptics.c"
     "sound/sound_mixer.c"
     "sound/sound_mixer_device.c"
     "audio/audio_codec.c"
@@ -38,6 +39,7 @@ set(app_srcs
     "input/motion/imu_calib.c"
     "input/touch/touch_calib.c"
     "input/touch/touch_fsm.c"
+    "input/touch/touch_report.c"
     "input/buttons/button_fsm.c"
     "input/buttons/buttons.c"
     "input/touch/gesture.c"

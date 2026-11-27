@@ -9,6 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/signal/smooth.h"
 #include "render/context/render_context.h"
 #include "render/context/render_context_internal.h"
 #include "render/raster.h"
@@ -24,7 +25,7 @@ static const resolution_step_t steps[] = {{96, 64}, {48, 32}};
 #define SETTLE            64
 /* What the integer average may stop short of the sample by: under one step
  * of its weight. */
-#define SETTLED_US        RESOLUTION_UNSCALED_WEIGHT_DIVISOR
+#define SETTLED_US        SMOOTH_RTT_DIVISOR
 /* Where the clocks stand when a context opens: the wait counter has run
  * since boot, so only its change over a frame may count. */
 #define OPENED_AT_US      1000000
@@ -114,7 +115,7 @@ test_one_slow_frame_moves_the_budget_by_the_weight(void) {
     show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US, 0);
     show(c, 1, DRAW_US + UPSCALE_US + UNSCALED_US + TARGET_US, 0);
     const int32_t sample_us = TARGET_US; /* a sample is capped at the target */
-    const int32_t moved_us = (sample_us - UNSCALED_US) / RESOLUTION_UNSCALED_WEIGHT_DIVISOR;
+    const int32_t moved_us = (sample_us - UNSCALED_US) / SMOOTH_RTT_DIVISOR;
     TEST_ASSERT_EQUAL_INT32(TARGET_US - UNSCALED_US - moved_us, c->ladder.budget_us);
 }
 

@@ -24,6 +24,7 @@ import tomllib
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from asset import table_asset  # noqa: E402
+from build.c_enum import read_enum  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from render.settings import settings_toml  # noqa: E402
 from render.settings.settings_toml import flatten  # noqa: E402, F401
@@ -138,24 +139,11 @@ def bake(path):
     return table_asset.encode(rows, FRAC_BITS)
 
 
-def enum_member(text, name):
-    """`name`'s value in a typedef enum of `text`, counting on from an `= N` literal; None if no enum has it."""
-    for body in re.findall(r"typedef enum[^{]*\{(.*?)\}", text, re.S):
-        value = -1
-        for entry in re.sub(r"/\*.*?\*/|//[^\n]*", "", body, flags=re.S).split(","):
-            member, _, given = (part.strip() for part in entry.partition("="))
-            if member:
-                value = int(given, 0) if given else value + 1
-                if member == name:
-                    return value
-    return None
-
-
 def constant(bound):
     """A bound's number: a literal, or a numeric #define or enum member of render_settings.h."""
     if not bound[0].isalpha():
         return float(bound)
-    member = enum_member(HEADER.read_text(encoding="utf-8"), bound)
+    member = read_enum(HEADER).get(bound)
     if member is not None:
         return float(member)
     try:

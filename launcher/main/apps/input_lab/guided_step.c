@@ -13,6 +13,7 @@
 #define GUIDE_BOX_H         106
 #define GUIDE_BOX_MARGIN    18
 #define GUIDE_TEXT_H        30
+#define GUIDE_TITLE_SCALE   2
 #define GUIDE_RING_Y        260
 #define GUIDE_RING_RADIUS   39
 #define GUIDE_RING_STEP_DEG 8
@@ -74,7 +75,7 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
     ui_outline(box, GUIDE_INK);
     char line[96];
     ui_color_begin(UI_COLOR_TEXT, GUIDE_INK);
-    ui_scale_begin(2);
+    ui_scale_begin(GUIDE_TITLE_SCALE);
     ui_text_centre((recti_t){box.x, box.y + 5, box.w, GUIDE_TEXT_H}, view->action);
     ui_text_centre((recti_t){box.x, box.y + GUIDE_TEXT_H + 7, box.w, GUIDE_TEXT_H},
                    view->target == NULL ? "FACE UP" : view->target);
@@ -93,8 +94,10 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
                                                                    : GUIDE_RING_Y;
     if (view->target == NULL) {
         (void)snprintf(line, sizeof line, "TILT %d / %d DEG", view->tilt_deg, view->target_tilt_deg);
+        ui_scale_begin(MOTION_HUD_SCALE);
         ui_text_centre((recti_t){0, view->height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, view->width, GUIDE_ANGLE_H},
                        line);
+        ui_scale_end();
         return;
     }
     const int length = abs(signed_arrow);
@@ -108,5 +111,7 @@ guided_step_draw(const guided_step_t* state, const guided_step_view_t* view) {
                      GUIDE_ARROW_MARK);
     (void)snprintf(line, sizeof line, "%d DEG %s TO GO   TILT %d / %d DEG", abs(signed_delta),
                    signed_delta < 0 ? "CCW" : "CW", view->tilt_deg, view->target_tilt_deg);
+    ui_scale_begin(MOTION_HUD_SCALE);
     ui_text_centre((recti_t){0, view->height - GUIDE_ANGLE_BOTTOM - GUIDE_ANGLE_H, view->width, GUIDE_ANGLE_H}, line);
+    ui_scale_end();
 }

@@ -84,6 +84,21 @@ class CmdLauncherTests(unittest.TestCase):
         self.assertIn("STARTED " + str(sys.version_info[:2]), result.stdout)
         self.assertIn("PREFIX " + str(venv), result.stdout)
 
+    def test_takes_the_pinned_minor_by_its_name(self):
+        """With every other candidate too old, only the pinned minor found by
+        name on PATH can be what starts autana.py."""
+        minor = "{}.{}".format(*sys.version_info[:2])
+        (self.root / ".python-version").write_text(minor + ".0\n")
+        venv = self.root / "pinned"
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)],
+                       check=True, capture_output=True, timeout=300)
+        shutil.copy(venv / "Scripts/python.exe", self.bin / f"python{minor}.exe")
+        shutil.copy(venv / "pyvenv.cfg", self.bin / "pyvenv.cfg")
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("STARTED " + str(sys.version_info[:2]), result.stdout)
+        self.assertIn("PREFIX " + str(self.bin), result.stdout)
+
     def test_none_matches_names_required_and_found_versions(self):
         result = self.launch()
         self.assertNotEqual(result.returncode, 0)

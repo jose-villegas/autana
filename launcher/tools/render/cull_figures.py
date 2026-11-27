@@ -28,8 +28,9 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+from build.c_enum import read_enum
 from build.c_header import read_define
-from cull_counts import CULL_HEADER, enum_value, plot_counts
+from cull_counts import CULL_HEADER, plot_counts
 from check_avi import read_video
 from docs.figures import render_scene, save_png
 from docs.plot_style import save, subplots
@@ -45,7 +46,7 @@ PERCENT = 100
 
 
 def cull_from(name):
-    return enum_value("raster_cull_from_t", "RASTER_CULL_FROM_", name)
+    return read_enum(CULL_HEADER, "raster_cull_from_t")["RASTER_CULL_FROM_" + name]
 
 
 def viewer(args, *flags, log):
@@ -154,7 +155,8 @@ def main(argv=None):
     shaded = video(args, "camera", ["--view", "shaded"], dt)
     top = video(args, "top", cull(("from", cull_from("TOP"))), dt)
     chase = video(args, "chase", cull(("from", cull_from("CHASE"))), dt)
-    level = video(args, "level", cull(("from", cull_from("TOP")), ("paint", enum_value("raster_cull_paint_t", "RASTER_CULL_PAINT_", "NODES")), ("level", args.level)), dt)
+    paint_nodes = read_enum(CULL_HEADER, "raster_cull_paint_t")["RASTER_CULL_PAINT_NODES"]
+    level = video(args, "level", cull(("from", cull_from("TOP")), ("paint", paint_nodes), ("level", args.level)), dt)
     indices = [FRAMES * (k + 1) // (POSES + 1) for k in range(POSES)]
     columns = [("camera", frames_at(shaded, indices)), ("fates from above", frames_at(top, indices)),
                ("fates from behind", frames_at(chase, indices)),

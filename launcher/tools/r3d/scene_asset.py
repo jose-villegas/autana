@@ -11,7 +11,7 @@ from asset.asset_pack import NAME_BYTES
 from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
-from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.import_settings import ANIM_WRAPS, LIGHT_MODES, LOCAL_LIGHTS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
@@ -24,6 +24,7 @@ TYPE = b"SCNE"
 VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
 DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
 LIGHT_KINDS = {"directional": DIRECTIONAL}
+LIGHT_MODE_BYTES = {name: read_define(OWNER, "SCENE_LIGHT_MODE_" + name.upper()) for name in LIGHT_MODES}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
@@ -90,11 +91,13 @@ def encode(scene, cache=None, offline=False):
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
-        if obj.kind == "light":
+        # A point or spot light is baked only: its light is in the vertex colours and probes, not the light rows.
+        if obj.kind == "light" and obj.component["type"] not in LOCAL_LIGHTS:
             light = obj.component
             if light["type"] not in LIGHT_KINDS:
                 raise SceneError(f"unknown light kind {light['type']!r}")
-            rows["lights"].append((entity, LIGHT_KINDS[light["type"]], 0, *light["color"], light["intensity"]))
+            rows["lights"].append((entity, LIGHT_KINDS[light["type"]],
+                                    LIGHT_MODE_BYTES[light["mode"]], *light["color"], light["intensity"]))
         if obj.kind == "camera":
             lens = obj.component
             rows["cameras"].append((entity, 0, lens.half_fov_short_tan, lens.near_z, lens.background))
@@ -291,10 +294,10 @@ def decode(entry):
                 out[part].append(dict(entity=entity, clip_count=count, first_clip=first, default_clip=default, wrap=wrap))
                 continue
             if part == "lights":
-                _, kind, pad, *values = row
-                if pad or kind != DIRECTIONAL or not color_fits(values[:3]) or not nonnegative(values[3]):
-                    raise SceneError("light: invalid kind, colour, intensity or padding")
-                out[part].append(dict(entity=entity, kind=kind, color=values[:3], intensity=values[3]))
+                _, kind, mode, *values = row
+                if mode not in LIGHT_MODE_BYTES.values() or kind != DIRECTIONAL or not color_fits(values[:3]) or not nonnegative(values[3]):
+                    raise SceneError("light: invalid kind, colour, intensity or mode")
+                out[part].append(dict(entity=entity, kind=kind, mode=mode, color=values[:3], intensity=values[3]))
                 continue
             if part != "renderers" and row[1]:
                 raise SceneError(f"{part}: padding out of range")

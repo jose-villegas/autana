@@ -28,7 +28,7 @@ class BoardSelectionTests(unittest.TestCase):
                 encoding="utf-8")
             runner = (
                 "import sys; sys.path.insert(0, sys.argv.pop(1)); import autana; "
-                "autana.idf_python = lambda: sys.executable; autana.main()")
+                "autana.main()")
             environment = dict(os.environ, PYTHONPATH=str(probe))
             for selector in ("20e8", "FFFF", BOARD.lower()):
                 with self.subTest(selector=selector):

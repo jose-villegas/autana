@@ -155,7 +155,7 @@ render_scene_build() {
     _rs_tools="$_rs_launcher/tools"
     if [ "${scene_ui:-0}" = 1 ]; then
         render_scene_source "$_rs_tools/build/ui_sources.sh"
-        scene_sources="$scene_sources $UI_SOURCES"
+        scene_sources="$scene_sources $UI_SOURCES tools/render/render_host_haptics.c"
     fi
 
     # Results belong to whichever tools/ folder owns the scene (the shared
@@ -233,6 +233,12 @@ render_scene_build() {
     if [ "$_rs_deps" = 1 ]; then
         _rs_build=$(mktemp -d) || return 1
     fi
+    _rs_compiler=$(to_native "$(command -v "$_rs_cc")")
+    # CMake's automatic reset on a compiler change drops the scene's -D options.
+    if [ -f "$_rs_build/CMakeCache.txt" ] &&
+        [ "$(sed -n 's/^CMAKE_C_COMPILER:[^=]*=//p' "$_rs_build/CMakeCache.txt")" != "$_rs_compiler" ]; then
+        cmake -E rm -rf "$(to_native "$_rs_build/CMakeCache.txt")" "$(to_native "$_rs_build/CMakeFiles")" || return 1
+    fi
     set --
     if [ ! -f "$_rs_build/CMakeCache.txt" ]; then
         set -- -G "$_rs_generator"
@@ -249,7 +255,7 @@ render_scene_build() {
         _rs_depends=$AUTANA_FIGURES_DEPENDS
     fi
     if ! cmake -S "$(to_native "$_rs_tools/render/scene")" -B "$(to_native "$_rs_build")" \
-        "$@" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
+        "$@" "-DCMAKE_C_COMPILER=$_rs_compiler" \
         -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
         "-DSCENE_OUT_DIR=$(to_native "$(CDPATH= cd -- "$scene_out_dir" && pwd)")" \
         "-DSCENE_SOURCES=$_rs_cmake_sources" "-DSCENE_INCLUDES=$_rs_cmake_includes" \

@@ -11,6 +11,8 @@
 
 #ifdef DEVICE_BUILD
 
+#include <stdlib.h>
+
 #include "unity.h"
 
 #include "gfx/gfx.h"
@@ -68,8 +70,10 @@ partial_windows(const gfx_send_window_t* log, int windows) {
 void
 test_present_fast_clock_sends_full_width_rows(void) {
     const int restore_hz = gfx_panel_clock_hz();
-    gfx_send_window_t fast[WINDOWS_MAX];
-    gfx_send_window_t slow[WINDOWS_MAX];
+    gfx_send_window_t* const fast = malloc((WINDOWS_MAX) * sizeof *fast);
+    TEST_ASSERT_NOT_NULL(fast);
+    gfx_send_window_t* const slow = malloc((WINDOWS_MAX) * sizeof *slow);
+    TEST_ASSERT_NOT_NULL(slow);
     const int fast_windows = send_box_at(GFX_PANEL_CLOCK_FAST_HZ, BOX_X, BOX_Y, BOX_W, BOX_H, fast);
     const int slow_windows = send_box_at(GFX_PANEL_CLOCK_SLOW_HZ, BOX_X, BOX_Y, BOX_W, BOX_H, slow);
     gfx_set_panel_clock_hz(restore_hz);
@@ -79,6 +83,8 @@ test_present_fast_clock_sends_full_width_rows(void) {
                                   "a partial-width window went out at the fast clock");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, partial_windows(slow, slow_windows),
                                          "the slow clock no longer sends a small change narrow");
+    free(fast);
+    free(slow);
 }
 
 /* The full-width sends cover exactly the changed rows, rounded out to even
@@ -87,8 +93,10 @@ test_present_fast_clock_sends_full_width_rows(void) {
 void
 test_present_fast_clock_sends_only_changed_rows(void) {
     const int restore_hz = gfx_panel_clock_hz();
-    gfx_send_window_t odd[WINDOWS_MAX];
-    gfx_send_window_t across[WINDOWS_MAX];
+    gfx_send_window_t* const odd = malloc((WINDOWS_MAX) * sizeof *odd);
+    TEST_ASSERT_NOT_NULL(odd);
+    gfx_send_window_t* const across = malloc((WINDOWS_MAX) * sizeof *across);
+    TEST_ASSERT_NOT_NULL(across);
     /* Odd top and bottom edges, inside one strip. */
     const int odd_y = BOX_Y + 1;
     const int odd_windows = send_box_at(GFX_PANEL_CLOCK_FAST_HZ, BOX_X, odd_y, BOX_W, BOX_H, odd);
@@ -106,6 +114,8 @@ test_present_fast_clock_sends_only_changed_rows(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(STRIP_HEIGHT, across[0].y1, "the first strip's send ends off its edge");
     TEST_ASSERT_EQUAL_INT_MESSAGE(STRIP_HEIGHT, across[1].y0, "the second strip's send starts off its edge");
     TEST_ASSERT_EQUAL_INT_MESSAGE(mathi_even_ceil(across_y + BOX_H), across[1].y1, "the second strip's send ends off");
+    free(odd);
+    free(across);
 }
 
 /* How many sends of the logged present covered each strip's rows. */
@@ -137,7 +147,8 @@ overlay_sends_per_strip(int x, int y, int w, int h, int* per_strip) {
     gfx_mark_all_dirty();
     gfx_present(); /* every strip now carries borders */
 
-    gfx_send_window_t log[WINDOWS_MAX];
+    gfx_send_window_t* const log = malloc((WINDOWS_MAX) * sizeof *log);
+    TEST_ASSERT_NOT_NULL(log);
     if (w == 0) {
         gfx_mark_all_dirty();
     } else {
@@ -149,6 +160,7 @@ overlay_sends_per_strip(int x, int y, int w, int h, int* per_strip) {
     gfx_set_interlace(interlace);
     gfx_mark_all_dirty();
     gfx_present();
+    free(log);
 }
 
 void
@@ -173,10 +185,12 @@ test_present_overlay_resends_quiet_strips_clean_once(void) {
  * went out, the first in `*sent`. */
 static int
 send_box_rows(int y, gfx_send_window_t* sent) {
-    gfx_send_window_t log[WINDOWS_MAX];
+    gfx_send_window_t* const log = malloc((WINDOWS_MAX) * sizeof *log);
+    TEST_ASSERT_NOT_NULL(log);
     gfx_mark_dirty(BOX_X, y, BOX_W, BOX_H);
     const int windows = present_logged(log);
     *sent = log[0];
+    free(log);
     return windows;
 }
 

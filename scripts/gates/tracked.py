@@ -18,7 +18,7 @@ def repository():
     """The top of the git repository the caller stands in, or the current
     directory outside git: a gate checks the repository it is run from,
     wherever the gate's own file lives."""
-    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], stdin=subprocess.DEVNULL, capture_output=True, text=True)
     return pathlib.Path(result.stdout.strip() if result.returncode == 0 else ".").resolve()
 
 
@@ -33,7 +33,8 @@ def git_listing(cwd, args):
     no git repository (a test fixture), for the caller to walk instead. Any
     other git failure raises with git's message: a refused checkout falling
     back to a walk would silently change what a gate reads."""
-    result = subprocess.run(["git", "ls-files", *args], cwd=cwd, capture_output=True, text=True)
+    result = subprocess.run(["git", "ls-files", *args], cwd=cwd, stdin=subprocess.DEVNULL,
+                            capture_output=True, text=True)
     if result.returncode == 0:
         return [line for line in result.stdout.splitlines() if line]
     if "not a git repository" in result.stderr:

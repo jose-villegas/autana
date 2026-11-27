@@ -31,15 +31,19 @@
  * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
  * bake lock skips that suite rather than fail it. The host runner fails a run
  * in which a suite reads a pack it did not name, so no read goes unnamed.
- * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
-#define SUITE_READS_MAX 19
-void suite_reads(const char* name, const char* const* packs);
+ * Each SUITE_READS owns its entry, as each SUITE_REGISTER does: there is no cap. */
+typedef struct suite_reads {
+    const char* name;
+    const char* const* packs; /* NULL-terminated */
+    struct suite_reads* next;
+} suite_reads_t;
+
+void suite_reads_link(suite_reads_t* entry);
 
 #define SUITE_READS(fn, ...)                                                                                           \
-    __attribute__((constructor)) static void fn##_reads(void) {                                                        \
-        static const char* const packs[] = {__VA_ARGS__, NULL};                                                        \
-        suite_reads(#fn, packs);                                                                                       \
-    }
+    static const char* const fn##_packs[] = {__VA_ARGS__, NULL};                                                       \
+    static suite_reads_t fn##_reads_entry = {#fn, fn##_packs, NULL};                                                   \
+    __attribute__((constructor)) static void fn##_reads(void) { suite_reads_link(&fn##_reads_entry); }
 
 /* True when the suite running now named `pack` with SUITE_READS. */
 bool suites_current_reads(const char* pack);
@@ -65,8 +69,10 @@ void suites_run_all(void);
  * SUITE_FILTER_LEN - 1 characters and a request at most SUITE_FILTER_MAX;
  * one past either is refused. While filtering, suites_test_runs() prints
  * "SUITE_TEST name=... selected=..." for every test reached. */
-#define SUITE_FILTER_MAX 4
-#define SUITE_FILTER_LEN 32
+#define SUITE_TEST_NAME_MAX 95
+#define SUITE_FILTER_MAX    4
+/* Every legal test-name segment must be selectable as one pattern. */
+#define SUITE_FILTER_LEN    (SUITE_TEST_NAME_MAX + 1)
 
 typedef struct {
     const char* name; /* the suite asked for, borrowed from the request */
@@ -98,7 +104,6 @@ bool suite_test_matches(const char* pattern, const char* name);
  * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX,
  * or a segment of other than SUITE_TEST_SEGMENT_CHARS, which the tools'
  * result lines read, is a SUITE OVERFLOW, not run. A case never runs another. */
-#define SUITE_TEST_NAME_MAX      95
 #define SUITE_TEST_SEGMENT_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 #define RUN_TEST_CASE(func, ...)                                                                                       \
     do {                                                                                                               \

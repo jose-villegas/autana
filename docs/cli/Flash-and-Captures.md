@@ -154,8 +154,8 @@ once, with nothing sent and exit 75, rather than waited for. A global
 `--wait` asks to queue for the board instead, as every other command does.
 
 From a script that names its own owner, `device.py` takes the same
-arguments (the interpreter is ESP-IDF's Python, and `--owner` names
-the lock holder):
+arguments (any Python with pyserial, else it re-runs under ESP-IDF's;
+`--owner` names the lock holder):
 
 ```sh
 python scripts/device/device.py --owner maintainer send "SET ridge.theme_rgb 0x1199C8"

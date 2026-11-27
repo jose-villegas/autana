@@ -43,7 +43,7 @@ typedef struct {
 
 typedef struct {
     uint16_t entity;
-    uint8_t kind, pad;
+    uint8_t kind, mode;
     vec3f_t color;
     float intensity;
 } scene_asset_light_t;
