@@ -90,6 +90,21 @@ class WriteBakedTests(unittest.TestCase):
                 mesh_import.write_baked(job, None, work, "empty", geometry)
             self.assertEqual(list(work.iterdir()), [])
 
+    def test_an_all_carved_non_fit_variant_writes_its_copies(self):
+        from r3d import mesh_bundle
+        from test_mesh_bundle import bundle_fixture
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            _, expected, geometry, job, scene = bundle_fixture(work)
+            geometry.tris = geometry.tris[:0]
+            job.renderer.variant = SimpleNamespace(name="carved")
+            mesh = mesh_import.write_baked(job, scene, work, "carved", geometry)
+            entries, copies = mesh_bundle.decode((work / f"carved{mesh_bundle.SUFFIX}").read_bytes())
+        self.assertEqual(len(mesh.tris), 0)
+        self.assertEqual(len(copies), len(expected))
+        self.assertNotIn("carved", {name for name, _, _ in entries})
+
 
 @unittest.skipIf(parse_poses is None, "needs NumPy")
 class FittedVariantTests(unittest.TestCase):

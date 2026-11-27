@@ -449,9 +449,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, allocation, devia
     rest_edges = [edge for edge in edges if edge.a in rest_rows and edge.b in rest_rows] if selected else None
     held_count = int(np.count_nonzero(held & rest))
     fixed = allocation.fixed + held_count
-    costs = {piece.name: (0, len(shape.instances) if allocation.shapes is None else
-                          len({instance.mirrored for instance in shape.instances}))
-             for shape, piece in prototypes}
+    costs = None
     rest_excess = 0
     for trial in range(ALLOCATION_TRIALS):
         budget = allocate.allocate(pieces, triangles, allocation.ceiling, fixed + rest_excess, costs)
@@ -479,9 +477,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, allocation, devia
         if allocate.within(drawn, stored, triangles, allocation.ceiling):
             break
         rest_excess = max(0, rest_count - rest_budget)
-        for (_, piece), row in zip(prototypes, shared):
-            count = budget.counts[piece.name]
-            costs[piece.name] = (max(0, row['output_triangles'] - count), row['stored_meshes'])
+        costs = {piece.name: (max(0, row['output_triangles'] - budget.counts[piece.name]), row['stored_meshes'])
+                 for (_, piece), row in zip(prototypes, shared)}
     allocate.check(drawn, stored, triangles, allocation.ceiling)
 
     shade = allocation.shade_shared or allocation.shade

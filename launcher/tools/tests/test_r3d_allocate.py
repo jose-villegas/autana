@@ -14,13 +14,19 @@ from r3d import simplify
 from r3d.geometry import bounds_diagonal
 from r3d.import_settings import SettingsError
 from r3d.meshopt import ERROR_ABSOLUTE, PRUNE, simplify_to_error
-from r3d.objects import allocate as owner, detail
+from r3d.objects import allocate as owner, contact, detail
 from test_r3d_detail import sphere
+from test_r3d_objects import POINTS, TRIANGLES
 
 SPHERE_RINGS = 8
 SMALL_SCALE = 0.01
 COPY_SHIFT = np.array([2. ** 20, -2. ** 20, 2. ** 20])
 ERROR_SAMPLES = 49
+POOLED_ERROR = 0.12
+FLOORED_RADIUS = 0.1
+TOUCHING_RADIUS = 0.2
+SPLIT_POLE_GAP = 0.00035
+FRACTIONAL_PLACEMENT = 128.00025
 
 
 class SharedErrorTests(unittest.TestCase):
@@ -132,18 +138,20 @@ class SharedErrorTests(unittest.TestCase):
         self.assertLessEqual(len(output[2]), limit)
         self.assertLessEqual(report["stored_total"], limit)
 
-    def emit_scene(self, positions, faces, owners, names, limit, *, colours=None, **settings):
+    def emit_scene(self, positions, faces, owners, names, limit, *, colours=None, materials=None, **settings):
         report = {}
+        ceiling = settings.pop("ceiling", limit)
+        materials = owners if materials is None else materials
         config = simplify.Allocation(tri_o=owners, object_names=names, material_names=names,
-                                     ceiling=limit, source=(positions, faces, owners, owners),
+                                     ceiling=ceiling, source=(positions, faces, materials, owners),
                                      report=report, **settings)
         colours = np.zeros_like(positions) if colours is None else colours
-        output = simplify.simplify(positions, colours, faces, owners, limit,
+        output = simplify.simplify(positions, colours, faces, materials, limit,
                                    colour_deviation=1, allocation=config)
         return output, report
 
-    def two_objects(self):
-        small = self.small.positions + [3, 0, 0]
+    def two_objects(self, radius=SMALL_SCALE, offset=(3, 0, 0)):
+        small = self.positions * radius + offset
         p = np.concatenate([self.positions, small])
         t = np.concatenate([self.tris, self.tris + len(self.positions)])
         return p, t, np.repeat([0, 1], len(self.tris))
@@ -158,6 +166,88 @@ class SharedErrorTests(unittest.TestCase):
         for index, piece in enumerate((large, small)):
             moved = detail.surface_error(p, t[owners == index], q, faces[labels == index])
             self.assertLessEqual(moved, owner.piece_error(piece, report["error"]), piece.name)
+
+    def test_pooled_rest_error_limits_each_object_before_its_count_target(self):
+        p, t, owners = self.two_objects(radius=1)
+        target = len(self.tris) // 4
+        nominal = owner.SharedError(POOLED_ERROR, {"0": target, "1": target})
+        with patch.object(owner, "allocate", return_value=nominal):
+            (q, _, faces, labels), report = self.emit_scene(p, t, owners, ("left", "right"), len(t))
+        (pooled,) = report["passes"]
+        self.assertEqual(pooled["objects"], ["left", "right"])
+        self.assertLess(len(faces), len(t))
+        for index, name in enumerate(pooled["objects"]):
+            moved = detail.surface_error(p, t[owners == index], q, faces[labels == index])
+            self.assertLessEqual(moved, POOLED_ERROR, name)
+        self.assertGreater(len(faces), pooled["budget"])
+
+    def test_capped_rest_error_stops_the_pass_before_its_count_target(self):
+        p, t, owners = self.two_objects(radius=FLOORED_RADIUS)
+        target = len(self.tris) // 8
+        nominal = owner.SharedError(POOLED_ERROR, {"0": 2 * target, "1": target})
+        with patch.object(owner, "allocate", return_value=nominal):
+            (q, _, faces, labels), report = self.emit_scene(p, t, owners, ("large", "small"), len(t))
+        small = faces[labels == 1]
+        self.assert_capped_rest_within_floor(p, t[owners == 1], q, small, report["error"])
+        self.assertGreater(len(small), target)
+        self.assertLess(len(small), len(self.tris))
+        self.assertEqual(report["passes"][1]["objects"], ["small"])
+
+    def test_a_capped_rest_object_and_its_neighbour_keep_all_contact_vertices(self):
+        p, t, owners = self.two_objects(radius=TOUCHING_RADIUS, offset=(0, 1 + TOUCHING_RADIUS, 0))
+        (edge,) = contact.contact_graph(p, t, owners)
+        target = len(self.tris) // 4
+        nominal = owner.SharedError(self.maximum, {"0": 2 * target, "1": target})
+        held = np.arange(len(t)) == len(self.tris)
+        with patch.object(owner, "allocate", return_value=nominal):
+            (q, _, faces, labels), report = self.emit_scene(p, t, owners, ("large", "small"), len(t), held=held)
+        for index, vertices in ((edge.a, edge.vertices_a), (edge.b, edge.vertices_b)):
+            self.assertGreater(len(vertices), 0)
+            emitted = {tuple(point) for point in q[np.unique(faces[labels == index])]}
+            source = {tuple(point) for point in p[vertices].astype(np.float32)}
+            self.assertTrue(source <= emitted, f"{report['passes'][index]['objects']}: {len(source - emitted)} contact vertices lost")
+        self.assert_capped_rest_within_floor(p, t[owners == 1], q, faces[labels == 1], report["error"])
+        self.assertEqual(report["passes"][1]["budget"], target + 1)
+
+    def assert_capped_rest_within_floor(self, p, source, q, emitted, shared_error):
+        floor = owner.FLOOR_SHARE * bounds_diagonal(p[np.unique(source)])
+        self.assertLess(floor, shared_error)
+        self.assertLessEqual(detail.surface_error(p, source, q, emitted), floor)
+
+    def test_rest_reuses_contact_discovery_and_excludes_carved_edges(self):
+        p, t, owners = self.two_objects(radius=TOUCHING_RADIUS, offset=(0, 1 + TOUCHING_RADIUS, 0))
+        # The prototype touches the opposite pole of the large sphere.
+        points = np.concatenate([p, POINTS[:, [0, 2, 1]] * [1, -1, 1] + [0, -1, 0]])
+        faces = np.concatenate([t, TRIANGLES + len(p)])
+        labels = np.concatenate([owners, np.full(len(TRIANGLES), 2)])
+        target = len(self.tris) // 2
+        nominal = owner.SharedError(self.maximum, {"0": target, "1": target, "2": len(TRIANGLES)})
+        selection = {2: {"match": {"object": "prototype"}}}
+        with patch.object(owner, "allocate", return_value=nominal), \
+                patch.object(contact, "contact_graph", wraps=contact.contact_graph) as graph, \
+                patch.object(simplify, "_rest_pass", wraps=simplify._rest_pass) as rest:
+            _, report = self.emit_scene(points, faces, labels, ("large", "small", "prototype"), len(faces),
+                                        selection=selection, shapes=[])
+        self.assertEqual({(row["a"], row["b"]) for row in report["contacts"]},
+                         {("large", "small"), ("large", "prototype")})
+        graph.assert_called_once()
+        self.assertEqual([(edge.a, edge.b) for edge in rest.call_args.args[6]], [(0, 1)])
+
+    def test_placement_preserves_the_rest_counts_through_simplify(self):
+        p = np.vstack([self.positions, self.positions[0] + [SPLIT_POLE_GAP, 0, 0]])
+        t = self.tris.copy()
+        # A split pole fits one local weld cell and straddles a world-space cell boundary.
+        split = np.flatnonzero(np.any(t == 0, axis=1))[:SPHERE_RINGS // 2]
+        t[split] = np.where(t[split] == 0, len(self.positions), t[split])
+        owners = np.zeros(len(t), dtype=int)
+        limit = 2 * len(t) // 3
+        counts = []
+        for offset in (0, FRACTIONAL_PLACEMENT):
+            (_, _, faces, _), report = self.emit_scene(p + offset, t, owners, ("rest",), limit)
+            counts.append((report["rest_budget"], len(faces)))
+        local, distant = counts
+        self.assertLess(local[1], len(t))
+        self.assertEqual(distant, local)
 
     def test_retry_emits_at_the_floor_when_the_learned_excess_cannot_fit(self):
         attempts = []
@@ -187,6 +277,73 @@ class SharedErrorTests(unittest.TestCase):
                 self.emit_scene(self.positions, self.tris, owners, ("rest",), limit)
         self.assertEqual(emit.call_count, 3)
 
+    def test_cards_count_against_drawn_on_every_trial(self):
+        self.assert_cards_overrun(drawn=True)
+
+    def test_cards_count_against_stored_on_every_trial(self):
+        self.assert_cards_overrun(drawn=False)
+
+    def assert_cards_overrun(self, *, drawn):
+        cards = 4
+        emitted = len(self.tris)
+        limit = emitted + cards - 1
+        room = emitted + cards
+        budget, ceiling = (limit, room) if drawn else (room, limit)
+        owners = np.zeros(emitted, dtype=int)
+        with patch.object(simplify, "_run_pass", return_value=(
+                self.positions, np.zeros_like(self.positions), self.tris, owners)) as emit:
+            (_, _, faces, _), report = self.emit_scene(
+                self.positions, self.tris, owners, ("rest",), budget, ceiling=ceiling)
+            self.assertEqual((len(faces), report["allocation_trials"]), (emitted, 1))
+            emit.reset_mock()
+            with self.assertRaisesRegex(SettingsError, rf"{room} drawn triangles \(budget {budget}\).*"
+                                                       rf"{room} stored triangles \(ceiling {ceiling}\)"):
+                self.emit_scene(self.positions, self.tris, owners, ("rest",), budget, ceiling=ceiling, fixed=cards)
+        self.assertEqual(emit.call_count, simplify.ALLOCATION_TRIALS)
+
+    def test_a_stored_only_overrun_retries_at_the_finest_feasible_error(self):
+        piece = owner.Piece("0", self.positions, self.tris, 1, False)
+        ceiling = owner.piece_count(piece, piece.floor / 2)
+        excess = 2
+        expected = owner.allocate([piece], len(self.tris), ceiling, fixed=excess)
+        owners = np.zeros(len(self.tris), dtype=int)
+
+        def emit(p, c, t, m, budget, *args, **kwargs):
+            return p, c, t[:budget + excess], m[:budget + excess]
+
+        with patch.object(simplify, "_run_pass", side_effect=emit) as run:
+            (_, _, faces, _), report = self.emit_scene(
+                self.positions, self.tris, owners, ("rest",), len(self.tris), ceiling=ceiling)
+        self.assertEqual(run.call_count, 2)
+        first, retry = [call.args[4] for call in run.call_args_list]
+        self.assertEqual(first, ceiling)
+        self.assertEqual(retry, expected.counts["0"])
+        self.assertEqual(report["error"], expected.error)
+        self.assertEqual(len(faces), retry + excess)
+        self.assertLessEqual(report["stored_total"], ceiling)
+
+    def test_infeasible_floors_fail_before_emitting(self):
+        piece = owner.Piece("0", self.positions, self.tris, 1, False)
+        owners = np.zeros(len(self.tris), dtype=int)
+        limit = piece.floor_count - 1
+        with patch.object(simplify, "_run_pass", wraps=simplify._run_pass) as emit:
+            with self.assertRaisesRegex(SettingsError, rf"drawn triangles \(budget {limit}\)"):
+                self.emit_scene(self.positions, self.tris, owners, ("rest",), limit)
+        self.assertEqual(emit.call_count, 0)
+
+    def test_bisection_reaches_the_finest_feasible_error_to_tolerance(self):
+        piece = owner.Piece("rest", self.positions, self.tris, 1, False)
+        threshold = 0.51 * piece.floor
+        limit = len(self.tris) - 2
+
+        def count(piece, error):
+            return limit if error >= threshold else len(piece.triangles)
+
+        with patch.object(owner, "piece_count", side_effect=count):
+            result = owner.allocate([piece], limit, None)
+        self.assertGreaterEqual(result.error, threshold)
+        self.assertLessEqual(result.error - threshold, threshold * owner.BISECTION_TOLERANCE)
+
     def test_emitted_rest_prunes_a_tiny_component_and_preserves_it_when_held(self):
         near = self.positions[0] + [0, SMALL_SCALE, 0]
         tiny = near + np.array([[0, 0, 0], [SMALL_SCALE, 0, 0], [0, 0, SMALL_SCALE]])
@@ -194,13 +351,16 @@ class SharedErrorTests(unittest.TestCase):
         t = np.concatenate([self.tris, [np.arange(len(self.positions), len(p))]])
         owners = np.zeros(len(t), dtype=int)
         limit = self.coarse[0] + 12
-        held = np.arange(len(t)) == len(t) - 1
-        for hold in (False, True):
-            with self.subTest(hold=hold):
+        for face in (0, len(t) - 1):
+            held = np.arange(len(t)) == face
+            hold_tiny = face == len(t) - 1
+            with self.subTest(hold_tiny=hold_tiny):
                 with patch.object(simplify, "simplify_with_update", wraps=simplify.simplify_with_update) as run:
-                    (q, _, faces, _), _ = self.emit_scene(p, t, owners, ("rest",), limit, held=held & hold)
-                self.assertEqual(run.call_args_list[0].args[5] & (ERROR_ABSOLUTE | PRUNE), ERROR_ABSOLUTE | PRUNE)
-                self.assertEqual(bool(np.any(np.all(q[faces, 1] > 1, axis=1))), hold)
+                    (q, _, faces, _), report = self.emit_scene(p, t, owners, ("rest",), limit, held=held)
+                options = [call.args[5] & (ERROR_ABSOLUTE | PRUNE) for call in run.call_args_list]
+                per_trial = [ERROR_ABSOLUTE | PRUNE, ERROR_ABSOLUTE] if hold_tiny else [ERROR_ABSOLUTE | PRUNE]
+                self.assertEqual(bool(np.any(np.all(q[faces, 1] > 1, axis=1))), hold_tiny)
+                self.assertEqual(options, per_trial * report["allocation_trials"])
 
     def test_carved_overrun_lowers_the_nominal_count_before_shading(self):
         p = self.positions
@@ -229,6 +389,27 @@ class SharedErrorTests(unittest.TestCase):
         self.assertLessEqual(report["scene_total"], limit)
         self.assertLessEqual(report["stored_total"], limit)
         self.assertEqual(lit.call_count, 1)
+
+    def test_mirrored_copies_bind_the_stored_limit_per_variant(self):
+        original = self.positions * [1, 2, 3]
+        original[0] += [0.12, 0.23, 0.34]
+        p = np.concatenate([original, original * [-1, 1, 1] + [8, 0, 0]])
+        t = np.concatenate([self.tris, self.tris[:, ::-1] + len(original)])
+        owners = np.repeat([0, 1], len(self.tris))
+        names = ("original", "mirrored")
+        selection = dict.fromkeys(range(len(names)), {"match": {"material": "shared"}})
+        shapes = []
+        ceiling = len(self.tris)
+        _, report = self.emit_scene(p, t, owners, names, len(t), ceiling=ceiling, shapes=shapes,
+                                    selection=selection, materials=np.zeros(len(t), dtype=int))
+        (shape,) = shapes
+        (carved,) = report["meshes"]
+        self.assertEqual({instance.mirrored for instance, _ in shape["copies"]}, {False, True})
+        self.assertEqual(carved["stored_meshes"], 2)
+        self.assertEqual(report["allocation_trials"], 2)
+        self.assertLess(report["scene_total"], len(t))
+        self.assertEqual(report["stored_total"], 2 * carved["output_triangles"])
+        self.assertLessEqual(report["stored_total"], ceiling)
 
     def test_a_carved_prototype_is_emitted_within_its_measured_floor(self):
         p, t, owners = self.two_objects()

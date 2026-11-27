@@ -131,6 +131,10 @@ class FitCeilingTests(unittest.TestCase):
         with self.assertRaisesRegex(SettingsError, 'ceiling'):
             self.run_fit(4, output_extra=True)
 
+    def test_fitted_bundle_checks_drawn_when_stored_fits(self):
+        with self.assertRaisesRegex(SettingsError, r"6 drawn triangles \(budget 4\).*5 stored triangles \(ceiling 5\)"):
+            self.run_fit(5, output_extra=True)
+
 
 class CarvedReportTests(unittest.TestCase):
     def test_each_carved_shape_counts_its_copies_cut_texels_and_measured_error_with_its_baked_level_on_its_source(self):

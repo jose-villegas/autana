@@ -6,3 +6,6 @@ launcher/main/apps/render_lab/tools/README.md	2026-11-15
 docs/kinematics/Hinge.md	2026-11-17
 docs/render/frame/Texture-Mapping.md	2026-11-18
 docs/image/Colour.md	2026-11-20
+docs/render/offline/Mesh-Import.md	2026-11-27
+docs/render/offline/Appearance-Fit.md	2026-11-27
+docs/render/offline/Bake-Quality.md	2026-11-27
