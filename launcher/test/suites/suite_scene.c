@@ -3416,6 +3416,37 @@ test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_doe
     assert_partial_frames_of_a_mover_match_the_whole_draw(false);
 }
 
+/* A frame's step for a playing animator. */
+#define SKINNED_MOVER_DT_MS 16U
+
+/* A skinned renderer of a second scene moves up and plays its clip over the
+ * still pair; each frame redraws its rows only and is the whole draw's
+ * picture. Settle off: its refined rows are meant to differ from a live draw. */
+static void
+test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
+    fixture();
+    /* Static: the context holds the pointer, and the settings stay off the test's frame. */
+    static render_settings_t settings;
+    settings = RENDER_SETTINGS_DEFAULT;
+    settings.settle.frame_us = 0;
+    render_context_set_settings(render_context_main(), &settings);
+    (void)show("test_pair");
+    const entity_t skinned = load("test_skin");
+    transformf_t behind = transform_local(skinned);
+    transformf_set_position(&behind, vec3f_add(behind.position, vec3f_unit_z()));
+    transform_set_local(skinned, behind);
+    const entity_t mover = entity_find(skinned, name_hash("red"));
+    settle_the_picture();
+    for (int step = 1; step <= MOVER_STEPS; step++) {
+        put_at(mover, 0.0F, (float)step * SWAPPED_SCENE_DROP); /* clear of its last rows */
+        (void)scene_compose(SKINNED_MOVER_DT_MS, 0, &fx.target);
+        const int rows = rows_the_last_frame_drew();
+        TEST_ASSERT_GREATER_THAN_INT(0, rows);
+        TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
+        assert_the_picture_is_the_whole_draw();
+    }
+}
+
 /* Two crowds, the second drawn through the first's camera, settled, then
  * `in_first` quads of the first and `in_second` of the second moved up. */
 static void
@@ -9180,6 +9211,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame);
     RUN_TEST(test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does);
+    RUN_TEST(test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row);
     RUN_TEST(test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows);
     RUN_TEST(test_the_drawn_list_follows_the_scenes_that_join_and_leave);
