@@ -14,6 +14,7 @@ from docs.plot_style import SLOTS, picture, save_themed_plot
 from doc_tables import markdown
 
 DOCUMENT = Path("docs/audio/Low-Frequency-Buzz.md")
+PULSE_CAPTURE = Path("docs/audio/data/audio_buzz_pulse_capture.txt")
 REGENERATE = "python launcher/tools/audio/audio_doc_tables.py --write"
 POWER_DB, AMPLITUDE_DB = 10, 20
 # IEC 61672-1 A-weighting: pole frequencies (Hz) and the offset that makes 1 kHz read 0 dB.
@@ -23,6 +24,8 @@ A_OFFSET_DB = 2.0
 HARMONIC = 2
 # Shake counts as the tone's only this far above the silent board's own reading (sensor noise).
 DETECT_RATIO = 2
+# A pulse reaches the long tone when its median shake is at least this share of the long tone's.
+REACH_RATIO = 0.9
 
 
 def a_weighting_db(hz):
@@ -107,10 +110,59 @@ def render(path):
             + details(table))
 
 
+def pulse_data(path):
+    """Median shake per (volume, pulse ms); pulse 0 is the long tone. Replies with a shake_reason were retried."""
+    _, records, _ = read_capture(path)
+    groups, retried = {}, 0
+    for command, reply in records:
+        if command[:1] != ["tone"]:
+            continue
+        volume = int(command[3])
+        pulse = int(command[command.index("--pulse") + 1]) if "--pulse" in command else 0
+        if reply.get("shake_rms_mg") is None:
+            if not reply.get("shake_reason"):
+                raise ValueError(f"tone at {volume}% pulse {pulse} ms has no shake reading and no reason")
+            retried += 1
+            continue
+        groups.setdefault((volume, pulse), []).append(reply)
+    if not groups:
+        raise ValueError("pulse capture has no tones")
+    for volume in {volume for volume, _ in groups}:
+        if (volume, 0) not in groups:
+            raise ValueError(f"pulse capture has no long tone at {volume}%")
+    points = {key: dict(runs=len(replies), shake=median(reply["shake_rms_mg"] for reply in replies),
+                        floor=median(reply["silence_shake_rms_mg"] for reply in replies))
+              for key, replies in groups.items()}
+    return points, retried
+
+
+def render_pulse(path):
+    points, retried = pulse_data(path)
+    rows, shortest = [], []
+    for volume in sorted({volume for volume, _ in points}):
+        long = points[(volume, 0)]["shake"]
+        pulses = sorted(pulse for gain, pulse in points if gain == volume and pulse)
+        reached = [pulse for pulse in pulses if points[(volume, pulse)]["shake"] >= REACH_RATIO * long]
+        shortest.append((volume, f"{reached[0]} ms" if reached else "none tested"))
+        for pulse in [0] + pulses:
+            point = points[(volume, pulse)]
+            rows.append((volume, "long tone" if pulse == 0 else pulse, point["runs"], f"{point['shake']:.2f}",
+                         f"{100 * point['shake'] / long:.0f}", f"{point['floor']:.2f}"))
+    summary = (f"A pulse reaches the long tone at {REACH_RATIO:.0%} of its median shake"
+               + (f"; {retried} reply with a gap inside the pulse was retried" if retried else "") + ".\n\n"
+               + markdown(["Volume (%)", "Shortest pulse reaching the long tone"], shortest))
+    table = markdown(["Volume (%)", "Pulse (ms)", "Runs", "Shake (mg RMS, median)", "Of long tone (%)",
+                      "Silence (mg RMS)"], rows)
+    return caption(path, REGENERATE, "replies") + summary + "\n" + table
+
+
 def update(capture, document, check=False):
-    from generated_blocks import replace_block
-    body = render(capture) if capture.exists() else "No capture yet.\n"
-    return replace_block(document, "audio-buzz", body, check=check)
+    from generated_blocks import replace_blocks
+    pulse_capture = capture.parent / PULSE_CAPTURE.name
+    return replace_blocks(document, {
+        "audio-buzz": render(capture) if capture.exists() else "No capture yet.\n",
+        "audio-buzz-pulse": render_pulse(pulse_capture) if pulse_capture.exists() else "No capture yet.\n",
+    }, check=check)
 
 
 def figures(path, output):

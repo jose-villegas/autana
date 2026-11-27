@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "input/motion/imu_chip.h"
+#include "input/motion/qmi8658/qmi8658_fifo.h"
 #include "input/motion/qmi8658/qmi8658_reset.h"
 #include "math/scalar/mathi.h"
 
@@ -85,9 +86,7 @@ _Static_assert(QMI8658_COUNTS_PER_G == IMU_COUNTS_PER_G && QMI8658_COUNTS_PER_DP
 _Static_assert(QMI8658_COUNTS_PER_DPS*(int)IMU_GYRO_RANGE_DPS == (1 << 15), "imu.h's gyro range");
 
 static i2c_master_dev_handle_t dev;
-static bool fifo_gap;
-static uint32_t loss_remainder_us;
-static int pending_lost;
+static qmi8658_fifo_t fifo;
 
 static bool
 write_reg(uint8_t reg, uint8_t value) {
@@ -114,17 +113,9 @@ write_command(uint8_t command) {
            && wait_command(false);
 }
 
-/* What the FIFO held is stale, and the read-mode loss since the last drain was never counted. */
-static void
-forget_fifo(void) {
-    fifo_gap = true;
-    pending_lost = 0;
-    loss_remainder_us = 0;
-}
-
 static bool
 qmi8658_configure(unsigned odr_code) {
-    forget_fifo();
+    qmi8658_fifo_reset(&fifo, odr_code);
     return write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
            && write_reg(REG_CTRL2, (uint8_t)(CTRL2_ACCEL_8G | odr_code))
            && write_reg(REG_CTRL3, (uint8_t)(CTRL3_GYRO_512DPS | odr_code)) && write_command(CTRL9_RST_FIFO)
@@ -186,42 +177,45 @@ read_fifo_count(int* count, bool* overflowed) {
     const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
     const int bytes = words * FIFO_WORD_BYTES;
     *count = bytes / (int)sizeof(imu_sample_t);
-    *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
+    *overflowed = fifo.gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
     return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
 }
 
 static void
 qmi8658_restart(void) {
     (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
-    forget_fifo();
+    qmi8658_fifo_reset(&fifo, fifo.odr_code);
+}
+
+/* The confirmed read interval excludes both the request handshake and the FIFO resume write. */
+static bool
+read_fifo_burst(imu_sample_t out[IMU_FIFO_SAMPLES], int count, uint64_t* locked_us) {
+    bool ok = write_command(CTRL9_REQ_FIFO);
+    const int64_t lock_start_us = timing_now_us();
+    for (int read = 0; ok && read < count;) {
+        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
+    }
+    *locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+    return ok;
 }
 
 static int
 qmi8658_drain(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
     int count = 0;
-    bool ok = read_fifo_count(&count, overflowed);
-    const int64_t lock_start_us = timing_now_us();
-    if (ok) {
-        ok = write_command(CTRL9_REQ_FIFO);
-    }
-    for (int read = 0; ok && read < count;) {
-        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
-        read += chunk;
-    }
+    uint64_t locked_us = 0;
+    const bool ok = read_fifo_count(&count, overflowed) && read_fifo_burst(out, count, &locked_us);
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
-    const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
-    fifo_gap = !ok || !resumed;
-    if (fifo_gap) {
+    fifo.gap = !ok || !resumed;
+    if (fifo.gap) {
         /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
          * reset and reconfigure, as qmi8658_open() does, so the next count starts on a sample boundary. */
         (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
     }
-    *lost = fifo_gap || *overflowed ? 0 : pending_lost;
-    /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
-    pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
-    return fifo_gap ? -1 : count;
+    *lost = qmi8658_fifo_loss(&fifo, locked_us, fifo.gap || *overflowed);
+    return fifo.gap ? -1 : count;
 }
 
 const imu_chip_t imu_chip_qmi8658 = {
