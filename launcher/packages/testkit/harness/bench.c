@@ -99,19 +99,13 @@ bench_yield(void) {
 }
 
 void*
-bench_alloc_internal(size_t size, const char* what) {
+bench_alloc(size_t size, const char* what, bool on_chip) {
 #ifdef ESP_PLATFORM
-    void* ptr = heap_caps_malloc(size, MALLOC_CAP_INTERNAL);
+    void* ptr = on_chip ? heap_caps_malloc(size, MALLOC_CAP_INTERNAL) : malloc(size);
 #else
+    (void)on_chip;
     void* ptr = malloc(size);
 #endif
-    TEST_ASSERT_NOT_NULL_MESSAGE(ptr, what);
-    return ptr;
-}
-
-void*
-bench_alloc_any(size_t size, const char* what) {
-    void* ptr = malloc(size);
     TEST_ASSERT_NOT_NULL_MESSAGE(ptr, what);
     return ptr;
 }

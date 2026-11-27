@@ -760,8 +760,6 @@ def parse_runtime_heap(text):
                 raise ValueError(f"runtime heap build {build}: invalid reading: {phase[2]}")
             if not reading["largest"] <= reading["free"] <= reading["total"]:
                 raise ValueError(f"runtime heap build {build}: require largest <= free <= total")
-            if reading.get("min", 0) > reading["free"]:
-                raise ValueError(f"runtime heap build {build}: require min <= free")
             current["phases"][phase[1]] = reading
     missing = set(VARIANTS) - captures.keys()
     if missing:

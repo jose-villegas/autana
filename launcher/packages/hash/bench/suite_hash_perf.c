@@ -52,7 +52,7 @@ test_hash_board_rows(void) {
     };
     static const size_t sizes[] = {64, 4 * 1024, HASH_BENCH_CAPACITY};
     static const char* const memories[] = {"ram", "flash"};
-    active_buffer = bench_alloc_internal(HASH_BENCH_CAPACITY, "CRC input");
+    active_buffer = bench_alloc(HASH_BENCH_CAPACITY, "CRC input", true);
     suite_set_test_cleanup(release);
     memcpy(active_buffer, flash_data, HASH_BENCH_CAPACITY);
     bench_target_report("HASHTARGET");

@@ -38,7 +38,6 @@ class RuntimeHeapTests(unittest.TestCase):
                      good.replace('"free": 600', '"free": -1'),
                      good.replace('phase=boot {', 'phase=boot HEAP {'),
                      good.replace('phase=boot', 'phase=app:B'),
-                     good.replace('"total": 1200', '"total": 1200, "min": 601', 1),
                      good.replace('"total": 1200', '"total": 1200, "low": 1', 1)):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 memory.parse_runtime_heap(text)

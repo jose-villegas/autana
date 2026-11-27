@@ -75,10 +75,9 @@ bool bench_is_qemu(void);
 void bench_cache_code_cold(void);
 bool bench_insn_begin(void);
 bool bench_insn_end(uint32_t* insn);
-void* bench_alloc_internal(size_t size, const char* what);
-/* Anywhere the heap has room: for a count of instructions, which no memory
- * changes, rather than a time. */
-void* bench_alloc_any(size_t size, const char* what);
+/* On chip for a time, which cache misses on external RAM would skew; anywhere
+ * for an instruction count, which no memory changes. */
+void* bench_alloc(size_t size, const char* what, bool on_chip);
 void bench_yield(void);
 int64_t bench_now_us(void);
 const char* bench_build_id(void);
