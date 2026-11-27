@@ -22,6 +22,12 @@ class RuntimeHeapTests(unittest.TestCase):
         capture['dev']['phases']['boot']['free'] = 1
         self.assertEqual(memory.runtime_floor(capture['dev'])[0], 'app:A')
 
+    def test_a_low_water_mark_is_kept(self):
+        text = FIXTURE.read_text().replace('"total": 1200', '"total": 1200, "min": 300', 1)
+        readings = [reading for capture in memory.parse_runtime_heap(text).values()
+                    for reading in capture.get('phases', {}).values()]
+        self.assertIn(300, [reading.get('min') for reading in readings])
+
     def test_invalid_captures_fail(self):
         good = FIXTURE.read_text()
         for text in ('', good.split('\n\n')[1], good + '\nBUILD_ID=abc-dev\nunmeasured: x\n',
@@ -31,7 +37,9 @@ class RuntimeHeapTests(unittest.TestCase):
                      good.replace('"largest": 400', '"largest": 601'),
                      good.replace('"free": 600', '"free": -1'),
                      good.replace('phase=boot {', 'phase=boot HEAP {'),
-                     good.replace('phase=boot', 'phase=app:B')):
+                     good.replace('phase=boot', 'phase=app:B'),
+                     good.replace('"total": 1200', '"total": 1200, "min": 601', 1),
+                     good.replace('"total": 1200', '"total": 1200, "low": 1', 1)):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 memory.parse_runtime_heap(text)
 
