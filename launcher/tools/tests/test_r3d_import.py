@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import pathlib
+import re
 import sys
 import tempfile
 import tomllib
@@ -44,15 +45,13 @@ OUTPUT = '[output]\nname = "mesh"\n'
 NO_LEVELS = '[geometry]\nlod = false\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
-SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'
+SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, seal_seams = true, colour_deviation = 1.0 }\n'
 VARIANT = '[[variants]]\nname = "mesh"\ntriangles = 10\n'
 BAKE = '[bake]\nray_offset = 0.5\ncolour_merge_step = 6\n'
 HEAD = TONEMAP + AMBIENT + BAKE
 PLAIN_VARIANT = '[[variants]]\nname = "mesh"\n'
 VARIANT_OUTPUT = '[output]\n'
-FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
-            'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
-FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
+FIT = ('[objects.mesh_renderer.fit.prune]\ncoverage_every_ms = 100\n'
        '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\nsamples = 2\ndenoise = false\ntrain_every_ms = 1000\n'
        'held_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\n'
@@ -191,9 +190,20 @@ class ImportTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.rejects(message, body)
 
-    def test_a_copy_budget_names_a_variant(self):
-        rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
-        self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
+
+    def test_removed_import_count_keys(self):
+        rule = '[[objects.meshes]]\nmatch = { material = "m" }\n'
+        cases = {
+            "objects.meshes[0].triangles": SIMPLIFY + rule + 'triangles = 4\n' + VARIANT,
+            "objects.meshes[0].variants": SIMPLIFY + rule + 'variants = { mesh = 4 }\n' + VARIANT,
+            "objects.meshes[0].min_triangles": SIMPLIFY + rule + 'min_triangles = 4\n' + VARIANT,
+            "variants[0].objects_scale": SIMPLIFY + VARIANT + 'objects_scale = 0.5\n',
+            "geometry.simplify.props": SIMPLIFY.replace("dense_edge", "props = [], dense_edge") + VARIANT,
+            "geometry.simplify.props_share": SIMPLIFY.replace("dense_edge", "props_share = 0.3, dense_edge") + VARIANT,
+        }
+        for key, body in cases.items():
+            with self.subTest(key=key):
+                self.rejects(re.escape(key) + r".*shared error", body)
 
     def test_probes_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
@@ -224,8 +234,7 @@ class ImportTests(unittest.TestCase):
     def test_variant_budget_and_optional_ceiling(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None,
-                                                       "objects_scale": 1.0})
+        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None})
 
 
     def test_basic_settings_turn_no_step_on(self):
@@ -444,15 +453,12 @@ class SceneTests(unittest.TestCase):
                 self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT, head=HEAD,
                                  body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
 
-    def test_probe_fit_uses_only_the_variant_budget(self):
-        options = dict(body=SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT, head=HEAD,
-                       output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
-        extra = 'variant = "mesh"\n' + FIT
-        with self.subTest(budget="explicit"):
-            self.lit_rejects(r"fit.prune.budget.*geometry.probes", extra.replace("budget = 8", "budget = 10"), **options)
-        with self.subTest(budget="absent"):
-            scene = load_scene(self.lit(extra.replace("budget = 8\n", ""), **options))
-            self.assertIsNone(scene.renderers[0].renderer.fit.budget)
+
+    def test_removed_fit_prune_budget(self):
+        fitted = FIT.replace("coverage_every_ms", "budget = 8\ncoverage_every_ms")
+        self.lit_rejects(r"fit\.prune\.budget.*shared error", 'variant = "mesh"\n' + fitted,
+                         body=SIMPLIFY + VARIANT, head=HEAD, output=VARIANT_OUTPUT,
+                         objects=camera(path=True, region=False))
 
     def test_a_fit_recipe_needs_its_reference_samples_and_denoise_and_the_bake_table_refuses_them(self):
         options = dict(body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False),
@@ -469,14 +475,12 @@ class SceneTests(unittest.TestCase):
                 line = "samples = 2" if "samples" in bad else "denoise = false"
                 self.lit_rejects(pattern, fitted.replace(line, bad), **options)
 
-    def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
+    def test_a_fit_recipe_reads_and_needs_a_bake(self):
         extra = 'variant = "mesh"\n' + FIT
         scene = load_scene(self.lit(extra, head=HEAD, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
                                          objects=camera(path=True, region=False)))
-        self.lit_rejects(r"fit.prune.budget.*required", extra.replace("budget = 8\n", ""), head=HEAD,
-                         body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=camera(path=True, region=False))
         fit = scene.renderers[0].renderer.fit
-        self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
+        self.assertEqual(fit.normal_weight, 1.0)
         self.assertEqual(fit.size, (184, 224))
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT, "head": HEAD}
         self.lit_rejects(r"fit.poses.size", extra.replace("size = [184, 224]\n", ""), **options)
@@ -486,10 +490,7 @@ class SceneTests(unittest.TestCase):
         self.lit_rejects("fit.hashes is gone", extra + "[objects.mesh_renderer.fit.hashes]\nsha256 = \"ab\"\n",
                          head=HEAD, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT, "head": HEAD}
-        self.lit_rejects("cannot exceed", extra.replace("budget = 8", "budget = 11"), **options)
         self.lit_rejects("fit", extra.replace("steps = 20\n", ""), **options)
-        self.lit_rejects("fit.prune.typo", extra.replace("budget = 8", "budget = 8\ntypo = 1"), **options)
-        self.lit_rejects(r"fit\.budget moved to .*fit\.prune\.budget", 'variant = "mesh"\n' + FLAT_FIT, **options)
         with tempfile.TemporaryDirectory() as directory:
             write_import(directory, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
             with self.assertRaisesRegex(SettingsError, "bake = true is required"):
@@ -854,14 +855,15 @@ class AuthoredImportTests(unittest.TestCase):
     def test_a_fitted_renderer_without_a_gpu_writes_its_cpu_start(self):
         objects = (renderer(extra='bake = true\nvariant = "mesh"\n' + FIT) + sun_object()
                    + camera(path=True, region=False))
+        budget = 12
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+            write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT.replace("triangles = 10", f"triangles = {budget}"))
             path = write_scene(root, objects, HEAD, name="hall.scene.toml")
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(mesh_import.main([str(path)]), 0)
             lit = read_lit_mesh(root / "hall.mesh.bundle")
-        self.assertLessEqual(len(lit.tris), 10)
+        self.assertLessEqual(len(lit.tris), budget)
         self.assertIn("CUDA", err.getvalue())
 
     @needs_llvm
@@ -961,7 +963,7 @@ class BakeStepTests(unittest.TestCase):
         self.assertEqual(seen, [own])
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
-        steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
+        steps = SimpleNamespace(dense_edge=10.0, seal_seams=True, colour_deviation=2.5)
         settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
@@ -1205,7 +1207,7 @@ class LocalSourceTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
-                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
+                objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]

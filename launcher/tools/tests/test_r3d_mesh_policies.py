@@ -1,4 +1,4 @@
-"""Mesh-owned budgets, surface contacts and rigid shared simplification."""
+"""Surface contacts and rigid shared simplification."""
 
 import pathlib
 import sys
@@ -29,9 +29,6 @@ def watched_simplify():
     with patch.object(owner, 'simplify_with_update', run), patch.object(stand_ins, 'simplify_with_update', run):
         yield run
 
-CARVED_RULE = 40  # triangles a carved mesh asks for
-REST_ASK = 80  # triangles the rest asks for
-ROUNDING = 3  # meshoptimizer lands near a budget, not on it
 STRETCH = np.array([2.0, 1.0, 0.5])  # a test shape's axes, far enough apart to be told apart
 BEND = 0.6  # x shifts by BEND * y^2, so no mirror or half turn maps the shape onto itself
 
@@ -44,39 +41,21 @@ def bent(points):
 
 class MeshPolicyTests(unittest.TestCase):
     def test_schema(self):
-        valid = {'match': {'material': 'vase*'}, 'triangles': 40, 'seam': 'lock'}
+        valid = {'match': {'material': 'vase*'}, 'seam': 'lock'}
         self.assertEqual(import_settings.load_object_meshes({'meshes': [valid]}), [valid])
         for shape in ('exact', 'surface'):
             self.assertEqual(import_settings.load_object_meshes({'meshes': [{**valid, 'shape': shape}]})[0]['shape'],
                              shape)
         for invalid in ({**valid, 'match': {'object': '*', 'material': '*'}},
                         {**valid, 'seam': 'unknown'}, {**valid, 'typo': True}, {**valid, 'shape': 'loose'}, {**valid, 'shape': True},
-                        {**valid, 'match': {'typo': '*'}}, {**valid, 'triangles': 0}):
+                        {**valid, 'match': {'typo': '*'}}, {}):
             with self.subTest(invalid=invalid), self.assertRaises(SettingsError):
                 import_settings.load_object_meshes({'meshes': [invalid]})
         with self.assertRaisesRegex(SettingsError, r'\[\[objects.meshes\]\]'):
             import_settings.load_object_meshes({'overrides': []})
-        self.assertEqual(import_settings.load_variant({'name': 'test', 'triangles': 80, 'ceiling': 120},
+        self.assertEqual(import_settings.load_variant({'name': 'test', 'triangles': 121, 'ceiling': 120},
                                       SimpleNamespace(simplify=True), 'variant').ceiling, 120)
 
-    def test_copy_budget_per_variant(self):
-        rules = [{'match': {'material': 'vase'}, 'triangles': 40},
-                 {'match': {'material': 'pot'}, 'triangles': 40, 'variants': {'lite': 7}},
-                 {'match': {'material': 'leaf'}, 'triangles': 3, 'min_triangles': 2}]
-        self.assertEqual(import_settings.load_object_meshes({'meshes': rules}), rules)
-        steps = SimpleNamespace(simplify=True)
-        full = import_settings.load_variant({'name': 'full', 'triangles': 80}, steps, 'variant')
-        lite = import_settings.load_variant({'name': 'lite', 'triangles': 60, 'objects_scale': 0.25}, steps, 'variant')
-        self.assertEqual([rule['triangles'] for rule in import_settings.variant_meshes(rules, full)], [40, 40, 3])
-        self.assertEqual([rule['triangles'] for rule in import_settings.variant_meshes(rules, lite)], [10, 7, 2])
-        self.assertEqual(rules[0]['triangles'], 40)
-        for invalid in ({**rules[0], 'variants': {'lite': 0}}, {**rules[0], 'variants': 3},
-                        {**rules[0], 'min_triangles': 41}):
-            with self.subTest(invalid=invalid), self.assertRaises(SettingsError):
-                import_settings.load_object_meshes({'meshes': [invalid]})
-        for scale in (0, -1, 'half'):
-            with self.subTest(scale=scale), self.assertRaises(SettingsError):
-                import_settings.load_variant({'name': 'lite', 'triangles': 60, 'objects_scale': scale}, steps, 'variant')
 
     def test_surface_contact_without_shared_vertices(self):
         from r3d.objects.contact import contact_graph
@@ -128,52 +107,16 @@ class MeshPolicyTests(unittest.TestCase):
 
     def test_weld_adds_to_touched_rest_pass(self):
         report = {}
-        p, t, _, allocation = split_sphere(11, 40, 'weld', report)
+        p, t, _, allocation = split_sphere(11, 'weld', report)
         with watched_simplify() as run:
-            q, _, faces, _ = simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 80,
+            q, _, faces, _ = simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), len(t),
                                        colour_deviation=1, allocation=allocation)
-        self.assertEqual([call.args[3] for call in run.call_args_list], [120])
-        self.assertLess(len(faces), len(t))
-        self.assertEqual(report['requested_scene_total'], 120)
+        self.assertEqual([call.args[3] for call in run.call_args_list], [report['rest_budget']])
         self.assertEqual(report['scene_total'], len(faces))
         counts = edge_counts(faces)
         np.testing.assert_array_equal(counts, np.full(len(counts), 2))
 
-    def test_no_rules_parity_with_material_shares(self):
-        p, t = sphere(7)
-        labels = np.arange(len(t)) % 2
-        for sealed in (False, True):
-            args = dict(colour_deviation=1, reserved=[({0}, 0.3)], seal_seams=sealed)
-            plain = simplify(p, np.full_like(p, 100), t, labels, 80, **args)
-            allocated = simplify(p, np.full_like(p, 100), t, labels, 80,
-                                 allocation=Allocation(tri_o=np.zeros(len(t), dtype=int)), **args)
-            for a, b in zip(plain, allocated):
-                self.assertEqual(a.tobytes(), b.tobytes())
 
-    def test_mesh_budget_does_not_subtract_from_rest(self):
-        points, faces, owners, allocation = self._three_spheres()
-        report = allocation.report = {}
-        *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80,
-                              colour_deviation=1, allocation=allocation)
-        self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
-        self.assertEqual(report['scene_total'], 160)
-        self.assertTrue(all(row['policy'] == 'free' for row in report['meshes']))
-        # Carved meshes are paid first: under a ceiling the rest shrinks to what is left of it.
-        allocation.ceiling = 159
-        *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
-        self.assertEqual([np.count_nonzero(labels == i) for i in range(2)], [40, 40])
-        self.assertLessEqual(len(labels), 159)
-        allocation.ceiling = 79
-        with self.assertRaisesRegex(SettingsError, 'ceiling'):
-            simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
-        allocation.ceiling = None
-        allocation.meshes = ({'match': {'object': 'missing'}, 'triangles': 40},)
-        with self.assertRaisesRegex(SettingsError, 'matches no'):
-            simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
-        allocation.meshes = ({'match': {'material': 'prop*'}, 'triangles': 40},)
-        allocation.material_names = ('prop_a', 'prop_b', 'rest')
-        *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
-        self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
 
     def test_lock_keeps_both_sides_and_free_keeps_the_rests(self):
         for seed in range(3):
@@ -183,8 +126,8 @@ class MeshPolicyTests(unittest.TestCase):
             results = {}
             for seam in ('free', 'lock'):
                 allocation = Allocation(tri_o=owners, object_names=('left', 'right'), material_names=('plain',),
-                                        meshes=({'match': {'object': 'left'}, 'triangles': 60, 'seam': seam},))
-                q, _, out, labels = simplify(p, np.full_like(p, 100), t, owners, 60,
+                                        meshes=({'match': {'object': 'left'}, 'seam': seam},))
+                q, _, out, labels = simplify(p, np.full_like(p, 100), t, owners, len(t),
                                              colour_deviation=1, allocation=allocation)
                 sides = [q[np.unique(out[labels == i])] for i in range(2)]
                 kept = [all(np.any(np.all(side == v.astype(np.float32), axis=1)) for v in p[border]) for side in sides]
@@ -197,15 +140,6 @@ class MeshPolicyTests(unittest.TestCase):
             self.assertEqual(results['lock'], [True, True])
             self.assertTrue(results['free'][1])  # the rest keeps its border; a welded vertex is the mesh's too
 
-    def test_ceiling_counts_lock_excess(self):
-        report = {}
-        p, t, _, allocation = split_sphere(12, 10, 'lock', report)
-        simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 10, colour_deviation=1, allocation=allocation)
-        self.assertGreater(report['scene_total'], report['requested_scene_total'])
-        self.assertGreater(sum(row['locked_border_excess'] for row in report['passes']), 0)
-        allocation.ceiling = report['scene_total'] - 1
-        with self.assertRaisesRegex(SettingsError, 'emitted triangles'):
-            simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 10, colour_deviation=1, allocation=allocation)
 
     def test_shared_lock_unions_contacts_from_all_copies(self):
         from scipy.spatial import cKDTree
@@ -224,9 +158,9 @@ class MeshPolicyTests(unittest.TestCase):
         expected = locks[:len(p)] | locks[len(p):2 * len(p)]
         self.assertGreater(np.count_nonzero(expected), np.count_nonzero(locks[:len(p)]))
         allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'), material_names=('plain',),
-                                meshes=({'match': {'object': 'vase*'}, 'triangles': 40},))
+                                meshes=({'match': {'object': 'vase*'}},))
         with watched_simplify() as run:
-            simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), 20,
+            simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), len(faces),
                      colour_deviation=1, allocation=allocation)
         shared = next(call for call in run.call_args_list if len(call.args[0]) == len(p))
         centre = (p.min(axis=0) + p.max(axis=0)) / 2
@@ -234,7 +168,7 @@ class MeshPolicyTests(unittest.TestCase):
         np.testing.assert_array_equal(shared.kwargs['vertex_lock'], expected[mapping])
         # Only the first placement touches; the isolated copy shares its local locks.
         with watched_simplify() as run:
-            simplify(points, np.full_like(points, 100), faces[:-1], np.zeros(len(faces) - 1, dtype=int), 20,
+            simplify(points, np.full_like(points, 100), faces[:-1], np.zeros(len(faces) - 1, dtype=int), len(faces),
                      colour_deviation=1, allocation=Allocation(tri_o=owners[:-1], object_names=allocation.object_names,
                                                               material_names=allocation.material_names, meshes=allocation.meshes))
         shared = [call for call in run.call_args_list if len(call.args[0]) == len(p)]
@@ -245,9 +179,9 @@ class MeshPolicyTests(unittest.TestCase):
         p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0], [1, 1, 0], [1, 1, 2], [2, 1, 2]])
         t = np.arange(6).reshape(-1, 3)
         allocation = Allocation(tri_o=np.arange(2), object_names=('floor', 'column'), material_names=('plain',),
-                                meshes=({'match': {'object': 'column'}, 'triangles': 1, 'seam': 'weld'},))
+                                meshes=({'match': {'object': 'column'}, 'seam': 'weld'},))
         with watched_simplify() as run:
-            simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), 1, colour_deviation=1, allocation=allocation)
+            simplify(p, np.full_like(p, 100), t, np.zeros(len(t), dtype=int), len(t), colour_deviation=1, allocation=allocation)
         self.assertEqual(run.call_count, 1)
         self.assertEqual(run.call_args.args[3], 2)
         np.testing.assert_array_equal(run.call_args.kwargs['vertex_lock'], [True, True, True, True, False, False])
@@ -262,9 +196,9 @@ class MeshPolicyTests(unittest.TestCase):
                               tri_o=np.repeat([0, 1], len(t)), names=['plain'], object_names=['vase_a', 'vase_b'],
                               textures=[None], materials={}, colors=None)
         settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, double_sided=set(), cards=None,
-                     meshes=[{'match': {'object': 'vase*'}, 'triangles': 40}],
-                     simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))
-        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=80, objects_scale=1.0)),
+                     meshes=[{'match': {'object': 'vase*'}}],
+                     simplify=SimpleNamespace(dense_edge=10, seal_seams=False, colour_deviation=1))
+        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=len(faces))),
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
         scene = SimpleNamespace(lights=[{'type': 'directional', 'mode': LIGHT_MODE_BAKED, 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))
@@ -273,15 +207,15 @@ class MeshPolicyTests(unittest.TestCase):
              patch.object(mesh_import, 'RayQuery', return_value=query) as rays, \
              watched_simplify() as run, \
              patch.object(mesh_import, 'shade_placed', wraps=mesh_import.shade_placed) as shade:
-            result = mesh_import.bake_geometry(job, scene)
+            result = mesh_import.bake_geometry(job, scene, carve=True)
         self.assertEqual(run.call_count, 1)
         np.testing.assert_array_equal(run.call_args.args[1], np.full_like(run.call_args.args[0], 255))
         self.assertEqual(shade.call_count, 2)
         self.assertIs(shade.call_args_list[0].args[-2], query)
         np.testing.assert_array_equal(rays.call_args.args[1], faces)
-        left = result.positions[:, 0] < 3
-        self.assertFalse(np.array_equal(np.sort(result.rgb[left], axis=0), np.sort(result.rgb[~left], axis=0)))
-        self.assertEqual(len(result.tris), 80)
+        left, right = [lit for _, lit in result.shapes[0]["copies"]]
+        self.assertFalse(np.array_equal(np.sort(left[1], axis=0), np.sort(right[1], axis=0)))
+        self.assertEqual(result.mesh_report["scene_total"], len(faces))
 
         settings.thin = SimpleNamespace(material='plain', keep=0.7)
         job.renderer.visibility = SimpleNamespace(source='camera_region')
@@ -291,11 +225,11 @@ class MeshPolicyTests(unittest.TestCase):
              patch.object(mesh_import, 'RayQuery', return_value=query), \
              patch.object(mesh_import, 'visible_triangles', return_value=visible), \
              watched_simplify() as run:
-            result = mesh_import.bake_geometry(job, scene)
+            result = mesh_import.bake_geometry(job, scene, carve=True)
         self.assertEqual(run.call_count, 1)
         self.assertLess(len(run.call_args.args[2]), len(t))
         self.assertEqual(result.mesh_report['meshes'][0]['copies'], 2)
-        self.assertTrue(np.any(result.positions[:, 0] > 3))
+        self.assertGreater(result.shapes[0]["copies"][1][1][0][:, 0].mean(), 3)
 
     def test_shared_mirror_decimates_once_and_places_before_shading(self):
         p, t = sphere(8)
@@ -308,15 +242,16 @@ class MeshPolicyTests(unittest.TestCase):
             shaded.append(q.copy())
             return q, np.full_like(q, q[:, 0].mean()), out, labels
         allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b'), material_names=('plain',),
-                                meshes=({'match': {'object': 'vase*'}, 'triangles': 40},), shade=shade)
+                                meshes=({'match': {'object': 'vase*'}},), shade=shade)
         with watched_simplify() as run:
-            q, c, out, _ = simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), 80,
+            q, c, out, _ = simplify(points, np.full_like(points, 100), faces, np.zeros(len(faces), dtype=int), len(faces),
                                      colour_deviation=1, allocation=allocation)
         self.assertEqual(run.call_count, 1)
         self.assertEqual(len(shaded), 2)
         n = len(q) // 2
         np.testing.assert_allclose(q[:n] * [-1, 1, 1] + [6, 0, 0], q[n:], atol=1e-6)
-        np.testing.assert_array_equal(out[:40][:, ::-1] + n, out[40:])
+        half = len(out) // 2
+        np.testing.assert_array_equal(out[:half][:, ::-1] + n, out[half:])
         self.assertFalse(np.array_equal(c[:n], c[n:]))
 
     @staticmethod
@@ -345,7 +280,7 @@ class MeshPolicyTests(unittest.TestCase):
             labels.append([0])
         allocation = Allocation(tri_o=np.concatenate(owners), object_names=('vase_a', 'vase_b', 'rest'),
                                 material_names=('stone', 'brass'),
-                                meshes=({'match': {'object': 'vase*'}, 'triangles': 40, 'seam': seam,
+                                meshes=({'match': {'object': 'vase*'}, 'seam': seam,
                                          **({} if shape is None else {'shape': shape})},))
         return np.concatenate(points), np.concatenate(faces), np.concatenate(labels), allocation, (p, turn)
 
@@ -359,7 +294,7 @@ class MeshPolicyTests(unittest.TestCase):
         allocation.shade, report = shade, {}
         allocation.report = report
         with watched_simplify() as run:
-            q, _, out, out_labels = simplify(points, np.full_like(points, 100), faces, labels, 80,
+            q, _, out, out_labels = simplify(points, np.full_like(points, 100), faces, labels, len(faces),
                                              colour_deviation=1, allocation=allocation)
         self.assertEqual(run.call_count, 1)
         [entry] = report['meshes']
@@ -378,7 +313,7 @@ class MeshPolicyTests(unittest.TestCase):
         report = {}
         allocation.report = report
         with watched_simplify() as run:
-            q, _, out, _ = simplify(points, np.full_like(points, 100), faces, labels, 80, colour_deviation=1,
+            q, _, out, _ = simplify(points, np.full_like(points, 100), faces, labels, len(faces), colour_deviation=1,
                                     allocation=allocation)
         self.assertEqual((run.call_count, report['meshes'][0]['joined']), (1, 1))
         half = len(out) // 2
@@ -399,7 +334,7 @@ class MeshPolicyTests(unittest.TestCase):
                 report = {}
                 allocation.report = report
                 with watched_simplify() as run:
-                    simplify(points, np.full_like(points, 100), faces, labels, 80, colour_deviation=1,
+                    simplify(points, np.full_like(points, 100), faces, labels, len(faces), colour_deviation=1,
                              allocation=allocation)
                 self.assertEqual(run.call_count, 2)
                 self.assertFalse(any(row.get('joined') for row in report['meshes']))
@@ -412,7 +347,7 @@ class MeshPolicyTests(unittest.TestCase):
                 report = {}
                 allocation.report = report
                 with watched_simplify():
-                    simplify(points, np.full_like(points, 100), faces, labels, 80, colour_deviation=1,
+                    simplify(points, np.full_like(points, 100), faces, labels, len(faces), colour_deviation=1,
                              allocation=allocation)
                 self.assertFalse(any(row.get('joined') for row in report['meshes']))
 
@@ -449,131 +384,6 @@ class MeshPolicyTests(unittest.TestCase):
             *_, by_labels = mesh_import.shade_placed(src, job, None, positions, None, tris, labels, None, None)
             self.assertEqual(lit, [(0, 1), (2, 2)])
             np.testing.assert_array_equal(by_labels, [0, 2, 2])
-
-    # Carved meshes are charged at what they emit; the rest scales into what is left of the ceiling.
-
-    @staticmethod
-    def _three_spheres():
-        """Two mirrored carved copies (one shared pass) and a rest sphere."""
-        p, t = sphere(4)
-        rest_p, rest_t = sphere(6)
-        points = np.concatenate([p, p * [-1, 1, 1] + [6, 0, 0], rest_p + [12, 0, 0]])
-        faces = np.concatenate([t, t[:, ::-1] + len(p), rest_t + 2 * len(p)])
-        owners = np.concatenate([np.repeat([0, 1], len(t)), np.full(len(rest_t), 2)])
-        allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'), material_names=('plain',),
-                                meshes=({'match': {'object': 'vase*'}, 'triangles': CARVED_RULE},))
-        return points, faces, owners, allocation
-
-    @staticmethod
-    def _lone_triangle_rest():
-        """A carved sphere and a one-triangle rest that touches nothing."""
-        p, t = sphere(5)
-        points = np.concatenate([p, [[20., 0, 0], [21, 0, 0], [20, 1, 0]]])
-        faces = np.concatenate([t, [[len(p), len(p) + 1, len(p) + 2]]])
-        owners = np.concatenate([np.zeros(len(t), dtype=int), [1]])
-        allocation = Allocation(tri_o=owners, object_names=('vase', 'rest'), material_names=('plain',),
-                                meshes=({'match': {'object': 'vase'}, 'triangles': CARVED_RULE},))
-        return points, faces, owners, allocation
-
-    def _run(self, points, faces, labels, rest, allocation, **args):
-        """Simplify; return the output labels and the budget of every simplify_with_update call, in order."""
-        with watched_simplify() as run:
-            try:
-                *_, out = simplify(points, np.full_like(points, 100), faces, labels, rest, colour_deviation=1,
-                                   allocation=allocation, **args)
-            finally:
-                self.budgets = [call.args[3] for call in run.call_args_list]
-        return out, self.budgets
-
-    def test_ceiling_charges_locked_seam_overshoot_not_the_rule_budget(self):
-        report = {}
-        rest_ask = REST_ASK + CARVED_RULE  # above the floor the locked border leaves the rest
-        p, t, _, allocation = split_sphere(12, CARVED_RULE, 'lock', report)
-        labels = np.zeros(len(t), dtype=int)
-        simplify(p, np.full_like(p, 100), t, labels, rest_ask, colour_deviation=1, allocation=allocation)
-        carved = report['passes'][0]['output_triangles']
-        self.assertGreater(carved, CARVED_RULE)
-        allocation.ceiling = carved + rest_ask - 2
-        out, budgets = self._run(p, t, labels, rest_ask, allocation)
-        self.assertLessEqual(len(out), allocation.ceiling)
-        self.assertEqual(budgets[-1], allocation.ceiling - carved)
-        self.assertLess(budgets[-1], allocation.ceiling - CARVED_RULE)
-
-    def test_ceiling_charges_every_shared_copy(self):
-        points, faces, owners, allocation = self._three_spheres()
-        copies = 2
-        allocation.ceiling = copies * CARVED_RULE + REST_ASK // 2
-        out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
-        self.assertEqual(len(budgets), 2)  # one shared pass for both copies, then the rest
-        self.assertEqual(budgets[-1], REST_ASK // 2)
-        self.assertLessEqual(len(out), allocation.ceiling)
-
-    def test_rest_gets_the_leftover_of_the_ceiling(self):
-        points, faces, owners, allocation = self._three_spheres()
-        allocation.ceiling = 2 * CARVED_RULE + REST_ASK - 1
-        out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
-        leftover = allocation.ceiling - 2 * CARVED_RULE
-        self.assertEqual(budgets[-1], leftover)
-        self.assertLessEqual(len(out), allocation.ceiling)
-        self.assertAlmostEqual(len(out) - 2 * CARVED_RULE, leftover, delta=ROUNDING)
-
-    def test_rest_parts_scale_proportionally_and_none_drops_to_zero(self):
-        p, t = sphere(7)
-        points = np.concatenate([p, p + [6, 0, 0]])
-        faces = np.concatenate([t, t + len(p)])
-        owners = np.repeat([0, 1], len(t))
-        labels = np.concatenate([np.zeros(len(t), dtype=int), np.arange(len(t)) % 2])
-        share = 0.3
-        asks = [round(REST_ASK * share), REST_ASK - round(REST_ASK * share)]
-
-        def run(ceiling):
-            allocation = Allocation(tri_o=owners, object_names=('vase', 'rest'), material_names=('a', 'b'),
-                                    meshes=({'match': {'object': 'vase'}, 'triangles': CARVED_RULE},), ceiling=ceiling)
-            return self._run(points, faces, labels, REST_ASK, allocation, reserved=[({0}, share)])
-
-        _, budgets = run(None)
-        self.assertEqual(sorted(budgets[1:]), sorted(asks))
-        room = REST_ASK // 2
-        out, budgets = run(CARVED_RULE + room)
-        self.assertEqual(sorted(budgets[1:]), sorted(ask * room // REST_ASK for ask in asks))
-        self.assertLessEqual(len(out), CARVED_RULE + room)
-        tight = len(asks)  # one triangle per rest part is all the ceiling leaves
-        _, budgets = run(CARVED_RULE + tight)
-        self.assertEqual(budgets[1:], [1] * tight)
-
-    def test_ceiling_boundaries_leave_the_rest_within_its_ask(self):
-        total_ask = 2 * CARVED_RULE + REST_ASK
-        for ceiling in (total_ask, total_ask + REST_ASK):
-            points, faces, owners, allocation = self._three_spheres()
-            allocation.ceiling = ceiling
-            out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
-            self.assertEqual(budgets[-1], REST_ASK, ceiling)
-            self.assertEqual(len(out) - 2 * CARVED_RULE, REST_ASK, ceiling)
-
-    def test_ceiling_of_carved_plus_one_triangle_per_rest_part_passes(self):
-        points, faces, owners, allocation = self._lone_triangle_rest()
-        allocation.ceiling = CARVED_RULE + 1
-        out, _ = self._run(points, faces, owners, 1, allocation)
-        self.assertEqual(len(out), allocation.ceiling)
-
-    def test_carved_alone_over_ceiling_raises_before_the_rest_is_simplified(self):
-        points, faces, owners, allocation = self._lone_triangle_rest()
-        allocation.ceiling = CARVED_RULE
-        with self.assertRaisesRegex(SettingsError, 'ceiling'):
-            self._run(points, faces, owners, 1, allocation)
-        self.assertEqual(len(self.budgets), 1)  # the carved pass only
-
-    def test_variant_triangles_may_not_exceed_its_ceiling(self):
-        steps = SimpleNamespace(simplify=True)
-        ceiling = 120
-        for triangles, accepted in ((ceiling - 1, True), (ceiling, True), (ceiling + 1, False)):
-            value = {'name': 'v', 'triangles': triangles, 'ceiling': ceiling}
-            with self.subTest(triangles=triangles):
-                if accepted:
-                    self.assertEqual(import_settings.load_variant(value, steps, 'variant').triangles, triangles)
-                else:
-                    with self.assertRaisesRegex(SettingsError, 'ceiling'):
-                        import_settings.load_variant(value, steps, 'variant')
 
 
 if __name__ == '__main__':

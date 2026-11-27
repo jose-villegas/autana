@@ -206,7 +206,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-look.pn
     > "$W/indirect-look.log"
 
 # The simplifier against the fit: OBJECT's CPU start, the import simplified to
-# the fit's own budget, baked from the committed scene in place, so the paths it
+# the variant's shared shape error, baked from the committed scene in place, so the paths it
 # names resolve, beside the committed fit.
 run mkdir -p "$W/start"
 bake_and_render "$SCENE" "$W/start" "$MESH" "$FULL"

@@ -108,35 +108,39 @@ class SelectionTests(unittest.TestCase):
 class HeldTests(unittest.TestCase):
     def test_held_pieces_pass_the_collapse_whole_and_the_rest_pays_the_budget(self):
         leaf_p, leaf_v = quads(100, z=5.0)
-        ball_p, ball_v = sphere(9)
+        from test_r3d_detail import sphere as wound_sphere
+
+        ball_p, ball_v = wound_sphere(rings=8)
         pos = np.concatenate([leaf_p, ball_p * 4])
         tris = np.concatenate([leaf_v, ball_v + len(leaf_p)])
         labels = np.repeat([0, 1], [len(leaf_v), len(ball_v)])
         rgb = np.full((len(pos), 3), 128.0)
-        budget = len(leaf_v) + 40
+        budget = len(leaf_v) + len(ball_v) // 2
         held = labels == 0
-        out = simplify(pos, rgb, tris, labels, budget, colour_deviation=1.0, allocation=Allocation(held=held))
+        out = simplify(pos, rgb, tris, labels, budget, colour_deviation=1.0, allocation=Allocation(tri_o=labels, object_names=("leaf", "ball"), held=held))
         p, _, t, m = out
         self.assertEqual(int((m == 0).sum()), len(leaf_v))
         np.testing.assert_allclose(np.sort(triangle_areas(p, t[m == 0])), np.full(len(leaf_v), QUAD * QUAD / 2))
         self.assertLess(int((m == 1).sum()), len(ball_v))
-        self.assertLessEqual(len(t), budget + 3)
+        self.assertLessEqual(len(t), budget)
 
 
 class BakeTests(unittest.TestCase):
     @needs_llvm
     def test_a_cut_out_aggregate_keeps_a_thinned_enlarged_share_through_simplify(self):
         from r3d import mesh_import
+        from test_r3d_detail import sphere as wound_sphere
         leaf_p, leaf_v = quads(2 * AGGREGATE_PIECES_MIN, z=5.0)
-        ball_p, ball_v = sphere(9)
+        sphere_rings = 8
+        ball_p, ball_v = wound_sphere(rings=sphere_rings)
         p = np.concatenate([leaf_p, ball_p * 4])
         tri_v = np.concatenate([leaf_v, ball_v + len(leaf_p)])
         tri_m = np.repeat([0, 1], [len(leaf_v), len(ball_v)])
         src = SimpleNamespace(p=p, tri_v=tri_v, tri_t=None, uv=None, tri_m=tri_m, tri_o=tri_m.copy(),
                               names=['leaf', 'wall'], object_names=['tree', 'ball'], textures=[None, None],
                               materials={}, colors=None)
-        budget = len(tri_v) // 4
-        steps = SimpleNamespace(dense_edge=100.0, props=set(), props_share=0, seal_seams=False, colour_deviation=1.0)
+        budget = len(tri_v) // 2
+        steps = SimpleNamespace(dense_edge=100.0, seal_seams=False, colour_deviation=1.0)
         settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, cards=None, double_sided=set(),
                                    meshes=[], simplify=steps)
         job = SimpleNamespace(settings=settings, bake=None,
@@ -149,8 +153,10 @@ class BakeTests(unittest.TestCase):
         self.assertGreater(leaves.sum(), 0)
         self.assertEqual(leaves.sum() % 2, 0)
         area = triangle_areas(result.positions, result.tris[leaves])
-        np.testing.assert_allclose(area, QUAD * QUAD / 2 / ratio)
-        self.assertLessEqual(len(result.tris), budget + 3)
+        # The simplifier returns float32 positions before areas are measured.
+        rtol = np.finfo(np.float32).eps * np.abs(result.positions).max() / QUAD
+        np.testing.assert_allclose(area, QUAD * QUAD / 2 / ratio, rtol=rtol)
+        self.assertLessEqual(len(result.tris), budget)
 
 
 if __name__ == '__main__':

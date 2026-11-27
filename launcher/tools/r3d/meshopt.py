@@ -40,7 +40,8 @@ def _library():
     return _lib
 
 
-def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, options=REGULARIZE | PERMISSIVE, vertex_lock=None):
+def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, options=REGULARIZE | PERMISSIVE, vertex_lock=None,
+                         *, target_error=UNLIMITED_ERROR):
     """Simplifies to about target_triangles, keeping colour (0..255 per
     channel, `colour_weight` per level) as an attribute and moving the
     surviving vertices and colours to where they best preserve the appearance.
@@ -60,7 +61,8 @@ def simplify_with_update(pos, rgb, tris, target_triangles, colour_weight, option
     c = ctypes.c_void_p
     n = fn(i.ctypes.data_as(c), ctypes.c_size_t(len(i)), p.ctypes.data_as(c), ctypes.c_size_t(len(p)),
            ctypes.c_size_t(12), a.ctypes.data_as(c), ctypes.c_size_t(12), w.ctypes.data_as(c), ctypes.c_size_t(3),
-           None if locks is None else locks.ctypes.data_as(c), ctypes.c_size_t(3 * target_triangles), ctypes.c_float(UNLIMITED_ERROR), ctypes.c_uint(options), None)
+           None if locks is None else locks.ctypes.data_as(c), ctypes.c_size_t(3 * target_triangles), ctypes.c_float(target_error),
+           ctypes.c_uint(options), None)
     out = i[:n].reshape(-1, 3).astype(np.int64)
     kept, local = np.unique(out, return_inverse=True)
     return (p[kept].astype(np.float64), np.clip(a[kept] * 255.0, 0.0, 255.0), local.reshape(-1, 3), kept)

@@ -14,59 +14,41 @@ seed = 1
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "leaf", keep = 0.35 }
-simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
+simplify = { dense_edge = 45.0, seal_seams = true, colour_deviation = 1.0 }
 # The fits train on probes over the whole atrium (the scene camera has no path).
 probes = {}
 
-# The free-standing props: one mesh per repeated shape, each copy drawing
-# `triangles` times the variant's objects_scale. No rule names the flagpoles: one that passes
-# through the wall stays in the rest, since a carved pole too thin to fill
-# its socket shows sky around it, and one that touches nothing is carved as
-# a free repeat (20 of the 46). Seams are free: a locked contact keeps every
-# copy's border vertices, which a prop of a few dozen triangles cannot afford.
+# Free seams let carved props simplify independently. Repeats touching
+# nothing also carve automatically, while poles crossing walls stay in the rest.
 [[objects.meshes]]
 match = { material = "vase" }
-triangles = 235
 seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__57" }
-triangles = 155
 seam = "free"
 
 [[objects.meshes]]
 match = { material = "vase_hanging" }
-triangles = 19
 seam = "free"
 
 [[objects.meshes]]
 match = { material = "leaf" }
-triangles = 45
 seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__298" }
-triangles = 484
 seam = "free"
 
 [[objects.meshes]]
 match = { material = "Material__47" }
-triangles = 45
 seam = "free"
 
-# Chains budget one triangle per copy to leave room for walls and arches.
 [[objects.meshes]]
 match = { material = "chain" }
-triangles = 1
 seam = "free"
 
-# The variant's triangles budget the rest, apart from its props and cards, and
-# are its fit's budget, so a probe fit stays closed (Appearance-Fit.md); its
-# ceiling caps the rest plus every stored copy prototype. Unpinned free
-# repeats derive their detail from the camera's closest view within that
-# ceiling.
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 13313
-objects_scale = 0.92
+triangles = 33225
 ceiling = 30000

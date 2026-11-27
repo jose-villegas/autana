@@ -25,9 +25,8 @@ camera-path poses; the scores are defined in
 
 </details>
 
-What the fit buys over the simplifier at the same budget: the reference, the
-fit's start (the import simplified to the fit's budget), the fit, then each
-one's ΔE heatmap on one colour scale.
+The reference, the [allocated import](Mesh-Import.md#shared-shape-error), and the fitted result.
+The import and fit have the same triangles. Their ΔE heatmaps share one colour scale.
 
 ![Reference, simplifier, fit, and each one's error heatmap on one scale](../../images/render/bake-fidelity-full-sheet.png)
 
@@ -43,11 +42,10 @@ outputs; the board table measures the committed asset.
 Run the documented stage to populate this comparison from current inputs.
 <!-- /generated: sponza-gpu -->
 
-### Budget and normal sweeps
+### Cost and normal sweeps
 
-The budget sweep varies the recipe's pruning budget and cost weight: held-out
-error against predicted time. The predictions use the board's cost weights, as
-fresh as its last board stage.
+The cost sweep compares held-out error against predicted frame time as the fit's cost weight varies.
+Every point fits the same start. The predictions use the weights produced by the board stage.
 
 <!-- generated: sponza-budget sha256=004310de23d1d3ede4be5737fea3df96589330524e3c9e8b073803d2c099c13d -->
 Run the documented stage to populate this comparison from current inputs.

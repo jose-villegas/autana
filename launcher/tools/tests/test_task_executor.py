@@ -87,11 +87,11 @@ class WorkerTests(ProcessTests):
             from r3d.fitted_variant import run_sweep_points, sweep_rows, point_name
         except ImportError:
             self.skipTest("needs NumPy")
-        points = [{"budget": 1, "cost_weight": 0}, {"budget": 2, "cost_weight": 0}]
+        points = [{"cost_weight": 1}, {"cost_weight": 2}]
         futures = [concurrent.futures.Future(), concurrent.futures.Future()]
         class Executor:
             def submit(self, function, point, directory, **kwargs):
-                return futures[point["budget"] - 1]
+                return futures[point["cost_weight"] - 1]
         with tempfile.TemporaryDirectory() as directory:
             pending = {}
             run_sweep_points(directory, points, None, executor=Executor(), deferred=pending)
@@ -99,7 +99,7 @@ class WorkerTests(ProcessTests):
             futures[0].set_result({"triangles": 1})
             seen = []
             def consume(point, directory):
-                seen.append(point["budget"])
+                seen.append(point["cost_weight"])
                 return pending[point_name(point)].result()
             self.assertEqual(run_sweep_points(directory, points, consume), 2)
             self.assertEqual(seen, [1, 2])
@@ -116,7 +116,7 @@ class WorkerTests(ProcessTests):
             def fail(point, path):
                 raise RuntimeError("fit failed")
             with self.assertRaisesRegex(RuntimeError, "fit failed"):
-                run_sweep_points(directory, [{"budget": 1, "cost_weight": 0}], fail)
+                run_sweep_points(directory, [{"cost_weight": 1}], fail)
             self.assertFalse(list(pathlib.Path(directory).rglob("result.json")))
 
 

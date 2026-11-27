@@ -484,7 +484,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         from r3d.process_budget import MEASURE_BYTES
-        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
+        job = NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3),
                              variant=NS(name="full", triangles=10000)))
         scene = NS(renderers=[], objects=[])
         consumed, measured, completed = [], {}, []
@@ -526,9 +526,9 @@ class FullGpuSchedulingTests(unittest.TestCase):
             (out / 'tables').mkdir(parents=True)
             (out / 'render/gpu').mkdir(parents=True)
             work = root / 'work/full-' / bake.digest({})
-            resume = work / 'budget-4000-cost-0/result.json'
+            resume = work / 'cost-0.1/result.json'
             resume.parent.mkdir(parents=True)
-            resume.write_text(json.dumps({'budget': 4000, 'cost_weight': 0., 'triangles': 1,
+            resume.write_text(json.dumps({'cost_weight': 0.1, 'triangles': 1,
                                           'mean_delta_e': 0., 'predicted_ms': 0.}))
             before = resume.read_bytes()
             with mock.patch.object(import_settings, 'load_scene', return_value=scene), \
@@ -561,31 +561,28 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
             sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
             expected_rows = ['start', 'start-path-culled', 'fit', 'normal-0', 'normal-0.1', 'normal-0.3',
-                             'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1']
+                             'cost-0']
             self.assertEqual(consumed, expected_rows)
             self.assertEqual({label: measured[label] for label in ('start', 'start-path-culled', 'fit',
-                                                                   'normal-0', 'normal-0.3', 'budget-6000-cost-0')},
+                                                                   'normal-0', 'normal-0.3', 'cost-0')},
                              {'start': Path('kept/hall/full.bundle'),
                               'start-path-culled': Path('kept/hall/culled.bundle'),
                               'fit': Path('kept/fit/fitted.bundle'),
                               'normal-0': Path('kept/normal-0/fitted.bundle'),
                               'normal-0.3': Path('kept/fit/fitted.bundle'),
-                              'budget-6000-cost-0': Path('kept/fit/fitted.bundle')},
+                              'cost-0': Path('kept/fit/fitted.bundle')},
                              "a kept result is measured from its cache folder; the recipe's own point is its fit")
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
-            self.assertEqual([(row['budget'], row['cost_weight']) for row in measurements['sweep']],
-                             [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1)])
+            self.assertEqual([row['cost_weight'] for row in measurements['sweep']], [0., .1])
             self.assertEqual(resume.read_bytes(), before)
             fits = keeper.of('fit')
             self.assertEqual(completed, [args[1].name for args, _ in reversed(fits)])
-            self.assertCountEqual([(point_dir.name, point.get('budget'), point.get('cost_weight', 0.),
+            self.assertCountEqual([(point_dir.name, point.get('cost_weight', 0.),
                                     job.renderer.fit.normal_weight, inputs.name)
                                    for (point, point_dir, _path, _scene, job, inputs), _ in fits], [
-                ('fit', None, 0., .3, 'inputs'),
-                ('normal-0', None, 0., 0., 'inputs'), ('normal-0.1', None, 0., .1, 'inputs'),
-                ('budget-4000-cost-0.1', 4000, .1, .3, 'inputs'),
-                ('budget-6000-cost-0.1', 6000, .1, .3, 'inputs')])
+                ('fit', 0., .3, 'inputs'),
+                ('normal-0', 0., 0., 'inputs'), ('normal-0.1', 0., .1, 'inputs')])
             sheet = [call.args[0] for call in run.call_args_list if call.args[1].name == 'sheet.log']
             self.assertEqual(len(sheet), 1)
             command = [str(word) for word in sheet[0]]
@@ -664,8 +661,7 @@ class KeeperTests(unittest.TestCase):
         normal = copy.deepcopy(self.jobs[0])
         normal.renderer.fit.normal_weight = 0.1
         folders["normal"] = self.fit_folder(job=normal)
-        folders["budget"] = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
-        folders["cost"] = self.fit_folder({"budget": 4000, "cost_weight": 0.1})
+        folders["cost"] = self.fit_folder({"cost_weight": 0.1})
         look = load_scene(stages.write_look_scene(self.SCENE, "direct", self.root / "look"))
         reference = self.inputs / self.sets.training[0][1] / "frame.png"
         original = reference.read_bytes()
@@ -673,8 +669,8 @@ class KeeperTests(unittest.TestCase):
         folders["look"] = self.fit_folder(job=placed_variant(look, self.jobs[0].renderer.variant.name), scene=look)
         reference.write_bytes(original)
         self.assertEqual(len(set(folders.values())), len(folders), folders)
-        self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
-                         folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
+        self.assertEqual(self.fit_folder({"cost_weight": 0.0}),
+                         folders["recipe"], "zero cost weight is the recipe's fit")
         (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"other start")
         self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
 
@@ -685,14 +681,14 @@ class KeeperTests(unittest.TestCase):
         self.assertNotEqual(self.fit_folder(), before)
 
     def test_a_cost_weighted_fit_counts_the_cost_model(self):
-        weighted = {"budget": 4000, "cost_weight": 0.1}
+        weighted = {"cost_weight": 0.1}
         before = self.fit_folder(weighted)
-        unweighted = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
+        unweighted = self.fit_folder({"cost_weight": 0.0})
         weights = self.root / "weights.txt"
         weights.write_text("feature other\n")
         with mock.patch.object(stages, "WEIGHTS", weights):
             self.assertNotEqual(self.fit_folder(weighted), before)
-            self.assertEqual(self.fit_folder({"budget": 4000, "cost_weight": 0.0}), unweighted)
+            self.assertEqual(self.fit_folder({"cost_weight": 0.0}), unweighted)
 
     def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
         self.keeper.bake(self.scene, self.fitted, False)

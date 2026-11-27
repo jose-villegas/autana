@@ -154,11 +154,11 @@ def edge_counts(faces):
     return np.unique(edges, axis=0, return_counts=True)[1]
 
 
-def split_sphere(seed, budget, seam, report=None):
+def split_sphere(seed, seam, report=None):
     from r3d.simplify import Allocation
 
     points, faces = sphere(seed)
     owners = (points[faces].mean(axis=1)[:, 0] > 0).astype(int)
     allocation = Allocation(tri_o=owners, object_names=('left', 'right'), material_names=('plain',), report=report,
-                            meshes=({'match': {'object': 'left'}, 'triangles': budget, 'seam': seam},))
+                            meshes=({'match': {'object': 'left'}, 'seam': seam},))
     return points, faces, owners, allocation

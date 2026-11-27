@@ -33,7 +33,8 @@ try:
     from r3d.cluster_tree import build_tree, flatten_tree, node_bounds
     from r3d.repair import _weld_borders, repair
     from r3d import simplify as simplify_module
-    from r3d.simplify import SEAM_COLOUR_TOLERANCE, _label_after, colour_weight, merge_close_colours, simplify
+    from r3d.meshopt import PERMISSIVE, REGULARIZE
+    from r3d.simplify import Allocation, SEAM_COLOUR_TOLERANCE, _label_after, _run_pass, colour_weight, merge_close_colours, simplify
     from r3d.tessellate import split_marked_edges
 except ImportError:
     np = None
@@ -298,7 +299,7 @@ class SealSeamsTests(unittest.TestCase):
     def open_seam(self, seal, gap, scale):
         p, tris = two_pieces(gap)
         sp, _, st, _ = simplify(p, np.full((len(p), 3), 100.0), tris, np.arange(len(tris)) % 2, 4, colour_deviation=1.0, seal_seams=seal,
-                                position_scale=scale)
+                                position_scale=scale, allocation=Allocation())
         return any(0.5 < (a[1] + b[1]) / 2 < 3.5 and abs(a[0] + b[0]) / 2 < gap + 0.3 for a, b in open_edges(sp, st))
 
     def test_pieces_offset_by_less_than_a_quantum_are_sealed_and_by_more_are_not(self):
@@ -309,7 +310,7 @@ class SealSeamsTests(unittest.TestCase):
 
     def seams(self, seal):
         corners, rgb, tris, labels = seam_fixture()
-        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), colour_deviation=1.0, seal_seams=seal)
+        sp, sc, st, _ = simplify(corners, rgb, tris, labels, len(tris), colour_deviation=1.0, seal_seams=seal, allocation=Allocation())
         mesh = bake_lit_mesh(sp, np.rint(sc).astype(np.int64), st, np.zeros(len(st), dtype=int))
         return len(mesh.pos) - len({tuple(v) for v in mesh.pos.tolist()})
 
@@ -347,21 +348,6 @@ class ColourDeviationTests(unittest.TestCase):
         self.assertAlmostEqual(colour_weight(p * 10, tris, 8, 10.0), weight)  # the same model in other units
         self.assertAlmostEqual(colour_weight(p, tris, 8, 3.0), 3 * weight)
 
-    def test_each_part_weighs_colour_by_its_own_area_and_budget(self):
-        p, tris = grid(4)
-        labels = (np.arange(len(tris)) < 6).astype(int)  # a reserved part of six triangles, the rest twenty-six
-        seen = []
-
-        def record(pos, rgb, t, budget, weight, options):
-            seen.append((budget, weight, colour_weight(pos, t, budget, 2.0), triangle_areas(pos, t).sum()))
-            return simplify_with_update(pos, rgb, t, budget, weight, options)
-
-        with mock.patch.object(simplify_module, "simplify_with_update", side_effect=record):
-            simplify(p, np.full((len(p), 3), 100.0), tris, labels, 12, [({1}, 0.25)], colour_deviation=2.0)
-        self.assertEqual([budget for budget, _, _, _ in seen], [3, 9])
-        self.assertEqual([area for _, _, _, area in seen], [3.0, 13.0])
-        for _, weight, expected, _ in seen:
-            self.assertAlmostEqual(weight, expected)
 
     def test_a_part_with_no_area_weighs_colour_at_nothing(self):
         line = np.array([[0.0, 0, 0], [1, 0, 0], [2, 0, 0]])
@@ -371,7 +357,8 @@ class ColourDeviationTests(unittest.TestCase):
         pos, rgb, tris = banded_plane()
         error, uncovered = {}, {}
         for deviation in (1e-4, 1.0, 16.0):
-            sp, sc, st, _ = simplify(pos, rgb, tris, np.zeros(len(tris), dtype=int), 300, colour_deviation=deviation)
+            sp, sc, st, _ = _run_pass(pos, rgb, tris, np.zeros(len(tris), dtype=int), 300,
+                                      deviation, REGULARIZE | PERMISSIVE)
             error[deviation], uncovered[deviation] = against_plane(pos, rgb, sp, sc, st)
         self.assertLess(error[1.0], 0.6 * error[1e-4], error)
         # The other side of the trade: at the import's scale the plane stays whole, while colour priced far above it

@@ -1,7 +1,9 @@
 """Checks the fitted-variant recipe's pose handling: which poses it holds
-out, and that the poses pruning counts over cover the panel held either way
+out, and that the coverage poses cover the panel held either way
 up. Needs NumPy."""
 
+import contextlib
+import io
 import pathlib
 import sys
 import tempfile
@@ -74,6 +76,34 @@ class WriteBakedTests(unittest.TestCase):
         lit.assert_not_called()
         self.assertIsNone(back.face_colors)
         self.assertTrue((back.rgb == 100).all())
+
+
+    def test_a_fitted_variant_with_no_emitted_rest_raises_before_writing(self):
+        from r3d.import_settings import SettingsError
+
+        renderer = SimpleNamespace(fit=True, variant=SimpleNamespace(name="empty"), face_samples=None)
+        job = SimpleNamespace(renderer=renderer)
+        geometry = SimpleNamespace(positions=[], tris=[])
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            with self.assertRaisesRegex(SettingsError, r"fitted variant 'empty' has no rest mesh"):
+                mesh_import.write_baked(job, None, work, "empty", geometry)
+            self.assertEqual(list(work.iterdir()), [])
+
+    def test_an_all_carved_non_fit_variant_writes_its_copies(self):
+        from r3d import mesh_bundle
+        from test_mesh_bundle import bundle_fixture
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            _, expected, geometry, job, scene = bundle_fixture(work)
+            geometry.tris = geometry.tris[:0]
+            job.renderer.variant = SimpleNamespace(name="carved")
+            mesh = mesh_import.write_baked(job, scene, work, "carved", geometry)
+            entries, copies = mesh_bundle.decode((work / f"carved{mesh_bundle.SUFFIX}").read_bytes())
+        self.assertEqual(len(mesh.tris), 0)
+        self.assertEqual(len(copies), len(expected))
+        self.assertNotIn("carved", {name for name, _, _ in entries})
 
 
 @unittest.skipIf(parse_poses is None, "needs NumPy")
@@ -203,35 +233,30 @@ class SweepTests(unittest.TestCase):
                 mock.patch.object(cost_model, "predict", return_value=np.array([1])), \
                 mock.patch("r3d.lit_mesh.read_lit_mesh"), \
                 mock.patch("r3d.lit_mesh.finest_triangles", return_value=([], [], [0])):
-            fitted_variant.sweep_main([str(scene), "--variant", "paint", "--budgets", "5", "--out", directory])
+            fitted_variant.sweep_main([str(scene), "--variant", "paint", "--out", directory])
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
 
-    def test_probe_import_refuses_sweep_budgets(self):
-        import contextlib
-        import io
-        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=10)),
-                              settings=SimpleNamespace(fit=SimpleNamespace(probes=object())))
-        error = io.StringIO()
-        with unittest.mock.patch.object(fitted_variant, "load_scene"), \
+
+    def test_cost_sweep_requires_a_camera_path_before_preparing_references(self):
+        scene = SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path=None)))
+        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint")))
+        with unittest.mock.patch.object(fitted_variant, "load_scene", return_value=scene), \
                 unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
-                unittest.mock.patch.object(fitted_variant, "sweep_references", side_effect=AssertionError("sweep ran")), \
-                contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
-            fitted_variant.sweep_main(["scene.toml", "--variant", "mesh", "--budgets", "5", "--out", "out"])
-        self.assertIn("--budgets", error.getvalue())
-        self.assertIn("geometry.probes", error.getvalue())
-        with self.assertRaisesRegex(ValueError, "budget.*geometry.probes"):
-            stage.fit("scene.toml", None, job, pathlib.Path("out"), budget=5)
+                unittest.mock.patch.object(fitted_variant, "sweep_references", side_effect=AssertionError("prepared")), \
+                contextlib.redirect_stderr(io.StringIO()) as errors, self.assertRaises(SystemExit):
+            fitted_variant.sweep_main(["scene.toml", "--variant", "paint", "--out", "out"])
+        self.assertIn("needs a camera path", errors.getvalue())
 
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
-            point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
+            point_dir = pathlib.Path(directory) / "cost-0.5"
             target = point_dir.parent / (point_dir.name + ".bundle")
             scene_path, scene, job, inputs = "scene.toml", object(), object(), pathlib.Path(directory) / "inputs"
             with unittest.mock.patch.object(stage, "fit", return_value=target) as fit:
                 result = stage.fit_point(
-                    {"budget": 42, "cost_weight": 0.5}, point_dir, scene_path, scene, job, inputs)
-            fit.assert_called_once_with(scene_path, scene, job, point_dir, budget=42,
+                    {"cost_weight": 0.5}, point_dir, scene_path, scene, job, inputs)
+            fit.assert_called_once_with(scene_path, scene, job, point_dir,
                                         cost_weight=0.5, smoke=False, target=target, inputs=inputs)
             self.assertEqual(result, {"mesh": str(target)})
 
@@ -245,7 +270,7 @@ class SweepTests(unittest.TestCase):
             point_dir = pathlib.Path(directory) / "point"
             with unittest.mock.patch.object(stage, "fit", side_effect=fail_fit):
                 with self.assertRaises(RuntimeError) as caught:
-                    stage.fit_point({"budget": 42}, point_dir, "scene", None, None, directory)
+                    stage.fit_point({}, point_dir, "scene", None, None, directory)
             log_path = point_dir / "fit.log"
             log = log_path.read_text()
             self.assertIn("Traceback (most recent call last):", log)
@@ -357,7 +382,7 @@ class SweepTests(unittest.TestCase):
                 self.assertEqual(float(command[command.index("--" + key.replace("_", "-")) + 1]), getattr(recipe, key))
             (out / pathlib.Path(command[command.index("--start") + 1]).name).write_bytes(fitted_bytes)
 
-        recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
+        recipe = SimpleNamespace(steps=3, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
                               settings=SimpleNamespace(fit=SimpleNamespace(probes=object())), renderer=SimpleNamespace(
             fit=recipe, variant=SimpleNamespace(name="variant_name")))
@@ -407,11 +432,11 @@ class SweepTests(unittest.TestCase):
 
         def fit(point, point_dir):
             calls.append(point)
-            return {"triangles": point["budget"], "mean_delta_e": 1.0,
+            return {"triangles": 4, "mean_delta_e": 1.0,
                     "p95_delta_e": 2.0, "predicted_ms": 3.0}
 
         with tempfile.TemporaryDirectory() as directory:
-            points = [{"budget": 4, "cost_weight": 0.0}]
+            points = [{"cost_weight": 0.0}]
             self.assertEqual(fitted_variant.run_sweep_points(pathlib.Path(directory), points, fit), 1)
             self.assertEqual(fitted_variant.run_sweep_points(pathlib.Path(directory), points, fit), 0)
         self.assertEqual(len(calls), 1)

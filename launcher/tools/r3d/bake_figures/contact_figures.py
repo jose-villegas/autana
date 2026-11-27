@@ -34,9 +34,8 @@ PILLAR_RINGS = ((0.0, 1.3), (0.12, 1.3), (0.25, 1.1), (0.4, 1.0), (0.8, 1.0), (1
 # The floor: a square plate of FLOOR_CELLS by FLOOR_CELLS quads, FLOOR_HALF either side of the pillar's axis.
 FLOOR_CELLS = 10
 FLOOR_HALF = 2.0
-# Budgets: the pillar's as a carved mesh, the rest's (the floor) as the variant's.
-PILLAR_TRIANGLES = 120
-REST_TRIANGLES = 80
+# The same drawn limit applies to each seam policy.
+DRAWN_TRIANGLES = 200
 SOURCE_COLOUR = 100
 COLOUR_DEVIATION = 1
 # Two contact vertices are the same point when they agree to this many decimals.
@@ -93,10 +92,10 @@ def source():
 
 def simplified(points, faces, owners, policy):
     allocation = Allocation(tri_o=owners, object_names=OBJECT_NAMES, material_names=("plain",), report={},
-                            meshes=({"match": {"object": OBJECT_NAMES[PILLAR]}, "triangles": PILLAR_TRIANGLES,
+                            meshes=({"match": {"object": OBJECT_NAMES[PILLAR]},
                                      "seam": policy},))
     kept, _, kept_faces, _ = simplify(points, np.full_like(points, SOURCE_COLOUR), faces,
-                                      np.zeros(len(faces), dtype=int), REST_TRIANGLES,
+                                      np.zeros(len(faces), dtype=int), DRAWN_TRIANGLES,
                                       colour_deviation=COLOUR_DEVIATION, allocation=allocation)
     return kept, kept_faces
 

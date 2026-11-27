@@ -80,6 +80,14 @@ def check_keys(table, required, where, optional=()):
             raise SettingsError(f"{where}.{name} is not a known setting")
 
 
+def reject_count_keys(table, keys, where):
+    """Explain why the shared error owns a retired count setting."""
+    if isinstance(table, dict):
+        for key in keys:
+            if key in table:
+                raise SettingsError(f"{where}.{key} is unsupported; counts now come from the shared error")
+
+
 def load_fields(table, fields, where):
     """Read a closed table of required, typed fields as a namespace."""
     check_keys(table, tuple(fields), where)
@@ -181,35 +189,32 @@ FIT_GROUPS = {
     "poses": ("size", "samples", "denoise", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
-FIT_KEYS = ("budget",) + tuple(key for keys in FIT_GROUPS.values() for key in keys)
+FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
 
 def load_fit(value, variant, where):
-    """The grouped recipe of a variant the appearance fit makes offline from
-    the mesh the import bakes at `triangles`: `prune` names coverage poses
-    and a path fit's budget, `poses` names training and held-out camera-path poses and
-    `optimise` holds settings. What a fit made is recorded in launcher/bakes.lock
-    (bake/bake.py), not here."""
+    """The appearance fit's camera samples and optimisation settings."""
+    reject_count_keys(value, ("budget",), where)
+    if isinstance(value, dict):
+        reject_count_keys(value.get("prune"), ("budget",), f"{where}.prune")
     if "hashes" in value:
         raise SettingsError(f"{where}.hashes is gone: launcher/bakes.lock records what a fit made")
     for group, keys in FIT_GROUPS.items():
-        for key in (("budget",) if group == "prune" else ()) + keys:
+        for key in keys:
             if key in value:
                 raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
     check_keys(value, FIT_GROUPS, where)
     values = {}
     for group, keys in FIT_GROUPS.items():
         table = value[group]
-        check_keys(table, keys, f"{where}.{group}", optional=("budget",) if group == "prune" else ())
+        check_keys(table, keys, f"{where}.{group}")
         values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
     fit = SimpleNamespace(**{key: values.get(key) for key in FIT_KEYS})
-    for key in ("budget", "samples", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
+    for key in ("samples", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         if getattr(fit, key) is not None:
             setattr(fit, key, count(values[key], f"{where}.{key}"))
-    if getattr(variant, "ceiling", None) is not None and fit.budget is not None and fit.budget > variant.ceiling:
-        raise SettingsError(f"{where}.prune.budget {fit.budget} exceeds variant ceiling {variant.ceiling}")
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.denoise = boolean(values["denoise"], f"{where}.poses.denoise")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
@@ -219,8 +224,6 @@ def load_fit(value, variant, where):
         if value < 0:
             raise SettingsError(f"{where}.{key} must be nonnegative")
         setattr(fit, key, value)
-    if fit.budget is not None and fit.budget > variant.triangles:
-        raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit
 
 
@@ -231,18 +234,14 @@ def load_variant(value, steps, where):
         for name, home in homes.items():
             if name in value:
                 raise SettingsError(f"{where}.{name} moved to {home}")
-    check_keys(value, ("name",), where, optional=("triangles", "ceiling", "objects_scale"))
+    reject_count_keys(value, ("objects_scale",), where)
+    check_keys(value, ("name",), where, optional=("triangles", "ceiling"))
     variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None,
-                              ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None,
-                              objects_scale=number(value.get("objects_scale", 1.0), f"{where}.objects_scale"))
-    if variant.objects_scale <= 0:
-        raise SettingsError(f"{where}.objects_scale must be positive")
+                              ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None)
     if steps.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
         variant.triangles = count(value["triangles"], f"{where}.triangles")
-        if variant.ceiling is not None and variant.triangles > variant.ceiling:
-            raise SettingsError(f"{where}.triangles {variant.triangles} exceeds its ceiling {variant.ceiling}")
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
     return variant
@@ -337,9 +336,9 @@ def load_geometry(table, steps):
     if "thin" in table:
         steps.thin = load_fields(table["thin"], {"material": text, "keep": number}, "geometry.thin")
     if "simplify" in table:
+        reject_count_keys(table["simplify"], ("props", "props_share"), "geometry.simplify")
         steps.simplify = load_fields(table["simplify"], {
-            "dense_edge": number, "props": lambda value, where: set(strings(value, where)),
-            "props_share": number, "seal_seams": boolean, "colour_deviation": number}, "geometry.simplify")
+            "dense_edge": number, "seal_seams": boolean, "colour_deviation": number}, "geometry.simplify")
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
     steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None)
@@ -365,8 +364,7 @@ SHAPE_MATCHES = ("exact", "surface")
 
 
 def load_object_meshes(table):
-    """Closed mesh selectors and the overrides of their derived detail: `triangles` pins a shape's near level
-    (scaled by each variant's objects_scale), `min_triangles` floors it."""
+    """Closed rules for selecting carved objects and joining their seams and shapes."""
     if "overrides" in table:
         raise SettingsError("[objects] overrides is unsupported; use [[objects.meshes]]")
     check_keys(table, (), "objects", optional=("meshes",))
@@ -375,21 +373,14 @@ def load_object_meshes(table):
         raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.meshes[{index}]"
-        check_keys(rule, ("match",), where, optional=("triangles", "seam", "variants", "min_triangles", "shape"))
+        reject_count_keys(rule, ("triangles", "variants", "min_triangles"), where)
+        check_keys(rule, ("match",), where, optional=("seam", "shape"))
         match = rule["match"]
         check_keys(match, (), f"{where}.match", optional=("material", "object"))
         if len(match) != 1:
             raise SettingsError(f"{where}.match needs exactly one of material/object")
         for selector, pattern in match.items():
             text(pattern, f"{where}.match.{selector}")
-        if "triangles" in rule:
-            count(rule["triangles"], f"{where}.triangles")
-        if not isinstance(rule.get("variants", {}), dict):
-            raise SettingsError(f"{where}.variants must be a table of variant budgets")
-        for name, triangles in rule.get("variants", {}).items():
-            count(triangles, f"{where}.variants.{name}")
-        if "min_triangles" in rule and count(rule["min_triangles"], f"{where}.min_triangles") > rule.get("triangles", math.inf):
-            raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
         if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
             raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
         if "shape" in rule and rule["shape"] not in SHAPE_MATCHES:
@@ -397,21 +388,8 @@ def load_object_meshes(table):
     return rules
 
 
-def variant_meshes(rules, variant):
-    """The rules with a pinned `triangles` as `variant` draws each copy: its own override, else
-    round(triangles x objects_scale), never below `min_triangles`. A rule pinning neither keeps none: its
-    shapes' detail is derived (objects/detail.py)."""
-    resolved = []
-    for rule in rules:
-        triangles = rule.get("variants", {}).get(variant.name)
-        if triangles is None and "triangles" in rule:
-            triangles = max(rule.get("min_triangles", 1), round(rule["triangles"] * variant.objects_scale))
-        resolved.append(rule if triangles is None else rule | {"triangles": triangles})
-    return resolved
-
-
 def match_meshes(tri_o, labels, object_names, material_names, rules):
-    """Resolve mesh rules once per source object; overlapping budgets are ambiguous."""
+    """Resolve mesh rules once per source object; overlapping rules are ambiguous."""
     selected = {}
     for rule in rules:
         hits = []
@@ -479,9 +457,9 @@ def load_import_settings(path):
         names = [variant.name for variant in variants]
         if len(set(names)) != len(names):
             raise SettingsError("variants names must be unique")
-        budgets = [variant.triangles for variant in variants]
+        budgets = [(variant.triangles, variant.ceiling) for variant in variants]
         if len(set(budgets)) != len(budgets):
-            raise SettingsError("variants with the same triangle budget would produce the same mesh")
+            raise SettingsError("variants with the same triangle budgets would produce the same mesh")
     else:
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
@@ -489,10 +467,6 @@ def load_import_settings(path):
     meshes = load_object_meshes(values.get("objects", {}))
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
-    for index, rule in enumerate(meshes):
-        for name in rule.get("variants", {}):
-            if name not in names:
-                raise SettingsError(f"objects.meshes[{index}].variants.{name} names no variant")
     return SimpleNamespace(
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
@@ -901,10 +875,6 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:
-        if item.renderer.fit and ((item.renderer.fit.budget is None) == (item.settings.fit.probes is None)):
-            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit.prune.budget is "
-                                + ("required without geometry.probes" if item.settings.fit.probes is None else
-                                   "refused with geometry.probes; the variant's triangles is the budget"))
         if item.renderer.fit and camera_path is None and item.settings.fit.probes is None:
             raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path "
                                 "or its import's geometry.probes")

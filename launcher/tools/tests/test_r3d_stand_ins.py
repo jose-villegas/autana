@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import ray_query
 from r3d.meshopt import PERMISSIVE, simplify_with_update
 from r3d.objects import stand_ins
-from r3d.simplify import _shared_passes
+from r3d.simplify import Allocation, simplify
 from tests.soup import box, concatenate
 from tests.r3d_env import needs_llvm  # noqa: E402
 
@@ -101,22 +101,24 @@ class StandInTests(unittest.TestCase):
             assert stand_ins.view_error(source, hole) > 0.
 
 
+    @needs_llvm
     def test_shared_copies(self):
         p, c, t, m = table()
         offset = np.array([4., 0., 0.])
         pos, rgb = np.concatenate([p, p + offset]), np.concatenate([c, c])
         tris, labels = np.concatenate([t, t + len(p)]), np.concatenate([m, m])
         owners = np.repeat([0, 1], len(t))
-        rule = dict(triangles=BUDGET)
         shapes = []
+        report = {}
+        rule = {"match": {"object": "*"}, "seam": "free"}
+        allocation = Allocation(tri_o=owners, object_names=("table_a", "table_b"), meshes=(rule,),
+                                shapes=shapes, report=report)
         with patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
-            emitted, consumed, rows = _shared_passes(pos, rgb, tris, labels, owners, {0: rule, 1: rule},
-                {0: 'free', 1: 'free'}, [(owners == i, BUDGET) for i in range(2)],
-                np.zeros(len(pos), dtype=bool), 1., PERMISSIVE, None, shapes)
-        assert not emitted
-        assert consumed == {0, 1}
-        assert rows[0]['stand_in'] == 'plane'
-        assert rows[0]['stand_ins'][1]['chosen']
+            _, _, rest, _ = simplify(pos, rgb, tris, labels, len(tris), colour_deviation=1, allocation=allocation)
+        assert not len(rest)
+        assert len(shapes) == 1
+        [row] = report['meshes']
+        [chosen] = [candidate for candidate in row['stand_ins'] if candidate['chosen']]
         copies = shapes[0]['copies']
         np.testing.assert_allclose(copies[1][1][0] - copies[0][1][0], np.broadcast_to(offset, copies[0][1][0].shape), atol=1e-6)
-        assert len(copies[0][1][2]) <= BUDGET
+        assert all(len(lit[2]) == chosen['triangles'] for _, lit in copies)

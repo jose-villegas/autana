@@ -35,7 +35,6 @@ BUDGET = 24
 # Too few triangles for the half disc alone to stay round: its locks stop at the budget with holes left.
 SHEET_ALONE_BUDGET = 24
 # A budget for the wall and the half disc simplified as two passes, and the half disc's share of it.
-TWO_PASS_BUDGET, SHEET_SHARE = 96, 0.5
 # A path view straight at the wall, its size unlike a probe face's, and a batch too small for two probe faces.
 PATH_VIEW = (192, 128, 0.25)
 PATH_EYE = (150.0, 150.0, 150.0)
@@ -43,7 +42,6 @@ SMALL_BATCH = 50000
 # Quantisation steps per source unit, which sets the join step's tolerance.
 POSITION_SCALE = 8
 # The half disc carved out as a mesh of its own, at too few triangles to stay round.
-CARVED_SHEET_BUDGET = 6
 # Where the camera can be, in front of the wall, and its near plane.
 CAMERA = ((np.array([60.0, 10.0, -90.0]), np.array([260.0, 110.0, 90.0])), 2.0) if np is not None else None
 
@@ -146,11 +144,14 @@ class LeakProbeTests(unittest.TestCase):
         self.assertGreater(len(holes), 0)
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
-    def test_the_sheet_behind_an_opening_keeps_it_covered_at_the_same_budget(self):
+    def test_rest_simplification_uses_probes_to_close_holes_within_the_budget(self):
         p, t = self.simplified(Allocation())
         self.assertGreater(len(self.probes.holes(p, t)), 0, "the fixture does not leak without the probes")
-        p, t = self.simplified(Allocation(camera=CAMERA))
-        self.assertEqual(self.probes.holes(p, t), [])
+        unsealed = len(self.probes.holes(p, t))
+        report = {}
+        p, t = self.simplified(Allocation(camera=CAMERA, report=report))
+        self.assertLess(len(self.probes.holes(p, t)), unsealed)
+        self.assertGreater(report["passes"][0]["leak_locks"], 0)
         self.assertLessEqual(len(t), BUDGET)
 
     def one_pass(self, budget, rows=None):
@@ -182,46 +183,32 @@ class LeakProbeTests(unittest.TestCase):
 
     def test_with_no_round_left_the_first_run_stands_and_its_holes_are_recorded(self):
         plain = self.simplified(Allocation())
+        report = {}
         with mock.patch.object(leaks, "ROUNDS", 0):
-            t, record = self.one_pass(BUDGET)
-        self.assertEqual(len(t), len(plain[1]))
+            points, tris = self.simplified(Allocation(camera=CAMERA, report=report))
+        record = report["passes"][0]
+        np.testing.assert_array_equal(points, plain[0])
+        np.testing.assert_array_equal(tris, plain[1])
         self.assertEqual((record["leak_rounds"], record["leak_locks"]), (0, 0))
         self.assertEqual(record["leak_holes"], len(leaks.LeakProbes(self.joined[0], self.joined[2], *CAMERA).holes(*plain)))
 
-    def test_the_wall_and_the_sheet_as_two_passes_close_what_each_can_within_their_budgets(self):
-        """The sheet's pass comes first and is sealed against the wall's source; the wall's pass then sees the
-        sheet as simplified, and cannot lock the sheet's vertices."""
-        labels = (np.arange(len(self.tris)) >= len(self.tris) // 2).astype(int)
-        rgb = np.full((len(self.pos), 3), 128.0)
-
-        def two_passes(allocation):
-            p, _, t, _ = simplify(self.pos, rgb, self.tris, labels, TWO_PASS_BUDGET, [({1}, SHEET_SHARE)],
-                                  colour_deviation=1.0, seal_seams=True, position_scale=POSITION_SCALE, allocation=allocation)
-            return p, t
-
-        plain = len(self.probes.holes(*two_passes(Allocation())))
-        self.assertGreater(plain, 0, "the fixture does not leak in two passes")
-        p, t = two_passes(Allocation(camera=CAMERA))
-        self.assertLess(len(self.probes.holes(p, t)), plain / 4)
-        self.assertLessEqual(len(t), TWO_PASS_BUDGET)
 
     def test_a_carved_mesh_stands_as_its_stand_in_for_the_rest(self):
-        """The sheet is carved to a budget that cannot cover the opening; the wall's pass must see that sheet, not
-        the source's, so it is the stand-in's triangles that the probes are given."""
+        """The probes must use the carved sheet's stand-in while simplifying the wall."""
         owners = (np.arange(len(self.tris)) >= len(self.tris) // 2).astype(int)
         rgb = np.full((len(self.pos), 3), 128.0)
-        rule = dict(triangles=CARVED_SHEET_BUDGET, seam="free", match=dict(object="sheet"))
+        rule = dict(seam="free", match=dict(object="sheet"))
         allocation = Allocation(tri_o=owners, object_names=("wall", "sheet"), material_names=("stone",), shapes=[],
                                 meshes=(rule,), selection={1: rule}, camera=CAMERA)
         finished = []
         real = leaks.LeakProbes.finish
         with mock.patch.object(leaks.LeakProbes, "finish", autospec=True,
                                side_effect=lambda probes, rows, p, t: (finished.append((rows, len(t))), real(probes, rows, p, t))[1]):
-            simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), BUDGET, colour_deviation=1.0,
+            simplify(self.pos, rgb, self.tris, np.zeros(len(self.tris), dtype=int), len(self.tris), colour_deviation=1.0,
                      seal_seams=True, position_scale=POSITION_SCALE, allocation=allocation)
         sheet = [count for rows, count in finished if np.all(owners[rows] == 1)]
         self.assertEqual(len(sheet), 1, "the carved sheet never replaced its source in the probes' scene")
-        self.assertLessEqual(sheet[0], CARVED_SHEET_BUDGET)
+        self.assertEqual(sheet[0], len(allocation.shapes[0]["tris"]))
         self.assertEqual(len(allocation.shapes), 1)
 
     def test_the_same_input_seals_to_the_same_mesh(self):

@@ -2,16 +2,14 @@
 
 A fit remakes a baked mesh so it looks like the full-detail source from the
 camera's path. It is appearance-driven simplification<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>:
-it starts from the renderer's bake at its budget and moves welded positions and
-colours against reference renders, keeping the triangles. The budget and the
-frame cost hold.
+it moves welded positions and colours against reference renders and keeps the
+triangles of the renderer's start.
 
 Use it for a mesh seen from known views when the simplifier's colours or
 silhouettes visibly drift from the source. It needs a CUDA GPU and minutes per
 mesh, and costs nothing at run time. A renderer asks for one with a `fit` table
 ([Scene-Files.md](../scene/Scene-Files.md#fitprune)); [`fitted_variant.py` remakes the mesh](../../../launcher/tools/r3d/README.md#appearance-fit)
-in its GPU environment. A `fit` table records the budget, the training,
-held-out and coverage poses, the optimiser settings and the output hashes.
+in its GPU environment. A `fit` table sets the optimiser and the reference pose sampling.
 Measured results are in
 [Bake-Quality.md](Bake-Quality.md#appearance-fit).
 
@@ -21,8 +19,7 @@ Measured results are in
 
 | Key | Symbol | What it does |
 |---|---|---|
-| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
-| `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
+| `fit.prune.coverage_every_ms` | | camera-path sampling interval for probe placement |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
 | `fit.poses.samples` | | reference rays per pixel side |
 | `fit.poses.denoise` | | Open Image Denoise on each reference render |
@@ -42,19 +39,19 @@ Source visibility is the renderer's
 region source keeps the backing surfaces that simplification and fitting would
 otherwise expose.
 
+The importer prepares the fit's start using [shared shape error](Mesh-Import.md#shared-shape-error).
+
 ```mermaid
 flowchart LR
-    V[visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> R[refine a coarse fit<br/>optional]
-    R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> P[prune the fitted mesh<br/>to the budget]
-    P --> W[write_lit_mesh]
+    Allocate[Allocate triangles] --> Emit[Emit geometry]
+    Emit --> Limits{Both limits fit?}
+    Limits -->|Retry with measured costs| Allocate
+    Limits -->|Yes| Fit[Fit rest against references]
+    Fit --> Write[Write bundle]
 ```
 
-Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
-shows; pruning removes zero-coverage triangles first, then the least-covered,
-to the budget. Coverage uses fitted positions and fitted per-face colours for
-flat meshes, so visibility is judged on the geometry that is drawn.
+The fit adjusts the rest's positions and colours while drawing frozen copies. It keeps the
+start's triangles and checks both limits on the fitted bundle.
 
 A warm start splits the worst fitted triangles along their longest edge, grows
 the mesh to a larger budget, and fits it again.
@@ -86,12 +83,7 @@ An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
 and held-out faces from a second seed. Placement and face selection use the
 source alone, so the reference set depends only on its own inputs.
 
-A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
-The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
-
-It keeps every triangle: one no coverage view shows may still face a camera they miss.
-A border point within the seam tolerance that the hold rule refuses stays at its start.
+A border point within the seam tolerance stays at its start where the hold rule pins it.
 
 A hole pixel shows no fitted surface where the reference differs from the clear
 colour by more than `HOLE_DE`. The closure gate rejects held-out hole growth of
@@ -110,7 +102,7 @@ test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 
 `cost_model.py` fits and applies the weights, retaining them and their source
 frames beside the model. The cost term $`\mathcal{E}_c`$ of [the loss](#the-loss)
-trades appearance for predicted time alongside the triangle budget. Generated
+trades appearance for predicted time at the start’s triangle count. Generated
 tables and findings live in the scene tools README.
 
 ## The loss
@@ -231,8 +223,7 @@ with every neighbour, and how many positions sit under the floor.
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude the surface,
 normal, Laplacian and cost penalties. The surface loss is reported beside
-drift. Pruning counts shown pixels at the recipe's coverage spacing; this
-sampling is part of the reference cache key. The generated normal-angle
+drift. The generated normal-angle
 heatmaps and sweep findings live in the scene tools README.
 
 ## A flat fit
@@ -252,7 +243,7 @@ A pixel inside a face does not depend on $`P`$, so the position gradient comes
 only from the edges. The fit draws every triangle with three vertices of its
 own, so every edge, not only a silhouette, is antialiased and passes a
 gradient to the positions on both sides; those vertices still read one welded
-position each, so faces cannot part. Pruning, the warm start and the writer
+position each, so faces cannot part. The warm start and the writer
 keep each colour with its triangle, and the device draws the result as any flat
 mesh, at a flat mesh's cost.
 
@@ -279,7 +270,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
-| Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+| Triangle budget | set by the start | set by the start's shared error |
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.

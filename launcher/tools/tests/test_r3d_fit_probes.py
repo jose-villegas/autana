@@ -2,7 +2,6 @@
 
 import contextlib
 import io
-import itertools
 import json
 import pathlib
 import sys
@@ -58,12 +57,11 @@ class ClosureTests(unittest.TestCase):
                     "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
             stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
 
-    def test_main_checks_the_pruned_fit_before_writing(self):
+    def test_main_checks_the_fitted_mesh_before_writing(self):
         mesh = self.two_triangles()
         views = [object()]
-        # Unbudgeted (the probe fit) keeps both triangles; a budget of one prunes the never-shown one before the check.
-        for (budget, tris), fitted_holes in itertools.product(((None, 2), ("1", 1)), (self.START_HOLES, self.PIXELS)):
-            with self.subTest(budget=budget, fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
+        for fitted_holes in (self.START_HOLES, self.PIXELS):
+            with self.subTest(fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
                 out = pathlib.Path(directory)
                 def write_mesh(*args):
                     (out / "mesh.bundle").touch()
@@ -72,12 +70,8 @@ class ClosureTests(unittest.TestCase):
                     self.stub_fit(stack, mesh, views)
                     holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels",
                                                                  side_effect=[self.START_HOLES, fitted_holes]))
-                    stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
-                                                         side_effect=[np.array([0, 0]), np.array([1, 0])]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", write_mesh))
-                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
-                            "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt",
-                            *(["--budget", budget] if budget else [])]
+                    args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure"]
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
                             appearance_simplify.main(args)
@@ -87,7 +81,7 @@ class ClosureTests(unittest.TestCase):
                         self.assertTrue((out / "mesh.bundle").exists())
                     self.assertEqual(holes.call_count, 2)
                     self.assertIs(holes.call_args_list[0].args[0], mesh)
-                    self.assertEqual(len(holes.call_args_list[1].args[0].tris), tris)
+                    self.assertEqual(len(holes.call_args_list[1].args[0].tris), len(mesh.tris))
 
 
     def logged_fit(self, out, *extra):
@@ -97,7 +91,6 @@ class ClosureTests(unittest.TestCase):
             self.stub_fit(stack, mesh, [object(), object()])
             stack.enter_context(mock.patch.object(appearance_simplify, "write_mesh", return_value=len(mesh.tris)))
             holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels", return_value=0))
-            stack.enter_context(mock.patch.object(appearance_simplify, "coverage", return_value=np.array([1, 1])))
             logged = stack.enter_context(mock.patch.object(appearance_simplify, "log"))
             self.assertEqual(appearance_simplify.main([*FitArgumentTests.BASE[:-1], str(out), *extra]), 0)
         return [call.args[0] for call in logged.call_args_list], holes
