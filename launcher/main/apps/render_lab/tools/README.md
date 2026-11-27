@@ -16,6 +16,9 @@ See [SH probe baking](../../../../../docs/render/offline/SH-Probes.md).
 python launcher/tools/bake/bake.py bake launcher/demo/sponza --kind sh_probes
 ```
 
+The capybara uses the packed grid when `sponza.shpr` is present. Without it,
+the scene uses its sun and ambient lighting.
+
 ## Host renders
 
 ```sh
@@ -662,6 +665,17 @@ checks the app flythrough against its sky-through-wall ceilings. An enclosed
 sky pixel is not counted when the source mesh
 ([`sponza.obj`](../../../../demo/sponza/source/sponza.obj), from Git LFS)
 shows sky in any ray through it or through an enclosed pixel beside it.
+
+[`tests/test_see_through.py`](tests/test_see_through.py) checks every scene
+with a camera path for places where the source closes the view but the bake
+lets it past, such as a doorway decimation opened. It traces the source as the
+import keeps it and the drawn bundles at the same poses. A pixel counts where
+the bake hits nothing or lies beyond `BEHIND` times the source's distance, in a
+region wider than `OPENING` pixels.
+
+Each scene's pixels, summed over its path, stay within its `MOST_SEE_THROUGH`
+ceiling. Bakes that drop whole props under their budget count too, so a
+ceiling is that scene's measured sum.
 
 ## Sponza poses
 

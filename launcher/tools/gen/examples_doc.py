@@ -1,4 +1,4 @@
-"""Embed whole C examples and header declarations in their owning Markdown blocks.
+"""Embed whole examples and C header declarations in their owning Markdown blocks.
 
     python launcher/tools/gen/examples_doc.py [--check]
 
@@ -6,6 +6,7 @@ The discovery and naming rule is documented in docs/tools/Generated-Files.md.
 """
 import argparse
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -17,10 +18,11 @@ from idf_vocabulary import prototypes
 
 CHECK = "python launcher/tools/gen/examples_doc.py --check"
 C_LANGUAGES = {"c", "h", "cpp", "c++", "cc"}
+EXAMPLE_LANGUAGES = {".c": "c", ".toml": "toml"}
 
 
 def block_name(area, stem, kind):
-    return f"{area}-{stem}-{kind}".replace("_", "-")
+    return re.sub(r"[_.]", "-", f"{area}-{stem}-{kind}")
 
 
 def header_declarations(root):
@@ -56,7 +58,7 @@ def write_examples(root, check=False):
             if not folder.endswith("_examples"):
                 continue
             area = folder[:-len("_examples")]
-            if path.suffix != ".c":
+            if path.suffix not in EXAMPLE_LANGUAGES:
                 continue
             block = block_name(area, path.stem, "example")
             if block in examples:
@@ -73,11 +75,12 @@ def write_examples(root, check=False):
         if block not in owners:
             raise ValueError(f"no document owns generated block {block} for {name}")
     changed = False
-    bodies = {block: (root / name).read_text(encoding="utf-8").rstrip("\n")
-              for block, name in examples.items()}
-    bodies.update(declarations)
-    for block, source in sorted(bodies.items()):
-        body = "```c\n" + source + "\n```"
+    snippets = {block: (EXAMPLE_LANGUAGES[pathlib.Path(name).suffix],
+                        (root / name).read_text(encoding="utf-8").rstrip("\n"))
+                for block, name in examples.items()}
+    snippets.update((block, ("c", source)) for block, source in declarations.items())
+    for block, (language, source) in sorted(snippets.items()):
+        body = f"```{language}\n{source}\n```"
         different = replace_block(root / owners[block], block, body, check, CHECK)
         print(f"{'changed' if different else 'same'} {owners[block]}#{block}")
         changed |= different

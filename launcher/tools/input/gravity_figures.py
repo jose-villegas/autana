@@ -170,7 +170,7 @@ def motion_figure(data, model, output):
 
 
 def main():
-    data, output, cc = probe_data(__file__, "gravity.c", __doc__)
+    data, output, cc = probe_data(__file__, ("gravity.c",), __doc__)
     fig, axis = subplots(1, 1, (7, 3))
     axis.plot(*zip(*data["trust"]), color=SLOTS[0])
     for key, label in (("full_g", "FULL"), ("none_g", "NONE")):

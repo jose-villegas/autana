@@ -991,7 +991,8 @@ class PosesTests(FittedBakeCase):
         return bake.stage_keys(self.job, self.scene, tools, AnyStart(), poses)
 
     def test_sampler_closure_is_outside_consumers(self):
-        excluded = {"anim/track_host.py", "anim/tracks_asset.py", "build/packages.py"}
+        excluded = {"anim/keys_file.py", "anim/scene_fields.py", "anim/track_host.py", "anim/tracks_asset.py",
+                    "build/packages.py"}
         for stage in ("mesh", "reference", "fit"):
             files = bake.stage_files(stage)
             self.assertFalse(excluded & {path.relative_to(TOOLS).as_posix() for path in files})
@@ -999,6 +1000,34 @@ class PosesTests(FittedBakeCase):
             self.assertFalse(any(path.startswith(("launcher/main/anim/", "launcher/main/asset/",
                                                  "launcher/packages/math/"))
                                  or path == "launcher/tools/anim/track_host.c" for path in native))
+
+    def test_second_module_declares_bake_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "other_binding.py"
+            data = path.with_suffix(".txt")
+            data.write_text("first", encoding="utf-8")
+            path.write_text("from pathlib import Path\n"
+                            "def bake_inputs():\n"
+                            "    return Path(__file__).with_suffix('.txt').read_text(encoding='utf-8')\n",
+                            encoding="utf-8")
+            self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("first"))
+            data.write_text("second", encoding="utf-8")
+            self.assertEqual(bake.native_inputs([path])[bake.relative(path)], bake.digest("second"))
+
+    def test_track_entry_tag_is_a_native_input(self):
+        from anim import tracks_asset
+
+        path = TOOLS / "anim/tracks_asset.py"
+        before = bake.native_inputs([path])
+        with mock.patch.object(tracks_asset, "TYPE", b"TEST"):
+            after = bake.native_inputs([path])
+        self.assertNotEqual(before.get(bake.relative(path)), after.get(bake.relative(path)))
+
+    def test_bake_inputs_with_required_arguments_is_not_a_hook(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "other_binding.py"
+            path.write_text("def bake_inputs(found, lock):\n    return found, lock\n", encoding="utf-8")
+            self.assertNotIn(bake.relative(path), bake.native_inputs([path]))
 
     def test_scene_writer_is_outside_consumers(self):
         for stage in ("mesh", "reference", "fit"):
@@ -2222,6 +2251,11 @@ def filled_cache(directory, test):
     return found, lock
 
 
+def first_mesh(found):
+    """The first packed mesh bundle: a pack also holds bakes of other kinds, such as a scene's probe grid."""
+    return next(item for item in found if item.output.endswith(bake.BUNDLE_SUFFIX))
+
+
 def current_lock(path):
     """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
@@ -2305,7 +2339,7 @@ class TreeTests(unittest.TestCase):
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
         with tempfile.TemporaryDirectory() as directory:
             found, lock = filled_cache(directory, self)
-            dropped = found[0]
+            dropped = first_mesh(found)
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
@@ -2315,7 +2349,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             found, lock = filled_cache(root, self)
-            some_mesh = bake.cached(lock[found[0].key], bake.BUNDLE_SUFFIX, root).read_bytes()
+            some_mesh = bake.cached(lock[first_mesh(found).key], bake.BUNDLE_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
             for entries in build_pack.pack_files([imported]).values():
@@ -2330,7 +2364,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
             found, lock = filled_cache(cache, self)
-            scratch = found[0]
+            scratch = first_mesh(found)
             mesh = cache / "scratch.bundle"
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.BUNDLE_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.BUNDLE_SUFFIX)

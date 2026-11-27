@@ -9,7 +9,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
-from anim import camera_keys, track_host, tracks_asset
+from anim import keys_file, track_host, tracks_asset
 from anim_probe import has_compiler
 
 
@@ -32,7 +32,7 @@ class CameraKeysSourceTests(unittest.TestCase):
         keys = [dict(t=0, eye=[0, 0, 0], look_at=[0, 0, -1]), dict(t=2, eye=[1, 2, 3], look_at=[1, 2, 0])]
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            (root / "path.glb").write_bytes(camera_keys.build(dict(node="camera", animation="path", keys=keys)))
+            (root / "path.glb").write_bytes(keys_file.build(dict(node="camera", animation="path", keys=keys)))
             glb_clip = root / "glb.anim.toml"
             glb_clip.write_text('source = "path.glb"\nanimation = "path"\n')
             self.assertEqual(tracks_asset.bake(clip_of(root, keys_toml(keys))), tracks_asset.bake(glb_clip))
@@ -78,7 +78,7 @@ class CameraKeysTests(unittest.TestCase):
         for keys in ([key], [key, key], [key, dict(key, t=1, look_at=[0, 0, 0])],
                      [key, dict(key, t=1, look_at=[0, 1, 0])], [key, dict(key, t=float("nan"))]):
             with self.subTest(keys=keys), self.assertRaises(ValueError):
-                camera_keys.build(dict(node="camera", animation="path", keys=keys))
+                keys_file.build(dict(node="camera", animation="path", keys=keys))
 
 
 if __name__ == "__main__":

@@ -68,6 +68,7 @@ import dataclasses
 import fnmatch
 import functools
 import hashlib
+from importlib import import_module, util
 import io
 import json
 import multiprocessing
@@ -96,6 +97,7 @@ from autana_config import user_cache_dir
 from http_get import get, transient
 
 from build import packages  # noqa: E402
+from build.c_enum import read_enum  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
@@ -132,7 +134,7 @@ GPU_QUERY_TIMEOUT_S = 10
 # submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
 # the code that function and the closure's import-time statements reach (see stage_units).
 STAGES = {
-    "poses": ("anim/track_host.py",),
+    "poses": ("anim/track_host.py", "anim/keys_file.py"),
     "mesh": ("r3d/mesh_import.py:write_baked",),
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
@@ -456,8 +458,21 @@ def path_constants(value):
     return []
 
 
+def input_module(path):
+    """Load a module that declares a data input hook."""
+    if path.is_relative_to(TOOLS):
+        name = path.relative_to(TOOLS).with_suffix("").parts
+        return import_module(".".join(name[:-1] if name[-1] == "__init__" else name))
+    spec = util.spec_from_file_location(path.stem, path)
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def native_inputs(files):
-    """What a stage's files compile: each module-level path constant naming a C file counts with the
+    """Data inputs from hooks callable as bake_inputs() and what the stage compiles.
+
+    Each module-level path constant naming a C file counts with the
     quoted headers it reaches, and one inside a submodule counts as that submodule's pinned commit, so
     a clone that never checked the submodule out keys it the same."""
     pinned, sources, keyed = submodules(), [], {}
@@ -465,17 +480,31 @@ def native_inputs(files):
     def holder(item):
         return next((root for root in pinned if item == root or item.is_relative_to(root)), None)
 
-    defines = {}
+    defines, enums = {}, {}
     for path in files:
         tree, constants, _ = module_facts(path)
+        hook = next((node for node in tree.body
+                     if isinstance(node, ast.FunctionDef) and node.name == "bake_inputs"), None)
+        if hook is not None:
+            args = hook.args
+            if len(args.posonlyargs) + len(args.args) == len(args.defaults) and None not in args.kw_defaults:
+                keyed[relative(path)] = digest(input_module(path).bake_inputs())
         headers = set()
         for node in ast.walk(tree):
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in ("read_define", "read_defines", "checked_struct")):
+                    and node.func.id in ("read_define", "read_defines", "read_enum", "checked_struct")):
                 try:
                     header = pathlib.Path(eval(compile(ast.Expression(node.args[0]), str(path), "eval"),
                                                {"__builtins__": {}}, constants)).resolve()
                 except (NameError, TypeError, ValueError, IndexError):
+                    continue
+                headers.add(header)
+                if node.func.id == "read_enum":
+                    name = (node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+                            else None)
+                    by_name = enums.setdefault(header, {})
+                    if name not in by_name:
+                        by_name[name] = read_enum(header, name)
                     continue
                 try:
                     header_text = header.read_text(encoding="utf-8")
@@ -489,16 +518,18 @@ def native_inputs(files):
                         except RuntimeError:
                             pass
                     defines[header] = values
-                headers.add(header)
         for value in constants.values():
             for item in path_constants(value):
                 if holder(item) is not None:
                     keyed[relative(holder(item))] = pinned[holder(item)]
                 elif item not in headers and item.suffix in C_SUFFIXES and item.is_file():
                     sources.append(item)
-    # Literal defines are data inputs; their include chains are not compiled by the stage.
+    # Literal defines and enums are data inputs; their include chains are not compiled by the stage.
     for header, values in defines.items():
         keyed[relative(header)] = digest(sorted(values.items()))
+    for header, values in enums.items():
+        key = relative(header)
+        keyed[key] = digest([keyed.get(key), sorted((name or "", members) for name, members in values.items())])
     for item in c_includes(sources, packages.include_roots()):
         if holder(item) is not None:
             keyed[relative(holder(item))] = pinned[holder(item)]
@@ -827,7 +858,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                 probes.setdefault(scene.path, Bake(
                     output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
                     key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
-                    job=job, scene=scene, packed=False))
+                    job=job, scene=scene, packed=True))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name

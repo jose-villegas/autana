@@ -9,21 +9,17 @@ frame, and a built pack's tracks are in the engine frame
 ([the offline tools](../../../docs/render/offline/Mesh-Import.md#the-offline-tools)).
 Nothing here runs on the board.
 
-A camera path without Blender is a `NAME.keys.toml` that a `.anim.toml` names
-as its source; `camera_keys.py` builds it into glTF in memory at the bake. The
-TOML sets `node` and `animation`, with `[[keys]]`
-tables holding `t` in seconds, `eye = [x,y,z]` and `look_at = [x,y,z]`.
-Times start at zero and increase strictly. Translation uses CUBICSPLINE
-Catmull-Rom tangents<sup>[[20]](../../../docs/Citations.md#catmull-1974)</sup>; rotation uses LINEAR quaternions, local -Z forward,
-world +Y up, with successive quaternions in the same hemisphere. A repeated
-first key at the end wraps the translation tangents for a smooth loop.
-The tool needs only Python's standard library. Vertical views are refused
-because +Y up cannot define their roll.
+A `NAME.anim.toml` can name a `NAME.keys.toml` as its source.
+`keys_file.py` builds it into glTF in memory and derives Catmull-Rom<sup>[[20]](../../../docs/Citations.md#catmull-1974)</sup>
+tangents when a cubic track gives none, and for camera shorthand translation.
+See [Keys files](../../../docs/render/animation/Animation-Tracks.md#keys-files).
+The field table comes from the C component declarations.
 
 | File | What it does |
 |---|---|
-| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes TRCK bindings for node TRS and camera yfov, with string-table paths, component codes, field names, value types and a scene or skeleton root. Camera values and cubic tangents use engine short-axis FOV units. `r3d/build_pack.py` calls it. |
-| [camera_keys.py](camera_keys.py) | Builds a camera `.keys.toml` into glTF bytes; `gltf/gltf_read.py`'s `load_asset` calls it. |
+| [tracks_asset.py](tracks_asset.py) | The one writer and reader of the `TRCK` pack entry: reads the animation a `NAME.anim.toml` names with `tools/gltf/gltf_read.py` and bakes TRCK bindings for node transforms and property pointers, with string-table paths, component codes, field names, value types and a scene or skeleton root. The camera yfov pointer is converted to short-axis FOV units. `r3d/build_pack.py` calls it. |
+| [keys_file.py](keys_file.py) | Builds either form of `.keys.toml` into glTF bytes for `gltf_read.load_asset()`. |
+| [scene_fields.py](scene_fields.py) | Reads the component tags and bindable fields from C. |
 | [track_host.py](track_host.py), [track_host.c](track_host.c) | Prints every track of a clip's `TRCK` entry every N ms, or a camera node as a poses file, through `main/anim/`'s reader and sampler. A `.anim.toml` is first baked into a scratch pack of just that clip. Its poses are right only from a `.anim.toml`. `r3d/poses.py` gets a scene camera's poses from it. |
 
 ```sh

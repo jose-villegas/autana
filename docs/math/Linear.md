@@ -181,7 +181,7 @@ the columns of `L = [a c; b d]` and its translation.
 
 | `mat3f_identity()` | identity linear matrix | $`m_{rc} = [r=c]`$ |
 - `mat3f_from_mat4()` takes a mat4's linear part, without translation; `mat3f_mul()` multiplies two; `mat3f_scale()` multiplies every entry by a scalar.
-- `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division.
+- `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division; `mat3f_det()` is the determinant, expanded along row 0 against it.
 - It satisfies $`\mathrm{cofactor}(M)\,M^{T} = \det(M)\,I`$, a reflection's determinant negative.
 - Dividing it by the determinant gives the inverse-transpose.
 
