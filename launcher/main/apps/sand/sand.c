@@ -1135,7 +1135,8 @@ compute_settled_bit(sand_t* s, int jostle, int dx, int dy, int load_dx, int load
     if (jostle > 0 || load_dx != s->last_load_dx || load_dy != s->last_load_dy) {
         /* A mass wake leaves nothing settled, so the sweep will walk every
          * block and re-establish BLOCK_HAS_LIQUID for all of them - clearing
-         * it here along with everything else is exactly right. */
+         * it here along with everything else is exactly right.
+         * Library call: one bulk clear of the block grid per step, on a mass wake only. */
         memset(s->block_state, 0, (size_t)n);
     } else {
         for (int i = 0; i < n; i++) {

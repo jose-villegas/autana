@@ -488,6 +488,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int run_start, int run_end, bool
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     for (int r = 0; r < h; r++) {
+        /* Library call: one bulk copy per gathered row, a row of the box rather than a pixel. */
         memcpy(slot + ((size_t)r * w), present_fb + ((size_t)(y0 + r) * GFX_WIDTH) + x0,
                (size_t)w * sizeof(gfx_color_t));
     }
@@ -517,6 +518,7 @@ bool GFX_PRESENT_IRAM_ATTR
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
+    /* Library call: one bulk copy per strip of up to STRIP_HEIGHT rows. */
     memcpy(slot, present_fb + ((size_t)y0 * GFX_WIDTH), (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
