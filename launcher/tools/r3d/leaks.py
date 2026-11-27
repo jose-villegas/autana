@@ -171,13 +171,14 @@ def view_holes(sky, source_sky, reach=REACH):
 def pins(positions, tris, holes, result_positions, result_tris, free):
     """One vertex per hole, the farthest first: of the vertices of its triangles (rows of `tris`) that `free`
     allows, the one farthest from the result's surface. A hole with no free vertex gets none, and holes that choose
-    one vertex share it."""
-    search = triangle_search(result_positions[result_tris])
+    one vertex share it. A result with no triangles is infinitely far from every vertex."""
+    search = triangle_search(result_positions[result_tris]) if len(result_tris) else None
     picked = {}
     for seen in holes:
         candidates = np.unique(tris[seen])
         candidates = candidates[free[candidates]]
         if len(candidates):
-            distance = nearest_triangles(positions[candidates], search)[2]
+            distance = (np.full(len(candidates), np.inf) if search is None
+                        else nearest_triangles(positions[candidates], search)[2])
             picked[int(candidates[np.argmax(distance)])] = float(distance.max())
     return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)

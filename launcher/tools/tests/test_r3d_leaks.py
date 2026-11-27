@@ -111,6 +111,13 @@ class PinTests(unittest.TestCase):
         free[:] = False
         self.assertEqual(len(leaks.pins(self.pos, self.tris, [np.array([1])], *self.result, free)), 0)
 
+    def test_a_pass_simplified_to_nothing_still_pins_each_hole_a_free_vertex(self):
+        free = np.ones(len(self.pos), dtype=bool)
+        nothing = np.zeros((0, 3)), np.zeros((0, 3), dtype=np.int64)
+        # No result surface to measure from: every free vertex is as far as any, so the lowest stands.
+        picked = leaks.pins(self.pos, self.tris, [np.array([1]), np.array([2])], *nothing, free)
+        np.testing.assert_array_equal(picked, [0, 1])
+
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ViewHoleTests(unittest.TestCase):
