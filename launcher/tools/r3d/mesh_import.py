@@ -27,9 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
-from r3d.leaks import seal_camera  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
+    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene, seal_camera,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,

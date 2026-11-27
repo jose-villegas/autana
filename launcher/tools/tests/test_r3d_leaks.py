@@ -15,6 +15,7 @@ try:
 
     from r3d import leaks
     from r3d import simplify as simplify_module
+    from r3d.import_settings import seal_camera
     from r3d.meshopt import PERMISSIVE, REGULARIZE_LIGHT
     from r3d.repair import repair, seal_tolerance
     from r3d.simplify import Allocation, simplify
@@ -348,11 +349,11 @@ class SealCameraTests(unittest.TestCase):
         return SimpleNamespace(region=CAMERA[0], camera=SimpleNamespace(component=component) if camera else None)
 
     def test_no_scene_or_no_camera_gives_none(self):
-        self.assertIsNone(leaks.seal_camera(None))
-        self.assertIsNone(leaks.seal_camera(self.scene(camera=False)))
+        self.assertIsNone(seal_camera(None))
+        self.assertIsNone(seal_camera(self.scene(camera=False)))
 
     def test_the_seal_uses_the_scenes_region_and_near_plane(self):
-        self.assertEqual(leaks.seal_camera(self.scene()), CAMERA)
+        self.assertEqual(seal_camera(self.scene()), CAMERA)
 
 
 if __name__ == "__main__":

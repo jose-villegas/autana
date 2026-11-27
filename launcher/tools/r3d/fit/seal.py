@@ -34,7 +34,7 @@ def geometry(mesh, copies):
 
 def start_probes(start, copies, camera):
     """Leak probes over the start and its copies from `camera`, (region, near) as
-    leaks.seal_camera gives it: sky they show counts as the start's own."""
+    returned by `import_settings.seal_camera`. Sky they show counts as the start's own."""
     return LeakProbes(*geometry(start, copies), *camera)
 
 

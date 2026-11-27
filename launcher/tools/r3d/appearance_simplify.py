@@ -40,12 +40,11 @@ from r3d import log, mesh_bundle  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer, seal  # noqa: E402
-from r3d.import_settings import load_scene, match_meshes  # noqa: E402
+from r3d.import_settings import load_scene, match_meshes, seal_camera  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
-from r3d.leaks import seal_camera  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 

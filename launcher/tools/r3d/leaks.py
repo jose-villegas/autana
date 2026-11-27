@@ -16,7 +16,6 @@ from scipy import ndimage
 
 from r3d.views import probes
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
-from r3d.import_settings import seal_camera as seal_camera
 from r3d.poses import camera_rays
 from r3d.ray_query import LAUNCH, RayQuery
 
