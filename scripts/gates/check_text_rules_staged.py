@@ -21,6 +21,24 @@ from tracked import repository
 from workflow_marks import is_workflow, marked_commands
 
 
+# Windows refuses a command line past 32767 characters; a merge from main can
+# stage a thousand paths. The gates and the interpreter's path take the rest.
+COMMAND_LINE_PATHS_CHARS = 24000
+
+
+def path_batches(files):
+    """--paths lists that each fit COMMAND_LINE_PATHS_CHARS: a file-scoped gate
+    judges each file alone, so batches report what one run would."""
+    batches, batch, length = [], [], 0
+    for path in files:
+        if batch and length + len(path) + 1 > COMMAND_LINE_PATHS_CHARS:
+            batches.append(['--paths', *batch])
+            batch, length = [], 0
+        batch.append(path)
+        length += len(path) + 1
+    return batches + [['--paths', *batch]]
+
+
 def main():
     root = Path(repository())
     changed = subprocess.check_output(
@@ -76,9 +94,9 @@ def main():
             # CI requires the SDK; local machines without it still check the
             # project vocabulary and print the citation gate's skipped notice.
             command = [arg for arg in command if arg != '--require-idf']
-            selected = ['--paths', *files] if scoped else []
-            running.append(subprocess.Popen([*command, *selected], cwd=snapshot, env=env,
-                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+            for selected in path_batches(files) if scoped else [[]]:
+                running.append(subprocess.Popen([*command, *selected], cwd=snapshot, env=env,
+                                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
         for gate in running:
             output, _ = gate.communicate()
             sys.stdout.buffer.write(output)
