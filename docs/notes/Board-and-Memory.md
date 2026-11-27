@@ -128,8 +128,6 @@ KB = 1024 B; MB = 1024 KB. Linked is the heap range the link leaves; at runtime 
 Reserve and framebuffer sizes come from source headers, flash size from the build's sdkconfig and partitions from the partition table it names, chip totals from the device profile (datasheet), and pool/heap from the build.
 <!-- /generated: memory-tiers -->
 
-The heap excludes RTC fast RAM because core 1 reads it slowly. Runtime captures measure the DMA-capable heap.
-
 ### Quick answers
 
 | Question | Answer |

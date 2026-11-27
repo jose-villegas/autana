@@ -18,7 +18,7 @@ heap. Each bar is one build variant, to scale, in address order. Linked heap
 ranges are not runtime free memory. A measured bar's last segment is the heap
 outside the linked pool, taken from the board capture.
 
-The heap excludes RTC fast RAM because core 1 reads it slowly. Runtime captures measure the DMA-capable heap.
+RTC fast RAM is kept out of the heap (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=n`): core 1 reads it slowly.
 
 ![Shared internal pool by variant](images/internal-pool.svg)
 

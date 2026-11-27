@@ -33,7 +33,6 @@
 #define MEMORY_HEAP_CAPS 0
 #endif
 
-/* The board heap excludes RTC fast RAM to avoid slow reads on core 1. */
 typedef enum {
     MEMORY_INTERNAL, /* on-chip RAM */
     MEMORY_8BIT,     /* anything a byte access reaches, internal or external */
