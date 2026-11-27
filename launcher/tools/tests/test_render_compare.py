@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "render"))
 import check_avi  # noqa: E402
 import render_compare  # noqa: E402
 
+RENDER_COMPARE_SH = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
 CLEAR = (10, 20, 30)
 DRAWN = (200, 100, 50)
 
@@ -662,10 +663,8 @@ class VideoTest(unittest.TestCase):
 
 @unittest.skipIf(shutil.which("sh") is None, "needs a POSIX shell")
 class ReferenceModeArgumentsTest(unittest.TestCase):
-    SCRIPT = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
-
     def run_sh(self, *args):
-        return subprocess.run(["sh", str(self.SCRIPT), *args], capture_output=True, text=True)
+        return subprocess.run(["sh", str(RENDER_COMPARE_SH), *args], capture_output=True, text=True)
 
     def test_reference_needs_poses_and_a_render(self):
         for args in (["--script", "s.sh", "--reference", "x.scene.toml", "HEAD", "--render", "p", "--frames 2"],
@@ -694,8 +693,6 @@ class ReferenceModeArgumentsTest(unittest.TestCase):
 
 @unittest.skipIf(shutil.which("sh") is None, "needs a POSIX shell")
 class OutputDirectoryTest(unittest.TestCase):
-    SCRIPT = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
-
     def test_a_relative_output_lands_in_the_callers_directory(self):
         # Each side's script runs inside its checkout, so a relative -o would
         # otherwise land there and the compare would find no images.
@@ -707,7 +704,7 @@ class OutputDirectoryTest(unittest.TestCase):
             (tree / "s.sh").write_text('cp frame.bmp "$2/frame.bmp"\n', newline="\n")
         caller = root / "caller"
         caller.mkdir()
-        result = subprocess.run(["sh", str(self.SCRIPT), "--script", "s.sh", "-o", "out", str(root / "a"), str(root / "b")],
+        result = subprocess.run(["sh", str(RENDER_COMPARE_SH), "--script", "s.sh", "-o", "out", str(root / "a"), str(root / "b")],
                                 cwd=caller, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((caller / "out" / "compare.png").is_file(), result.stdout + result.stderr)
