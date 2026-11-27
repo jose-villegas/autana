@@ -77,6 +77,31 @@ build other.elf: LINK rule
             [("hot", "floorf", 0x42000020), ("hot", "memset", 0x42000026), ("hot", "divide", 0x42000036)],
         )
 
+    def test_indirect_call_resolves_after_store(self):
+        for mnemonic, encoding, site in (
+            ("s32i", "006182", 0x42000026),
+            ("s16i", "005182", 0x42000026),
+            ("s8i", "004182", 0x42000026),
+            ("s32i.n", "0189", 0x42000025),
+        ):
+            dump = f"""42000020: ffff81 l32r a8, 42000018 <hot-0x8> (400011e8 <memset>)
+42000023: {encoding} {mnemonic} a8, a1, 0
+{site:x}: 0008e0 callx8 a8
+"""
+            with self.subTest(mnemonic=mnemonic):
+                self.assertEqual(gate.decoded_calls(gate.code_layout.parse_objdump(dump)),
+                                 [(site, 0x400011e8, "memset")])
+
+    def test_indirect_call_resolves_after_register_move(self):
+        for mnemonic, encoding, site in (("mov", "20a880", 0x42000026), ("mov.n", "08ad", 0x42000025)):
+            dump = f"""42000020: ffff81 l32r a8, 42000018 <hot-0x8> (400011e8 <memset>)
+42000023: {encoding} {mnemonic} a10, a8
+{site:x}: 000ae0 callx8 a10
+"""
+            with self.subTest(mnemonic=mnemonic):
+                self.assertEqual(gate.decoded_calls(gate.code_layout.parse_objdump(dump)),
+                                 [(site, 0x400011e8, "memset")])
+
     def test_linked_calls_keep_jump_table_arms_skipped_by_a_forward_jump(self):
         dump = """42000020: 0000a0 jx a8
 42000023: 000006 j 42000029 <hot+0x9>

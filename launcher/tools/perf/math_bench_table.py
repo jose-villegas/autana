@@ -56,7 +56,7 @@ def parse_disassembly(text, rows, resolve=None):
         if name not in cache:
             body = "\n".join(found[name])
             decoded, again = resolve(name, body) if resolve else (parse_objdump(body), None)
-            cache[name] = skip_pools(decoded, again, jump_pools=True)
+            cache[name] = skip_pools(decoded, again)
         return cache[name]
 
     result = {}

@@ -7,6 +7,7 @@ FUNCTION = re.compile(r"^([0-9a-f]+) <([^>]+)>:\s*$")
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 DIRECT_CALLS = frozenset(("call0", "call4", "call8", "call12"))
 INDIRECT_CALLS = frozenset(("callx0", "callx4", "callx8", "callx12"))
+STORES = frozenset(("s32i", "s16i", "s8i", "ssi"))
 NAMED_TARGET = re.compile(r"([\da-f]+)\s+<([^>]+)>")
 LITERAL_TARGET = re.compile(r"\(" + NAMED_TARGET.pattern + r"\)")
 
@@ -68,6 +69,8 @@ def decoded_calls(decoded):
                 registers.clear()
         elif mnemonic == "l32r" and (target := LITERAL_TARGET.search(operands)):
             registers[register] = (int(target[1], 16), target[2])
-        else:
+        elif mnemonic in ("mov", "mov.n") and (source := operands.partition(",")[2].strip()) in registers:
+            registers[register] = registers[source]
+        elif mnemonic.removesuffix(".n") not in STORES:
             registers.pop(register, None)
     return calls
