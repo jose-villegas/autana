@@ -83,15 +83,15 @@ class LodAssetTests(unittest.TestCase):
             work = pathlib.Path(folder)
             source, _, _, job, scene = bundle_fixture(work)
             entries, copies = mesh_bundle.decode(source)
-            write_lit_mesh(work, job.asset_name, *wavy_grid())
+            grid = write_lit_mesh(work, job.asset_name, *wavy_grid())
             rest, _ = mesh_bundle.decode((work / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes())
             entries = [row for row in entries if row[0] != job.asset_name] + rest
             start = work / (job.asset_name + ".start" + mesh_bundle.SUFFIX)
             start.write_bytes(mesh_bundle.encode(entries, copies))
             job.settings.lod = True
-            job.renderer.variant = SimpleNamespace(name="fixture")
+            job.renderer.variant = SimpleNamespace(name="fixture", triangles=len(grid.tris), split_reserve=0)
             job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                               surface_weight=0, surface_margin=0, budget=1)
+                                               surface_weight=0, surface_margin=0, budget=len(grid.tris))
             target = work / (job.asset_name + ".fit" + mesh_bundle.SUFFIX)
             def fit_main(args):
                 self.assertNotIn("--lod", args)

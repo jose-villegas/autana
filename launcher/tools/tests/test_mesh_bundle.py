@@ -1,5 +1,6 @@
 """Carved products retain copy lighting and pack into one batch a shape."""
 
+import json
 import pathlib
 import sys
 import tempfile
@@ -325,12 +326,14 @@ def keep_start(args):
     (out / raw.name).write_bytes(raw.read_bytes())
 
 
-def run_fit(directory, fit_main, lod=None, path=True, shaping=None, triangles=2, split_reserve=0):
+def run_fit(directory, fit_main, lod=None, path=True, shaping=None, triangles=2, split_reserve=0, prune_budget=1,
+            sweep_budget=None, start_count=None):
     """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, the scene camera with a
     path or without one and the import's fit `shaping` when given; returns the start's bytes, the job and the
     fitted bundle."""
     work = pathlib.Path(directory)
-    data, _, _, job, scene = bundle_fixture(directory)
+    geometry = {} if start_count is None else dict(positions=POINTS, triangles=TRIANGLES[:start_count])
+    data, _, _, job, scene = bundle_fixture(directory, **geometry)
     scene.camera.component.path = 'path' if path else None
     if lod is not None:
         job.settings.lod = lod
@@ -339,10 +342,11 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None, triangles=2,
     start_path(work, job).write_bytes(data)
     job.renderer.variant = SimpleNamespace(name='fixture', triangles=triangles, split_reserve=split_reserve)
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                       surface_weight=0, surface_margin=0, budget=1)
+                                       surface_weight=0, surface_margin=0, budget=prune_budget)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-        stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
+        stage.fit(work / 'scene.scene.toml', scene, job, work, budget=sweep_budget, start=start_path(work, job),
+                  target=target)
     return data, job, target
 
 
@@ -374,31 +378,44 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
         self.assertNotIn('--budget', args)
 
-    def test_a_probe_fit_caps_the_fitted_rest_at_the_variant_triangles(self):
-        probes = SimpleNamespace(probes=SimpleNamespace())
+    def test_a_pruned_fit_reserves_splits_in_both_the_recipe_and_sweep_budget(self):
+        for sweep, expected in ((None, '2'), (4, '3')):
+            with self.subTest(sweep=sweep), tempfile.TemporaryDirectory() as directory:
+                fit_main = mock.Mock(side_effect=keep_start)
+                run_fit(directory, fit_main, triangles=5, split_reserve=1, prune_budget=3, sweep_budget=sweep)
+                self.assertEqual(self.values(fit_main.call_args.args[0], '--budget'), [expected])
+
+    def test_fits_check_the_rest_against_the_full_budget(self):
         with tempfile.TemporaryDirectory() as directory:
-            data, _, _, job, _ = bundle_fixture(directory, positions=POINTS, triangles=TRIANGLES[:3])
+            data, _, _, job, _ = bundle_fixture(directory, positions=POINTS, triangles=TRIANGLES[:4])
             entries, _ = mesh_bundle.decode(data)
-            rest = next(entry for entry in entries if entry[0] == job.asset_name)
+            rest = [entry for entry in entries if entry[0] == job.asset_name]
 
             def fitted(args):
                 keep_start(args)
                 out = pathlib.Path(args[args.index('--out') + 1])
                 name = pathlib.Path(args[args.index('--start') + 1]).name
-                (out / name).write_bytes(mesh_bundle.encode([rest], []))
+                (out / name).write_bytes(mesh_bundle.encode(rest, []))
+                (out / 'stretch.json').write_text(json.dumps({'split_triangles': 2}), encoding='utf-8')
 
-            work = pathlib.Path(directory)
-            over = work / 'over'
-            over.mkdir()
-            with self.assertRaisesRegex(SettingsError,
-                                        r"start rest 1.*split added 2.*triangles 2.*split_reserve 1.*raise split_reserve"):
-                run_fit(over, fitted, shaping=probes, triangles=2, split_reserve=1)
-
-            equal = work / 'equal'
-            equal.mkdir()
-            _, job, target = run_fit(equal, fitted, shaping=probes, triangles=3, split_reserve=2)
-            entries, _ = mesh_bundle.decode(target.read_bytes())
-            self.assertEqual(len(read_bundle_mesh(entries, job.asset_name).tris), 3)
+            for limit_name, start_count in (('triangles', 2), ('budget', 3)):
+                for limit, reserve in ((3, 1), (4, 2)):
+                    with self.subTest(limit_name=limit_name, limit=limit):
+                        work = pathlib.Path(directory) / f'{limit_name}-{limit}'
+                        work.mkdir()
+                        pruned = limit_name == 'budget'
+                        shaping = SimpleNamespace(probes=None if pruned else SimpleNamespace())
+                        options = dict(shaping=shaping, triangles=5 if pruned else limit, prune_budget=limit,
+                                       split_reserve=reserve, start_count=start_count)
+                        if limit < 4:
+                            message = (rf"start rest {start_count}.*split added 2.*{limit_name} {limit}.*"
+                                       rf"split_reserve {reserve}.*raise split_reserve")
+                            with self.assertRaisesRegex(SettingsError, message):
+                                run_fit(work, fitted, **options)
+                        else:
+                            _, job, target = run_fit(work, fitted, **options)
+                            entries, _ = mesh_bundle.decode(target.read_bytes())
+                            self.assertEqual(len(read_bundle_mesh(entries, job.asset_name).tris), limit)
 
     def test_without_probes_the_fit_reads_the_path_sets_alone(self):
         args = self.command()

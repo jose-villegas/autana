@@ -305,7 +305,7 @@ Mirroring or a different per-face sidedness mask emits another prototype.
 | Renderer | The ceiling caps | Copies' room | Rest floor | Rest target |
 |---|---|---|---|---|
 | no `fit` | the baked mesh | `ceiling` − `triangles` | `triangles` | at most `triangles`, within the ceiling |
-| fit with pruning | the fitted bundle | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies |
+| fit with pruning | the fitted bundle | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies, or `fit.prune.budget` without a ceiling. Pruning subtracts `split_reserve` from this target. |
 | fit with probes | the fitted bundle | `ceiling` − `triangles` | `triangles` | start at most `triangles - split_reserve`, fitted rest at most `triangles` |
 
 Overlapping rules are rejected.
@@ -484,7 +484,7 @@ whose bake lets the view past more of the source than its pegged ceiling.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
-| `[[variants]].split_reserve` | — | Leaves triangles for T-junction splits in a probe fit. | 0. | — / set by the fitted budget. | [variants split_reserve](#variants-split_reserve) |
+| `[[variants]].split_reserve` | — | Leaves triangles for T-junction splits in a fit. | 0. | — / set by the fitted budget. | [variants split_reserve](#variants-split_reserve) |
 | `[[variants]].objects_scale` | — | Scales each pinned `[[objects.meshes]]` shape budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
 
 #### variants
@@ -499,9 +499,13 @@ A fit recipe's pruning budget must also stay within `triangles`.
 
 #### variants split_reserve
 
-With `geometry.probes`, `split_reserve` is a nonnegative integer below `triangles`.
-The start simplifies to `triangles - split_reserve`. Raise the reserve if
-T-junction splits grow the fitted rest past `triangles`.
+`split_reserve` is a nonnegative integer below `triangles`. The start simplifies
+to at most `triangles - split_reserve`. With pruning, the fit also subtracts the
+reserve from the prune budget before sealing and splitting.
+
+The fitted rest must fit within the full prune budget or, with
+`geometry.probes`, within `triangles`. Raise `split_reserve` if the fit
+reports an overflow.
 
 #### variants objects_scale
 

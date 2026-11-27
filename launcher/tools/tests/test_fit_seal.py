@@ -4,6 +4,7 @@ sky the fit shows that its start did not is closed by moving the points around i
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -103,6 +104,17 @@ class SplitTJunctions(unittest.TestCase):
         self.assertEqual(len(after.tris), 5)
         self.assertEqual(t_junctions(after, seal.T_JUNCTION_DISTANCE), [])
 
+    def test_splits_can_equal_the_start_triangle_count(self):
+        points = self.points[:3] + [self.points[4]]
+        after, splits = seal.split_t_junctions(mesh(points, self.tris[:1]))
+        self.assertEqual(splits, 1)
+        self.assertEqual(len(after.tris), 2)
+
+    def test_one_more_split_than_starting_triangles_raises_with_both_counts(self):
+        points = self.points[:3] + [self.points[4], (1, -NEAR, 0)]
+        with self.assertRaisesRegex(ValueError, r"2.*1 starting triangle"):
+            seal.split_t_junctions(mesh(points, self.tris[:1]))
+
     def test_a_split_that_would_leave_a_flat_half_is_not_made(self):
         # Points 0, 1 and 3 nearly on one line: splitting edge 1-2 at point 3 leaves the half 1, 3, 0 flat, whose
         # edge 0-3 would hold point 1, and the two splits would undo each other for ever.
@@ -119,6 +131,29 @@ class SplitTJunctions(unittest.TestCase):
         self.assertEqual(splits, 2)
         self.assertEqual(len(after.tris), 5)
         self.assertEqual(t_junctions(after, seal.T_JUNCTION_DISTANCE), [])
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SnapBackCopyRows(unittest.TestCase):
+    def test_only_real_rim_and_seen_rows_restore_points(self):
+        points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (2, 0, 0), (3, 0, 0), (2, 1, 0)]
+        start = mesh(points, [(0, 1, 2), (3, 4, 5)])
+        fitted = start._replace(points=start.points + [0, 0, 1], tris=start.tris[:1], double=start.double[:1])
+        copies = mesh(points[:3], [(0, 1, 2)])
+        # Copies begin at different rows in the fitted and start meshes because pruning removed a real row.
+        fitted_copy, start_copy = len(fitted.tris), len(start.tris)
+        for rim, seen in (([fitted_copy], [start_copy]), ([0, fitted_copy], [start_copy]),
+                          ([fitted_copy], [0, start_copy])):
+            with self.subTest(rim=rim, seen=seen):
+                probes = mock.Mock()
+                probes.rims.side_effect = [[np.array(rim)], []]
+                probes.holes.return_value = [np.array(seen)]
+                sealed, moved = seal.snap_back(start, fitted, copies, probes)
+                expected = fitted.points.copy()
+                if 0 in rim or 0 in seen:
+                    expected[:3] = start.points[:3]
+                np.testing.assert_array_equal(sealed.points, expected)
+                self.assertEqual(moved, np.count_nonzero(np.any(expected != fitted.points, axis=1)))
 
 
 # A wall at x = 0 with a square hole, and a sheet a little behind it, a grid wider than the hole on every side:

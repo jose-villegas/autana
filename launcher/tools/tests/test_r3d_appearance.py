@@ -733,13 +733,17 @@ class PruneAndCostTests(unittest.TestCase):
         calls.write_mesh.side_effect = write_mesh
         calls.optimise.return_value = (mesh.points, mesh.rgb, [1.0])
         calls.coverage.return_value = np.ones(len(mesh.tris))
+        calls.hole_pixels.return_value = 0
+        calls.held_out_line.return_value = "held-out score"
         with self.patch_fit(mesh, optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
-                            write_mesh=calls.write_mesh, seal=seal):
+                            write_mesh=calls.write_mesh, seal=seal, pictured=mock.Mock(return_value=True),
+                            hole_pixels=calls.hole_pixels, held_out_line=calls.held_out_line):
             appearance.main(["--scene", "scene.toml", "--start", "card.bundle", "--poses", "poses.txt",
-                             "--reference", "reference", "--budget", str(budget), "--out", str(out)])
+                             "--reference", "reference", "--budget", str(budget), "--out", str(out),
+                             "--held-out-poses", "held.txt", "--held-out-reference", "held", "--closure"])
         return calls
 
-    def test_the_written_mesh_reserves_budget_for_splits(self):
+    def test_the_fit_prunes_once_then_writes_and_scores_the_split_mesh(self):
         budget, splits = 4, 1
 
         def split(start, pruned):
@@ -750,30 +754,50 @@ class PruneAndCostTests(unittest.TestCase):
             out = pathlib.Path(directory) / "out"
             calls = self.run_budgeted_fit(directory, split, budget)
             written = read_lit_mesh(out / "card.bundle")
-            self.assertEqual(len(written.tris), budget)
+            self.assertEqual(len(written.tris), budget + splits)
             report = json.loads((out / "stretch.json").read_text())
-            self.assertEqual(sum(row["triangles"] for row in report["parts"]), budget - splits)
-        first, second = calls.prune.call_args_list
-        self.assertIs(first.args[0], second.args[0])
-        self.assertEqual([first.args[2], second.args[2]], [budget, budget - splits])
-        self.assertEqual(calls.seal.snap_back.call_count, 2)
-        self.assertEqual(calls.seal.split_t_junctions.call_count, 2)
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), budget)
+            self.assertEqual(report["split_triangles"], splits)
+        calls.prune.assert_called_once()
+        self.assertEqual(calls.prune.call_args.args[2], budget)
+        calls.seal.snap_back.assert_called_once()
+        calls.seal.split_t_junctions.assert_called_once()
+        self.assertEqual(len(calls.seal.split_t_junctions.call_args.args[0].tris), budget)
         calls.seal.log_lines.assert_called_once()
         calls.write_mesh.assert_called_once()
+        written = calls.write_mesh.call_args.args[2]
+        self.assertIs(calls.hole_pixels.call_args_list[1].args[0], written)
+        self.assertIs(calls.held_out_line.call_args.args[0], written)
 
-    def test_a_split_that_stays_over_budget_fails_at_the_round_limit(self):
+    @needs_llvm
+    def test_sealing_keeps_a_pruned_gap_and_restores_a_moved_rim(self):
         from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from tests.test_fit_seal import CAMERA, PULLED_IN, SHEET_HALF, wall_and_sheet
 
-        budget = 8
-        count = budget + 1
-        split = mock.Mock(side_effect=lambda start, pruned: (
-            start._replace(tris=start.tris[:count], double=start.double[:count]), count - len(pruned.tris)))
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, rf"budget {budget}.*{count} triangles.*rounds") as failure:
-                self.run_budgeted_fit(directory, split, budget)
-            self.assertFalse((pathlib.Path(directory) / "out" / "card.bundle").exists())
-        self.assertIn(f"{appearance.BUDGET_ROUNDS} rounds", str(failure.exception))
-        self.assertEqual(split.call_count, appearance.BUDGET_ROUNDS)
+        start = wall_and_sheet()
+        shown = np.ones(len(start.tris))
+        shown[0] = 0
+        budget = int(shown.sum())
+        pruned, _ = prune(start, shown, budget)
+        full = seal.start_probes(start, None, CAMERA)
+        self.assertTrue(full.holes(*seal.geometry(pruned, None), reach=seal.SNAP_BACK_REACH))
+        top = (start.points[:, 0] < 0) & (start.points[:, 2] == SHEET_HALF)
+        for pull in (0, PULLED_IN):
+            with self.subTest(pull=pull), tempfile.TemporaryDirectory() as out:
+                points = start.points.copy()
+                points[top, 2] -= pull
+                with self.patch_fit(start, optimise=mock.Mock(return_value=(points, start.rgb, [1.0])),
+                                    coverage=mock.Mock(return_value=shown), write_mesh=mock.Mock(return_value=budget)), \
+                        mock.patch.object(appearance, "seal_camera", return_value=CAMERA), \
+                        mock.patch.object(seal, "split_t_junctions", side_effect=lambda mesh: (mesh, 0)), \
+                        mock.patch.object(seal, "log_lines") as log:
+                    appearance.main(["--scene", "scene.toml", "--start", "wall.bundle", "--poses", "poses.txt",
+                                     "--reference", "reference", "--budget", str(budget), "--out", out])
+                    sealed = appearance.write_mesh.call_args.args[2]
+                np.testing.assert_array_equal(sealed.tris, pruned.tris)
+                np.testing.assert_array_equal(sealed.points, start.points)
+                log.assert_called_once_with(np.count_nonzero(top) if pull else 0, 0, budget)
 
     def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
         from r3d import appearance_simplify as appearance
@@ -801,10 +825,12 @@ class PruneAndCostTests(unittest.TestCase):
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
-                                     ["seal.start_probes", "optimise", "coverage", "prune", "seal.snap_back",
+                                     ["optimise", "coverage", "prune", "seal.start_probes", "seal.snap_back",
                                       "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
                     start, snapped, _copies, probes = calls.seal.snap_back.call_args.args
-                    self.assertIs(start, mesh)
+                    self.assertIs(start, calls.seal.start_probes.call_args.args[0])
+                    self.assertIs(start.points, mesh.points)
+                    np.testing.assert_array_equal(start.tris, pruned.tris)
                     self.assertIs(snapped, pruned)
                     self.assertIs(probes, calls.seal.start_probes.return_value)
                     covered, views, size = calls.coverage.call_args.args

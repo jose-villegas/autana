@@ -5,6 +5,7 @@ recipe (appearance_simplify.py) and writes the renderer's mesh. Everything the f
 the start's bytes and the reference set (training, held-out and pruning poses), both in the fit's bake key.
 """
 
+import json
 import pathlib
 from types import SimpleNamespace
 
@@ -25,7 +26,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
     variant's ceiling caps the fitted bundle. A probe fit keeps every start triangle and caps the split rest
     at the variant's triangles. Other fits prune to the ceiling less the copy prototypes, or to the recipe's
-    budget when the variant has no ceiling. `budget` overrides those pruning targets."""
+    budget when the variant has no ceiling. `budget` overrides those pruning targets. Pruning sets aside
+    `split_reserve` from its target; the split mesh must fit within the full target."""
     from r3d.appearance_simplify import main as fit_main
     from r3d.objects.budget import bundle_count, ceiling_split, rest_target
     from r3d.import_settings import SettingsError
@@ -48,6 +50,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         budget = rest_target(ceiling_split(renderer), copied)
     if budget is not None and budget < 1:
         raise SettingsError(f"copies total {copied} leave the fitted rest no triangle under ceiling {ceiling}")
+    reserve = variant.split_reserve
+    if budget is not None and budget <= reserve:
+        raise SettingsError(f"{variant.name}: budget {budget} leaves no triangle after split_reserve {reserve}")
     start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
@@ -66,7 +71,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if shaping.probes is not None:
         command += ["--closure"]
     if budget is not None:
-        command += ["--budget", str(budget)]
+        command += ["--budget", str(budget - reserve)]
     command += ["--out", str(out),
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
@@ -83,15 +88,15 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
-    if shaping.probes is not None:
-        rest_name = [job.asset_name]
-        fitted_count = bundle_count(fitted_entries, rest_name)
-        if fitted_count > variant.triangles:
-            start_count = bundle_count([(job.asset_name, mesh_asset.TYPE, rest)], rest_name)
-            raise SettingsError(f"{variant.name}: start rest {start_count}, split added {fitted_count - start_count}, "
-                                f"fitted rest {fitted_count} exceeds triangles {variant.triangles} "
-                                f"with split_reserve {variant.split_reserve}; raise split_reserve")
     fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
+    limit, limit_name = (variant.triangles, "triangles") if budget is None else (budget, "budget")
+    fitted_count = mesh_asset.read_mesh_header(fitted).triangles
+    if fitted_count > limit:
+        start_count = mesh_asset.read_mesh_header(rest).triangles
+        splits = json.loads((out / "stretch.json").read_text(encoding="utf-8"))["split_triangles"]
+        raise SettingsError(f"{variant.name}: start rest {start_count}, split added {splits}, "
+                            f"fitted rest {fitted_count} exceeds {limit_name} {limit} "
+                            f"with split_reserve {reserve}; raise split_reserve")
     entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
     check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
     target.write_bytes(mesh_bundle.encode(entries, copies))

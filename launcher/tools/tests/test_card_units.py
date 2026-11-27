@@ -361,7 +361,7 @@ class CardFormatTests(unittest.TestCase):
                             surface_weight=1., surface_margin=0.)
                 job = NS(asset_name='rest', object=NS(name='rest'),
                          settings=NS(fit=NS(probes=None, budget=None)),
-                         renderer=NS(variant=NS(name='rest'), fit=recipe))
+                         renderer=NS(variant=NS(name='rest', triangles=1, split_reserve=0), fit=recipe))
                 def fit_main(command):
                     at = command.index('--hidden-materials')
                     self.assertEqual(command[at + 1], 'leaf')

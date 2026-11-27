@@ -233,8 +233,11 @@ class ImportTests(unittest.TestCase):
                 path = write_import(directory, output='[output]\n', body=body + f"split_reserve = {reserve}\n")
                 self.assertEqual(load_import_settings(path).variants[0].split_reserve, reserve)
 
-    def test_a_split_reserve_needs_probes_even_when_zero(self):
-        self.rejects(r"split_reserve needs geometry\.probes", SIMPLIFY + VARIANT + "split_reserve = 0\n")
+    def test_a_variant_accepts_a_split_reserve_without_probes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            body = SIMPLIFY + VARIANT + "split_reserve = 3\n"
+            settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
+        self.assertEqual(settings.variants[0].split_reserve, 3)
 
     def test_a_probe_variant_refuses_an_invalid_split_reserve(self):
         body = SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT
@@ -960,22 +963,26 @@ class BakeStepTests(unittest.TestCase):
                 mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(seen, [own])
 
-    def test_a_probe_variant_reserves_split_triangles_in_thinning_and_simplify(self):
+    def test_bake_geometry_caps_the_start_budget_at_the_available_triangles(self):
         with tempfile.TemporaryDirectory() as directory:
             body = SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT
             path = write_import(directory, output='[output]\n', body=body)
             job = albedo_jobs(load_import_settings(path))[0]
             variant = job.renderer.variant
-            variant.split_reserve = 3
-            budget = variant.triangles - variant.split_reserve
             p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
             source = triangle_source(p)
             with mock.patch.object(mesh_import, "load_source", return_value=source), \
                     mock.patch.object(mesh_import, "shade_unlit", return_value=(p, np.zeros_like(p), source.tri_v)), \
                     mock.patch.object(mesh_import, "thin_keep", wraps=mesh_import.thin_keep) as thin, \
                     mock.patch.object(mesh_import, "simplify", side_effect=lambda p, c, t, m, *a, **kw: (p, c, t, m)) as simplify:
-                mesh_import.bake_geometry(job, None)
-            self.assertEqual((thin.call_args.args[5], simplify.call_args.args[4]), (budget, budget))
+                for reserve, available, expected in ((3, 8, 7), (3, 6, 6), (0, None, 10)):
+                    with self.subTest(reserve=reserve, available=available):
+                        variant.split_reserve = reserve
+                        variant.ceiling = available
+                        geometry = mesh_import.bake_geometry(job, None)
+                        self.assertEqual(thin.call_args.args[5], variant.triangles - reserve)
+                        self.assertEqual(simplify.call_args.args[4], expected)
+                        self.assertEqual(geometry.mesh_report["rest_budget"], expected)
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
@@ -991,7 +998,7 @@ class BakeStepTests(unittest.TestCase):
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
                 mock.patch.object(mesh_import, "shade_unlit", return_value=(p, np.zeros((3, 3)), np.array([[0, 1, 2]]))), \
                 mock.patch.object(mesh_import, "simplify", side_effect=simplify):
-            renderer_ = SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=1))
+            renderer_ = SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=1, split_reserve=0))
             mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(given["colour_deviation"], 2.5)
 
@@ -1237,12 +1244,13 @@ class LocalSourceTests(unittest.TestCase):
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
-        for reserve, triangles in ((1, 10), (0, 11)):
-            with self.subTest(reserve=reserve, triangles=triangles):
-                changed = keys("probes = { spacing = 2.0 }\n", reserve, triangles)
-                self.assertNotEqual(changed[0], probed[0])
-                self.assertEqual(changed[1], probed[1])
-                self.assertNotEqual(changed[2], probed[2], "the fit's limit changed even with identical inputs")
+        for shaping, original in (("", (start, reference, fit)), ("probes = { spacing = 2.0 }\n", probed)):
+            for reserve, triangles in ((1, 10), (0, 11)):
+                with self.subTest(probes=bool(shaping), reserve=reserve, triangles=triangles):
+                    changed = keys(shaping, reserve, triangles)
+                    self.assertNotEqual(changed[0], original[0])
+                    self.assertEqual(changed[1], original[1])
+                    self.assertNotEqual(changed[2], original[2], "the fit's limit changed even with identical inputs")
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

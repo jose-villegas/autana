@@ -8,7 +8,7 @@ from r3d.lit_mesh import finest_count, read_bundle_mesh
 
 def start_budget(variant):
     """The simplify budget after setting aside triangles for splits during the fit."""
-    return variant.triangles - getattr(variant, "split_reserve", 0)
+    return variant.triangles - variant.split_reserve
 
 
 def ceiling_split(renderer):

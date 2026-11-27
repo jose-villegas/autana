@@ -219,9 +219,9 @@ a comment listing the selectors, as shown in the sheet header.
 
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
-renders match the reference along a camera path: appearance-driven
-simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
-triangles stay as the simplifier left them, so the budget holds.
+renders match reference views. This is appearance-driven
+simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>.
+
 [Appearance-Fit.md](../../../docs/render/offline/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
@@ -234,9 +234,9 @@ what the fit changes from the paper.
 | Schedule | Adam<sup>[[3]](../../../docs/Citations.md#kingma-2015)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
-Beside `loss.txt`, `stretch.json` reports edge stretch, area growth and corner
-displacement by connected part of the fit's start (after `--refine-to`), with
-small-part totals and the worst parts.
+Beside `loss.txt`, `stretch.json` reports triangles added by splitting, plus
+edge stretch, area growth and corner displacement by connected part of the
+start after `--refine-to`.
 
 The fitted colours are the bake, so the mesh enters the import at its last
 stage instead of being lit again. Every `--poses`/`--reference` pair trains
@@ -334,8 +334,11 @@ The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
 `fit` uses `fit.optimise` and writes the mesh into the work folder. Probe fits
-keep every start triangle and fail if T-junction splits push the rest past
-`triangles`. Fits without probes prune to the configured budget.
+keep every start triangle and cap the split rest at `triangles`.
+
+Pruned fits subtract `split_reserve` from the rest budget before pruning once,
+then seal and split. The full rest budget caps the split mesh. Raise
+`split_reserve` if either fit reports an overflow.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;

@@ -79,8 +79,6 @@ AREA_GROWTH_RATIO = 4.0
 MOVED_EDGES = 1.0
 # How many worst parts the log lists.
 STRETCH_WORST = 5
-# Most times the fit prunes again with a larger split reserve before a budget it cannot meet fails.
-BUDGET_ROUNDS = 4
 
 
 @contextmanager
@@ -1152,7 +1150,7 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
-    parser.add_argument("--budget", type=int, help="limit triangles after seam splits, pruning the least shown first")
+    parser.add_argument("--budget", type=int, help="limit triangles before seam splits, pruning the least shown first")
     parser.add_argument("--coverage-poses", action="append",
                         help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
     parser.add_argument("--held-out-poses", action="append", default=[],
@@ -1244,8 +1242,6 @@ def main(argv=None):
             geometry["geometry_views"] = select(source, carved, camera.region, camera.near_z,
                                                  job.settings.fit.probes.spacing)
         fit_start = fitted
-        # The start's leak probes stand where its import sealed its seams, for snap_back after the fit.
-        probes = seal.start_probes(fit_start, copies, seal_camera(scene))
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
@@ -1259,27 +1255,24 @@ def main(argv=None):
                 for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
         shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
-        reserve = 0
-        for rounds in range(1, BUDGET_ROUNDS + 1):
-            prune_limit = None if args.budget is None else max(0, args.budget - reserve)
-            pruned, kept = prune(fitted, shown, prune_limit)
-            sealed, moved = seal.snap_back(fit_start, pruned, copies, probes)
-            split, splits = seal.split_t_junctions(sealed)
-            split_count = len(split.tris)
-            if args.budget is None or split_count <= args.budget:
-                break
-            reserve += split_count - args.budget
-        else:
-            raise ValueError(f"triangle budget {args.budget} exceeded by a mesh of {split_count} triangles "
-                             f"after {BUDGET_ROUNDS} rounds")
-        log(f"split reserve {reserve} triangles, budget rounds {rounds}")
+        pruned, kept = prune(fitted, shown, args.budget)
+        retained_start = fit_start
+        if len(kept) < len(fit_start.tris):
+            # Coverage can remove whole surfaces, including ones the start's leak probes would see.
+            start_rgb = fit_start.rgb[kept] if fit_start.flat else fit_start.rgb
+            retained_start = pruned._replace(points=fit_start.points, rgb=start_rgb)
+        probes = seal.start_probes(retained_start, copies, seal_camera(scene))
+        sealed, moved = seal.snap_back(retained_start, pruned, copies, probes)
+        split, splits = seal.split_t_junctions(sealed)
+        scored = joined(split, copies) if held_out else None
         if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
-            start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
-                                             for held_views, held_size in held_out) for candidate in (fit_start, pruned))
+            start_holes, fitted_holes = (sum(hole_pixels(candidate, held_views, held_size, clear)
+                                             for held_views, held_size in held_out)
+                                         for candidate in (joined(fit_start, copies), scored))
             log(check_closure(start_holes, fitted_holes, pixels))
         if held_out:
-            log(held_out_line(joined(pruned, copies), held_out, clear))
+            log(held_out_line(scored, held_out, clear))
         if unpictured:
             log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
@@ -1288,6 +1281,7 @@ def main(argv=None):
             hidden = hidden_copy_pixels(source, carved, (fit_start, sealed), args.copy_poses)
             log(check_hidden_copies(*hidden))
         report = stretch_report(fit_start, sealed, kept)
+        report["split_triangles"] = splits
         seal.log_lines(moved, splits, len(sealed.tris))
         count = write_mesh(out, name, split)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):

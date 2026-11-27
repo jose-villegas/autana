@@ -246,12 +246,10 @@ def load_variant(value, steps, where):
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
     if "split_reserve" in value:
-        if steps.fit.probes is None:
-            raise SettingsError(f"{where}.split_reserve needs geometry.probes")
         variant.split_reserve = integer(value["split_reserve"], f"{where}.split_reserve")
         if variant.split_reserve < 0:
             raise SettingsError(f"{where}.split_reserve must be nonnegative")
-        if variant.split_reserve >= variant.triangles:
+        if variant.triangles is None or variant.split_reserve >= variant.triangles:
             raise SettingsError(f"{where}.split_reserve must be smaller than triangles")
     return variant
 

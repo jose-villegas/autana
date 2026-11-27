@@ -77,10 +77,11 @@ def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):
         found = _edge_points(mesh, tree, distance, rows)
         if not found:
             return mesh, splits
-        mesh = _split(mesh, found)
         splits += len(found)
         if splits > most:
-            raise ValueError(f"T-junction splits passed {most}, one per starting triangle: they undo each other")
+            raise ValueError(f"T-junction splits reached {splits} for {most} starting triangles, "
+                             "exceeding one per triangle")
+        mesh = _split(mesh, found)
         rows = range(len(mesh.tris) - 2 * len(found), len(mesh.tris))
 
 

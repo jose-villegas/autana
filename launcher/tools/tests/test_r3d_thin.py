@@ -140,7 +140,8 @@ class BakeTests(unittest.TestCase):
         settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, cards=None, double_sided=set(),
                                    meshes=[], simplify=steps)
         job = SimpleNamespace(settings=settings, bake=None,
-                              renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=budget)))
+                              renderer=SimpleNamespace(visibility=None,
+                                                       variant=SimpleNamespace(triangles=budget, split_reserve=0)))
         with patch.object(mesh_import, 'load_source', return_value=src), \
                 patch.object(mesh_import, 'alpha_tested', return_value=np.array([True, False])):
             result = mesh_import.bake_geometry(job, None)
