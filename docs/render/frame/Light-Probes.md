@@ -211,7 +211,7 @@ difference (dE76) against the total over the skin's mask, eroded by a pixel:
 
 ![Three host frames, then for each skin its sun-only, bounce-only and total host crops beside the path-traced crop, labelled with its mean dE76](../../images/render/capybara-sponza-irradiance-sheet.png)
 
-At these frames the skins are out of the sun: the sun-only crops are black,
+In the sheet, the skins are out of the sun: the sun-only crops are black,
 and the bounce term carries their light.
 
 ## 7. Cost and goals

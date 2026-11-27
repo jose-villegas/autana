@@ -30,9 +30,9 @@ python launcher/main/apps/render_lab/tools/irradiance_figures.py \
 
 The sheet crops each skin four times: sun only, bounce only and total from
 the host, then the path-traced reference, labelled with its mean dE76 against
-the total. The work
-folder's `measurements.json` reports mean linear luminance over the eroded
-reference skin masks, the bounce share and pixel differences for each still.
+the total. The work folder's `measurements.json` reports, for each still, the
+mean linear luminance over the eroded reference skin masks, the bounce share
+and the pixel differences.
 
 ## Host renders
 
