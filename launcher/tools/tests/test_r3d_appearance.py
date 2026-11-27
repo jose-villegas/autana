@@ -713,6 +713,68 @@ def fit_scene():
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    def patch_fit(self, mesh, **patches):
+        from r3d import appearance_simplify as appearance
+
+        return mock.patch.multiple(appearance, load_scene=mock.Mock(return_value=fit_scene()),
+                                   start_mesh=mock.Mock(return_value=mesh),
+                                   load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                                   seal_camera=mock.Mock(), **patches)
+
+    def run_budgeted_fit(self, directory, split, budget):
+        from r3d import appearance_simplify as appearance
+
+        mesh = start_mesh(write_start(directory))
+        out = pathlib.Path(directory) / "out"
+        calls = mock.Mock()
+        seal = stub_seal(calls.seal)
+        seal.split_t_junctions.side_effect = lambda pruned: split(mesh, pruned)
+        calls.prune.side_effect = prune
+        calls.write_mesh.side_effect = write_mesh
+        calls.optimise.return_value = (mesh.points, mesh.rgb, [1.0])
+        calls.coverage.return_value = np.ones(len(mesh.tris))
+        with self.patch_fit(mesh, optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
+                            write_mesh=calls.write_mesh, seal=seal):
+            appearance.main(["--scene", "scene.toml", "--start", "card.bundle", "--poses", "poses.txt",
+                             "--reference", "reference", "--budget", str(budget), "--out", str(out)])
+        return calls
+
+    def test_the_written_mesh_reserves_budget_for_splits(self):
+        budget, splits = 4, 1
+
+        def split(start, pruned):
+            count = len(pruned.tris) + splits
+            return pruned._replace(tris=start.tris[:count], double=start.double[:count]), splits
+
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "out"
+            calls = self.run_budgeted_fit(directory, split, budget)
+            written = read_lit_mesh(out / "card.bundle")
+            self.assertEqual(len(written.tris), budget)
+            report = json.loads((out / "stretch.json").read_text())
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), budget - splits)
+        first, second = calls.prune.call_args_list
+        self.assertIs(first.args[0], second.args[0])
+        self.assertEqual([first.args[2], second.args[2]], [budget, budget - splits])
+        self.assertEqual(calls.seal.snap_back.call_count, 2)
+        self.assertEqual(calls.seal.split_t_junctions.call_count, 2)
+        calls.seal.log_lines.assert_called_once()
+        calls.write_mesh.assert_called_once()
+
+    def test_a_split_that_stays_over_budget_fails_at_the_round_limit(self):
+        from r3d import appearance_simplify as appearance
+
+        budget = 8
+        count = budget + 1
+        split = mock.Mock(side_effect=lambda start, pruned: (
+            start._replace(tris=start.tris[:count], double=start.double[:count]), count - len(pruned.tris)))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, rf"budget {budget}.*{count} triangles.*rounds") as failure:
+                self.run_budgeted_fit(directory, split, budget)
+            self.assertFalse((pathlib.Path(directory) / "out" / "card.bundle").exists())
+        self.assertIn(f"{appearance.BUDGET_ROUNDS} rounds", str(failure.exception))
+        self.assertEqual(split.call_count, appearance.BUDGET_ROUNDS)
+
     def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
         from r3d import appearance_simplify as appearance
 
@@ -726,13 +788,10 @@ class PruneAndCostTests(unittest.TestCase):
                     fitted = mesh._replace(points=points, rgb=rgb)
                     pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
                     calls = mock.Mock()
-                    with mock.patch.multiple(appearance,
-                            load_scene=mock.Mock(return_value=fit_scene()),
-                            start_mesh=mock.Mock(return_value=mesh),
-                            load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                    with self.patch_fit(mesh,
                             pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
                             optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
-                            write_mesh=calls.write_mesh, seal=stub_seal(calls.seal), seal_camera=mock.Mock()):
+                            write_mesh=calls.write_mesh, seal=stub_seal(calls.seal)):
                         calls.optimise.return_value = (points, rgb, [1.0])
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
@@ -780,16 +839,13 @@ class PruneAndCostTests(unittest.TestCase):
 
         source = SimpleNamespace()
         source_for = mock.Mock(return_value=(source, None))
+        seal = stub_seal(mock.Mock())
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh.points + 1, mesh.rgb / 2
-            with mock.patch.multiple(appearance,
-                    load_scene=mock.Mock(return_value=fit_scene()),
-                    start_mesh=mock.Mock(return_value=mesh),
-                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
-                    optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
-                    write_mesh=mock.DEFAULT, seal=stub_seal(mock.Mock()), seal_camera=mock.Mock()) as calls,                     mock.patch.dict(sys.modules, {
-                        "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
+            with self.patch_fit(mesh, optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
+                                write_mesh=mock.DEFAULT, seal=seal) as calls, \
+                    mock.patch.dict(sys.modules, {"r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
                 calls["coverage"].return_value = np.ones(len(mesh.tris))
                 calls["prune"].side_effect = prune
@@ -806,6 +862,9 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
             calls["coverage"].assert_called_once()
+            calls["prune"].assert_called_once()
+            seal.snap_back.assert_called_once()
+            seal.split_t_junctions.assert_called_once()
             self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)

@@ -127,6 +127,8 @@ WALL_HALF, HOLE_HALF, SHEET_HALF, SHEET_BEHIND, SHEET_ROWS = 100.0, 30.0, 40.0, 
 CAMERA = ((np.array([30.0, -50.0, -50.0]), np.array([150.0, 50.0, 50.0])), 2.0) if np is not None else None
 # How far the fit pulls the sheet's top edge in: past the hole's edge, so a slit of sky opens closed in by the wall.
 PULLED_IN = 15.0
+START_GAP = 5.0
+JOINED_GAP_GROWTH = 2.0
 
 
 def wall_and_sheet():
@@ -175,6 +177,31 @@ class SnapBack(unittest.TestCase):
         sealed, moved = seal.snap_back(self.start, self.start, None, self.probes)
         self.assertEqual(moved, 0)
         np.testing.assert_array_equal(sealed.points, self.start.points)
+
+    def test_the_sheet_seen_through_an_unchanged_rim_moves_back(self):
+        points = self.start.points.copy()
+        sheet = points[:, 0] == -SHEET_BEHIND
+        points[sheet, 0] = CAMERA[0][1][0] + SHEET_BEHIND
+        fitted = self.start._replace(points=points)
+
+        sealed, moved = seal.snap_back(self.start, fitted, None, self.probes)
+
+        np.testing.assert_array_equal(sealed.points[sheet], self.start.points[sheet])
+        self.assertEqual(moved, np.count_nonzero(sheet))
+        self.assertEqual(self.probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+
+    def test_sky_joined_to_a_start_opening_moves_the_points_back(self):
+        start = self.start._replace(points=self.start.points.copy())
+        start.points[self.bottom, 2] = -HOLE_HALF + START_GAP
+        fitted = start._replace(points=start.points.copy())
+        fitted.points[self.bottom, 2] += JOINED_GAP_GROWTH
+        probes = seal.start_probes(start, None, CAMERA)
+        self.assertEqual(probes.holes(*seal.geometry(fitted, None)), [])
+
+        sealed, moved = seal.snap_back(start, fitted, None, probes)
+
+        self.assertGreater(moved, 0)
+        np.testing.assert_array_equal(sealed.points[self.bottom], start.points[self.bottom])
 
     def test_sky_moving_points_cannot_close_fails_loudly(self):
         # The sheet gone, which the start has: no point can cover the hole.

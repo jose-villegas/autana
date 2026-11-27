@@ -27,6 +27,16 @@ from tests.test_r3d_bake import canonical
 from tests.r3d_env import needs_llvm  # noqa: E402
 
 
+def card_payloads():
+    """The LUVS and MASK1 LTEX payloads for a one-triangle card mesh."""
+    from r3d.texture import texture_asset, uv_transfer
+
+    mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
+    luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
+    page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+    return luvs, page
+
+
 def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
                    shapes=1, recorder=None, name=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
@@ -107,18 +117,14 @@ class MeshBundleTests(unittest.TestCase):
     def test_a_carded_bundle_decodes_without_numpy(self):
         """Cards put an LUVS and a MASK1 LTEX page beside their mesh."""
         from r3d.texture import texture_asset, uv_transfer
-        mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
-        luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
-        page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+        luvs, page = card_payloads()
         self.decode_without_numpy(mesh_bundle.encode([
             ("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, luvs),
             (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, page)], []))
 
     def test_a_truncated_card_page_or_uvs_is_refused(self):
         from r3d.texture import texture_asset, uv_transfer
-        mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
-        luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
-        page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+        luvs, page = card_payloads()
         for short_luvs, short_page in ((luvs[:-1], page), (luvs, page[:-1])):
             entries = [("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, short_luvs),
                        (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, short_page)]

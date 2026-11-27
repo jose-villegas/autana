@@ -57,26 +57,26 @@ class LeakProbes:
             yield self.views[start:end], np.concatenate([o for o, _ in traced]), np.concatenate([d for _, d in traced])
             start = end
 
-    def holes(self, positions, tris):
+    def holes(self, positions, tris, reach=REACH):
         """Per hole a mesh shows, the source triangles seen through it."""
         holes = []
-        for origins, directions, masks in self._view_holes(RayQuery(positions, tris)):
-            _, _, seen = self.query.first_hits(origins, directions)
-            holes.extend(np.unique(seen[mask.reshape(-1)]) for mask in masks)
+        for origins, directions, masks in self._view_holes(RayQuery(positions, tris), reach):
+            hit, _, seen = self.query.first_hits(origins, directions)
+            holes.extend(np.unique(seen[mask.reshape(-1) & hit]) for mask in masks)
         return holes
 
-    def rims(self, positions, tris, width=1):
+    def rims(self, positions, tris, width=1, reach=REACH):
         """Per hole a mesh shows, the rows of its `tris` seen within `width` pixels around the hole."""
         result = RayQuery(positions, tris)
         rims = []
-        for origins, directions, masks in self._view_holes(result):
+        for origins, directions, masks in self._view_holes(result, reach):
             hit, _, seen = result.first_hits(origins, directions)
             for mask in masks:
                 ring = (ndimage.binary_dilation(mask, CONNECTED, iterations=width) & ~mask).reshape(-1)
                 rims.append(np.unique(seen[ring & hit]))
         return rims
 
-    def _view_holes(self, result):
+    def _view_holes(self, result, reach=REACH):
         """(origins, directions, hole masks) of each view where the RayQuery `result` shows a hole."""
         for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):
             sky = ~result.blocked(origins, directions)
@@ -88,7 +88,7 @@ class LeakProbes:
                 at += width * height
                 if not np.any(sky[rows] & ~source_sky[rows]):
                     continue
-                masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width))
+                masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width), reach=reach)
                 if masks:
                     yield origins[rows], directions[rows], masks
 

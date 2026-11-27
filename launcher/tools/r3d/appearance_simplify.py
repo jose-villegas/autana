@@ -79,6 +79,7 @@ AREA_GROWTH_RATIO = 4.0
 MOVED_EDGES = 1.0
 # How many worst parts the log lists.
 STRETCH_WORST = 5
+BUDGET_ROUNDS = 4
 
 
 @contextmanager
@@ -1150,7 +1151,7 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
-    parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
+    parser.add_argument("--budget", type=int, help="limit triangles after seam splits, pruning the least shown first")
     parser.add_argument("--coverage-poses", action="append",
                         help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
     parser.add_argument("--held-out-poses", action="append", default=[],
@@ -1257,7 +1258,20 @@ def main(argv=None):
                 for poses in args.coverage_poses] if args.coverage_poses else [coverage(drawn, views, size)[:len(fitted.tris)]]
         shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
-        pruned, kept = prune(fitted, shown, args.budget)
+        reserve = 0
+        for rounds in range(1, BUDGET_ROUNDS + 1):
+            prune_limit = None if args.budget is None else max(0, args.budget - reserve)
+            pruned, kept = prune(fitted, shown, prune_limit)
+            sealed, moved = seal.snap_back(fit_start, pruned, copies, probes)
+            split, splits = seal.split_t_junctions(sealed)
+            split_count = len(split.tris)
+            if args.budget is None or split_count <= args.budget:
+                break
+            reserve += split_count - args.budget
+        else:
+            raise ValueError(f"triangle budget {args.budget} exceeded by a mesh of {split_count} triangles "
+                             f"after {BUDGET_ROUNDS} rounds")
+        log(f"split reserve {reserve} triangles, budget rounds {rounds}")
         if held_out and args.closure:
             pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
             start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
@@ -1269,13 +1283,11 @@ def main(argv=None):
             log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        fitted, moved = seal.snap_back(fit_start, pruned, copies, probes)
         if copies is not None:
-            hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
+            hidden = hidden_copy_pixels(source, carved, (fit_start, sealed), args.copy_poses)
             log(check_hidden_copies(*hidden))
-        report = stretch_report(fit_start, fitted, kept)
-        split, splits = seal.split_t_junctions(fitted)
-        seal.log_lines(moved, splits, len(fitted.tris))
+        report = stretch_report(fit_start, sealed, kept)
+        seal.log_lines(moved, splits, len(sealed.tris))
         count = write_mesh(out, name, split)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")

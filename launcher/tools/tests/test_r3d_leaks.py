@@ -180,6 +180,33 @@ class ViewHoleTests(unittest.TestCase):
         sky[2, 2], sky[3, 3] = False, True
         self.assertEqual(len(leaks.view_holes(sky, none)), 2)
 
+    def test_probe_holes_and_rims_use_the_requested_reach(self):
+        narrow_reach = leaks.REACH - 1
+        width, height = 3, leaks.REACH + 1
+        source_sky = np.zeros((height, width), dtype=bool)
+        source_sky[0] = True
+        sky = source_sky.copy()
+        sky[:, 1] = True
+        source_row, rim_row = 0, 1
+        source_seen = np.full(sky.size, source_row)
+        fitted_seen = np.full(sky.size, rim_row)
+        rays = np.zeros((sky.size, 3))
+        probes = leaks.LeakProbes.__new__(leaks.LeakProbes)
+        probes.source_sky = [source_sky.ravel()]
+        probes.query = mock.Mock()
+        probes.query.first_hits.return_value = (~source_sky.ravel(), None, source_seen)
+        views = [(width, height, None, None)]
+        with mock.patch.object(probes, "_batches", return_value=[(views, rays, rays)]), \
+                mock.patch.object(leaks, "RayQuery") as ray_query:
+            result = ray_query.return_value
+            result.blocked.return_value = ~sky.ravel()
+            result.first_hits.return_value = (~sky.ravel(), None, fitted_seen)
+            for method, row in ((probes.holes, source_row), (probes.rims, rim_row)):
+                with self.subTest(method=method.__name__):
+                    self.assertEqual(method(None, None), [])
+                    found = method(None, None, reach=narrow_reach)
+                    self.assertEqual([rows.tolist() for rows in found], [[row]])
+
 
 @needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")

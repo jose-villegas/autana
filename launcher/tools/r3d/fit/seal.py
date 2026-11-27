@@ -2,11 +2,10 @@
 did not, then split_t_junctions splits each edge a fitted point lies on.
 
 The fit holds a seam's border points to the other part's triangles, but an edge between two held points stays
-straight while the surface under it bends, so sky can open along the edge. snap_back looks from the start's leak
-probes (leaks.LeakProbes, the views simplify seals with) and moves the points around each new hole back to their
-start positions, a ring wider each round, until no view shows one. A hold also puts a point on another triangle's
-edge without sharing it, a T-junction the rasterizer can leave a pixel open along; split_t_junctions splits that
-edge through the point, a standard repair that costs a triangle per split.
+straight while the surface under it bends, so sky can open along the edge. snap_back uses the start's leak
+probes to restore points on fitted triangles around each hole and on start triangles seen through it. The rim
+widens each round. A seam hold can also leave a T-junction that opens a pixel during rasterization.
+split_t_junctions splits that edge through the fitted point, adding one triangle.
 """
 
 import numpy as np
@@ -20,6 +19,8 @@ from r3d.leaks import LeakProbes
 T_JUNCTION_DISTANCE = 0.05
 # Most rounds of moving points back to the start, each a pixel wider round the holes, before the step fails.
 SNAP_BACK_ROUNDS = 8
+# The fit stays within one probe pixel of the start's outline. Simplification allows more outline movement.
+SNAP_BACK_REACH = 1
 
 
 def geometry(mesh, copies):
@@ -38,20 +39,25 @@ def start_probes(start, copies, camera):
 
 
 def snap_back(start, fitted, copies, probes):
-    """`fitted` with the points round each hole `probes` find in it moved back to `start`, which shares its
-    points: (the mesh, how many points moved). Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
+    """Restore shared points on fitted rims and start triangles seen through each hole. Return the mesh
+    and number of points moved. Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
     points = fitted.points.copy()
     moved = np.zeros(len(points), dtype=bool)
-    count = len(fitted.tris)
+    fitted_count, start_count = len(fitted.tris), len(start.tris)
     for width in range(1, SNAP_BACK_ROUNDS + 1):
-        rims = probes.rims(*geometry(fitted._replace(points=points), copies), width)
+        positions, tris = geometry(fitted._replace(points=points), copies)
+        rims = probes.rims(positions, tris, width, reach=SNAP_BACK_REACH)
         if not rims:
             return fitted._replace(points=points), int(np.count_nonzero(moved))
-        rows = np.unique(np.concatenate(rims))
-        ring = np.unique(fitted.vertex_point[fitted.tris[rows[rows < count]]])
-        moved[ring] |= np.any(points[ring] != start.points[ring], axis=1)
-        points[ring] = start.points[ring]
-    left = len(probes.holes(*geometry(fitted._replace(points=points), copies)))
+        holes = probes.holes(positions, tris, reach=SNAP_BACK_REACH)
+        rim_rows = np.unique(np.concatenate(rims))
+        seen_rows = np.unique(np.concatenate(holes))
+        rim_points = tris[rim_rows[rim_rows < fitted_count]]
+        seen_points = start.vertex_point[start.tris[seen_rows[seen_rows < start_count]]]
+        restore = np.union1d(rim_points, seen_points)
+        moved[restore] |= np.any(points[restore] != start.points[restore], axis=1)
+        points[restore] = start.points[restore]
+    left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
     if left:
         raise ValueError(f"the fit still shows {left} holes its start does not after {SNAP_BACK_ROUNDS} rounds "
                          "of moving points back")

@@ -21,7 +21,7 @@ Measured results are in
 
 | Key | Symbol | What it does |
 |---|---|---|
-| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
+| `fit.prune.budget` | | triangle limit after pruning and seam splits, at most the variant's `triangles`. With a variant `ceiling`, the rest mesh's limit is the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)). |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
 | `fit.poses.samples` | | reference rays per pixel side |
@@ -216,16 +216,12 @@ both.
 
 | Step | What it does | Limit |
 |---|---|---|
-| `snap_back` | Looks from the start's leak probes ([`seal_seams`](Mesh-Import.md#seal_seams)'s views). Where the fit shows sky in a region that touches none of the start's, it moves the points round that region back to their start positions, a ring a pixel wider each round. | `SNAP_BACK_ROUNDS`; holes left after it fail the fit |
-| `split_t_junctions` | Splits each edge a fitted point lies within `T_JUNCTION_DISTANCE` of, through that point, unless a half would come out flat. | More splits than starting triangles fail the fit |
+| `snap_back` | From the start's leak probes, detects isolated sky and sky more than `SNAP_BACK_REACH` pixels from the start's sky. Restores points on fitted triangles around each hole and start triangles seen through it. The rim widens by a pixel each round. | Holes left after `SNAP_BACK_ROUNDS` fail the fit. |
+| `split_t_junctions` | Splits edges through fitted points within `T_JUNCTION_DISTANCE` if the split avoids slivers. | More splits than starting triangles fail the fit. |
+| Budget | If splits take the mesh over budget, add the excess to the reserve and re-prune the full fitted mesh before sealing and splitting again. Without a budget, run one pass. | A mesh still over budget after `BUDGET_ROUNDS` fails the fit. |
 
-The fit log reports the points moved back and the triangles added. On the
-current fits the split adds:
-
-| Scene | Fitted triangles | Added by the split |
-|---|---:|---:|
-| Sponza | 13312 | 438 (3.3%) |
-| Bistro | 29912 | 866 (2.9%) |
+The fit log reports the split reserve, rounds used, points moved back and
+triangles added.
 
 ### Normals
 
@@ -301,7 +297,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
-| Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+| Triangle budget | set by the start | coverage pruning and seam splits stay within `budget`. A refined fitted mesh can be the start. |
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
