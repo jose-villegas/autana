@@ -2,8 +2,8 @@
 did not, then split_t_junctions splits each edge a fitted point lies on.
 
 snap_back restores points on widening fitted rims and on start triangles seen through new sky.
-When a restore reopens start sky the fit had covered, the points of the pre-snap triangles that
-covered those pixels stay fixed at their fitted positions.
+If a restore reopens any pixel of a connected start-sky region the fit covered completely in a
+probe view, the pre-snap triangles that covered those pixels keep their fitted point positions.
 
 split_t_junctions splits edges through fitted points to close gaps during rasterization.
 """
@@ -39,7 +39,7 @@ def start_probes(start, copies, camera):
 
 
 def snap_back(start, fitted, copies, probes):
-    """Close new holes while preserving coverage the fit added. Return the mesh and number of points
+    """Close new holes while preserving regions the fit closed. Return the mesh and number of points
     moved. Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
     points = fitted.points.copy()
     fixed = np.zeros(len(points), dtype=bool)

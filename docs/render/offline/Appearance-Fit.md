@@ -216,7 +216,7 @@ both.
 
 | Step | What it does | Limit |
 |---|---|---|
-| `snap_back` | Detects isolated new sky or sky more than `SNAP_BACK_REACH` pixels from the retained start's sky. Restores fitted rim points and points on start triangles seen through each hole. Points on fitted triangles that kept a reopened gap covered stay fixed at their fitted positions. | Holes left after `SNAP_BACK_ROUNDS` fail the fit. |
+| `snap_back` | Detects isolated new sky or sky more than `SNAP_BACK_REACH` pixels from the retained start's sky. Restores fitted rim points and points on start triangles seen through each hole. If a restore reopens part of a connected start-sky region the fit fully covered in a probe view, the triangles that covered those pixels keep their fitted point positions. | Holes left after `SNAP_BACK_ROUNDS` fail the fit. |
 | `split_t_junctions` | Splits edges through fitted points within `T_JUNCTION_DISTANCE` if the split avoids slivers. | More splits than starting triangles fail the fit. |
 
 A pruned fit prunes once to its rest budget minus `split_reserve` before sealing.

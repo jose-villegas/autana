@@ -77,15 +77,29 @@ class LeakProbes:
         return rims
 
     def closed_gap_hits(self, positions, tris):
-        """Batches of rays that hit this mesh through source sky, with their first triangle rows."""
+        """Batches of rays through fully covered source-sky regions, with their first triangle rows."""
         result = RayQuery(positions, tris)
         gaps = []
-        for (_, origins, directions), sky in zip(self._batches(), self.source_sky):
-            if np.any(sky):
-                origins, directions = origins[sky], directions[sky]
-                hit, _, rows = result.first_hits(origins, directions)
-                if np.any(hit):
-                    gaps.append((origins[hit], directions[hit], rows[hit]))
+        for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):
+            if not np.any(source_sky):
+                continue
+            sky_origins, sky_directions = origins[source_sky], directions[source_sky]
+            hit, _, rows = result.first_hits(sky_origins, sky_directions)
+            if not np.any(hit):
+                continue
+            remaining_sky = source_sky.copy()
+            remaining_sky[source_sky] = ~hit
+            closed = np.zeros_like(source_sky)
+            at = 0
+            for width, height, _, _ in views:
+                view = slice(at, at + width * height)
+                at += width * height
+                shape = (height, width)
+                closed[view] = _unshared_sky(source_sky[view].reshape(shape),
+                                             remaining_sky[view].reshape(shape)).ravel()
+            keep = closed[source_sky]
+            if np.any(keep):
+                gaps.append((sky_origins[keep], sky_directions[keep], rows[keep]))
         return gaps
 
     def reopened_gap_rows(self, positions, tris, gaps):
@@ -134,14 +148,19 @@ class LeakProbes:
         return len(holes), pins(self.positions, self.tris, holes, result_positions, result_tris, free)
 
 
-def view_holes(sky, source_sky, reach=REACH):
-    """One mask per connected hole in a view. Combine sky regions holding no source sky with sky pixels
-    whose chessboard distance from the nearest source sky pixel exceeds `reach`."""
+def _unshared_sky(sky, other_sky):
+    """Mask of connected sky regions with no pixels in the other sky mask."""
     label, regions = ndimage.label(sky, CONNECTED)
     isolated = np.ones(regions + 1, dtype=bool)
     isolated[0] = False
-    isolated[label[source_sky]] = False
-    holes = isolated[label]
+    isolated[label[other_sky]] = False
+    return isolated[label]
+
+
+def view_holes(sky, source_sky, reach=REACH):
+    """One mask per connected hole in a view. Combine sky regions holding no source sky with sky pixels
+    whose chessboard distance from the nearest source sky pixel exceeds `reach`."""
+    holes = _unshared_sky(sky, source_sky)
     if source_sky.any():
         distance = ndimage.distance_transform_cdt(~source_sky, metric="chessboard")
         holes |= sky & (distance > reach)

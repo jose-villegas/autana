@@ -11,9 +11,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
 
+    from scipy import ndimage
+
     from r3d.appearance_simplify import FitMesh
     from r3d.fit import seal
+    from r3d.leaks import CONNECTED
     from r3d.ray_query import RayQuery
+    from r3d.views import probes as probe_views
 except ImportError:
     np = None
 
@@ -268,6 +272,39 @@ class SnapBack(unittest.TestCase):
         self.assertGreater(closed_count, 0)
         self.assertEqual(reopened_count, 0, "snap reopened probe pixels the fit had covered")
 
+    def test_snap_restores_a_strip_that_trims_open_sky_beside_a_hole(self):
+        wall = self.start.points[:8].tolist()
+        tris = self.start.tris[:8].tolist()
+        left = HOLE_HALF - START_GAP
+        sheet = len(wall)
+        wall.extend((-SHEET_BEHIND, y, z) for y, z in (
+            (left, -SHEET_HALF), (SHEET_HALF, -SHEET_HALF), (SHEET_HALF, SHEET_HALF), (left, SHEET_HALF)))
+        tris.extend(((sheet, sheet + 1, sheet + 2), (sheet, sheet + 2, sheet + 3)))
+        start = mesh(wall, tris)
+        fitted = start._replace(points=start.points.copy())
+        fitted.points[[sheet, sheet + 3], 1] -= JOINED_GAP_GROWTH
+        fitted.points[[sheet + 1, sheet + 2], 1] -= PULLED_IN
+        # Offset the camera by half a pixel so the rays miss the wall's diagonal edges.
+        half_pixel = SHEET_HALF / probe_views.PROBE_FACE
+        pose = (WALL_HALF, 0, half_pixel, -1, 0, 0)
+        lens = SHEET_HALF / WALL_HALF
+        with mock.patch.object(probe_views, "region_poses", return_value=([pose], None)), \
+             mock.patch.object(probe_views, "FACE_LENS", lens):
+            probes = seal.start_probes(start, None, CAMERA)
+        fit_geometry = seal.geometry(fitted, None)
+        ([(width, height, _, _)], origins, directions), = probes._batches()
+        start_sky, = probes.source_sky
+        self.assertEqual(ndimage.label(start_sky.reshape(height, width), CONNECTED)[1], 1)
+        fit_hit = RayQuery(*fit_geometry).blocked(origins, directions)
+        self.assertTrue(np.any(start_sky & fit_hit))
+        self.assertTrue(np.any(start_sky & ~fit_hit))
+        self.assertTrue(probes.holes(*fit_geometry, reach=seal.SNAP_BACK_REACH))
+
+        sealed, _ = seal.snap_back(start, fitted, None, probes)
+
+        self.assertEqual(probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+        np.testing.assert_array_equal(sealed.points[sheet:], start.points[sheet:])
+
     def test_the_sheet_seen_through_an_unchanged_rim_moves_back(self):
         points = self.start.points.copy()
         sheet = points[:, 0] == -SHEET_BEHIND
@@ -283,12 +320,16 @@ class SnapBack(unittest.TestCase):
     def test_conflicting_coverage_leaves_holes_and_reports_the_count(self):
         points = self.start.points.copy()
         sheet = points[:, 0] == -SHEET_BEHIND
-        # Beyond the cameras, the sheet covers sky for probes looking away from the wall.
-        points[sheet, 0] = CAMERA[0][1][0] + SHEET_BEHIND
+        eye_x = CAMERA[0][1][0]
+        # The fit's sheet is just behind the camera and covers the entire face that looks away from the wall.
+        points[sheet, 0] = eye_x + SHEET_BEHIND
         fitted = self.start._replace(points=points)
+        poses = [(eye_x, 0, START_GAP, facing, 0, 0) for facing in (-1, 1)]
+        with mock.patch.object(probe_views, "region_poses", return_value=(poses, None)):
+            probes = seal.start_probes(self.start, None, CAMERA)
 
         with self.assertRaisesRegex(ValueError, r"still shows [1-9]\d* holes"):
-            seal.snap_back(self.start, fitted, None, self.probes)
+            seal.snap_back(self.start, fitted, None, probes)
 
     def test_sky_joined_to_a_start_opening_moves_the_points_back(self):
         start = self.start._replace(points=self.start.points.copy())
