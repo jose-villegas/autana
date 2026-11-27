@@ -98,21 +98,24 @@ class ObjectBudgetTests(unittest.TestCase):
 
 
     def test_no_new_cracks(self):
-        p, t, o = props()
-        p, t = p[:300], t[o == 0]
+        from r3d.meshopt import PERMISSIVE, REGULARIZE
+        from test_r3d_detail import sphere
+
+        p, t = sphere(rings=10)
         # Two source objects tile one closed surface; independent passes would open its seam.
         o = (p[t].mean(axis=1)[:, 0] > 0).astype(int)
+        budget = 3 * len(t) // 4
         pieces = []
         for label in (0, 1):
-            sp, _, st, _ = owner.simplify(p, np.full_like(p, 100), t[o == label],
-                                         o[o == label], 80, colour_deviation=1)
+            sp, _, st, _ = owner._run_pass(p, np.full_like(p, 100), t[o == label], o[o == label],
+                                          budget // 2, 1, REGULARIZE | PERMISSIVE)
             pieces.append(sp[st])
         independent = np.concatenate(pieces)
         independent_edges = np.sort(np.concatenate([independent[:, [0, 1]], independent[:, [1, 2]],
                                                     independent[:, [2, 0]]]), axis=1).reshape(-1, 6)
         _, independent_count = np.unique(independent_edges, axis=0, return_counts=True)
         self.assertTrue(np.any(independent_count == 1))
-        result = owner.simplify(p, np.full_like(p, 100), t, o, 160, allocation=owner.Allocation(tri_o=o), colour_deviation=1)
+        result = owner.simplify(p, np.full_like(p, 100), t, o, budget, allocation=owner.Allocation(tri_o=o), colour_deviation=1)
         sp, _, st, _ = result
         count = edge_counts(st)
         np.testing.assert_array_equal(count, np.full(len(count), 2))

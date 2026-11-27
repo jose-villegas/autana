@@ -78,6 +78,19 @@ class WriteBakedTests(unittest.TestCase):
         self.assertTrue((back.rgb == 100).all())
 
 
+    def test_a_fitted_variant_with_no_emitted_rest_raises_before_writing(self):
+        from r3d.import_settings import SettingsError
+
+        renderer = SimpleNamespace(fit=True, variant=SimpleNamespace(name="empty"), face_samples=None)
+        job = SimpleNamespace(renderer=renderer)
+        geometry = SimpleNamespace(positions=[], tris=[])
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            with self.assertRaisesRegex(SettingsError, r"fitted variant 'empty' has no rest mesh"):
+                mesh_import.write_baked(job, None, work, "empty", geometry)
+            self.assertEqual(list(work.iterdir()), [])
+
+
 @unittest.skipIf(parse_poses is None, "needs NumPy")
 class FittedVariantTests(unittest.TestCase):
     def test_the_multiples_of_the_held_out_step_are_held_out_but_time_zero_trains(self):

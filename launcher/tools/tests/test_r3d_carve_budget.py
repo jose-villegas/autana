@@ -103,7 +103,7 @@ class FitCeilingTests(unittest.TestCase):
         work = pathlib.Path(directory.name)
         recipe = NS(steps=1, batch=1, laplacian=0, normal_weight=0, surface_weight=0, surface_margin=0)
         blob, copies, geometry, job, scene = bundle_fixture(work, fit=recipe)
-        job.renderer.variant = NS(name='start', triangles=2, ceiling=ceiling)
+        job.renderer.variant = NS(name='start', triangles=len(copies) + len(geometry.tris), ceiling=ceiling)
         (work / 'start.bundle').write_bytes(blob)
         calls = []
         def fake_fit(command):

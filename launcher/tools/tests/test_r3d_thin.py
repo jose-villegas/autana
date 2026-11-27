@@ -108,19 +108,21 @@ class SelectionTests(unittest.TestCase):
 class HeldTests(unittest.TestCase):
     def test_held_pieces_pass_the_collapse_whole_and_the_rest_pays_the_budget(self):
         leaf_p, leaf_v = quads(100, z=5.0)
-        ball_p, ball_v = sphere(9)
+        from test_r3d_detail import sphere as wound_sphere
+
+        ball_p, ball_v = wound_sphere(rings=8)
         pos = np.concatenate([leaf_p, ball_p * 4])
         tris = np.concatenate([leaf_v, ball_v + len(leaf_p)])
         labels = np.repeat([0, 1], [len(leaf_v), len(ball_v)])
         rgb = np.full((len(pos), 3), 128.0)
-        budget = len(leaf_v) + 40
+        budget = len(leaf_v) + len(ball_v) // 2
         held = labels == 0
-        out = simplify(pos, rgb, tris, labels, budget, colour_deviation=1.0, allocation=Allocation(held=held))
+        out = simplify(pos, rgb, tris, labels, budget, colour_deviation=1.0, allocation=Allocation(tri_o=labels, object_names=("leaf", "ball"), held=held))
         p, _, t, m = out
         self.assertEqual(int((m == 0).sum()), len(leaf_v))
         np.testing.assert_allclose(np.sort(triangle_areas(p, t[m == 0])), np.full(len(leaf_v), QUAD * QUAD / 2))
         self.assertLess(int((m == 1).sum()), len(ball_v))
-        self.assertLessEqual(len(t), budget + 3)
+        self.assertLessEqual(len(t), budget)
 
 
 class BakeTests(unittest.TestCase):

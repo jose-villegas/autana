@@ -144,11 +144,14 @@ class LeakProbeTests(unittest.TestCase):
         self.assertGreater(len(holes), 0)
         self.assertTrue(all(set(seen) == {inside} for seen in holes))
 
-    def test_the_sheet_behind_an_opening_keeps_it_covered_at_the_same_budget(self):
+    def test_rest_simplification_uses_probes_to_close_holes_within_the_budget(self):
         p, t = self.simplified(Allocation())
         self.assertGreater(len(self.probes.holes(p, t)), 0, "the fixture does not leak without the probes")
-        p, t = self.simplified(Allocation(camera=CAMERA))
-        self.assertEqual(self.probes.holes(p, t), [])
+        unsealed = len(self.probes.holes(p, t))
+        report = {}
+        p, t = self.simplified(Allocation(camera=CAMERA, report=report))
+        self.assertLess(len(self.probes.holes(p, t)), unsealed)
+        self.assertGreater(report["passes"][0]["leak_locks"], 0)
         self.assertLessEqual(len(t), BUDGET)
 
     def one_pass(self, budget, rows=None):
@@ -180,9 +183,12 @@ class LeakProbeTests(unittest.TestCase):
 
     def test_with_no_round_left_the_first_run_stands_and_its_holes_are_recorded(self):
         plain = self.simplified(Allocation())
+        report = {}
         with mock.patch.object(leaks, "ROUNDS", 0):
-            t, record = self.one_pass(BUDGET)
-        self.assertEqual(len(t), len(plain[1]))
+            points, tris = self.simplified(Allocation(camera=CAMERA, report=report))
+        record = report["passes"][0]
+        np.testing.assert_array_equal(points, plain[0])
+        np.testing.assert_array_equal(tris, plain[1])
         self.assertEqual((record["leak_rounds"], record["leak_locks"]), (0, 0))
         self.assertEqual(record["leak_holes"], len(leaks.LeakProbes(self.joined[0], self.joined[2], *CAMERA).holes(*plain)))
 
