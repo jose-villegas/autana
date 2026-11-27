@@ -157,7 +157,7 @@ scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool t
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
     /* Keep the live slot until the replacement has all its buffers. */
-    scene_skinned_renderer_t* next = memory_alloc(sizeof *next, MEMORY_PSRAM);
+    scene_skinned_renderer_t* next = scene_allocate(sizeof *next, MEMORY_PSRAM);
     if (next == NULL) {
         return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
