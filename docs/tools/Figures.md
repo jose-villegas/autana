@@ -12,7 +12,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 |---|---|---|---|
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
-| [input](#input) | 13 | 0 | 0 |
+| [input](#input) | 15 | 0 | 0 |
 | [kinematics](#kinematics) | 8 | 4 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 49 | 0 | 0 |
@@ -80,6 +80,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
+| <a href="../images/input/button-timeline.png"><img src="../images/input/button-timeline.png" width="160" alt=""></a> | BOOT raw and debounced levels during a scripted tap and hold | [input/Buttons](../input/Buttons.md) | not declared yet |
 | <a href="../images/input/gravity-bias.gif"><img src="figure-thumbnails/input/gravity-bias.gif" width="160" alt=""></a> | The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-motion.gif"><img src="figure-thumbnails/input/gravity-motion.gif" width="160" alt=""></a> | The pitched device rolls while carried sideways; the plots show acceleration magnitude deviation from 1 g and the acceleration angle from the estimate and the estimate angle from true down | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-reader.gif"><img src="figure-thumbnails/input/gravity-reader.gif" width="160" alt=""></a> | The device tilts and rolls, then holds its pose in free fall; the plots show in-plane strength and acceleration magnitude with their direction and free-fall thresholds | [input/Gravity](../input/Gravity.md) | not declared yet |
@@ -93,6 +94,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/input/shake-level.png"><img src="../images/input/shake-level.png" width="160" alt=""></a> | Deliberate shake level from smoothed linear acceleration | [input/Shake](../input/Shake.md) | not declared yet |
 | <a href="../images/input/shake-motion.gif"><img src="figure-thumbnails/input/shake-motion.gif" width="160" alt=""></a> | The cased device posed from the capture's gravity, its acceleration beside it, while the smoothed size and the level follow | [input/Shake](../input/Shake.md) | not declared yet |
 | <a href="../images/input/shake-trace.png"><img src="../images/input/shake-trace.png" width="160" alt=""></a> | Size, smoothed size and level against START and FULL while walking, shaking gently and shaking hard | [input/Shake](../input/Shake.md) | not declared yet |
+| <a href="../images/input/touch-trace.png"><img src="../images/input/touch-trace.png" width="160" alt=""></a> | Touch sample positions and the timeline of a scripted tap and home swipe | [input/Touch](../input/Touch.md) | not declared yet |
 
 ## kinematics
 

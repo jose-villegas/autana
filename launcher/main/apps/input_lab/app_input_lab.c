@@ -437,8 +437,7 @@ draw_hud(void) {
         draw_offsets();
     }
     if (panel_max_x >= 0) {
-        if (snprintf(line, sizeof line, "PANEL X %d-%d Y %d-%d", panel_min_x, panel_max_x, panel_min_y, panel_max_y)
-            < 0) {
+        if (snprintf(line, sizeof line, "X %d-%d Y %d-%d", panel_min_x, panel_max_x, panel_min_y, panel_max_y) < 0) {
             line[0] = '\0';
         }
         hud_line(3, line);
