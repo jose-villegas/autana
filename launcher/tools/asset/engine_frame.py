@@ -37,7 +37,32 @@ def _mirror_box(box):
     return (*low[:Z_AXIS], high[Z_AXIS], *high[:Z_AXIS], low[Z_AXIS])
 
 
-def _mirror_matrix(matrix, column_signs):
+def _mirror_probes(entry):
+    """Flip an SHPR grid along the mirrored axes: records and inside bits move, and the L1 rows of those axes change
+    sign. The standard library only, as the firmware build packs with it."""
+    version, flags, origin, spacing, scale, dims, mask_at = sh.layout(entry)
+    signs = (1, *(AXIS_SIGNS[axis] for axis in sh.L1_AXES))
+    row_signs = tuple(signs[coefficient] for coefficient in range(sh.COEFFICIENTS) for _ in range(sh.CHANNELS))
+    records = bytearray()
+    inside = bytearray(len(entry) - mask_at)
+    for target, at in enumerate((x, y, z) for z in range(dims[2]) for y in range(dims[1]) for x in range(dims[0])):
+        x, y, z = (value if sign > 0 else count - 1 - value for value, count, sign in zip(at, dims, AXIS_SIGNS))
+        source = (z * dims[1] + y) * dims[0] + x
+        values = sh.RECORD.unpack_from(entry, sh.HEADER.size + source * sh.RECORD.size)
+        if any(value == INT16_MIN and sign < 0 for value, sign in zip(values, row_signs)):
+            raise ValueError("mirrored SH coefficient does not fit int16")
+        records += sh.RECORD.pack(*(value * sign for value, sign in zip(values, row_signs)))
+        if inside and entry[mask_at + source // sh.MASK_BITS_PER_BYTE] >> (source % sh.MASK_BITS_PER_BYTE) & 1:
+            inside[target // sh.MASK_BITS_PER_BYTE] |= 1 << (target % sh.MASK_BITS_PER_BYTE)
+    origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
+                   for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
+    return sh.HEADER.pack(version, flags, *origin, *spacing, scale, *dims) + bytes(records) + bytes(inside)
+
+
+def mirror_matrix(matrix, column_signs=AXIS_SIGNS):
+    """Conjugate a flat or row-shaped affine matrix across the source and engine axes."""
+    if hasattr(matrix, "shape") and matrix.ndim == 2:
+        return matrix * tuple((sign,) for sign in AXIS_SIGNS) * column_signs
     width = len(column_signs)
     return tuple(value * AXIS_SIGNS[row] * column_signs[column]
                  for row in range(AXIS_COUNT)
@@ -58,7 +83,7 @@ def _mirror_batches(entry, out, header):
     count = dict(zip(parts, header[1:1 + len(parts)]))
     offset = dict(zip(parts, header[1 + len(parts):]))
     for part, mirror in (("chunks", lambda centre_x, centre_y, centre_z, reach:
-                          (*_mirror_point(centre_x, centre_y, centre_z), reach)),
+                          (*mirror_point((centre_x, centre_y, centre_z)), reach)),
                          ("places", lambda x, y, z, colour_set: (*_mirror_position((x, y, z)), colour_set)),
                          ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest))):
         row = scene_asset.ROWS[parts.index(part)]
@@ -67,7 +92,8 @@ def _mirror_batches(entry, out, header):
             row.pack_into(out, at, *mirror(*row.unpack_from(entry, at)))
 
 
-def _mirror_point(*point):
+def mirror_point(point):
+    """Mirror a point between the source and engine axes."""
     return tuple(value * sign for value, sign in zip(point, AXIS_SIGNS))
 
 
@@ -90,22 +116,7 @@ def to_engine(kind, entry):
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
     elif kind == sh.TYPE:
-        import numpy as np  # here, not at the top: bake.py list and check run where only the standard library is
-
-        origin, spacing, dims, scale, coefficients, inside = sh.decode(entry)
-        slices = tuple(slice(None, None, sign) for sign in reversed(AXIS_SIGNS))
-        shape = tuple(reversed(dims))
-        quantized = np.rint(coefficients / scale).astype('<i2').reshape(
-            *shape, sh.COEFFICIENTS, sh.CHANNELS)[slices].copy()
-        signs = (1, *(AXIS_SIGNS[axis] for axis in sh.L1_AXES))
-        quantized *= np.asarray(signs, dtype=np.int16)[:, None]
-        origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
-                       for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
-        version, flags, *_ = sh.HEADER.unpack_from(entry)
-        header = sh.HEADER.pack(version, flags, *origin, *spacing, scale, *dims)
-        mask = (np.packbits(inside.reshape(shape)[slices].ravel(), bitorder='little').tobytes()
-                if flags & sh.SH_PROBES_FLAG_INSIDE_MASK else b'')
-        return header + quantized.tobytes() + mask
+        return _mirror_probes(entry)
     elif kind == lod_asset.TYPE:
         pairs, groups = lod_asset.decode(entry)
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size
@@ -125,7 +136,7 @@ def to_engine(kind, entry):
             at = transforms_at + index * scene_asset.TRANSFORM.size
             values = scene_asset.TRANSFORM.unpack_from(entry, at)
             matrix_width = AXIS_COUNT * AXIS_COUNT
-            matrix = _mirror_matrix(values[:matrix_width], AXIS_SIGNS)
+            matrix = mirror_matrix(values[:matrix_width], AXIS_SIGNS)
             position = [value * sign for value, sign in zip(values[matrix_width:], AXIS_SIGNS)]
             scene_asset.TRANSFORM.pack_into(out, at, *matrix, *position)
         _mirror_batches(entry, out, header)
@@ -141,7 +152,7 @@ def to_engine(kind, entry):
         matrix_at, vertices_at = skin_asset.HEADER.unpack_from(entry)[4:6]
         for index, matrix in enumerate(matrices):
             skin_asset.MATRIX.pack_into(out, matrix_at + index * skin_asset.MATRIX.size,
-                                       *_mirror_matrix(matrix, AFFINE_SIGNS))
+                                       *mirror_matrix(matrix, AFFINE_SIGNS))
         record_size = influences * 2 + skin_asset.NORMAL.size
         for index, (_, _, normal) in enumerate(vertices):
             skin_asset.NORMAL.pack_into(out, vertices_at + index * record_size + influences * 2,

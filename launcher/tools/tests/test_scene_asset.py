@@ -20,6 +20,7 @@ from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
+from r3d.batch.copy_batches import f32  # noqa: E402
 from build.name_hash import NONE as HASH_NONE, name_hash  # noqa: E402
 from test_engine_frame import mesh_entry, write_mesh  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
@@ -37,10 +38,6 @@ def lens(path=None, extra=""):
     flight = f'path = {{ animation = "{path}", node = "camera" }}\n' if path else ""
     return ('[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.5\n'
             + extra + flight)
-
-
-def single(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 class SceneFiles(unittest.TestCase):
@@ -121,10 +118,10 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="mesh", skin="mesh.skin", skeleton="armature"))
         self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
         self.assertEqual(decoded["clips"], ["move"])
-        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL, mode=scene_asset.LIGHT_MODES.index(scene_asset.LIGHT_MODE_REALTIME),
+        self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL, mode=scene_asset.LIGHT_MODE_BYTES["realtime"],
                          color=[0.25, 0.5, 0.75], intensity=2.5))
-        self.assertEqual(decoded["settings"], dict(ambient_color=[single(v) for v in (0.4, 0.5, 0.6)],
-                         ambient_intensity=single(0.2), tonemap_white=single(0.3)))
+        self.assertEqual(decoded["settings"], dict(ambient_color=[f32(v) for v in (0.4, 0.5, 0.6)],
+                         ambient_intensity=f32(0.2), tonemap_white=f32(0.3)))
         with self.assertRaisesRegex(SettingsError, "takes no bake"):
             load_scene(self.scene(objects.replace('mesh = "rig.import.toml"', 'mesh = "rig.import.toml"\nbake = false')))
         for value in ("default_clip = \"missing\"", "wrap = \"unknown\""):
@@ -184,7 +181,7 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(scene["entities"][0]["position"], [1.0, 2.0, 3.0])
         self.assertEqual([e["position"] for e in scene["entities"][1:]], [[0.0, 0.0, 0.0]] * 2)
         self.assertEqual(scene["renderers"], [{"entity": 0, "mesh": "a", "colour_set": scene_asset.COLOUR_SET_OWN}, {"entity": 1, "mesh": "b", "colour_set": scene_asset.COLOUR_SET_OWN}])
-        self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": single(0.6), "near_z": 1.5,
+        self.assertEqual(scene["cameras"], [{"entity": 2, "half_fov_short_tan": f32(0.6), "near_z": 1.5,
                                              "clear_rgb": 0x336699}])
 
     def test_authored_colour_set_is_encoded_and_checks_its_range(self):
@@ -216,7 +213,7 @@ class SceneEntryTests(SceneFiles):
                        + lens())
             entry = self.entry(objects, HEAD)
             decoded = scene_asset.decode(entry)
-            self.assertEqual(decoded["lights"][0]["mode"], scene_asset.LIGHT_MODES.index(mode))
+            self.assertEqual(decoded["lights"][0]["mode"], scene_asset.LIGHT_MODE_BYTES[mode])
             self.assertEqual(scene_asset.LIGHT.size, 20)
 
     def test_a_light_is_an_entity_with_its_authored_values(self):
@@ -347,7 +344,7 @@ class SceneEntryRefusalTests(unittest.TestCase):
     def test_every_authored_refusal(self):
         original = authored_entry()
         offsets = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS):]
-        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", len(scene_asset.LIGHT_MODES)),
+        cases = [("lights", 2, "B", 0), ("lights", 2, "B", 2), ("lights", 2, "B", 255), ("lights", 3, "B", max(scene_asset.LIGHT_MODE_BYTES.values()) + 1),
                  ("animators", 4, "<I", 2), ("animators", 4, "<I", (1 << 32) - 1), ("animators", 8, "<H", 1),
                  ("animators", 10, "B", 2), ("animators", 10, "B", 255), ("animators", 11, "B", 1),
                  ("skinned_renderers", 2, "<H", 1), ("cameras", 2, "<H", 1)]

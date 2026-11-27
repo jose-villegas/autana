@@ -42,7 +42,9 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 
+import board_serial  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 
 # autana runs this and asks the device, never launcher/main, so the size comes from the vendor
@@ -190,18 +192,25 @@ def turn_png(png: bytes, quarter: int) -> bytes:
             raise ValueError("expected unfiltered PNG rows")
         rows.append(raw[start + 1:start + 1 + stride])
 
+    rows = turn_rgb_rows(rows, width, height, quarter)
+    out_width, out_height = (height, width) if quarter % 2 else (width, height)
+    return encode_png(out_width, out_height, rows)
+
+
+def turn_rgb_rows(rows, width, height, quarter=DEFAULT_TURN_QUARTER):
+    """RGB rows turned clockwise, shared by screenshots and panel video."""
+    quarter %= 4
     if quarter == 1:
         rows = [b"".join(rows[height - 1 - x][y * 3:y * 3 + 3] for x in range(height))
                 for y in range(width)]
     elif quarter == 2:
         rows = [b"".join(row[x * 3:x * 3 + 3] for x in range(width - 1, -1, -1))
                 for row in reversed(rows)]
-    else:
+    elif quarter == 3:
         rows = [b"".join(rows[x][(width - 1 - y) * 3:(width - y) * 3] for x in range(height))
                 for y in range(width)]
 
-    out_width, out_height = (height, width) if quarter % 2 else (width, height)
-    return encode_png(out_width, out_height, rows)
+    return rows
 
 
 def read_screenshot(port, timeout, on_status=None):
@@ -240,7 +249,7 @@ def read_screenshot(port, timeout, on_status=None):
     last_trigger_sent = time.monotonic()
 
     while time.monotonic() < deadline:
-        chunk = port.read(4096)
+        chunk = board_serial.read_ready(port)
         if chunk:
             buffer += chunk.decode("utf-8", errors="replace")
 

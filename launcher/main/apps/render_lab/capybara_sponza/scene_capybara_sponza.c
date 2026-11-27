@@ -14,7 +14,6 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include "esp_log.h"
 
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
@@ -235,7 +234,7 @@ apply_settings(void) {
 #endif
 }
 
-/* Sponza with its fitted full bake alone, its camera held still for the run to place. */
+/* Sponza with its bake, its camera held still for the run to place. */
 static bool
 load_sponza(void) {
     const scene_baked_t* family = &baked_sponza;
@@ -243,7 +242,7 @@ load_sponza(void) {
     if (handle_is_none(sponza)) {
         return false;
     }
-    if (!scene_baked_show(sponza, family, SCENE_BAKED_FITTED_FULL, failure, sizeof failure)) {
+    if (handle_is_none(scene_baked_find(sponza, family, failure, sizeof failure))) {
         return false;
     }
     camera = entity_find(sponza, name_hash(family->camera));
@@ -270,7 +269,8 @@ load_capybara(runner_t* runner) {
         fail("no capybara subject");
         return false;
     }
-    scene_set_contact_blob(runner->entity, RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT);
+    const scene_contact_t contact = {RUN_FLOOR_Y, SCENE_CONTACT_BLOB_STRENGTH_DEFAULT, SCENE_CONTACT_BLOB, false};
+    scene_set_contact(runner->entity, &contact);
     scene_set_probes(runner->root, scene_probes(sponza));
     runner->applied = (gait_pick_t){-1, 1.0F};
     return true;

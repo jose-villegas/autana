@@ -369,9 +369,10 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     TEST_ASSERT_NOT_NULL(prev_grid);
     prev_grid_valid = false;
 
-    sand_t sim;
-    sand_init(&sim, grid, CM_GRID_W, CM_GRID_H, 0xC0107000U);
-    scene->build(&sim);
+    sand_t* const sim = malloc(sizeof *sim);
+    TEST_ASSERT_NOT_NULL(sim);
+    sand_init(sim, grid, CM_GRID_W, CM_GRID_H, 0xC0107000U);
+    scene->build(sim);
 
     const bool indexed = mode != CM_MODE_FULL;
     gfx_indexed_repaint_kind_t kind = GFX_INDEXED_REPAINT_RAW;
@@ -391,7 +392,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     int64_t cells_marked_total = 0;
 
     for (int i = 0; i < CM_MEASURED_FRAMES; i++) {
-        measure_mode_frame(&sim, grid, i, scene, indexed, kind, class_table, cell_table, &draw_total, &present_total,
+        measure_mode_frame(sim, grid, i, scene, indexed, kind, class_table, cell_table, &draw_total, &present_total,
                            &cells_marked_total);
     }
 
@@ -406,6 +407,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     free(grid);
     memory_free(prev_grid);
     prev_grid = NULL;
+    free(sim);
 }
 
 static const char* const mode_names[] = {"FULL", "256", "16"};

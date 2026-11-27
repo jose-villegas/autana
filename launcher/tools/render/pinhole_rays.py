@@ -21,7 +21,6 @@ shown
 import argparse
 import pathlib
 import sys
-import tempfile
 
 import numpy as np
 from scipy import ndimage
@@ -31,13 +30,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import track_host
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import finest_triangles, read_lit_mesh
-from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, read_poses, sample_camera_rows
-from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
+from r3d.poses import camera_basis, camera_rays, either_way, flight_camera, parse_poses, sample_camera_rows
+from r3d.ray_query import RayQuery
 from render.check_avi import read_video
 from render.render_compare import expand_565
 
-SCALAR_VARIANT = 'scalar_rgb'
-LLVM_VARIANT = 'llvm_ad_rgb'
 VIDEO_SCALE = 2
 PIXEL_SAMPLES = 1
 PROJECTION_SAMPLES = 400
@@ -48,43 +45,43 @@ FRONT_DEPTH_TOLERANCE = 0.15
 FIT_RENDER_SCALE = 2
 
 
-def mesh_query(path, variant):
+class FrontMesh:
+    """A mesh with face planes ready for culling from a pinhole camera."""
+
+    def __init__(self, positions, triangles, double):
+        self.positions, self.triangles, self.double = positions, triangles, double
+        a, b, c = (positions[triangles[:, corner]] for corner in range(3))
+        self.anchors = a
+        self.normals = np.cross(b - a, c - a)
+
+
+def mesh_query(path):
     mesh = read_lit_mesh(path)
     positions, _, triangles, double, _ = finest_triangles(mesh)
     positions = positions / float(mesh.position_scale)
-    a, b, c = (positions[triangles[:, corner]] for corner in range(3))
-    return RayQuery(positions, triangles, variant=variant), np.cross(b - a, c - a), double.astype(bool)
+    return FrontMesh(positions, triangles, double.astype(bool))
 
 
-def pose_rays(width, height, lens, near, pose):
-    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], PIXEL_SAMPLES)
+def pose_rays(width, height, lens, near, pose, samples=PIXEL_SAMPLES):
+    origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
     forward = camera_basis(pose[3:])[2]
     origins += directions * (near / (directions @ forward))[:, None]
     return origins, directions
 
 
-def front_hits(query, normals, double, origins, directions):
-    """First drawable triangle and near-plane distance; back faces are transparent."""
+def front_hits(mesh, eye, origins, directions):
+    """Original triangle IDs and near-plane distances to the first drawable faces."""
     triangles = np.full(len(origins), -1, dtype=np.int64)
     depths = np.full(len(origins), np.inf)
-    start = origins.copy()
-    alive = np.arange(len(origins))
-    for _ in range(MAX_HITS):
-        if not len(alive):
-            break
-        hit, distance, tri = query.first_hits(start[alive], directions[alive])
-        alive, distance, tri = alive[hit], distance[hit], tri[hit]
-        points = start[alive] + directions[alive] * distance[:, None]
-        front = double[tri] | ((normals[tri] * directions[alive]).sum(axis=1) < 0)
-        accepted = alive[front]
-        triangles[accepted] = tri[front]
-        depths[accepted] = ((points[front] - origins[accepted]) * directions[accepted]).sum(axis=1)
-        alive, points = alive[~front], points[~front]
-        step = np.maximum(STEP, STEP_RELATIVE * np.abs(points).max(axis=1, initial=0.0))
-        start[alive] = points + directions[alive] * step[:, None]
-    else:
-        if len(alive):
-            raise RuntimeError(f'{len(alive)} rays exceed the {MAX_HITS}-intersection limit')
+    if not len(origins):
+        return triangles, depths
+    # A culled face must stay out of the intersection tree because it can share a depth with a drawable face.
+    kept = np.flatnonzero(mesh.double | (np.einsum('ij,ij->i', mesh.normals, eye - mesh.anchors) > 0))
+    if len(kept):
+        query = RayQuery(mesh.positions, mesh.triangles[kept])
+        hit, distance, tri = query.first_hits(origins, directions)
+        triangles[hit] = kept[tri[hit]]
+        depths[hit] = distance[hit]
     return triangles, depths
 
 
@@ -124,7 +121,7 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
                   if not mask[yy, xx]]
         neighbourhoods.append(pixels)
     wanted = np.unique(np.concatenate([holes, sample, *[np.asarray(n, dtype=int) for n in neighbourhoods]]))
-    triangles, distances = front_hits(*drawn, origins[wanted], directions[wanted])
+    triangles, distances = front_hits(drawn, pose[:3], origins[wanted], directions[wanted])
     ids = np.full(width * height, -1, dtype=int)
     depths = np.full(width * height, np.inf)
     ids[wanted], depths[wanted] = triangles, distances
@@ -137,18 +134,26 @@ def diagnose_frame(frame, sky, pose, lens, near, drawn, against, frame_index):
         values = depths[pixels]
         values = values[np.isfinite(values)]
         neighbours.append(float(np.median(values)) if len(values) else np.inf)
-    for name, query in against:
-        _, other_depths = front_hits(*query, origins[holes], directions[holes])
+    for name, mesh in against:
+        _, other_depths = front_hits(mesh, pose[:3], origins[holes], directions[holes])
         counts = classify_against(other_depths, neighbours)
         print(f'  {name}: ' + '; '.join(f'{key} {value}' for key, value in counts.items()))
+
+
+def flythrough_poses(camera, dt_ms, size, frames):
+    """(width, height, lens, near, poses) of a `--quarter 1` video's first `frames` frames at render `size`:
+    frame i is drawn at (i + 1) * dt_ms, so it takes poses[i + 1]."""
+    return parse_poses(track_host.poses(camera.path.animation, camera.path.node, dt_ms, *size,
+                                        camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt_ms,
+                                        number_format='.9g'))
 
 
 def rays(args, scene):
     camera = flight_camera(scene)
     rgb = camera.background
     sky = expand_565((rgb >> 16, (rgb >> 8) & 0xff, rgb & 0xff))
-    drawn = mesh_query(args.mesh, SCALAR_VARIANT)
-    against = [(str(path), mesh_query(path, SCALAR_VARIANT)) for path in args.against]
+    drawn = mesh_query(args.mesh)
+    against = [(str(path), mesh_query(path)) for path in args.against]
     wanted = None if args.frames is None else set(args.frames)
     found = set()
     for index, video_frame in enumerate(read_video(args.video)[1]):
@@ -160,13 +165,7 @@ def rays(args, scene):
         if wanted is None and not enclosed_sky(frame, sky)[1].any():
             continue
         height, width = frame.shape[:2]
-        text = track_host.poses(camera.path.animation, camera.path.node, args.dt, width, height,
-                                camera.half_fov_short_tan, camera.near_z,
-                                until_ms=(index + 2) * args.dt, number_format='.9g')
-        with tempfile.TemporaryDirectory(prefix='pinhole_poses_') as work:
-            path = pathlib.Path(work) / 'poses.txt'
-            path.write_text(text)
-            _, _, lens, near, poses = read_poses(path)
+        _, _, lens, near, poses = flythrough_poses(camera, args.dt, (width, height), index + 1)
         if len(poses) <= index + 1:
             raise ValueError(f'camera path has no pose for frame {index}')
         diagnose_frame(frame, sky, poses[index + 1], lens, near, drawn, against, index)
@@ -189,13 +188,13 @@ def grid_rays(width, height, lens, near, pose, grid):
     return origins, directions
 
 
-def count_shown(path, coverage, grid, variant=LLVM_VARIANT):
+def count_shown(path, coverage, grid):
     width, height, lens, near, poses = coverage
-    query, normals, double = mesh_query(path, variant)
-    seen = np.zeros(len(normals), bool)
+    mesh = mesh_query(path)
+    seen = np.zeros(len(mesh.triangles), bool)
     for pose in poses:
         origins, directions = grid_rays(width, height, lens, near, pose, grid)
-        triangles, _ = front_hits(query, normals, double, origins, directions)
+        triangles, _ = front_hits(mesh, pose[:3], origins, directions)
         seen[triangles[triangles >= 0]] = True
     return int(seen.sum()), len(seen)
 

@@ -6,13 +6,10 @@ from types import SimpleNamespace
 import numpy as np
 
 from r3d.import_settings import LIGHT_MODE_BAKED, load_light
-from r3d import ray_query
 from r3d.geometry import corner_normals
 from r3d.light import LIGHT_GAMMA
 from r3d.ray_query import RayQuery
-
-# Every ray query the tests make, in the bake too, traces one ray at a time: no LLVM needed.
-ray_query.VARIANT = "scalar_rgb"
+from tests import r3d_env  # noqa: F401  (keeps Windows LLVM loaded until exit)
 
 
 class Soup:
@@ -50,11 +47,35 @@ def rays(soup):
     return RayQuery(soup.vertices, soup.faces)
 
 
+class Open:
+    """Ray queries without a mesh, on `ray_query.VARIANT`: nothing blocks."""
+
+    def __init__(self):
+        from r3d import mitsuba_reference, ray_query
+
+        self.mi = mitsuba_reference.import_mitsuba()
+        self.mi.set_variant(ray_query.VARIANT)
+
+    def device_blocked(self, ray, active=True):
+        import drjit as dr
+
+        return dr.zeros(self.mi.Bool, dr.width(ray.d))
+
+
 def sun(direction=(0, 1, 0), color=(1, 1, 1), intensity=1):
     light = load_light(dict(type="directional", mode=LIGHT_MODE_BAKED, color=list(color), intensity=intensity),
                        [0, 0, 0], "test light")
     light["direction"] = direction
     return light
+
+
+def lamp(position, range_, cone=None, rotation=(0, 0, 0), color=(1, 1, 1), intensity=1):
+    """A baked point light, or with `cone` (inner, outer degrees) a spot shining down -Y turned by `rotation`."""
+    fields = dict(type="point" if cone is None else "spot", mode=LIGHT_MODE_BAKED, color=list(color),
+                  intensity=intensity, range=range_)
+    if cone is not None:
+        fields.update(inner_angle=cone[0], outer_angle=cone[1])
+    return load_light(fields, list(rotation), "test light", position)
 
 
 # The bounce scene: a large floor facing +y at y = 0 and a large wall at x = 0 facing it, lit by a sun on the wall's

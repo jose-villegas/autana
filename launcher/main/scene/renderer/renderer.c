@@ -26,6 +26,13 @@ renderer_of(entity_t entity, scene_t** scene) {
     return *scene == NULL ? -1 : scene_renderer_index(*scene, row);
 }
 
+scene_contact_t
+scene_contact_get(entity_t renderer) {
+    scene_t* scene;
+    const int i = renderer_of(renderer, &scene);
+    return i < 0 ? (scene_contact_t){0} : scene->renderers[i].contact;
+}
+
 const char*
 renderer_mesh_id(entity_t entity) {
     scene_t* scene;
@@ -185,6 +192,13 @@ copy_texels(renderer_texturing_t* block) {
     return true;
 }
 
+/* The UV asset beside renderer `i`'s pack mesh, the one its textures open from. */
+static asset_status_t
+open_uvs(const scene_t* scene, int i, asset_view_t* uvs) {
+    return r3d_lit_mesh_open_sibling(scene->pack, scene->asset.renderers[i].mesh, R3D_TEXTURE_UVS_NAME_SUFFIX,
+                                     R3D_TEXTURE_UVS_ASSET, false, uvs);
+}
+
 /* The textures another renderer of `scene` opened for renderer `i`'s pack mesh, or NULL. */
 static renderer_texturing_t*
 shared_texturing(const scene_t* scene, int i) {
@@ -212,8 +226,7 @@ open_texturing(scene_t* scene, int i, scene_failure_t* why) {
         return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
     }
     asset_view_t uvs;
-    asset_status_t status = r3d_lit_mesh_open_sibling(scene->pack, mesh_id, R3D_TEXTURE_UVS_NAME_SUFFIX,
-                                                      R3D_TEXTURE_UVS_ASSET, false, &uvs);
+    asset_status_t status = open_uvs(scene, i, &uvs);
     if (status != ASSET_OK || uvs.data == NULL) {
         return scene_report(why, SCENE_ERR_ASSET, status == ASSET_OK ? ASSET_ERR_NOT_FOUND : status, mesh_id);
     }
@@ -260,6 +273,20 @@ renderer_set_textured(entity_t entity, bool on, scene_failure_t* why) {
     r->mesh.texturing = on && r->mesh.face_colors == NULL ? &block->texturing : NULL;
     r->changed = true;
     return scene_report(why, SCENE_OK, ASSET_OK, mesh_id);
+}
+
+bool
+renderer_has_textures(entity_t entity) {
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
+    if (i < 0 || i >= scene->asset.renderer_count) {
+        return false;
+    }
+    if (scene->renderers[i].texturing != NULL) {
+        return true;
+    }
+    asset_view_t uvs;
+    return open_uvs(scene, i, &uvs) == ASSET_OK && uvs.data != NULL;
 }
 
 /* Whether `r`'s opened textures cut. */

@@ -9,19 +9,57 @@ same way:
 
 ```mermaid
 flowchart LR
-    Sun["sun: one shadow ray"] --> Sum
+    Sun["sun, point, spot: one shadow ray each"] --> Sum
     Sky["sky: share of fixed rays that escape"] --> Sum
     Ambient["ambient light"] --> AO1["times f"] --> Sum
     Bounce["bounced light: R paths, up to K bounces"] --> AO2["times f, when ao.indirect"] --> Sum
     Sum["sum the light"] --> Albedo["times the albedo"] --> Tone["tone map"] --> Encode["gamma 2.2, 8 bits"]
 ```
 
-The sun is a point source, so it casts hard shadows. The sky, occlusion and
+The sun, point and spot lights are point sources, so they cast hard shadows. The sky, occlusion and
 bounce rays each take the first $R$ of one fixed list of directions, $R$ their
 own setting, laid out in each point's tangent frame. The list is
 cosine-weighted, so it is even on the disc seen from above, for any $R$.
 
 ![The first 8, 32 and 128 fixed directions seen from above](../../images/render/bake-directions.png)
+
+A bake keeps this frame fixed, so equal surroundings give equal light. A
+reference render turns each point's frame about its normal by its own angle,
+hashed from the point's coordinates<sup>[[142]](../../Citations.md#steele-2014)</sup>.
+With one fixed frame, neighbouring pixels on a flat surface trace the same rays
+and share one error, which shows as straight-edged light and dark patches. Turned
+frames leave grain instead, which the fit recipe's
+[`denoise`](../scene/Scene-Files.md#fitposes) removes.
+
+## Point and spot lights
+
+A [point or spot light](../scene/Scene-Files.md#light) sits at its object's
+position $p$. A baked point casts one shadow ray from its ray origin $o$ toward
+the light; only a hit nearer than the light, at distance $`d = \lVert p - o \rVert`$,
+shadows it. With $`\hat l = (p - o)/d`$, colour $c$, intensity $I$ and range $r$:
+
+```math
+E = c\,I\,\max(0,\ \hat n\cdot\hat l)\,V\,
+\frac{\mathrm{clamp}\bigl(1-(d/r)^4\bigr)^2}{\max(d,\ \varepsilon)^2}\,S
+```
+
+| Term | Meaning |
+|---|---|
+| $V$ | 1 if the shadow ray reaches the light, else 0 |
+| the window | Karis's range window<sup>[[148]](../../Citations.md#karis-2013)</sup>: most of the range keeps its light, which reaches 0 smoothly at $r$ |
+| $\varepsilon$ | the bake's `ray_offset`, a floor on the distance; Karis adds 1 to $d^2$ instead, which depends on the scene's unit |
+| $S$ | 1 for a point light; for a spot, the cone below |
+
+A spot with axis $`\hat a`$ and half-angles $`\theta_i < \theta_o`$ takes glTF's
+smooth cone edge<sup>[[147]](../../Citations.md#khr-lights-punctual)</sup>:
+
+```math
+S = \mathrm{clamp}\!\left(\frac{-\hat a\cdot\hat l - \cos\theta_o}{\cos\theta_i - \cos\theta_o}\right)^{2}
+```
+
+$E$ is in the sun's unit: leaving out the window, the cone and $\varepsilon$, a
+point light of intensity $I$ at distance $d$ lights like a sun of intensity
+$I/d^2$. A point past the range, outside the cone or facing away traces no ray.
 
 ## Local-occlusion implementation
 
@@ -53,7 +91,15 @@ the same vertex or face colours as direct light. The renderer reads one colour,
 so frame cost and mesh size do not change; only the bake takes longer.
 
 The bake exports the full-detail source mesh, its textures at full resolution,
-and the scene's sun and sky to Mitsuba<sup>[[15]](../../Citations.md#mitsuba3)</sup> once.
+and the scene's baked sun, point, spot and sky lights to Mitsuba<sup>[[15]](../../Citations.md#mitsuba3)</sup> once.
+A point or spot light becomes Mitsuba's own point or spot emitter of the same
+intensity. Mitsuba's lights differ from the direct term in two places; only
+the bounced light uses them:
+
+| Where | Direct light | Mitsuba's light |
+|---|---|---|
+| past `range` | 0 | still inverse square |
+| a spot's edge, between the two angles | the squared ramp in cosine above | a linear ramp in angle |
 
 Each ray from a point is a path<sup>[[16]](../../Citations.md#kajiya-1986)</sup>: Mitsuba
 follows it for up to $K$ bounces, with a shadow ray toward the lights at every
@@ -76,11 +122,14 @@ $K$ where the next bounce is negligible beside the direct light.
 
 The paths' noise falls as $1/\sqrt{R}$.
 
+Only static meshes are baked. A skinned mesh takes its sky and bounce light
+at run time from baked probes ([Light Probes](../frame/Light-Probes.md)).
+
 ![The light each of three bounces adds along the floor, and the relative error against the ray count](../../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |
 |---|---|
-| Same first directions per point, fixed path seed | The same tree and the same partition of points give the same bytes |
+| Same first directions per point in a bake, a hashed turn per point in a reference; fixed path seed | The same tree and the same partition of points give the same bytes |
 | One gather for the vertex copies a crease splits | Bounced light changes slowly; copies that differ only in it would stop merging |
 | A double-sided surface is lit on both sides and keeps the brighter | A card in the sun takes its sunlit side, a curtain in shade its open side |
 | A ray reaching a one-sided triangle from behind finds no light | Light does not pass through shells |
@@ -102,11 +151,9 @@ alpha below `keep_alpha`; the importer's triangle drop applies to drawn geometry
 How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,
 shadows and tone map, at the device render size and supersampled, for the
-poses of the scene's camera path. A host render of any variant, smooth, lite
-or flat, is scored against it. Flat and full beside their fitted variants at
-two poses, each with its ΔE heatmap on one colour scale:
-
-![Reference, flat, flat fitted, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-sheet.png)
+poses of the scene's camera path. A host render of any bake is scored against
+it. The fit's start beside the fitted bake at two poses, each with its ΔE
+heatmap on one colour scale:
 
 ![Reference, full, fitted full, and each bake's error heatmap on one scale](../../images/render/bake-fidelity-full-sheet.png)
 

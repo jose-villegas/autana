@@ -3,22 +3,23 @@
 
 #include "apps/render_lab/capybara_content.h"
 #include "apps/render_lab/capybara_sponza/capybara_run.h"
+#include "apps/render_lab/tests/scene_suite.h"
 #include "scene/scene.h"
 #include "testkit/cleanup.h"
 
-static entity_t loaded;
+static scene_suite_t loaded;
 
 static void
 release_fixture(void) {
-    scene_release(loaded);
+    scene_suite_release(&loaded);
 }
 
 static void
 test_capybara_gallop_ground_speed_follows_instance_scale(void) {
-    loaded = scene_load(CAPYBARA_SCENE);
+    loaded = scene_suite_load(CAPYBARA_SCENE);
     suite_set_test_cleanup(release_fixture);
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(loaded));
-    const entity_t runner = entity_find(loaded, name_hash(CAPYBARA_SUBJECT));
+    TEST_ASSERT_FALSE(handle_is_none(loaded.scene));
+    const entity_t runner = entity_find(loaded.scene, name_hash(CAPYBARA_SUBJECT));
     const float gallop_mps = capybara_run_gallop_mps(runner);
     TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, gallop_mps);
     const float half_scale = 0.5F;

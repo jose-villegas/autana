@@ -9,6 +9,7 @@
 #include "math/linear/vec3f.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/texture/r3d_texture.h"
+#include "scene/scene.h"
 
 typedef enum {
     STRESS_SHAPE_PLANE,    /* primitive_plane(): a square facing the camera */
@@ -77,10 +78,13 @@ typedef struct {
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
     const char* camera;
-    int perf_poses;    /* poses the stress perf suite replays along the swing */
+    int perf_poses;    /* poses the stress perf suite replays; a held camera repeats its pose */
     bool record;       /* the stress perf suite runs the frame recorder over it: its stage too */
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
-    bool skip_hidden;  /* its camera skips clusters behind drawn depth, as a baked family's may */
+    scene_contact_shape_t contact_shape;
+    bool contact_warp;
+    bool hold_camera; /* a fixed pose in the scene and every perf sample */
+    bool skip_hidden; /* its camera skips clusters behind drawn depth, as a baked family's may */
     stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
 
@@ -113,6 +117,10 @@ typedef struct {
     X(FOLIAGE_FAR, "foliage-far", MASKED)                                                                              \
     X(FOLIAGE_FAR_OPAQUE, "foliage-far-opaque", TEXTURED)                                                              \
     X(SKINNED_SH_BLOBS, "skinned-sh-blobs", SKINNED_SH_BLOBS)                                                          \
+    X(SKINNED_FEET_BLOBS, "skinned-feet-blobs", SKINNED_SH_BLOBS)                                                      \
+    X(SKINNED_SILHOUETTE_WARPED, "skinned-silhouette-warped", SKINNED_SH_BLOBS)                                        \
+    X(SKINNED_SILHOUETTE_BLOBS, "skinned-silhouette-blobs", SKINNED_SH_BLOBS)                                          \
+    X(SKINNED_BLOB_WARPED, "skinned-blob-warped", SKINNED_SH_BLOBS)                                                    \
     X(CONTACT_BLOBS, "contact-blobs", CONTACT_BLOBS)                                                                   \
     X(BUTTERFLIES, "butterflies", HINGED)                                                                              \
     X(FEW_BUTTERFLIES, "few-butterflies", HINGED)                                                                      \
@@ -123,7 +131,8 @@ typedef struct {
     X(SMALL_DITHER, "small-dither", NOISY)                                                                             \
     X(SMALL_OFF, "small-off", BANDED)                                                                                  \
     X(STACK_SKIP, "stack-skip", BANDED)                                                                                \
-    X(CARVED_BLEND, "carved-blend", CARVED)
+    X(CARVED_BLEND, "carved-blend", CARVED)                                                                            \
+    X(SETTLE, "settle", TEXTURED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -182,7 +191,7 @@ typedef struct {
  * the unit shape coloured as its surface says, and for a per-frame preset
  * pushed out along its normal by the wave. False when the shape cannot be
  * made. Equal arguments give equal bytes. */
-bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
+bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_mesh_source_t* out);
 
 /* Where perf pose `pose` sits along a camera clip of `duration_ms`: pose i of
  * perf_poses is i / perf_poses of the way, the poses the perf suite replays. */

@@ -1,0 +1,58 @@
+"""render_lab.orbit_zoom sets where an orbiting camera starts, within the scene's zoom.
+
+    python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_orbit_zoom.py
+
+Builds the host renderer once and draws the capybara scene's first frame at
+several orbit_zoom values, reading where its camera stands from --poses. The
+camera moves along one line from the subject, so the step from 100 to 200
+is twice the step from 50 to 100 and the camera keeps its turn; zooms past
+the scene's farthest stop at one distance.
+"""
+import csv
+import math
+import pathlib
+import sys
+import unittest
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import host_render  # noqa: E402
+
+SCENE = "capybara"
+FITS = 100  # LAB_ORBIT_ZOOM_UNIT: the distance that fits the subject
+HALF = FITS // 2
+DOUBLE = 2 * FITS
+# Two zooms past the scene's farthest, the second orbit_zoom's top (LAB_ORBIT_ZOOM_MAX).
+FAR = 3 * FITS
+FARTHEST_SET = 4 * FITS
+PLACES = 4  # the poses file's floats agree to this many decimals
+
+
+class OrbitZoom(host_render.BuiltRenderer):
+    prefix = "orbit_zoom_"
+
+    def pose(self, zoom):
+        """The camera's position and rotation in the first frame at that orbit_zoom."""
+        poses = self.out / f"zoom-{zoom}.csv"
+        self.render("--quarter", "0", "--no-hud", "--scene", SCENE, "--frames", "1",
+                    "--set", f"render_lab.orbit_zoom={zoom}", "--poses", str(poses), "-o", str(self.out / f"zoom-{zoom}.bmp"))
+        with poses.open(newline="") as rows:
+            row = next(csv.DictReader(rows))
+        return ([float(row[k]) for k in ("px", "py", "pz")], [float(row[k]) for k in ("qx", "qy", "qz", "qw")])
+
+    def test_the_camera_moves_along_one_line_in_proportion(self):
+        (half, half_turn), (fits, fits_turn), (double, double_turn) = (self.pose(z) for z in (HALF, FITS, DOUBLE))
+        self.assertAlmostEqual(math.dist(fits, double), 2 * math.dist(half, fits), places=PLACES)
+        self.assertAlmostEqual(math.dist(half, double), 3 * math.dist(half, fits), places=PLACES)
+        for turn in (half_turn, double_turn):
+            for got, want in zip(turn, fits_turn):
+                self.assertAlmostEqual(got, want, places=PLACES)
+
+    def test_zooms_past_the_scene_s_farthest_stop_at_one_distance(self):
+        far, _ = self.pose(FAR)
+        farthest_set, _ = self.pose(FARTHEST_SET)
+        self.assertAlmostEqual(math.dist(far, farthest_set), 0.0, places=PLACES)
+
+
+if __name__ == "__main__":
+    unittest.main()

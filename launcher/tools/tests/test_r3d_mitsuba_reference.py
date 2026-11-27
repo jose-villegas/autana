@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 try:
     import numpy as np
-    from tests.soup import sun
+    from tests.soup import lamp, sun
     from tests import soup
     from PIL import Image
 
@@ -27,12 +27,12 @@ except ImportError:
     np = None
 
 from tests import r3d_env  # noqa: E402
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 LOOK_DOWN = None if np is None else np.array([0.0, 0.0, 3.0, 0.0, 0.0, -1.0])
 LOOK_UP = None if np is None else np.array([0.0, 0.0, -3.0, 0.0, 0.0, 1.0])
 CORRIDOR_POSE = None if np is None else np.array([0.0, 0.0, 0.5, 1.0, 0.0, 0.0001])
-VARIANT = "scalar_rgb"
+VARIANT = "llvm_ad_rgb"
 NEAR = 0.01
 
 
@@ -72,7 +72,7 @@ def bake_trace(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, do
     """The bake reference's linear image and coverage of a fixture."""
     settings = SimpleNamespace(double_sided=set(double), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001, ao=None))
-    return trace(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)[:2]
+    return trace(source, job, SimpleNamespace(lights=lights, bake=None), pose, width, height, lens, 4)[:2]
 
 
 def bake_render(source, lights, **view):
@@ -99,7 +99,7 @@ def corridor_trace(path, spp, seed, depth=12):
     return path.trace(CORRIDOR_POSE, 8, 8, 0.3, NEAR, spp, seed, depth)[0]
 
 
-@needs_mitsuba
+@needs_llvm
 class MitsubaDirectParityTest(unittest.TestCase):
     def test_a_shadowed_plane_matches_the_bake_reference_pixel_for_pixel(self):
         # An occluder card above a ground plane, and a sun tilted so its shadow falls inside the view.
@@ -137,7 +137,7 @@ class MitsubaDirectParityTest(unittest.TestCase):
         self.assertEqual(coverage[4, 4], 1.0)
 
 
-@needs_mitsuba
+@needs_llvm
 class MitsubaMaterialTest(unittest.TestCase):
     @staticmethod
     def blocks():
@@ -225,7 +225,7 @@ class MitsubaMaterialTest(unittest.TestCase):
             self.assertGreater(b_covered.min(), 0.0)
 
 
-@needs_mitsuba
+@needs_llvm
 class MitsubaTransportTest(unittest.TestCase):
     def test_a_plane_under_a_constant_sky_returns_albedo_times_radiance_at_any_depth(self):
         for albedo in (1.0, 0.5):
@@ -267,7 +267,7 @@ class MitsubaTransportTest(unittest.TestCase):
         self.assertGreater(values[0], 3.0 * values[1])
 
 
-@needs_mitsuba
+@needs_llvm
 class MitsubaEmitterTest(unittest.TestCase):
     def test_an_ambient_light_has_no_path_traced_meaning_unless_it_is_black(self):
         mi = mitsuba_reference.import_mitsuba()
@@ -288,6 +288,17 @@ class MitsubaEmitterTest(unittest.TestCase):
         found = mitsuba_reference.emitters(mi, [dict(sun([0.0, 0.0, 1.0]), intensity=2.0)])["light_0"]
         self.assertEqual(found["direction"], [-0.0, -0.0, -1.0])
         self.assertAlmostEqual(found["irradiance"]["value"][0], 2.0 * np.pi)
+
+    def test_the_bake_and_the_path_tracer_light_a_plane_alike_from_a_point_and_a_spot(self):
+        # Inside the range window's flat part and the cone's full part, where the two backends' lights are the same.
+        point = lamp([0.0, 0.0, 1.0], 100.0, intensity=0.5)
+        spot = lamp([0.0, 0.0, 1.0], 100.0, cone=(55.0, 65.0), rotation=(90, 0, 0), intensity=0.5)  # shines down -z
+        for light_ in (point, spot):
+            with self.subTest(light_["type"]):
+                view = dict(width=8, height=8, lens=0.3)
+                a = bake_render(make_source([quad(0.0, 8.0)]), [light_], **view)
+                b = mitsuba(make_source([quad(0.0, 8.0)]), [light_], spp=256, **view)[0]
+                np.testing.assert_allclose(b, a, rtol=0.05)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

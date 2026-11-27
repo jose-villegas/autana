@@ -19,13 +19,18 @@ import os
 import copy
 import shutil
 
+RUNTIME_HEAP_FIXTURE = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+
+
+def patch_runtime_heap(test):
+    """read_runtime_heap answers the fixture capture for the rest of `test`."""
+    test.enterContext(patch.object(memory, 'read_runtime_heap',
+                                   return_value=memory.parse_runtime_heap(RUNTIME_HEAP_FIXTURE.read_text())))
+
 
 class MemoryMapTests(unittest.TestCase):
     def setUp(self):
-        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        patch_runtime_heap(self)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -278,7 +283,7 @@ class MemoryMapTests(unittest.TestCase):
         inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 2), 0x40380006: ("foo$part$0", 2)})
         self.assertEqual(self.check(sites, inputs)[0][1], 8)
 
-    def fragment_build(self, mappings, batch=False):
+    def fragment_build(self, mappings, batch=False, listed=False):
         fragment = self.root / "linker fragment.lf"
         fragment.write_text(json.dumps(mappings), encoding="utf-8")
         package = self.root / "tools/ldgen/ldgen"
@@ -289,7 +294,11 @@ class MemoryMapTests(unittest.TestCase):
         (self.root / "Kconfig").write_text("fixture kconfig")
         (self.root / "sdkconfig").write_text("fixture config")
         (self.root / "config.env").write_text(json.dumps({"LDGEN_FIXTURE": "loaded"}))
-        command = (f'python "{package.parent / "ldgen.py"}" --fragments-list "{fragment}" '
+        fragments = f'--fragments-list "{fragment}"'
+        if listed:
+            (self.root / "ldgen_fragments").write_text(f"{fragment}\n", encoding="utf-8")
+            fragments = f'--fragments-list-file "{self.root / "ldgen_fragments"}"'
+        command = (f'python "{package.parent / "ldgen.py"}" {fragments} '
                    f'--config "{self.root / "sdkconfig"}" --kconfig "{self.root / "Kconfig"}" --env-file "{self.root / "config.env"}"')
         if batch:
             (self.root / "ldgen.bat").write_text(command)
@@ -301,9 +310,9 @@ class MemoryMapTests(unittest.TestCase):
     def test_ldgen_fragment_entries(self):
         mappings = [["libidf.a", [["foo", "foo", "noflash"], ["foo", "foo", "noflash_text"],
                                  ["all", None, "noflash"], ["ignored", "ignored", "default"], ["bar", "bar", "iram"]]]]
-        for batch in (False, True):
-            with self.subTest(batch=batch), patch.object(memory, "idf_python", return_value=sys.executable):
-                entries = memory.iram_entries(self.fragment_build(mappings, batch))
+        for batch, listed in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(batch=batch, listed=listed), patch.object(memory, "idf_python", return_value=sys.executable):
+                entries = memory.iram_entries(self.fragment_build(mappings, batch, listed))
                 self.assertEqual(entries, [["libidf.a", "bar.*", "bar"], ["libidf.a", "foo.*", "foo"]])
                 inputs = [memory.Input("libidf.a", "foo.c.obj", "foo$part$12", 4, output=".flash.text")]
                 with self.assertRaisesRegex(ValueError, r"ldgen: libidf.a:foo.\*:foo:.*map the whole object.*cannot name clones"):
@@ -1060,10 +1069,7 @@ print(m.render(builds))
 
 class GateRegressions(unittest.TestCase):
     def setUp(self):
-        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
-        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        patch_runtime_heap(self)
 
     def test_compile_source_spellings(self):
         for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):

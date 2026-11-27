@@ -5,6 +5,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -556,6 +557,7 @@ static const int TRIANGLES_PER_QUAD = 2;
 typedef struct {
     r3d_quad_t quad[SCENE_QUADS];
     r3d_instance_t instance[SCENE_QUADS];
+    render_view_t view;
     render_context_t context;
     render_context_t straight; /* a second context, for a run the observer never touches */
 } scene_t;
@@ -605,6 +607,7 @@ scene_open(void) {
     TEST_ASSERT_NOT_NULL(s);
     scene_now = s;
     suite_set_test_cleanup(scene_release);
+    s->view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
     /* Flat fates, so a culled cluster's pixels carry its colour to count. */
     const tune_entry_t* paint = tune_find(tune_shared(), TUNE_NAME(cullview, paint));
     TEST_ASSERT_NOT_NULL(paint);
@@ -625,8 +628,7 @@ scene_open(void) {
 
 static void
 context_draw(scene_t* s, render_context_t* context) {
-    const render_view_t view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
-    TEST_ASSERT_TRUE(render_context_draw(context, s->instance, SCENE_QUADS, &view, 0));
+    TEST_ASSERT_TRUE(render_context_draw(context, s->instance, SCENE_QUADS, &s->view, 0));
 }
 
 static void
@@ -724,21 +726,28 @@ assert_vertices_of_kept_clusters_only(const raster_cull_frame_t* frame) {
 
 static void
 test_cull_view_frame_counts_the_vertices_of_kept_clusters_only(void) {
+    struct {
+        raster_cull_frame_t camera_only;
+        raster_cull_frame_t from_top;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
     scene_t* s = scene_open();
     int16_t positions[SCENE_QUADS][PADDED_VERTICES_MAX][3];
     pad_scene_vertices(s, positions);
     scene_draw(s);
-    raster_cull_frame_t camera_only;
-    raster_cull_frame(scene_state(s), &camera_only);
+
+    raster_cull_frame(scene_state(s), &work->camera_only);
     TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_CULLED, scene_state(s)->fate[SCENE_SIDE]);
-    assert_vertices_of_kept_clusters_only(&camera_only);
+    assert_vertices_of_kept_clusters_only(&work->camera_only);
 
     /* From the top the culled cluster is drawn too, yet the count is the camera's. */
     set_cull_from(RASTER_CULL_FROM_TOP);
     scene_draw(s);
-    raster_cull_frame_t from_top;
-    raster_cull_frame(scene_state(s), &from_top);
-    assert_vertices_of_kept_clusters_only(&from_top);
+
+    raster_cull_frame(scene_state(s), &work->from_top);
+    assert_vertices_of_kept_clusters_only(&work->from_top);
+    free(work);
 }
 
 static void
@@ -1178,6 +1187,17 @@ test_observer_at_a_spectator_pose_draws_that_spectator(void) {
     }
 }
 
+static void
+test_checkpoint_prepare_refuses_a_short_context_block(void) {
+    scene_t* s = scene_open();
+    checkpoint_t held = {0};
+    checkpoint_capture(&held, &s->context, offsetof(render_context_t, observing) - 1);
+    TEST_ASSERT_FALSE(held.failed);
+    const bool prepared = render_context_checkpoint_prepare(&held, &s->context);
+    checkpoint_clear(&held);
+    TEST_ASSERT_FALSE(prepared);
+}
+
 /* A checkpoint holds no observer, and restoring one keeps the observer set
  * since: it is the person's input, not the frame's state. Taken shaded: the
  * cull view's own state outgrows a device's largest PSRAM block. */
@@ -1362,6 +1382,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_cull_view_has_room_for_the_levels_drawn_not_every_level);
     RUN_TEST(test_observer_off_draws_every_view_as_a_straight_run);
     RUN_TEST(test_observer_at_a_spectator_pose_draws_that_spectator);
+    RUN_TEST(test_checkpoint_prepare_refuses_a_short_context_block);
     RUN_TEST(test_a_checkpoint_neither_holds_nor_restores_the_observer);
     RUN_TEST(test_a_generated_frame_reports_no_observer_pose);
 #ifndef DEVICE_BUILD

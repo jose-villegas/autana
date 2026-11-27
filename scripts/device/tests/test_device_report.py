@@ -380,24 +380,46 @@ class CountBudgetRowsTests(unittest.TestCase):
         self.assertEqual(device_report.count_budget_rows(markdown), 0)
 
 
-class DiscoverReportersTests(unittest.TestCase):
-    def make_app(self, root, app, suite_file, registered_suite):
-        app_dir = Path(root) / "launcher" / "main" / "apps" / app
-        (app_dir / "tools").mkdir(parents=True)
-        (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-        (app_dir / "tests").mkdir()
-        (app_dir / "tests" / suite_file).write_text(f"SUITE_REGISTER({registered_suite});\n")
+def make_app(root, app, suite_file, registered_suite):
+    """An app under `root` with a stub reporter and `suite_file` registering `registered_suite`."""
+    app_dir = Path(root) / "launcher" / "main" / "apps" / app
+    (app_dir / "tools").mkdir(parents=True)
+    (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
+    (app_dir / "tests").mkdir()
+    (app_dir / "tests" / suite_file).write_text(f"SUITE_REGISTER({registered_suite});\n")
 
+
+def reporter_writing(table):
+    """A run_reporter stand-in that writes `table` and exits 0."""
+    def run_reporter(reporter_path, capture_path, source_path, out_path, python_exe=None):
+        Path(out_path).write_text(table, encoding="utf-8")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+    return run_reporter
+
+
+def sand_budget_section(capture_text, **reporter):
+    """build_budget_section's text for the sand perf suite over a capture of `capture_text`, with
+    run_reporter patched as `reporter` says (side_effect= or return_value=)."""
+    with tempfile.TemporaryDirectory() as directory:
+        make_app(directory, "sand", "suite_sand_perf.c", "run_sand_perf_suite")
+        capture = Path(directory) / "capture.log"
+        capture.write_text(capture_text)
+        with mock.patch.object(device_report, "run_reporter", **reporter):
+            return "\n".join(device_report.build_budget_section(
+                directory, "run_sand_perf_suite", capture, capture_text))
+
+
+class DiscoverReportersTests(unittest.TestCase):
     def test_zero_candidates_when_no_app_registers_the_suite(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_app(directory, "sand", "suite_sand_perf.c", "run_sand_perf_suite")
+            make_app(directory, "sand", "suite_sand_perf.c", "run_sand_perf_suite")
             matches = device_report.discover_reporters(directory, "run_cube_perf_suite")
             self.assertEqual(matches, [])
 
     def test_one_candidate_when_exactly_one_app_registers_the_suite(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_app(directory, "sand", "suite_sand_perf.c", "run_sand_perf_suite")
-            self.make_app(directory, "cube", "suite_cube_perf.c", "run_cube_perf_suite")
+            make_app(directory, "sand", "suite_sand_perf.c", "run_sand_perf_suite")
+            make_app(directory, "cube", "suite_cube_perf.c", "run_cube_perf_suite")
             matches = device_report.discover_reporters(directory, "run_sand_perf_suite")
             self.assertEqual(len(matches), 1)
             self.assertEqual(matches[0]["app"], "sand")
@@ -405,8 +427,8 @@ class DiscoverReportersTests(unittest.TestCase):
 
     def test_several_candidates_when_more_than_one_app_registers_the_same_suite(self):
         with tempfile.TemporaryDirectory() as directory:
-            self.make_app(directory, "sand", "suite_sand_perf.c", "run_shared_suite")
-            self.make_app(directory, "cube", "suite_cube_perf.c", "run_shared_suite")
+            make_app(directory, "sand", "suite_sand_perf.c", "run_shared_suite")
+            make_app(directory, "cube", "suite_cube_perf.c", "run_shared_suite")
             matches = device_report.discover_reporters(directory, "run_shared_suite")
             self.assertEqual(sorted(m["app"] for m in matches), ["cube", "sand"])
 
@@ -442,11 +464,7 @@ class BuildBudgetSectionTests(unittest.TestCase):
     def test_ambiguous_reporters_state_both_app_names(self):
         with tempfile.TemporaryDirectory() as directory:
             for app in ("sand", "cube"):
-                app_dir = Path(directory) / "launcher" / "main" / "apps" / app
-                (app_dir / "tools").mkdir(parents=True)
-                (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-                (app_dir / "tests").mkdir()
-                (app_dir / "tests" / f"suite_{app}.c").write_text("SUITE_REGISTER(run_shared_suite);\n")
+                make_app(directory, app, f"suite_{app}.c", "run_shared_suite")
             section = "\n".join(device_report.build_budget_section(
                 directory, "run_shared_suite", Path(directory) / "capture.log", ""))
         self.assertIn("ambiguous", section)
@@ -454,62 +472,25 @@ class BuildBudgetSectionTests(unittest.TestCase):
         self.assertIn("sand", section)
 
     def test_a_reporter_that_raises_is_reported_as_unavailable_not_fatal(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
-            (app_dir / "tools").mkdir(parents=True)
-            (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "tests").mkdir()
-            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
-            capture = Path(directory) / "capture.log"
-            capture.write_text(SAND_CAPTURE)
-            with mock.patch.object(device_report, "run_reporter",
-                                   side_effect=RuntimeError("boom")):
-                section = "\n".join(device_report.build_budget_section(
-                    directory, "run_sand_perf_suite", capture, SAND_CAPTURE))
+        section = sand_budget_section(SAND_CAPTURE, side_effect=RuntimeError("boom"))
         self.assertIn("unavailable", section)
         self.assertIn("boom", section)
 
     def test_a_reporter_exiting_nonzero_is_reported_as_unavailable(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
-            (app_dir / "tools").mkdir(parents=True)
-            (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "tests").mkdir()
-            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
-            capture = Path(directory) / "capture.log"
-            capture.write_text(SAND_CAPTURE)
-            fake_result = mock.Mock(returncode=1, stdout="", stderr="source not found\n")
-            with mock.patch.object(device_report, "run_reporter", return_value=fake_result):
-                section = "\n".join(device_report.build_budget_section(
-                    directory, "run_sand_perf_suite", capture, SAND_CAPTURE))
+        fake_result = mock.Mock(returncode=1, stdout="", stderr="source not found\n")
+        section = sand_budget_section(SAND_CAPTURE, return_value=fake_result)
         self.assertIn("unavailable", section)
         self.assertIn("source not found", section)
 
     def test_a_table_with_rows_is_embedded_with_no_warning(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
-            (app_dir / "tools").mkdir(parents=True)
-            (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "tests").mkdir()
-            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
-            capture = Path(directory) / "capture.log"
-            capture.write_text(SAND_CAPTURE)
-            table = "\n".join([
-                device_report.BUDGET_TABLE_HEADER,
-                "|---|---:|---:|---:|---|",
-                "| `test_a_full_size_step_fits_in_the_frame_budget` | 5800 | 7184 | "
-                "-23.9% | **FAIL** |",
-                "",
-            ])
-
-            def fake_run_reporter(reporter_path, capture_path, source_path, out_path,
-                                  python_exe=None):
-                Path(out_path).write_text(table, encoding="utf-8")
-                return mock.Mock(returncode=0, stdout="", stderr="")
-
-            with mock.patch.object(device_report, "run_reporter", side_effect=fake_run_reporter):
-                section = "\n".join(device_report.build_budget_section(
-                    directory, "run_sand_perf_suite", capture, SAND_CAPTURE))
+        table = "\n".join([
+            device_report.BUDGET_TABLE_HEADER,
+            "|---|---:|---:|---:|---|",
+            "| `test_a_full_size_step_fits_in_the_frame_budget` | 5800 | 7184 | "
+            "-23.9% | **FAIL** |",
+            "",
+        ])
+        section = sand_budget_section(SAND_CAPTURE, side_effect=reporter_writing(table))
         self.assertIn("test_a_full_size_step_fits_in_the_frame_budget", section)
         self.assertNotIn("WARNING", section)
 
@@ -517,53 +498,20 @@ class BuildBudgetSectionTests(unittest.TestCase):
         """The incoming perf_guard/perf_target change makes report_performance.py
         find zero TEST_ASSERT_LESS_THAN_MESSAGE budgets, an empty table that must
         read as 'the reporter is out of step', not as 'nothing was measured'."""
-        with tempfile.TemporaryDirectory() as directory:
-            app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
-            (app_dir / "tools").mkdir(parents=True)
-            (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "tests").mkdir()
-            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
-            capture = Path(directory) / "capture.log"
-            capture.write_text(PERF_TARGET_CAPTURE)
-            empty_table = "\n".join([
-                "# Device Performance Report", "",
-                device_report.BUDGET_TABLE_HEADER,
-                "|---|---:|---:|---:|---|",
-                "",
-            ])
-
-            def fake_run_reporter(reporter_path, capture_path, source_path, out_path,
-                                  python_exe=None):
-                Path(out_path).write_text(empty_table, encoding="utf-8")
-                return mock.Mock(returncode=0, stdout="", stderr="")
-
-            with mock.patch.object(device_report, "run_reporter", side_effect=fake_run_reporter):
-                section = "\n".join(device_report.build_budget_section(
-                    directory, "run_sand_perf_suite", capture, PERF_TARGET_CAPTURE))
+        empty_table = "\n".join([
+            "# Device Performance Report", "",
+            device_report.BUDGET_TABLE_HEADER,
+            "|---|---:|---:|---:|---|",
+            "",
+        ])
+        section = sand_budget_section(PERF_TARGET_CAPTURE, side_effect=reporter_writing(empty_table))
         self.assertIn("WARNING", section)
         self.assertIn("zero rows", section)
 
     def test_a_zero_row_table_against_a_non_perf_capture_prints_no_warning(self):
-        with tempfile.TemporaryDirectory() as directory:
-            app_dir = Path(directory) / "launcher" / "main" / "apps" / "sand"
-            (app_dir / "tools").mkdir(parents=True)
-            (app_dir / "tools" / "report_performance.py").write_text("# stub\n")
-            (app_dir / "tests").mkdir()
-            (app_dir / "tests" / "suite_sand_perf.c").write_text("SUITE_REGISTER(run_sand_perf_suite);\n")
-            capture = Path(directory) / "capture.log"
-            plain = ":1:test_one:PASS\n"
-            capture.write_text(plain)
-            empty_table = "\n".join([device_report.BUDGET_TABLE_HEADER,
-                                     "|---|---:|---:|---:|---|", ""])
-
-            def fake_run_reporter(reporter_path, capture_path, source_path, out_path,
-                                  python_exe=None):
-                Path(out_path).write_text(empty_table, encoding="utf-8")
-                return mock.Mock(returncode=0, stdout="", stderr="")
-
-            with mock.patch.object(device_report, "run_reporter", side_effect=fake_run_reporter):
-                section = "\n".join(device_report.build_budget_section(
-                    directory, "run_sand_perf_suite", capture, plain))
+        empty_table = "\n".join([device_report.BUDGET_TABLE_HEADER,
+                                 "|---|---:|---:|---:|---|", ""])
+        section = sand_budget_section(":1:test_one:PASS\n", side_effect=reporter_writing(empty_table))
         self.assertNotIn("WARNING", section)
 
 

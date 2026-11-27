@@ -6,6 +6,8 @@ import sys
 import time
 import wave
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'scripts/lib'))
+import board_serial
 from build.c_header import read_define
 from audio.sound_asset import PCM_BYTES, CHANNELS
 HEADER = Path(__file__).resolve().parents[2] / 'main/sound/console/console_mic_parse.h'
@@ -21,7 +23,6 @@ OUT_HEADER = Path(__file__).resolve().parents[2] / 'main/audio/audio_out.h'
 NYQUIST_HZ = read_define(OUT_HEADER, 'AUDIO_OUT_SAMPLE_RATE_HZ') // 2
 VOLUME_MAX = read_define(OUT_HEADER, 'AUDIO_OUT_VOLUME_MAX_PCT')
 TRANSFER_TIMEOUT_S = 120
-SERIAL_READ_BYTES = 4096
 
 class MicFrame:
     def __init__(self):
@@ -82,7 +83,7 @@ def read_mic(port, ms, settle=None, timeout=TRANSFER_TIMEOUT_S, at=()):
     pending = b''
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        pending += port.read(SERIAL_READ_BYTES)
+        pending += board_serial.read_ready(port)
         while b'\n' in pending:
             line, pending = pending.split(b'\n', 1)
             result = frame.feed(line.decode('ascii', errors='replace').rstrip('\r'))

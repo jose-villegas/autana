@@ -7,7 +7,9 @@ import unittest
 import wave
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'device'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / 'scripts/device/tests'))
 import mic
+from fake_serial import FakeConnection
 
 class FrameTests(unittest.TestCase):
     def test_chunked_serial_and_wav(self):
@@ -15,16 +17,11 @@ class FrameTests(unittest.TestCase):
         state = dict(rate=22050, samples=2, automute=[[0, 1]], regs={'0x14': 0})
         payload = (mic.BEGIN + json.dumps(dict(rate=22050, samples=2)) + '\nlog line\n' +
                    mic.DATA + base64.b64encode(pcm).decode() + '\n' + mic.STATE + json.dumps(state) + '\n' + mic.END + '\n').encode()
-        class Port:
-            def reset_input_buffer(self): pass
-            def write(self, data): self.command = data
-            def read(self, count):
-                nonlocal payload
-                out, payload = payload[:7], payload[7:]
-                return out
-        port = Port()
+        chunk_bytes = 7
+        port = FakeConnection(payload[offset:offset + chunk_bytes]
+                              for offset in range(0, len(payload), chunk_bytes))
         self.assertEqual(mic.read_mic(port, 1, 0), (pcm, state))
-        self.assertEqual(port.command, b'mic record 1 0\n')
+        self.assertEqual(port.writes, [b'mic record 1 0\n'])
         with tempfile.TemporaryDirectory() as directory:
             out = mic.write_take(Path(directory) / 'take.wav', pcm, state)
             with wave.open(str(out)) as wav:
@@ -42,35 +39,33 @@ if __name__ == '__main__': unittest.main()
 
 class WriteTests(unittest.TestCase):
     def test_scheduled_write_wire_and_bounds(self):
-        from unittest.mock import Mock
-        port = Mock()
-        port.read.return_value = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
-                                  mic.STATE + '{"rate":22050,"samples":1,"writes":[[0,50,40]]}\n' + mic.END + '\n').encode()
+        payload = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
+                   mic.STATE + '{"rate":22050,"samples":1,"writes":[[0,50,40]]}\n' + mic.END + '\n').encode()
+        port = FakeConnection([payload])
         _, state = mic.read_mic(port, 1000, at=[(0, 0x32, 40), (900, 0x32, 0)])
-        port.write.assert_called_once_with(b'mic record 1000 at 0 50 40 at 900 50 0\n')
+        self.assertEqual(port.writes, [b'mic record 1000 at 0 50 40 at 900 50 0\n'])
         self.assertEqual(state['writes'], [[0, 50, 40]])
-        port.reset_mock()
+        port = FakeConnection([payload])
         mic.read_mic(port, 1000, 500, at=[(-500, 0x32, 40)])
-        port.write.assert_called_once_with(b'mic record 1000 500 at -500 50 40\n')
+        self.assertEqual(port.writes, [b'mic record 1000 500 at -500 50 40\n'])
         with self.assertRaises(ValueError):
             mic.read_mic(port, 1000, 500, at=[(-501, 0x32, 40)])
-        port.reset_mock()
+        port = FakeConnection([payload])
         mic.read_mic(port, 1000, at=[(-mic.DEFAULT_SETTLE_MS, 0x32, 40)])
-        port.write.assert_called_once_with(f'mic record 1000 at {-mic.DEFAULT_SETTLE_MS} 50 40\n'.encode())
+        self.assertEqual(port.writes, [f'mic record 1000 at {-mic.DEFAULT_SETTLE_MS} 50 40\n'.encode()])
         for writes in ([(1000, 0, 0)], [(1001, 0, 0)], [(0, 256, 0)], [(0, 0, 256)], [(0, 0, 0)] * (mic.WRITES_MAX + 1)):
             with self.assertRaises(ValueError):
                 mic.read_mic(port, 1000, at=writes)
 
     def test_scheduled_tone_wire_and_bounds(self):
-        from unittest.mock import Mock
-        port = Mock()
-        port.read.return_value = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
-                                  mic.STATE + '{"rate":22050,"samples":1}\n' + mic.END + '\n').encode()
+        payload = (mic.BEGIN + '{"rate":22050,"samples":1}\n' + mic.DATA + 'AAA=\n' +
+                   mic.STATE + '{"rate":22050,"samples":1}\n' + mic.END + '\n').encode()
+        port = FakeConnection([payload])
         mic.read_mic(port, 4000, at=[(400, 'tone', 40, 80, 100), (750, 'tone', 202, 60, 60), (900, 50, 0)])
-        port.write.assert_called_once_with(b'mic record 4000 at 400 tone 40 80 100 at 750 tone 202 60 60 at 900 50 0\n')
-        port.reset_mock()
+        self.assertEqual(port.writes, [b'mic record 4000 at 400 tone 40 80 100 at 750 tone 202 60 60 at 900 50 0\n'])
+        port = FakeConnection([payload])
         mic.read_mic(port, 3000, 500, at=[(-500, 'tone', 1000, 3500, 100)])
-        port.write.assert_called_once_with(b'mic record 3000 500 at -500 tone 1000 3500 100\n')
+        self.assertEqual(port.writes, [b'mic record 3000 500 at -500 tone 1000 3500 100\n'])
         for entry in ((-501, 'tone', 1000, 3500, 100), (-500, 'tone', 1000, 3501, 100)):
             with self.assertRaises(ValueError):
                 mic.read_mic(port, 3000, 500, at=[entry])

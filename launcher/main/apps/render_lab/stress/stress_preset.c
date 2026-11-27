@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "collections/bits.h"
+#include "collections/bytes_write.h"
 #include "core/tune.h"
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
@@ -21,8 +22,23 @@ enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
 
 /* Shape, cuts, copies, layout, coverage percent, surface, camera, replay poses and recording. */
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
+    [STRESS_SETTLE] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(SETTLE), STRESS_CAMERA, 6,
+                       .hold_camera = true,
+                       .settings = {{TUNE_NAME(render, partial_redraw), 1}, {TUNE_NAME(render, settle_frame_us), 1}}},
     [STRESS_SKINNED_SH_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
                                  STRESS_SURFACE_OF(SKINNED_SH_BLOBS), STRESS_CAMERA, 6},
+    [STRESS_SKINNED_SILHOUETTE_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
+                                         STRESS_SURFACE_OF(SKINNED_SILHOUETTE_BLOBS), STRESS_CAMERA, 6,
+                                         .contact_shape = SCENE_CONTACT_SILHOUETTE, .contact_warp = false},
+    [STRESS_SKINNED_FEET_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
+                                   STRESS_SURFACE_OF(SKINNED_FEET_BLOBS), STRESS_CAMERA, 6,
+                                   .contact_shape = SCENE_CONTACT_FEET, .contact_warp = false},
+    [STRESS_SKINNED_SILHOUETTE_WARPED] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
+                                          STRESS_SURFACE_OF(SKINNED_SILHOUETTE_WARPED), STRESS_CAMERA, 6,
+                                          .contact_shape = SCENE_CONTACT_SILHOUETTE, .contact_warp = true},
+    [STRESS_SKINNED_BLOB_WARPED] = {STRESS_SHAPE_PLANE, 1, STRESS_SKINNED_COPIES, STRESS_LAYOUT_WALL, 80,
+                                    STRESS_SURFACE_OF(SKINNED_BLOB_WARPED), STRESS_CAMERA, 6,
+                                    .contact_shape = SCENE_CONTACT_BLOB, .contact_warp = true},
     [STRESS_CONTACT_BLOBS] = {STRESS_SHAPE_PLANE, 1, STRESS_CONTACT_BLOB_COPIES, STRESS_LAYOUT_WALL, 120,
                               STRESS_SURFACE_OF(CONTACT_BLOBS), STRESS_CAMERA_NEAR, 6},
     [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(OPEN), STRESS_CAMERA, 6},
@@ -410,11 +426,11 @@ static void texture_uvs(const stress_params_t* p, int vertex_count, const stress
 
 uint32_t
 stress_pose_ms(const stress_params_t* p, uint32_t duration_ms, int pose) {
-    return (uint32_t)((uint64_t)duration_ms * (uint64_t)pose / (uint64_t)p->perf_poses);
+    return p->hold_camera ? 0 : (uint32_t)((uint64_t)duration_ms * (uint64_t)pose / (uint64_t)p->perf_poses);
 }
 
 bool
-stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
+stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_mesh_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
     if (!make(p, b, &m)) {
         return false;
@@ -426,7 +442,7 @@ stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b
         }
         texture_uvs(p, m.vertex_count, b);
     }
-    *out = (r3d_dynamic_source_t){
+    *out = (r3d_mesh_source_t){
         .positions = b->positions,
         .colors = (const uint8_t (*)[3])b->colors,
         .vertex_count = m.vertex_count,
@@ -563,11 +579,6 @@ stress_texture_bytes(stress_surface_t surface) {
     return bytes;
 }
 
-static void
-put_u32(uint8_t* at, uint32_t value) {
-    memcpy(at, &value, sizeof value);
-}
-
 /* Texel (x, y) of the mask's level 0: inside the disc and not a hole.
  * Doubled coordinates put the disc's centre between the middle texels. */
 static bool
@@ -644,8 +655,8 @@ stress_texture_write(stress_surface_t surface, uint8_t* ltex) {
     ltex[R3D_TEXTURE_AT_SIZE_LOG2] = (uint8_t)e.size_log2;
     ltex[R3D_TEXTURE_AT_LEVELS] = (uint8_t)e.levels;
     memset(ltex + R3D_TEXTURE_AT_TINT, e.tint, R3D_TEXTURE_TINT_RGB);
-    put_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
-    put_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + (uint32_t)palette_bytes(e));
+    bytes_write_u32(ltex + R3D_TEXTURE_AT_PALETTE_OFF, R3D_TEXTURE_HEADER_SIZE);
+    bytes_write_u32(ltex + R3D_TEXTURE_AT_TEXELS_OFF, R3D_TEXTURE_HEADER_SIZE + (uint32_t)palette_bytes(e));
     uint8_t* palette = ltex + R3D_TEXTURE_HEADER_SIZE;
     if (surface == STRESS_SURFACE_MASKED) {
         write_mask(palette, palette + palette_bytes(e));

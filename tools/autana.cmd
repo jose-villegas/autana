@@ -5,7 +5,16 @@ set /p python_min_version=<"%~dp0..\scripts\lib\python-min-version"
 set "tools_root=%IDF_TOOLS_PATH%"
 if not defined tools_root set "tools_root=%USERPROFILE%\.espressif"
 set "python_command="
-call :probe python
+rem The minor pinned in .python-version, found on PATH by name: the name says
+rem its version, so it is taken without being started (each start costs a
+rem second on a loaded machine).
+set "python_pin="
+set "python_minor="
+if exist "%~dp0..\.python-version" set /p python_pin=<"%~dp0..\.python-version"
+if defined python_pin for /f "tokens=1,2 delims=." %%a in ("%python_pin%") do set "python_minor=%%a.%%b"
+if defined python_minor for %%p in ("python%python_minor%.exe") do set "python_command=%%~$PATH:p"
+if defined python_command set python_command="%python_command%"
+if not defined python_command call :probe python
 if not defined python_command for /d %%e in ("%tools_root%\python_env\idf*_env") do (
     if not defined python_command if exist "%%e\Scripts\python.exe" call :probe "%%e\Scripts\python.exe"
 )

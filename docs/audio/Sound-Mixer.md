@@ -60,6 +60,7 @@ slot is reused, so an old handle can never reach a newer sound in its slot.
 | `SOUND_BUS_SYSTEM` | UI sounds; one volume for the shell and every app |
 | `SOUND_BUS_SFX` | game sound effects; the default |
 | `SOUND_BUS_MUSIC` | music |
+| `SOUND_BUS_HAPTIC` | speaker-driven [haptic pulses](../haptics/README.md), independent of UI volume |
 | custom | `sound_bus_create(name)`, up to `SOUND_BUS_COUNT_MAX` buses in all; invalid handle when full |
 | `SOUND_BUS_MASTER` | gain only: scales every bus |
 

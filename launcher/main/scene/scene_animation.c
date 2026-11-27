@@ -330,6 +330,10 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
                 : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
         checkpoint_capture_at(saved, &skin->storage, internal_bytes);
         checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+        checkpoint_capture_at(saved, &skin->contact_joints,
+                              skin->contact_joints == NULL ? 0 : joints * sizeof *skin->contact_joints);
+        checkpoint_capture_at(saved, &skin->contact_mask.coverage,
+                              skin->contact_mask.coverage == NULL ? 0 : CONTACT_MASK_BYTES);
     }
 }
 #endif

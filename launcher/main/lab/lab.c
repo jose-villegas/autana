@@ -60,17 +60,26 @@ lab_current(const lab_t* lab) {
     return lab->scenes[lab->state.scene];
 }
 
-/* Unknown or unset resolves to the first scene, never a hard error. */
-static int
-scene_index_for_key(const lab_t* lab, const char* key) {
-    if (key != NULL) {
-        for (int i = 0; i < lab->scene_count; i++) {
-            if (strcmp(lab->scenes[i]->key, key) == 0) {
-                return i;
-            }
+int
+lab_scene_index(const lab_t* lab, const char* key) {
+    for (int i = 0; i < lab->scene_count; i++) {
+        if (strcmp(lab->scenes[i]->key, key) == 0) {
+            return i;
         }
     }
-    return 0;
+    return -1;
+}
+
+/* NULL is the first scene. A key no scene has is the caller's mistake, never
+ * a quiet swap: it asserts, and a build without asserts shows the first. */
+static int
+start_scene(const lab_t* lab) {
+    if (lab->start_key == NULL) {
+        return 0;
+    }
+    int index = lab_scene_index(lab, lab->start_key);
+    assert(index >= 0 && "start_key names no scene");
+    return index < 0 ? 0 : index;
 }
 
 static uint8_t
@@ -133,7 +142,7 @@ enter_layout(const lab_t* lab) {
 void
 lab_enter(lab_t* lab) {
     assert(lab->scene_count <= LAB_SCENES_MAX);
-    lab->state = (lab_state_t){.scene = scene_index_for_key(lab, lab->start_key), .requested = -1};
+    lab->state = (lab_state_t){.scene = start_scene(lab), .requested = -1};
     enter_layout(lab);
     enter_scene(lab);
     lab->state.layout_gen = ui_layout_generation();
@@ -244,8 +253,8 @@ draw_menu(lab_t* lab, const input_t* input) {
         .variants = variants,
         .variant_count = variant_count,
         .variant = variant,
-        .controls = lab_current(lab)->controls,
         .settings = lab->hooks.settings,
+        .showing = lab_current(lab),
     };
     const lab_menu_screen_result_t result = lab_menu_screen_draw(&state);
     if (result.family_picked >= 0 && result.family_picked != family) {
@@ -444,15 +453,13 @@ list_scenes(const lab_t* lab) {
 
 static void
 request_scene(lab_t* lab, const char* key) {
-    for (int i = 0; i < lab->scene_count; i++) {
-        if (strcmp(lab->scenes[i]->key, key) == 0) {
-            lab->state.requested = i;
-            (void)printf("%s scene=%s\n%s_END\n", lab->reply_tag, lab->scenes[i]->key, lab->reply_tag);
-            (void)fflush(stdout);
-            return;
-        }
+    const int index = lab_scene_index(lab, key);
+    if (index < 0) {
+        (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->reply_tag, key, lab->console_word);
+    } else {
+        lab->state.requested = index;
+        (void)printf("%s scene=%s\n%s_END\n", lab->reply_tag, lab->scenes[index]->key, lab->reply_tag);
     }
-    (void)printf("%s_ERR unknown scene '%s'; `%s scenes` lists them\n", lab->reply_tag, key, lab->console_word);
     (void)fflush(stdout);
 }
 
@@ -491,6 +498,7 @@ fail_load(const char* tag, char* failure, size_t size, entity_t root, const char
     scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
     (void)scene_failure(root, &why);
     scene_release(root);
+    ESP_LOGE(tag, "scene '%s': status %d, asset %s", why.what, (int)why.status, asset_status_text(why.asset));
     const bool missing = why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK;
     char what[LAB_STATUS_LEN];
     if (snprintf(what, sizeof what, missing ? "no %s pack: flash it" : "%s did not load", label) < 0) {

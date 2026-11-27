@@ -1,6 +1,7 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
+    "haptics/haptics.c"
     "sound/sound_mixer.c"
     "sound/sound_mixer_device.c"
     "audio/audio_codec.c"
@@ -31,12 +32,14 @@ set(app_srcs
     "gfx/present/expand/gfx_quarter_select_pie.S"
     "gfx/present/gfx_mode.c"
     "gfx/present/modes/indexed/gfx_indexed.c"
+    "gfx/present/gfx_panel.c"
     "gfx/present/gfx_present.c"
     "input/touch/touch.c"
     "input/motion/imu_rest.c"
     "input/motion/imu_calib.c"
     "input/touch/touch_calib.c"
     "input/touch/touch_fsm.c"
+    "input/touch/touch_report.c"
     "input/buttons/button_fsm.c"
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
@@ -121,6 +124,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     launcher_glob(console_srcs
         "${CMAKE_CURRENT_LIST_DIR}/console/*.c"
         "${CMAKE_CURRENT_LIST_DIR}/*/console/*.c")
+    list(APPEND app_srcs "gfx/present/capture/panelcap.c")
     list(APPEND app_srcs ${console_srcs} "input/touch/touch_inject_fsm.c")
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs

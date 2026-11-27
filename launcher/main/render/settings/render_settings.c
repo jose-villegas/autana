@@ -4,8 +4,6 @@
 #include "asset/asset_table_format.h"
 #include "core/tune.h"
 #include "math/scalar/mathi.h"
-#include "render/lod/r3d_lod.h"
-#include "render/r3d_span.h"
 
 asset_status_t
 render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
@@ -63,17 +61,19 @@ TUNE_OVERRIDE(render, lod_blend, RENDER_LOD_BLEND_COUNT - 1);
 #define LOD_BLEND_CENTI 100
 TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX * LOD_BLEND_CENTI));
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
-TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
+TUNE_OVERRIDE(render, lod_pick_every, RENDER_LOD_PICK_EVERY_MAX);
 /* Overrides lod.triangle_budget. */
 TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
-/* Override texture.divide_px, texture.affine_bend in 1/R3D_SPAN_BEND_STEPS
+/* Override texture.divide_px, texture.affine_bend in 1/RENDER_TEXTURE_BEND_STEPS
  * texel and texture.affine_level; texture_figures.py sets all three for its
  * true divide. */
 TUNE_OVERRIDE(render, texture_divide_px, RENDER_TEXTURE_DIVIDE_PX_MAX);
-TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * R3D_SPAN_BEND_STEPS));
+TUNE_OVERRIDE(render, texture_bend_steps, (int32_t)(RENDER_TEXTURE_BEND_MAX * RENDER_TEXTURE_BEND_STEPS));
 TUNE_OVERRIDE(render, texture_affine_level, RENDER_TEXTURE_LEVEL_MAX);
 /* Overrides texture.far_level; 0 reads every level's texels. */
 TUNE_OVERRIDE(render, texture_far_level, RENDER_TEXTURE_LEVEL_MAX);
+/* Overrides settle.frame_us; 0 never refines a held view. */
+TUNE_OVERRIDE(render, settle_frame_us, RENDER_SETTLE_FRAME_US_MAX);
 
 TUNE_OWNER(anim);
 /* Override the pose-rate tiers in whole pixels and frames; an interval below
@@ -108,10 +108,12 @@ render_settings_tuned(const render_settings_t* set) {
          lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI},
         s.anim,
         {tune_override(texture_divide_px, s.texture.divide_px),
-         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend : (float)texture_bend_steps / R3D_SPAN_BEND_STEPS,
+         texture_bend_steps == TUNE_UNSET ? s.texture.affine_bend
+                                          : (float)texture_bend_steps / RENDER_TEXTURE_BEND_STEPS,
          tune_override(texture_affine_level, s.texture.affine_level),
          tune_override(texture_far_level, s.texture.far_level)},
-        s.small_fill};
+        s.small_fill,
+        {tune_override(settle_frame_us, s.settle.frame_us), s.settle.hold_frames}};
     render_anim_settings_tune(&tuned.anim);
     return tuned;
 }

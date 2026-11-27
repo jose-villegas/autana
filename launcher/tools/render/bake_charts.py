@@ -2,18 +2,16 @@
 
     python launcher/tools/render/bake_charts.py TABLES RENDER SCENE_ID
 
-TABLES holds <scene>-fidelity.md, -indirect.md, -flat-sampling.md and -indirect-look.md; each makes the chart of
+TABLES holds <scene>-fidelity.md, -indirect.md and -indirect-look.md; each makes the chart of
 the same name in RENDER. doc_images_demo.sh runs it right after the tables, so a chart always shows its table's
 numbers, and a table without the columns read here fails.
 """
 import argparse
 import pathlib
-import re
 import sys
 import textwrap
 
 import numpy as np
-from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -84,33 +82,6 @@ def indirect_chart(table, path):
     save(fig, path)
 
 
-def sampling_chart(table, path):
-    """Each sampling variant's mean and p95 error, best first, coloured by what it changes."""
-    variants = sorted(table, key=lambda label: number(table[label][MEAN]))
-    # A variant's kind is its label up to the first digit, in the order the sweep lists them.
-    kind = lambda label: re.match(r"\D+", label)[0]  # noqa: E731
-    kinds = list(dict.fromkeys(kind(label) for label in table))
-    if len(kinds) > len(SLOTS):
-        raise ValueError(f"{len(kinds)} sampling kinds, colours for {len(SLOTS)}")
-    colours = [SLOTS[kinds.index(kind(label))] for label in variants]
-    fig, axes = subplots(1, 2, (PANEL[0] * 2, PANEL[1] * 1.8), sharey=True)
-    y = np.arange(len(variants))
-    for axis, metric in zip(axes, (MEAN, P95)):
-        values = [number(table[label][metric]) for label in variants]
-        axis.hlines(y, 0, values, color=colours, alpha=0.35)
-        axis.scatter(values, y, color=colours, zorder=3)
-        axis.set_xlim(left=0)
-        axis.set_title(f"{metric} (lower is better)", fontsize=TITLE_SIZE)
-        axis.tick_params(labelsize=LABEL_SIZE)
-        axis.grid(axis="x", color=MUTED, alpha=0.2)
-    axes[0].set_yticks(y, variants)
-    axes[0].invert_yaxis()
-    handles = [Line2D([], [], marker="o", linestyle="none", color=SLOTS[index], label=name)
-               for index, name in enumerate(kinds)]
-    fig.legend(handles=handles, fontsize=LABEL_SIZE, ncol=len(kinds), loc="outside lower center", frameon=False)
-    save(fig, path)
-
-
 def look_chart(table, path):
     """Each look's mean error against the physical reference and against its own."""
     looks = list(table)
@@ -137,7 +108,6 @@ def write_charts(tables, render, scene_id):
     chart = lambda name: render / f"{scene_id}-{name}.png"  # noqa: E731
     fidelity_chart(scores("fidelity"), chart("fidelity"))
     indirect_chart(scores("indirect"), chart("indirect"))
-    sampling_chart(scores("flat-sampling"), chart("flat-sampling"))
     look_chart(rows(tables / f"{scene_id}-indirect-look.md", "Look", LOOK_COLUMNS), chart("indirect-look"))
 
 

@@ -1389,16 +1389,23 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
 /* Transforms the mesh with cluster rows and draws it as two windows. */
 static void
 draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
-    const r3d_lens_t lens = r3d_pixel_lens(W, H);
+    struct {
+        r3d_lens_t lens;
+        r3d_span_target_t target;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
+    work->lens = r3d_pixel_lens(W, H);
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
-    r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows, false);
+    r3d_pipeline_transform(mesh, &work->lens, visible, 1, cs, rows, false);
     (void)fixture();
-    const r3d_span_target_t top = fixture_rows(0, split);
-    const r3d_span_target_t bottom = fixture_rows(split, H);
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &top, pipeline_work());
-    r3d_pipeline_draw(mesh, &lens, visible, 1, cs, rows, &bottom, pipeline_work());
+    work->target = fixture_rows(0, split);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
+    work->target = fixture_rows(split, H);
+    r3d_pipeline_draw(mesh, &work->lens, visible, 1, cs, rows, &work->target, pipeline_work());
+    free(work);
 }
 
 /* Whether the reference says the same of a centre nudged a subpixel either
@@ -2467,12 +2474,20 @@ census_raster(const r3d_instance_t* instances, int count) {
     return raster;
 }
 
-static void
-test_cull_off_keeps_every_cluster(void) {
+/* census_raster() of `instance`, set to the wall and stack alone. */
+static raster_t
+wall_and_stack_raster(r3d_instance_t* instance) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_instance_t instance = {.mesh = &p->mesh};
-    raster_t raster = census_raster(&instance, 1);
+    *instance = (r3d_instance_t){.mesh = &p->mesh};
+    return census_raster(instance, 1);
+}
+
+static void
+test_cull_off_keeps_every_cluster(void) {
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
+    const r3d_lit_mesh_t* const mesh = instance.mesh;
     const fixture_camera_t camera = camera_down_plus_z(10000.0f, -400, 1.0f);
     const render_view_t view = render_view_fixture(&camera, &raster, 0);
     const raster_stats_t on = raster_draw(&raster, &view);
@@ -2480,11 +2495,11 @@ test_cull_off_keeps_every_cluster(void) {
     cull_off.cull = false;
     raster.settings = &cull_off;
     const raster_stats_t off = raster_draw(&raster, &view);
-    TEST_ASSERT_LESS_THAN_INT(p->mesh.cluster_count, on.clusters);
-    TEST_ASSERT_EQUAL_INT(p->mesh.cluster_count, off.clusters);
+    TEST_ASSERT_LESS_THAN_INT(mesh->cluster_count, on.clusters);
+    TEST_ASSERT_EQUAL_INT(mesh->cluster_count, off.clusters);
     int triangles = 0;
-    for (int i = 0; i < p->mesh.cluster_count; i++) {
-        triangles += p->mesh.clusters[i].triangle_count;
+    for (int i = 0; i < mesh->cluster_count; i++) {
+        triangles += mesh->clusters[i].triangle_count;
     }
     TEST_ASSERT_EQUAL_INT(triangles, off.triangles);
 }
@@ -2577,6 +2592,28 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     free(moved);
 }
 
+/* A census that moves the depth scale makes the next draw redraw every row,
+ * even with rows kept from a partial draw and a second census that kept the
+ * new scale: the kept rows hold depth at the old one. */
+static void
+test_a_census_that_moves_the_depth_scale_redraws_every_row(void) {
+    r3d_instance_t instance;
+    raster_t raster = wall_and_stack_raster(&instance);
+    const fixture_camera_t far = camera_down_plus_z(150.0f, -400, 1.0f);
+    const render_view_t far_view = render_view_fixture(&far, &raster, 0);
+    (void)raster_draw(&raster, &far_view);
+    const float far_near = raster_depth_near(&raster);
+    raster.first_row = H / 4;
+    raster.end_row = H / 2;
+    const fixture_camera_t near = camera_down_plus_z(150.0f, -40, 1.0f);
+    const render_view_t near_view = render_view_fixture(&near, &raster, 0);
+    (void)raster_census(&raster, &near_view);
+    TEST_ASSERT_NOT_EQUAL_FLOAT(far_near, raster_depth_near(&raster));
+    (void)raster_census(&raster, &near_view);
+    raster_draw_culled(&raster, &near_view);
+    TEST_ASSERT_TRUE(raster_drew_every_row(&raster));
+}
+
 /* Each instance's list is as long as its own mesh's clusters: three
  * instances of two meshes, the smaller first, so the list's length and the
  * third one's start both depend on every mesh's own count. */
@@ -2604,6 +2641,12 @@ enum { BATCH_COPIES = 6 };
  * as one fork/join per instance (render.batched off). */
 static void
 test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
+    struct {
+        raster_t raster;
+        render_view_t view;
+    }* const work = malloc(sizeof *work);
+
+    TEST_ASSERT_NOT_NULL(work);
     parts_t* const wall = parts_buffer(&shared_parts);
     build_wall_and_stack(wall);
     parts_t* const card = parts_buffer(&other_parts);
@@ -2619,30 +2662,31 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
         models[i] = transformf_compute_matrix(&pose);
         instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i], NULL, NULL};
     }
-    raster_t raster = census_raster(instances, 1 + BATCH_COPIES);
+    work->raster = census_raster(instances, 1 + BATCH_COPIES);
     uint16_t* const want = frame_held.color = malloc(sizeof(*want) * 2 * W * H);
     TEST_ASSERT_NOT_NULL(want);
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    work->view = render_view_fixture(&camera, &work->raster, 0);
     render_settings_t one_at_a_time = RENDER_SETTINGS_DEFAULT;
     one_at_a_time.batched = false;
-    raster.settings = &one_at_a_time;
-    (void)raster_census(&raster, &view); /* batches run over its drawn list */
-    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
-    raster_draw(&raster, &view);
-    memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
-    memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
-    raster.settings = NULL;
+    work->raster.settings = &one_at_a_time;
+    (void)raster_census(&work->raster, &work->view); /* batches run over its drawn list */
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&work->raster));
+    raster_draw(&work->raster, &work->view);
+    memcpy(want, raster_color(&work->raster), sizeof(*want) * W * H);
+    memcpy(want + (W * H), raster_depth(&work->raster), sizeof(*want) * W * H);
+    work->raster.settings = NULL;
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
-    TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
-    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
-    raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&work->raster, 1));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&work->raster));
+    raster_draw(&work->raster, &work->view);
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster, false);
-    TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
+    raster_cull_frame_compose(&frame, &work->raster, false);
+    TEST_ASSERT_EQUAL_INT(raster_batch_count(&work->raster), frame.transform_batches);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&work->raster), W * H);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&work->raster), W * H);
+    free(work);
 }
 
 static void
@@ -3277,6 +3321,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
+    RUN_TEST(test_a_census_that_moves_the_depth_scale_redraws_every_row);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
     RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);

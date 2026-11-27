@@ -6,43 +6,40 @@ import itertools
 import json
 from pathlib import Path
 import random
-import re
 from statistics import mean
 import sys
 
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
-                            run_stamped, split_filters, filter_limits, status_snapshot)
+                            run_stamped, split_filters, filter_limits, status_snapshot,
+                            require_tune_setup, TuneSetupRefused)
+from console_protocol import parse_assignment
+from device_report import read_capture_text
 import device_lock
 
 write_json = partial(device_lock.write_json, indent=2)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
-from capture import capture_board, require_same_board, quarter_row
+from capture import capture_board, require_same_board, quarter_row, require_complete_capture
 from seed_statistics import compare
 from frame_cost import US_PER_MS
 from device_capture import PERF_SEGMENT
 
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 sys.path.insert(0, str(REPO / "launcher/tools"))
-from build.c_header import read_define
 from build.layout_pad import LAYOUT_SEED_MAX
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
 MAX_CONSECUTIVE_FAILURES = 2
 
-# What device.py prints for a --set the board refused (its TuneRefused).
-SET_REFUSED = "device: SET "
-
-
-class SweepStop(RuntimeError):
-    """The board refused a knob: every later capture would meet the same."""
-TUNE_VALUE_MIN = -(2**31)
-TUNE_VALUE_MAX = 2**31 - 1
-TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
-
-
 def assignment(text):
+    first, *rest = text.split(",")
+    name, value = parse_assignment(first)
+    values = [value, *(parse_assignment(f"{name}={item}")[1] for item in rest)]
+    return name, list(dict.fromkeys(values))
+
+
+def build_assignment(text):
     name, separator, value = text.partition("=")
     if not separator or not name or not value:
         raise argparse.ArgumentTypeError("expected NAME=VALUE")
@@ -58,8 +55,8 @@ def parse_args(argv=None):
     run_parser.add_argument("--out", "-o", type=Path, required=True)
     run_parser.add_argument("--suite", nargs=3, action="append", required=True,
                             metavar=("NAME", "TESTS", "TABLE"))
-    run_parser.add_argument("--knob", type=assignment, action="append", required=True)
-    run_parser.add_argument("--build", type=assignment, action="append")
+    run_parser.add_argument("--knob", action="append", required=True)
+    run_parser.add_argument("--build", type=build_assignment, action="append")
     run_parser.add_argument("--seeds", nargs="+", type=int, default=[1])
     run_parser.add_argument("--runs", type=int, default=DEFAULT_RUNS)
     run_parser.add_argument("--timeout", type=int, default=1800)
@@ -77,16 +74,12 @@ def parse_args(argv=None):
             parser.error("threshold, alpha, runs and time limits must be positive and in range")
         if len(set(args.seeds)) != len(args.seeds) or any(seed < 0 or seed > LAYOUT_SEED_MAX for seed in args.seeds):
             parser.error(f"layout seeds must be distinct, from 0 to {LAYOUT_SEED_MAX}")
+        try:
+            args.knob = [assignment(knob) for knob in args.knob]
+        except ValueError as error:
+            parser.error(f"--knob: {error}")
         if len({name for name, _ in args.knob}) != len(args.knob):
             parser.error("knob names must be unique")
-        try:
-            args.knob = [(name, list(dict.fromkeys(int(value, 0) for value in values.split(","))))
-                         for name, values in args.knob]
-        except ValueError:
-            parser.error("knob values must be integers")
-        if any(not re.fullmatch(r"[a-zA-Z0-9_.]+", name) or len(name) > TUNE_NAME_MAX or
-               any(not TUNE_VALUE_MIN <= value <= TUNE_VALUE_MAX for value in values) for name, values in args.knob):
-            parser.error("knobs need console names and int32 values")
         args.build = args.build or [("here", str(REPO))]
         if len({label for label, _ in args.build}) != len(args.build):
             parser.error("build labels must be unique")
@@ -101,6 +94,7 @@ def plan(args):
               for values in itertools.product(*(values for _, values in args.knob))]
     builds = [dict(label=label, project=str(Path(project).resolve()), build_ids={})
               for label, project in args.build]
+    hot_tunables = bool(args.knob)
     flashes = []
     for build, entry in enumerate(builds):
         suites = split_filters(args.suite, filter_limits(entry["project"]))
@@ -118,17 +112,17 @@ def plan(args):
                        "--flash", "--perf-scope", "--layout-seed", str(seed)]
             if tests != "-":
                 command += ["--test", tests]
-            if args.knob:
+            if hot_tunables:
                 command.append("--hot-tunables")
             flashes.append(dict(build=build, seed=seed, rounds=rounds, suites=suites, command=command))
-    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs, hot_tunables=bool(args.knob),
+    return dict(builds=builds, points=points, seeds=args.seeds, runs=args.runs, hot_tunables=hot_tunables,
                 rng_seed=rng_seed, flashes=flashes, captures=[], threshold=args.threshold,
                 alpha=args.alpha, timeout=args.timeout, wait=args.wait)
 
 
 def metrics(capture, table):
     """Pool capture metrics and generated table rows, retaining their units."""
-    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(capture)
     values = {}
     units = {}
 
@@ -136,9 +130,10 @@ def metrics(capture, table):
         values.setdefault(name, []).append(value)
         units[name] = unit
 
-    for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"), percentiles=True):
+    for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"),
+                                      percentiles=True, include_targets=True):
         add(name, value)
-    for name, value in parse_markdown(Path(table).read_text(encoding="utf-8", errors="replace")).items():
+    for name, value in parse_markdown(read_capture_text(table)).items():
         if name not in values:
             add(name, value)
     # Stages from the suite's own line only: the shell's periodic frame_cost
@@ -237,15 +232,12 @@ def run(args, runner=None):
                                 if tests != "-":
                                     words += ["--test", tests]
                                 code, lines, wall = command(words, capture_stem)
-                                refused = [line for _, line in lines if SET_REFUSED in line]
-                                if refused:
-                                    raise SweepStop(refused[-1])
+                                require_tune_setup(lines)
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
                                 item["board"] = capture_board(capture)
-                                if code or "- Ended: complete" not in capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace"):
-                                    raise RuntimeError(f"{suite}: failed or incomplete capture; exit {code}")
+                                require_complete_capture(capture)
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
                                                    build["project"], args.timeout)
                                 item["table"] = str(table)
@@ -255,7 +247,7 @@ def run(args, runner=None):
                                 owners, instructions = capture_metadata(capture, rows)
                                 item.update(metrics=rows, units=units, owners=owners, instructions=instructions)
                                 failures = 0
-                            except SweepStop as error:
+                            except TuneSetupRefused as error:
                                 item["error"] = str(error)
                                 raise
                             except (RuntimeError, OSError, ValueError) as error:

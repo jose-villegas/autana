@@ -35,26 +35,6 @@ def image(rows):
     return picture
 
 
-class StillColumnsTest(unittest.TestCase):
-    def test_still_columns_preserve_pixels_and_label_each_panel(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            columns = []
-            for label, color in (("full", (255, 0, 0)), ("lite", (0, 255, 0)), ("fitted", (0, 0, 255))):
-                path = Path(tmp) / (label + ".bmp")
-                Image.new("RGB", (80, 40), color).save(path)
-                columns.extend(["--still-column", label, str(path)])
-            out = Path(tmp) / "sheet.png"
-            run = subprocess.run([sys.executable, render_compare.__file__, "--out", str(out), *columns],
-                                 capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0, run.stderr)
-            with Image.open(out) as picture:
-                self.assertEqual(picture.size, (240, 40 + render_compare.LABEL_BAR))
-                for column, color in enumerate(((255, 0, 0), (0, 255, 0), (0, 0, 255))):
-                    self.assertEqual(picture.getpixel((column * 80 + 40, render_compare.LABEL_BAR + 20)), color)
-                    self.assertGreater(len(set(picture.crop((column * 80, 0, (column + 1) * 80,
-                                                            render_compare.LABEL_BAR)).getdata())), 1)
-
-
 class AngleSheetTest(unittest.TestCase):
     def test_each_panel_is_labelled_and_the_scale_sits_below(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -344,6 +324,19 @@ class ClusterTest(unittest.TestCase):
         changed = with_pixels(self.base, blob(5, 5) + blob(60, 40), DRAWN)
         self.assertEqual(len(self.clusters(changed)), 2)
 
+    def test_a_cluster_whose_crop_overlaps_a_stronger_one_gives_way_to_the_next(self):
+        # Two blobs apart, their margins overlapping; a third, weakest, far off.
+        changed = with_pixels(self.base, blob(10, 10, 5) + blob(20, 10) + blob(60, 40, 2), DRAWN)
+        found = self.clusters(changed, count=2, margin=4, grow=0)
+        self.assertEqual([(c.x0, c.y0) for c in found], [(6, 6), (56, 36)])
+
+    def test_the_crop_hook_decides_what_overlaps(self):
+        # Rects apart, but each crop takes the whole row band, so the weaker one goes.
+        changed = with_pixels(self.base, blob(10, 10, 5) + blob(60, 10), DRAWN)
+        whole_width = lambda c: (0, c.y0, 80, c.y1)  # noqa: E731
+        self.assertEqual(len(self.clusters(changed, margin=0, grow=0)), 2)
+        self.assertEqual(len(self.clusters(changed, margin=0, grow=0, crop=whole_width)), 1)
+
     def test_adjacent_pixels_are_one_cluster(self):
         changed = with_pixels(self.base, blob(20, 20) + blob(25, 20), DRAWN)
         found = self.clusters(changed, margin=0)
@@ -560,6 +553,29 @@ class VideoTest(unittest.TestCase):
             values, total = render_compare.reference_video(video, tmp, first=2)
         self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
 
+    def test_a_posed_reference_scores_only_frames_drawn_at_its_poses(self):
+        # The reference traced frame i at pose i; the video's frame 2 is its
+        # frame 0, and the harness logs the engine pose (z flipped) per frame.
+        near, far = Image.new("RGB", (2, 2), DRAWN), Image.new("RGB", (2, 2), CLEAR)
+        header = "frame,ms,px,py,pz,qx,qy,qz,qw\n"
+        on_path = "2,500,1,2,-3,0,1,0,0\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            video = self.write_avi(tmp, "a.avi", [far, far, near], 250)
+            near.save(Path(tmp) / "000.png")
+            Path(tmp, "poses.txt").write_text("size 2 2\nlens 0.6 1\npose 1 2 3 0 0 1\n")
+            poses = Path(video + ".poses.csv")
+            for rows, refusal in ((header + on_path, None),
+                                  (header + "2,500,0,0,0,0,0,0,1\n", "frame 2 stands at"),
+                                  (header + "0,0,1,2,-3,0,1,0,0\n", "frame 2 has no row")):
+                with self.subTest(rows=rows):
+                    poses.write_text(rows)
+                    if refusal is None:
+                        values, total = render_compare.reference_video(video, tmp, first=2)
+                        self.assertEqual((len(values), total.mean_delta_e), (1, 0.0))
+                    else:
+                        with self.assertRaisesRegex(ValueError, refusal):
+                            render_compare.reference_video(video, tmp, first=2)
+
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
@@ -663,12 +679,17 @@ class ReferenceModeArgumentsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_reference_frame_rate_is_30_40_60_or_80(self):
+        # A directory is a side the script renders in place, so an accepted rate
+        # stops at the missing script there instead of checking out a revision.
+        side = Path(self.enterContext(tempfile.TemporaryDirectory()))
         base = ["--script", "s.sh", "--reference", "x", "--poses", "p", "--render", "p", "--frames 2"]
-        refused = self.run_sh(*base, "--fps", "50", "HEAD")
+        refused = self.run_sh(*base, "--fps", "50", str(side))
         self.assertEqual(refused.returncode, 2)
         self.assertIn("30, 40, 60 or 80", refused.stderr)
         for fps in ("30", "40", "60", "80"):
-            self.assertNotIn("30, 40, 60 or 80", self.run_sh(*base, "--fps", fps, "HEAD").stderr)
+            accepted = self.run_sh(*base, "--fps", fps, str(side))
+            self.assertNotIn("30, 40, 60 or 80", accepted.stderr)
+            self.assertIn("has no s.sh", accepted.stderr)
 
 
 if __name__ == "__main__":

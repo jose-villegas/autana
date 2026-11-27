@@ -11,7 +11,7 @@ from asset.asset_pack import NAME_BYTES
 from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
-from r3d.import_settings import ANIM_WRAPS, LIGHT_MODES, SettingsError, color_fits, load_scene
+from r3d.import_settings import ANIM_WRAPS, LIGHT_MODES, LOCAL_LIGHTS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 from r3d.batch import copy_batches
 from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
@@ -24,6 +24,7 @@ TYPE = b"SCNE"
 VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
 DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
 LIGHT_KINDS = {"directional": DIRECTIONAL}
+LIGHT_MODE_BYTES = {name: read_define(OWNER, "SCENE_LIGHT_MODE_" + name.upper()) for name in LIGHT_MODES}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
@@ -90,12 +91,13 @@ def encode(scene, cache=None, offline=False):
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
-        if obj.kind == "light":
+        # A point or spot light is baked only: its light is in the vertex colours and probes, not the light rows.
+        if obj.kind == "light" and obj.component["type"] not in LOCAL_LIGHTS:
             light = obj.component
             if light["type"] not in LIGHT_KINDS:
                 raise SceneError(f"unknown light kind {light['type']!r}")
             rows["lights"].append((entity, LIGHT_KINDS[light["type"]],
-                                    LIGHT_MODES.index(light["mode"]), *light["color"], light["intensity"]))
+                                    LIGHT_MODE_BYTES[light["mode"]], *light["color"], light["intensity"]))
         if obj.kind == "camera":
             lens = obj.component
             rows["cameras"].append((entity, 0, lens.half_fov_short_tan, lens.near_z, lens.background))
@@ -147,6 +149,21 @@ def parent_index(obj, index):
     if obj.kind in ("camera", "light", "skinned_renderer"):
         raise SceneError(f"{obj.name}: a {obj.kind} has no parent yet")
     return index[parent]
+
+
+def world_placement(scene, obj):
+    """The authored object-to-world transform, composed in source axes."""
+    import numpy as np
+
+    index = {item.name: i for i, item in enumerate(scene.objects)}
+    matrix, position = np.asarray(obj.matrix), np.asarray(obj.position)
+    parent = parent_index(obj, index)
+    while parent != PARENT_ROOT:
+        obj = scene.objects[parent]
+        position = obj.matrix @ position + obj.position
+        matrix = obj.matrix @ matrix
+        parent = parent_index(obj, index)
+    return SimpleNamespace(matrix=matrix, position=position)
 
 
 def column_scales(matrix):
@@ -278,7 +295,7 @@ def decode(entry):
                 continue
             if part == "lights":
                 _, kind, mode, *values = row
-                if mode >= len(LIGHT_MODES) or kind != DIRECTIONAL or not color_fits(values[:3]) or not nonnegative(values[3]):
+                if mode not in LIGHT_MODE_BYTES.values() or kind != DIRECTIONAL or not color_fits(values[:3]) or not nonnegative(values[3]):
                     raise SceneError("light: invalid kind, colour, intensity or mode")
                 out[part].append(dict(entity=entity, kind=kind, mode=mode, color=values[:3], intensity=values[3]))
                 continue

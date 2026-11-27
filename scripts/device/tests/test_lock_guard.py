@@ -2,7 +2,7 @@
 number, the guard on each port primitive, what a lost lock stops, the flash
 hand-off to build.sh and flash_image.sh, and the durations status estimates from."""
 
-import isolation  # noqa: F401  (first: keeps the suite out of real records)
+import isolation  # (first: keeps the suite out of real records)
 import ast
 import collections
 import contextlib
@@ -27,11 +27,13 @@ DEVICE = Path(__file__).resolve().parents[1]
 ENGINE = DEVICE.parents[1]
 sys.path.insert(0, str(DEVICE))
 import device  # noqa: E402
+import build_lock  # noqa: E402  (on the path device sets up)
 import device_lock  # noqa: E402
-from fake_serial import FakeConnection, Replies
+from fake_serial import FakeConnection, Replies, VanishingConnection
 import fake_esp_idf  # noqa: E402
 import fake_flash  # noqa: E402
 from autana_config import BOARD_ENV  # noqa: E402
+from console_protocol import TUNE_END, TUNE_ERR
 
 BOARD_A = "90:70:69:FE:A3:08"
 BOARD_B = "90:70:69:FE:B1:22"
@@ -100,9 +102,7 @@ def replace_lock_once(store, started):
 
 class Store(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = isolation.scratch_root(self)
         self.store = device_lock.LockStore(self.root / "locks")
 
 
@@ -974,9 +974,11 @@ class LostLockTests(Store):
                     device.reset()
 
     def test_a_lost_heartbeat_stops_a_capture_mid_read(self):
-        class Endless:
-            def read(self, unused_size):
-                return b"line\n"
+        class Endless(Replies):
+            def read(self, size):
+                data = super().read(size)
+                self.data = data
+                return data
 
         with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0.01), \
                 contextlib.redirect_stderr(io.StringIO()), \
@@ -985,7 +987,7 @@ class LostLockTests(Store):
                 self.lose_heartbeat(held)
                 started = time.monotonic()
                 with self.assertRaises(device.LockLost):
-                    device.capture(Endless(), self.root / "capture.log", 30, None, complete=None)
+                    device.capture(Endless(b"line\n"), self.root / "capture.log", 30, None, complete=None)
                 self.assertLess(time.monotonic() - started, 5)
 
     def test_a_heartbeat_on_a_stale_lock_is_refused(self):
@@ -1011,19 +1013,11 @@ class LostLockTests(Store):
         self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
     def reopen_after_reset(self, reconnected):
-        class PortGone(FakeConnection):
-            said = False
-
-            def read(self, unused_size):
-                if not self.said:
-                    self.said = True
-                    return b"boot line\n"
-                raise OSError("USB device disappeared")
-
-        with mock.patch.object(device, "open_when_free", return_value=PortGone()), \
+        connection = VanishingConnection([b"boot line\n"])
+        with mock.patch.object(device, "open_when_free", return_value=connection), \
                 mock.patch.object(device, "reconnect_after_reset", side_effect=reconnected), \
                 contextlib.redirect_stderr(io.StringIO()):
-            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=PortGone())
+            return device.capture_after_reset(self.root / "reset.log", 30, None, connection=connection)
 
     def test_a_reopen_after_reset_ends_port_lost_only_on_usb_absence(self):
         with device.HeldLock(self.store, BOARD_A, "a", "reset", 0):
@@ -1040,12 +1034,13 @@ class LostLockTests(Store):
                 super().__init__()
                 self.held = held
 
-            def read(self, unused_size):
+            def read(self, size):
+                data = super().read(size)
                 self.held.lost.set()
-                return b""
+                return data
 
         args = Namespace(owner="a", purpose="send", wait=0, line="TUNE", reply="TUNE",
-                         until=["TUNE_END"], seconds=30, optional=False)
+                         until=[TUNE_END], seconds=30, optional=False)
         with mock.patch.object(device, "open_when_free",
                                side_effect=lambda: Silent(device.ACTIVE_LOCK.held)):
             started = time.monotonic()
@@ -1412,7 +1407,7 @@ class BuildDirectoryLockTests(Store):
         self.first_started = threading.Event()
         self.release_first = threading.Event()
         self.tries = collections.Counter()
-        real = device.try_lock_file
+        real = build_lock.try_lock_file
 
         def counted(handle):
             taken = real(handle)
@@ -1420,10 +1415,10 @@ class BuildDirectoryLockTests(Store):
                 self.tries[threading.current_thread().name] += 1
             return taken
 
-        patcher = mock.patch.object(device, "try_lock_file", side_effect=counted)
+        patcher = mock.patch.object(build_lock, "try_lock_file", side_effect=counted)
         patcher.start()
         self.addCleanup(patcher.stop)
-        interval = mock.patch.object(device, "BUILD_LOCK_POLL_SECONDS", 0.01)
+        interval = mock.patch.object(build_lock, "POLL_SECONDS", 0.01)
         interval.start()
         self.addCleanup(interval.stop)
         policy = mock.patch.object(device, "build_policy", return_value=contextlib.nullcontext({}))
@@ -1500,8 +1495,8 @@ class BuildDirectoryLockTests(Store):
         real = device.snapshot_image
 
         def snapshot(build_dir, image_dir):
-            with open(Path(build_dir) / device.BUILD_LOCK, "a+b") as probe:
-                held_at_snapshot.append(not device.try_lock_file(probe))
+            with open(Path(build_dir) / build_lock.BUILD_LOCK, "a+b") as probe:
+                held_at_snapshot.append(not build_lock.try_lock_file(probe))
             return real(build_dir, image_dir)
 
         with mock.patch.object(device, "snapshot_image", side_effect=snapshot):
@@ -1511,9 +1506,7 @@ class BuildDirectoryLockTests(Store):
 
 class SnapshotTests(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory()
-        self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        self.root = isolation.scratch_root(self)
 
     def test_every_listed_file_is_copied_byte_for_byte_where_flash_args_puts_it(self):
         build = self.root / "build"
@@ -1577,7 +1570,9 @@ class FlashImageScriptTests(unittest.TestCase):
         (self.tree / "launcher").mkdir()
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
-                         "launcher/tools/build/build_paths.py",
+                         "launcher/tools/build/build_paths.py", "launcher/tools/build/build_lock.py",
+                         "launcher/tools/build/c_header.py", "launcher/tools/build/math_constants.py",
+                         "launcher/main/console/console_tune.h", "launcher/main/core/tune.h",
                          "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
@@ -1776,13 +1771,9 @@ class DurationTests(Store):
                          [None, None, "boom"])
 
     def test_a_command_that_answers_an_error_is_recorded_with_it(self):
-        class Answers(FakeConnection):
-            def read(self, unused_size):
-                return b"TUNE_ERR unknown\n"
-
         args = Namespace(owner="a", purpose="send", wait=0, line="SET x 1", reply="TUNE",
-                         until=["TUNE_ERR"], seconds=5, optional=False)
-        with mock.patch.object(device, "open_when_free", return_value=Answers()), \
+                         until=[TUNE_ERR], seconds=5, optional=False)
+        with mock.patch.object(device, "open_when_free", return_value=Replies(b"TUNE_ERR unknown\n")), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(device.send(args, self.store, BOARD_A), 1)
         self.assertEqual(durations_rows(self.store)[-1]["error"], "TUNE_ERR unknown")
@@ -2268,7 +2259,8 @@ class BoardChoiceTests(Store):
             self.assertEqual(device.board_for_lock(self.store, remembered=True), (BOARD_A, None))
             code, errors = self.main("--owner", "agent", "hand-to-human",
                                      "--note", "power cycle it")
-        self.assertEqual((code, errors), (0, ""))
+        self.assertEqual(code, 0)
+        self.assertTrue(errors.startswith("human reservation recorded;"), errors)
         self.assertEqual(self.store.status(BOARD_A)["human"]["note"], "power cycle it")
         with plugged():
             self.assertEqual(self.main("take-back")[0], 0)

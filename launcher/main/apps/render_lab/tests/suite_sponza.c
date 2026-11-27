@@ -1,6 +1,6 @@
 /*
- * Portable suite: the three baked Sponza meshes, read from the sponza pack,
- * and the camera loop through them, the scene's camera once it has loaded
+ * Portable suite: the baked Sponza mesh, read from the sponza pack, and the
+ * camera loop through it, the scene's camera once it has loaded
  * (sponza_content.h). Each mesh is checked for the structure
  * r3d_pipeline.h relies on, never against the generator; the path and
  * the pictures it sees are checked against the shipped meshes themselves.
@@ -16,6 +16,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
@@ -32,19 +33,13 @@
 #include "scene/transform/transform.h"
 #include "sponza_suite.h"
 
-/* The scene, loaded for the suite, its pack, and the three bakes in it. */
+/* The scene, loaded for the suite, its pack, and the bake in it. */
 static entity_t sponza;
 static const asset_pack_t* pack;
 static const lens_t* flythrough;
 static entity_t camera_entity;
 static const char* camera_name;
-#define MESH_FULL (&mesh_full)
-#define MESH_LITE (&mesh_lite)
-#define MESH_FLAT (&mesh_flat)
-
-static r3d_lit_mesh_t mesh_full;
-static r3d_lit_mesh_t mesh_lite;
-static r3d_lit_mesh_t mesh_flat;
+static r3d_lit_mesh_t bake_mesh;
 
 static void
 require_the_scene(void) {
@@ -57,20 +52,18 @@ open_the_mesh(const char* id, r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, id, mesh), id);
 }
 
-/* The pack id of the mesh `bake`'s entity draws. */
+/* The pack id of the mesh the bake's entity draws. */
 static const char*
-mesh_of(scene_baked_variant_t bake) {
-    const entity_t entity = entity_find(sponza, name_hash(sponza_bakes[bake]));
-    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(entity), sponza_bakes[bake]);
+mesh_of_the_bake(void) {
+    const entity_t entity = entity_find(sponza, name_hash(baked_sponza.bake));
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(entity), baked_sponza.bake);
     return renderer_mesh_id(entity);
 }
 
 static void
 open_the_meshes(void) {
     require_the_scene();
-    open_the_mesh(mesh_of(SCENE_BAKED_FULL), &mesh_full);
-    open_the_mesh(mesh_of(SCENE_BAKED_LITE), &mesh_lite);
-    open_the_mesh(mesh_of(SCENE_BAKED_FLAT), &mesh_flat);
+    open_the_mesh(mesh_of_the_bake(), &bake_mesh);
 }
 
 /* Hand-written planes keep this an independent check of the cull. */
@@ -241,13 +234,10 @@ check_the_flythrough_keeps_clear_of_every_triangle(const r3d_lit_mesh_t* mesh) {
     }
 }
 
-/* Every check holds for both bakes. */
 static void
-test_both_bakes_have_the_structure_the_pipeline_relies_on(void) {
+test_the_bake_has_the_structure_the_pipeline_relies_on(void) {
     open_the_meshes();
-    r3d_lit_mesh_expect_valid(MESH_FULL);
-    r3d_lit_mesh_expect_valid(MESH_LITE);
-    r3d_lit_mesh_expect_valid(MESH_FLAT);
+    r3d_lit_mesh_expect_valid(&bake_mesh);
 }
 
 /* The baked clusters are meshlets: none over 32 triangles, and sharing
@@ -261,19 +251,15 @@ check_the_clusters_are_meshlets(const r3d_lit_mesh_t* mesh) {
 }
 
 static void
-test_both_bakes_are_cut_into_meshlets(void) {
+test_the_bake_is_cut_into_meshlets(void) {
     open_the_meshes();
-    check_the_clusters_are_meshlets(MESH_FULL);
-    check_the_clusters_are_meshlets(MESH_LITE);
-    check_the_clusters_are_meshlets(MESH_FLAT);
+    check_the_clusters_are_meshlets(&bake_mesh);
 }
 
 static void
 test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(void) {
     open_the_meshes();
-    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(MESH_FULL);
-    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(MESH_LITE);
-    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(MESH_FLAT);
+    check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(&bake_mesh);
 }
 
 /* Points the suite's camera statics at camera `name`, which must have a path. */
@@ -291,9 +277,7 @@ static __attribute__((noinline)) void
 check_camera_paths(void (*check)(const r3d_lit_mesh_t*)) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         select_camera(sponza_cameras[camera]);
-        check(MESH_FULL);
-        check(MESH_LITE);
-        check(MESH_FLAT);
+        check(&bake_mesh);
     }
     select_camera(sponza_cameras[0]);
 }
@@ -375,16 +359,14 @@ test_the_flythrough_sees_mostly_building(void) {
 }
 
 /* The pack the build wrote for the scene: on the device, the one flashed
- * to the assets partition. The scene loads from it, and each bake's mesh
+ * to the assets partition. The scene loads from it, and the bake's mesh
  * opens. */
 static void
-test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(void) {
+test_the_scene_loads_from_its_pack_with_a_lit_mesh_and_its_path(void) {
     require_the_scene();
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        r3d_lit_mesh_t mesh;
-        open_the_mesh(mesh_of((scene_baked_variant_t)i), &mesh);
-        TEST_ASSERT_GREATER_THAN_INT(0, mesh.triangle_count);
-    }
+    r3d_lit_mesh_t opened;
+    open_the_mesh(mesh_of_the_bake(), &opened);
+    TEST_ASSERT_GREATER_THAN_INT(0, opened.triangle_count);
     TEST_ASSERT_NOT_NULL(flythrough);
     TEST_ASSERT_GREATER_THAN_UINT32(0, animator_clip_duration_ms(camera_entity, 0));
 }
@@ -392,18 +374,17 @@ test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path(vo
 static void
 run_sponza_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
-    sponza = loaded.scene;
+    sponza = loaded.base.scene;
     pack = asset_store_loaded(loaded.load);
     flythrough = loaded.lens;
     camera_entity = handle_is_none(sponza) ? ENTITY_NONE : entity_find(sponza, name_hash(sponza_cameras[0]));
-    RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_for_each_bake_and_its_path);
-    RUN_TEST(test_both_bakes_have_the_structure_the_pipeline_relies_on);
-    RUN_TEST(test_both_bakes_are_cut_into_meshlets);
+    RUN_TEST(test_the_scene_loads_from_its_pack_with_a_lit_mesh_and_its_path);
+    RUN_TEST(test_the_bake_has_the_structure_the_pipeline_relies_on);
+    RUN_TEST(test_the_bake_is_cut_into_meshlets);
     RUN_TEST(test_the_tree_walk_keeps_exactly_what_a_flat_test_keeps);
     RUN_TEST(test_the_flythrough_moves_smoothly_and_closes_its_loop);
     RUN_TEST(test_the_flythrough_keeps_clear_of_every_triangle);
     RUN_TEST(test_the_flythrough_sees_mostly_building);
-    loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
     sponza = ENTITY_NONE;
     pack = NULL;

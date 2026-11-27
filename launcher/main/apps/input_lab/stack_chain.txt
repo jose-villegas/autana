@@ -1,0 +1,2 @@
+indirect imu_record_replay : emit_imu_record suite_imu_untethered.c:check_replay suite_imu_untethered.c:check_chunk suite_imu_untethered.c:check_exact_chunk
+indirect read_round_samples : record_shake_sample record_orientation_sample

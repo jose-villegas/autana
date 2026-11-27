@@ -24,6 +24,7 @@ from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
 from tests.test_r3d_bake import canonical
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
@@ -230,9 +231,11 @@ class MeshBundleTests(unittest.TestCase):
                 emitted.update(canonical(np.rint(world), mesh.tris))
             self.assertEqual(emitted, actual)
 
+    @needs_llvm
     def test_whole_import_preserves_merged_geometry(self):
         self.check_whole_import()
 
+    @needs_llvm
     def test_an_import_can_carve_every_source_object(self):
         self.check_whole_import(all_carved=True)
 

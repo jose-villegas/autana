@@ -1,15 +1,15 @@
 """Read a binary glTF 2.0 file: accessors, animations and their samplers.
 
-Standard library only (an FBX source is converted by tools/fbx and a camera
-keys file built by tools/anim/camera_keys.py, on demand), so asset tests and
-bakers share one reader. The
-sampler follows the glTF 2.0 spec (LINEAR, STEP, CUBICSPLINE; quaternions
-slerp), and is the reference the C runtime in main/anim/ is held to.
+The reader and sampler use the standard library. The sampler follows the
+glTF 2.0 interpolation rules and serves as the reference for main/anim/.
+Keys-file builds load the keys tool on demand. FBX loads use the separate
+converter, which uses NumPy and the native ufbx reader.
 """
 
 import json
 import math
 import pathlib
+import re
 import struct
 
 GLB_MAGIC = 0x46546C67
@@ -20,7 +20,7 @@ GLB_SUFFIX = ".glb"
 FBX_SUFFIX = ".fbx"
 # The files a tool reads as a scene: a glTF binary, or an FBX converted to one.
 ASSET_SUFFIXES = (GLB_SUFFIX, FBX_SUFFIX)
-# A camera path authored as keys; it holds an animation and no mesh.
+# A camera or scene animation authored as keys.
 KEYS_SUFFIX = ".keys.toml"
 
 COMPONENT_FORMATS = {
@@ -92,10 +92,10 @@ def load_glb(path):
 
 def load_asset(path):
     """Return (document, binary chunk) of a scene file, .glb or .fbx, or of a
-    camera keys file. An FBX is converted once to a .glb
+    keys file. An FBX is converted once to a .glb
     (tools/fbx/fbx_to_glb.py), cached by content; keys are built in memory."""
     if pathlib.Path(path).name.lower().endswith(KEYS_SUFFIX):
-        from anim.camera_keys import load_glb_bytes
+        from anim.keys_file import load_glb_bytes
         return parse_glb(load_glb_bytes(path))
     if pathlib.Path(path).suffix.lower() == FBX_SUFFIX:
         from fbx.fbx_to_glb import cached_glb
@@ -217,10 +217,11 @@ def read_animation(document, binary, animation):
 
 
 def is_rotation(channel):
-    """A channel whose value is a quaternion: a node's rotation path, or a
-    KHR_animation_pointer at any object's rotation."""
+    """Identify a glTF node rotation. Extension fields need their binding type."""
     pointer = channel.get("pointer") or ""
-    return channel["path"] == "rotation" or pointer.endswith("/rotation")
+    if re.match(r"/nodes/[0-9]+/extensions/", pointer):
+        raise ValueError(f"{pointer}: an extension field needs its binding type")
+    return channel["path"] == "rotation" or re.fullmatch(r"/nodes/[0-9]+/rotation", pointer) is not None
 
 
 def animation_duration(channels):

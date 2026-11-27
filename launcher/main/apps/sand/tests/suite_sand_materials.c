@@ -574,8 +574,9 @@ test_a_settled_pool_does_not_flicker(void) {
      * opposite the step after; this bounds it far below that, loose enough
      * to tolerate an unevenly-divisible remainder still finding its exact
      * rest spot at the surface. */
-    uint8_t prev[WIDE_W * WIDE_H];
-    memcpy(prev, wide_cells, sizeof(prev));
+    uint8_t* const prev = malloc(WIDE_W * WIDE_H * sizeof *prev);
+    TEST_ASSERT_NOT_NULL(prev);
+    memcpy(prev, wide_cells, WIDE_W * WIDE_H * sizeof *prev);
 
     long worst_churn = 0;
     for (int i = 0; i < 200; i++) {
@@ -590,7 +591,7 @@ test_a_settled_pool_does_not_flicker(void) {
         if (churn > worst_churn) {
             worst_churn = churn;
         }
-        memcpy(prev, wide_cells, sizeof(prev));
+        memcpy(prev, wide_cells, WIDE_W * WIDE_H * sizeof *prev);
     }
 
     /* Freed BEFORE the assertion: Unity longjmps out of a failure, so a
@@ -602,6 +603,7 @@ test_a_settled_pool_does_not_flicker(void) {
                                           "a settled pool must not swing large amounts of mass around once "
                                           "level - the reported symptom was water that looked settled "
                                           "visibly changing colour and resettling, over and over");
+    free(prev);
 }
 
 /* Sum of CELL_VARIANT for material `m` in columns [x0,x1) across every one
@@ -646,9 +648,10 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
                           "the two failed to allocate");
     }
 
-    sand_t s;
-    sand_init(&s, cells, w, h, 41U);
-    sand_enable_sleeping(&s, blocks);
+    sand_t* const s = malloc(sizeof *s);
+    TEST_ASSERT_NOT_NULL(s);
+    sand_init(s, cells, w, h, 41U);
+    sand_enable_sleeping(s, blocks);
 
     /* The bottom h/3 rows, full width, at MASS_MAX, and then ONE more row
      * above that at mass 7. The part-full row matters: a volume that
@@ -658,14 +661,14 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
      * because there is nothing for either ray to transfer. A real pool
      * always has a ragged surface, and this is what gives the fixture one. */
     const int full_rows = h / 3;
-    sand_fill_box(&s, 0, h - full_rows, w, h, CELL_MAKE(MAT_WATER, MASS_MAX));
-    sand_fill_box(&s, 0, h - full_rows - 1, w, h - full_rows, CELL_MAKE(MAT_WATER, 7));
+    sand_fill_box(s, 0, h - full_rows, w, h, CELL_MAKE(MAT_WATER, MASS_MAX));
+    sand_fill_box(s, 0, h - full_rows - 1, w, h - full_rows, CELL_MAKE(MAT_WATER, 7));
 
-    run_steps(&s, steps, gx, gy);
+    run_steps(s, steps, gx, gy);
 
     const int q = w / 8;
-    const long lo = material_variant_sum_in_columns(&s, 0, q, h, MAT_WATER);
-    const long hi = material_variant_sum_in_columns(&s, w - q, w, h, MAT_WATER);
+    const long lo = material_variant_sum_in_columns(s, 0, q, h, MAT_WATER);
+    const long hi = material_variant_sum_in_columns(s, w - q, w, h, MAT_WATER);
 
     free(cells);
     free(blocks);
@@ -678,6 +681,7 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
      * `long` - (hi-lo) runs to about 40000 on the biggest fixture here, and
      * *1024 does not overflow a long - then cast down to the int this
      * returns. */
+    free(s);
     return (int)(((long)(hi - lo) * 1024) / ((long)q * (w - q) * MASS_MAX));
 }
 

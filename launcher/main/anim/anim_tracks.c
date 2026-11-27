@@ -13,7 +13,7 @@ _Static_assert(ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE == ANIM_TRACKS_A
                "TRCK header fields fill the header");
 _Static_assert(ANIM_TRACKS_ROW_INTERP + sizeof(uint8_t) == ANIM_TRACKS_ROW_SIZE, "TRCK row fields fill the row");
 
-static const uint8_t WIDTHS[] = {1, 2, 3, 4, 3};
+static const uint8_t WIDTHS[] = ANIM_VALUE_WIDTHS;
 
 static const uint8_t*
 row_at(const anim_tracks_t* tracks, int index) {

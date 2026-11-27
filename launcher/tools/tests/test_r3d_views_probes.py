@@ -18,7 +18,7 @@ try:
 except ImportError:
     np = None
 
-from tests.r3d_env import needs_mitsuba  # noqa: E402
+from tests.r3d_env import needs_llvm  # noqa: E402
 
 
 def closed_box(half):
@@ -63,21 +63,21 @@ class ProbePlacementTests(unittest.TestCase):
         self.assertEqual(probes.greedy_faces(sets, np.zeros(13, bool), limit=1)[0], [1])
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ProbeInsideTests(unittest.TestCase):
     def setUp(self):
         from r3d import ray_query
 
         self.variant = ray_query.VARIANT
-        ray_query.VARIANT = "scalar_rgb"
+        ray_query.VARIANT = "llvm_ad_rgb"
         self.addCleanup(setattr, ray_query, "VARIANT", self.variant)
 
     def test_a_probe_in_a_closed_box_is_dropped_and_one_near_a_wall_moves_off_it(self):
         from r3d.ray_query import RayQuery
 
         positions, tris = closed_box(1.0)
-        query, normals = RayQuery(positions, tris, "scalar_rgb"), face_normals(positions, tris)[0]
+        query, normals = RayQuery(positions, tris, "llvm_ad_rgb"), face_normals(positions, tris)[0]
         near = 0.1
         points = np.array([[0.0, 0.0, 0.0], [1.0 + 0.05, 0.0, 0.0], [3.0, 0.0, 0.0]])
         moved, state = probes.classify(query, normals, points, cell=1.0, near=near)
@@ -89,7 +89,7 @@ class ProbeInsideTests(unittest.TestCase):
         from r3d.ray_query import RayQuery
 
         positions, tris = closed_box(1.0)
-        query = RayQuery(positions, tris, "scalar_rgb")
+        query = RayQuery(positions, tris, "llvm_ad_rgb")
         poses = probes.cube_poses(np.array([[3.0, 0.0, 0.0]]))
         sets = probes.shown(query, len(tris), poses, 16, 16, probes.FACE_LENS)
         facing = face_normals(positions, tris)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
@@ -97,7 +97,7 @@ class ProbeInsideTests(unittest.TestCase):
         self.assertEqual(len(sets[0]), 0, "the +x face, looking away, showed the box")
 
 
-@needs_mitsuba
+@needs_llvm
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SelectTests(unittest.TestCase):
     """A target box inside a closed shell whose texture cuts every texel away, one probe beside the shell."""
@@ -111,7 +111,7 @@ class SelectTests(unittest.TestCase):
         from r3d.obj import Texture
 
         self.addCleanup(setattr, ray_query, "VARIANT", ray_query.VARIANT)
-        ray_query.VARIANT = "scalar_rgb"
+        ray_query.VARIANT = "llvm_ad_rgb"
         box, box_tris = closed_box(0.5)
         shell, shell_tris = closed_box(1.0)
         positions = np.concatenate([box, shell])
@@ -130,7 +130,7 @@ class SelectTests(unittest.TestCase):
         from r3d.ray_query import RayQuery
 
         hit_filter = AlphaTest(self.source, 0.5) if cut else None
-        return RayQuery(self.source.p, self.source.tri_v, "scalar_rgb", hit_filter=hit_filter)
+        return RayQuery(self.source.p, self.source.tri_v, "llvm_ad_rgb", hit_filter=hit_filter)
 
     def select(self, **kwargs):
         kwargs.setdefault("select_size", self.SIZE)
@@ -146,6 +146,19 @@ class SelectTests(unittest.TestCase):
         facing = face_normals(self.source.p, self.source.tri_v)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
         self.assertEqual(cut.record["train"]["shown_after"], np.count_nonzero(facing & self.targets),
                          "the kept faces should show the box's +x side and count nothing else")
+
+    def test_placed_training_places_every_probe_and_its_kept_faces_are_the_training_views(self):
+        query = self.query(cut=True)
+        views = self.select(query=query, targets=self.targets)
+        from r3d.views.probe_figures import placed_training
+
+        placed = placed_training(self.source.p, self.source.tri_v, self.NEAR, self.SEED, views, query)
+        self.assertEqual(len(placed), views.record["train"]["probes"])
+        for fate in ("inside", "near"):
+            self.assertEqual(sum(probe["fate"] == fate for probe in placed), views.record["train"][fate], fate)
+        faces = [np.concatenate([probe["at"], probes.FACES[face]]) for probe in placed for face in probe["faces"]]
+        self.assertGreater(len(faces), 0)
+        np.testing.assert_allclose(sorted(map(tuple, faces)), sorted(map(tuple, views.training)))
 
     def test_every_triangle_as_a_target_is_the_same_as_no_targets(self):
         query = self.query(cut=False)
