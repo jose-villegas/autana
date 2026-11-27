@@ -47,7 +47,7 @@ from r3d.lod.morph import morph_blob
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, bundle_entries, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses, with_triangles
 from r3d.obj import alpha_tested
-from r3d.objects.budget import ceiling_split, prototype_groups
+from r3d.objects.budget import ceiling_split, prototype_groups, start_budget
 from r3d.objects.carve import derived_budgets, detail_report, free_repeats, views
 from r3d.cards import emit as card_emit
 from r3d.cards.emit import QUAD_CORNERS
@@ -153,7 +153,7 @@ def thin_choice(src, tri_v, tri_m, settings, renderer, seen, selected):
     piece = np.full(len(tri_v), -1)
     if np.any(candidates):
         piece[candidates] = pieces(src.p, tri_v[candidates], tri_m[candidates])
-    ratio = renderer.variant.triangles / max(seen, 1) if settings.simplify else 1
+    ratio = start_budget(renderer.variant) / max(seen, 1) if settings.simplify else 1
     return thin_keep(tri_m, src.tri_o, piece, settings.thin, cut, ratio, src.names, skip=selected), piece
 
 
@@ -299,7 +299,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify and len(tris):
             steps = settings.simplify
-            budget = renderer.variant.triangles if available is None else min(renderer.variant.triangles, available)
+            budget = start_budget(renderer.variant)
+            if available is not None:
+                budget = min(budget, available)
             mesh_report['rest_budget'] = budget
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, budget,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,

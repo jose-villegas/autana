@@ -753,9 +753,13 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
                                                           tools["reference_pose"]])
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
+        fit_settings = fit_recipe(job.renderer.fit)
+        # Starts with different limits can simplify to identical bytes.
+        if job.settings.fit.probes is not None:
+            variant = job.renderer.variant
+            fit_settings.update(triangles=variant.triangles, split_reserve=variant.split_reserve)
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
-             tools["fit"]])
+            ["fit", reference_sha256, start_sha256, fit_settings, tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])

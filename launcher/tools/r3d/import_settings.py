@@ -231,8 +231,8 @@ def load_variant(value, steps, where):
         for name, home in homes.items():
             if name in value:
                 raise SettingsError(f"{where}.{name} moved to {home}")
-    check_keys(value, ("name",), where, optional=("triangles", "ceiling", "objects_scale"))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None,
+    check_keys(value, ("name",), where, optional=("triangles", "split_reserve", "ceiling", "objects_scale"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None, split_reserve=0,
                               ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None,
                               objects_scale=number(value.get("objects_scale", 1.0), f"{where}.objects_scale"))
     if variant.objects_scale <= 0:
@@ -245,6 +245,14 @@ def load_variant(value, steps, where):
             raise SettingsError(f"{where}.triangles {variant.triangles} exceeds its ceiling {variant.ceiling}")
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
+    if "split_reserve" in value:
+        if steps.fit.probes is None:
+            raise SettingsError(f"{where}.split_reserve needs geometry.probes")
+        variant.split_reserve = integer(value["split_reserve"], f"{where}.split_reserve")
+        if variant.split_reserve < 0:
+            raise SettingsError(f"{where}.split_reserve must be nonnegative")
+        if variant.split_reserve >= variant.triangles:
+            raise SettingsError(f"{where}.split_reserve must be smaller than triangles")
     return variant
 
 
@@ -478,7 +486,7 @@ def load_import_settings(path):
     else:
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
-        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
+        variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None, split_reserve=0)]
     meshes = load_object_meshes(values.get("objects", {}))
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")

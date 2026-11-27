@@ -6,9 +6,14 @@ from r3d.import_settings import SettingsError
 from r3d.lit_mesh import finest_count, read_bundle_mesh
 
 
+def start_budget(variant):
+    """The simplify budget after setting aside triangles for splits during the fit."""
+    return variant.triangles - getattr(variant, "split_reserve", 0)
+
+
 def ceiling_split(renderer):
     """(start ceiling, copies' room, rest floor); a fitted start has no ceiling. A probe fit (no prune budget)
-    keeps its start's triangles, so its floor is the variant's."""
+    keeps its start's triangles and can grow to the variant's full budget, which sets its floor."""
     ceiling = getattr(renderer.variant, 'ceiling', None)
     fit = getattr(renderer, 'fit', None)
     floor = renderer.variant.triangles if fit is None or fit.budget is None else fit.budget

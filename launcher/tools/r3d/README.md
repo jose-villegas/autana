@@ -319,24 +319,23 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 
 `NAME` is the fitted scene object, or its variant when only one object fits that variant.
 
-`prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake, flat when the renderer's shading is),
-samples the camera's path every
-`fit.poses.train_every_ms`, holds out the multiples of
-`fit.poses.held_out_every_ms`, samples it again every
-`fit.prune.coverage_every_ms` for pruning, and renders the training references
-with their normals in portrait and landscape so the fit holds the panel either
-way up at `fit.poses.size`. `fit` fits with
-`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
-`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
-`fit.optimise.surface_margin`.
+`prepare` bakes the start at the variant's `triangles` minus `split_reserve`,
+lit by the scene's bake and flat when the renderer's shading is flat.
+
+`prepare` samples the path every `fit.poses.train_every_ms` and holds out
+multiples of `fit.poses.held_out_every_ms`. It samples pruning poses every
+`fit.prune.coverage_every_ms`.
+
+It renders path training references with normals in portrait and landscape at
+`fit.poses.size`. Deterministic reductions and seeded sampling make the fit
+repeatable.
 
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
-`fit` prunes the fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. The fit uses deterministic
-reductions and seeded sampling; the lock pins the bytes a fit made.
+`fit` uses `fit.optimise` and writes the mesh into the work folder. Probe fits
+keep every start triangle and fail if T-junction splits push the rest past
+`triangles`. Fits without probes prune to the configured budget.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;

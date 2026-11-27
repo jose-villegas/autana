@@ -224,8 +224,25 @@ class ImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
         self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None,
-                                                       "objects_scale": 1.0})
+                                                       "objects_scale": 1.0, "split_reserve": 0})
 
+    def test_a_probe_variant_accepts_a_split_reserve_below_its_triangles(self):
+        body = SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT
+        for reserve in (0, 9):
+            with self.subTest(reserve=reserve), tempfile.TemporaryDirectory() as directory:
+                path = write_import(directory, output='[output]\n', body=body + f"split_reserve = {reserve}\n")
+                self.assertEqual(load_import_settings(path).variants[0].split_reserve, reserve)
+
+    def test_a_split_reserve_needs_probes_even_when_zero(self):
+        self.rejects(r"split_reserve needs geometry\.probes", SIMPLIFY + VARIANT + "split_reserve = 0\n")
+
+    def test_a_probe_variant_refuses_an_invalid_split_reserve(self):
+        body = SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT
+        for reserve, error in (("-1", "must be nonnegative"), ("10", "must be smaller than triangles"),
+                               ("11", "must be smaller than triangles"), ("1.5", "must be an integer"),
+                               ("true", "must be an integer")):
+            with self.subTest(reserve=reserve):
+                self.rejects(f"split_reserve {error}", body + f"split_reserve = {reserve}\n")
 
     def test_basic_settings_turn_no_step_on(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -943,6 +960,23 @@ class BakeStepTests(unittest.TestCase):
                 mesh_import.bake_geometry(SimpleNamespace(settings=settings, renderer=renderer_, bake=None), None)
         self.assertEqual(seen, [own])
 
+    def test_a_probe_variant_reserves_split_triangles_in_thinning_and_simplify(self):
+        with tempfile.TemporaryDirectory() as directory:
+            body = SIMPLIFY + 'probes = { face = 64 }\n' + VARIANT
+            path = write_import(directory, output='[output]\n', body=body)
+            job = albedo_jobs(load_import_settings(path))[0]
+            variant = job.renderer.variant
+            variant.split_reserve = 3
+            budget = variant.triangles - variant.split_reserve
+            p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
+            source = triangle_source(p)
+            with mock.patch.object(mesh_import, "load_source", return_value=source), \
+                    mock.patch.object(mesh_import, "shade_unlit", return_value=(p, np.zeros_like(p), source.tri_v)), \
+                    mock.patch.object(mesh_import, "thin_keep", wraps=mesh_import.thin_keep) as thin, \
+                    mock.patch.object(mesh_import, "simplify", side_effect=lambda p, c, t, m, *a, **kw: (p, c, t, m)) as simplify:
+                mesh_import.bake_geometry(job, None)
+            self.assertEqual((thin.call_args.args[5], simplify.call_args.args[4]), (budget, budget))
+
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
         settings = SimpleNamespace(cards=None, seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
@@ -1184,13 +1218,15 @@ class LocalSourceTests(unittest.TestCase):
         from bake import bake
         from r3d.fitted_variant import reference_digest
 
-        def keys(shaping):
+        def keys(shaping, split_reserve=0, triangles=10):
             with tempfile.TemporaryDirectory() as directory:
                 root = pathlib.Path(directory)
                 write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + shaping + VARIANT)
                 objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + (FIT.replace('budget = 8\n', '') if shaping else FIT))
                 scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
                 job = scene.renderers[0]
+                job.renderer.variant.split_reserve = split_reserve
+                job.renderer.variant.triangles = triangles
                 start = bake.stage_keys(job, scene, {stage: stage for stage in bake.STAGES})["start"]
                 return start, reference_digest(job, scene), fit_key(job, scene), job
 
@@ -1201,6 +1237,12 @@ class LocalSourceTests(unittest.TestCase):
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
+        for reserve, triangles in ((1, 10), (0, 11)):
+            with self.subTest(reserve=reserve, triangles=triangles):
+                changed = keys("probes = { spacing = 2.0 }\n", reserve, triangles)
+                self.assertNotEqual(changed[0], probed[0])
+                self.assertEqual(changed[1], probed[1])
+                self.assertNotEqual(changed[2], probed[2], "the fit's limit changed even with identical inputs")
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

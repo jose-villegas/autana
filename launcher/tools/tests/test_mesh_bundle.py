@@ -22,7 +22,7 @@ from test_r3d_objects import POINTS, TRIANGLES, obj_text
 from r3d.lit_mesh import bundle_entries, read_bundle_mesh, read_lit_mesh
 from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
-from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
+from r3d.import_settings import MESHLET_TRIANGLES, SettingsError, albedo_jobs, load_import_settings
 from tests.test_r3d_bake import canonical
 from tests.r3d_env import needs_llvm  # noqa: E402
 
@@ -325,7 +325,7 @@ def keep_start(args):
     (out / raw.name).write_bytes(raw.read_bytes())
 
 
-def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
+def run_fit(directory, fit_main, lod=None, path=True, shaping=None, triangles=2, split_reserve=0):
     """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, the scene camera with a
     path or without one and the import's fit `shaping` when given; returns the start's bytes, the job and the
     fitted bundle."""
@@ -337,7 +337,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
     if shaping is not None:
         job.settings.fit = shaping
     start_path(work, job).write_bytes(data)
-    job.renderer.variant = SimpleNamespace(name='fixture')
+    job.renderer.variant = SimpleNamespace(name='fixture', triangles=triangles, split_reserve=split_reserve)
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
                                        surface_weight=0, surface_margin=0, budget=1)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
@@ -372,6 +372,33 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--poses'), ['probes.txt'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['probes.txt'])
         self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
+        self.assertNotIn('--budget', args)
+
+    def test_a_probe_fit_caps_the_fitted_rest_at_the_variant_triangles(self):
+        probes = SimpleNamespace(probes=SimpleNamespace())
+        with tempfile.TemporaryDirectory() as directory:
+            data, _, _, job, _ = bundle_fixture(directory, positions=POINTS, triangles=TRIANGLES[:3])
+            entries, _ = mesh_bundle.decode(data)
+            rest = next(entry for entry in entries if entry[0] == job.asset_name)
+
+            def fitted(args):
+                keep_start(args)
+                out = pathlib.Path(args[args.index('--out') + 1])
+                name = pathlib.Path(args[args.index('--start') + 1]).name
+                (out / name).write_bytes(mesh_bundle.encode([rest], []))
+
+            work = pathlib.Path(directory)
+            over = work / 'over'
+            over.mkdir()
+            with self.assertRaisesRegex(SettingsError,
+                                        r"start rest 1.*split added 2.*triangles 2.*split_reserve 1.*raise split_reserve"):
+                run_fit(over, fitted, shaping=probes, triangles=2, split_reserve=1)
+
+            equal = work / 'equal'
+            equal.mkdir()
+            _, job, target = run_fit(equal, fitted, shaping=probes, triangles=3, split_reserve=2)
+            entries, _ = mesh_bundle.decode(target.read_bytes())
+            self.assertEqual(len(read_bundle_mesh(entries, job.asset_name).tris), 3)
 
     def test_without_probes_the_fit_reads_the_path_sets_alone(self):
         args = self.command()

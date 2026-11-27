@@ -64,5 +64,7 @@ seam = "free"
 [[variants]]
 name = "sponza_fitted_full"
 triangles = 13313
+# Split added 546 triangles with a start budget of 13313.
+split_reserve = 546
 objects_scale = 0.92
 ceiling = 30000

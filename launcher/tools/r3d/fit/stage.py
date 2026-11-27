@@ -23,9 +23,9 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged. The
-    variant's ceiling caps the fitted bundle. A probe fit's start is its budget, so it prunes only what no view
-    shows; any other fit prunes its rest to the ceiling less the copy prototypes, or to the recipe's budget when
-    the variant has no ceiling; `budget` overrides both."""
+    variant's ceiling caps the fitted bundle. A probe fit keeps every start triangle and caps the split rest
+    at the variant's triangles. Other fits prune to the ceiling less the copy prototypes, or to the recipe's
+    budget when the variant has no ceiling. `budget` overrides those pruning targets."""
     from r3d.appearance_simplify import main as fit_main
     from r3d.objects.budget import bundle_count, ceiling_split, rest_target
     from r3d.import_settings import SettingsError
@@ -83,6 +83,14 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
+    if shaping.probes is not None:
+        rest_name = [job.asset_name]
+        fitted_count = bundle_count(fitted_entries, rest_name)
+        if fitted_count > variant.triangles:
+            start_count = bundle_count([(job.asset_name, mesh_asset.TYPE, rest)], rest_name)
+            raise SettingsError(f"{variant.name}: start rest {start_count}, split added {fitted_count - start_count}, "
+                                f"fitted rest {fitted_count} exceeds triangles {variant.triangles} "
+                                f"with split_reserve {variant.split_reserve}; raise split_reserve")
     fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
     entries = [(name, kind, fitted if name == job.asset_name else data) for name, kind, data in bundle_entries]
     check_ceiling(bundle_count(entries, [*shapes, job.asset_name]), ceiling)
