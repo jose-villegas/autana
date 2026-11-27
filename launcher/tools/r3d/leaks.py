@@ -76,6 +76,24 @@ class LeakProbes:
                 rims.append(np.unique(seen[ring & hit]))
         return rims
 
+    def closed_gap_hits(self, positions, tris):
+        """Batches of rays that hit this mesh through source sky, with their first triangle rows."""
+        result = RayQuery(positions, tris)
+        gaps = []
+        for (_, origins, directions), sky in zip(self._batches(), self.source_sky):
+            if np.any(sky):
+                origins, directions = origins[sky], directions[sky]
+                hit, _, rows = result.first_hits(origins, directions)
+                if np.any(hit):
+                    gaps.append((origins[hit], directions[hit], rows[hit]))
+        return gaps
+
+    def reopened_gap_rows(self, positions, tris, gaps):
+        """Original first-hit rows for closed gap rays that now see sky."""
+        result = RayQuery(positions, tris)
+        return np.unique(np.concatenate([rows[~result.blocked(origins, directions)]
+                                         for origins, directions, rows in gaps]))
+
     def _view_holes(self, result, reach=REACH):
         """(origins, directions, hole masks) of each view where the RayQuery `result` shows a hole."""
         for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):

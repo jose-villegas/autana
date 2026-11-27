@@ -1,11 +1,11 @@
 """The two steps after a fit (appearance_simplify.py), in order: snap_back closes sky the fit shows and its start
 did not, then split_t_junctions splits each edge a fitted point lies on.
 
-The fit holds a seam's border points to the other part's triangles, but an edge between two held points stays
-straight while the surface under it bends, so sky can open along the edge. snap_back uses the start's leak
-probes to restore points on fitted triangles around each hole and on start triangles seen through it. The rim
-widens each round. A seam hold can also leave a T-junction that opens a pixel during rasterization.
-split_t_junctions splits that edge through the fitted point, adding one triangle.
+snap_back restores points on widening fitted rims and on start triangles seen through new sky.
+When a restore reopens start sky the fit had covered, the points of the pre-snap triangles that
+covered those pixels stay fixed at their fitted positions.
+
+split_t_junctions splits edges through fitted points to close gaps during rasterization.
 """
 
 import numpy as np
@@ -39,29 +39,43 @@ def start_probes(start, copies, camera):
 
 
 def snap_back(start, fitted, copies, probes):
-    """Restore shared points on fitted rims and start triangles seen through each hole. Return the mesh
-    and number of points moved. Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
+    """Close new holes while preserving coverage the fit added. Return the mesh and number of points
+    moved. Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
     points = fitted.points.copy()
-    moved = np.zeros(len(points), dtype=bool)
+    fixed = np.zeros(len(points), dtype=bool)
     fitted_count, start_count = len(fitted.tris), len(start.tris)
+    gaps = None
     for width in range(1, SNAP_BACK_ROUNDS + 1):
         positions, tris = geometry(fitted._replace(points=points), copies)
         rims = probes.rims(positions, tris, width, reach=SNAP_BACK_REACH)
         if not rims:
-            return fitted._replace(points=points), int(np.count_nonzero(moved))
+            break
+        if gaps is None:
+            gaps = probes.closed_gap_hits(*geometry(fitted, copies))
         holes = probes.holes(positions, tris, reach=SNAP_BACK_REACH)
         rim_rows = np.unique(np.concatenate(rims))
         seen_rows = np.unique(np.concatenate(holes))
         rim_points = tris[rim_rows[rim_rows < fitted_count]]
         seen_points = start.vertex_point[start.tris[seen_rows[seen_rows < start_count]]]
         restore = np.union1d(rim_points, seen_points)
-        moved[restore] |= np.any(points[restore] != start.points[restore], axis=1)
+        restore = restore[~fixed[restore]]
         points[restore] = start.points[restore]
-    left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
-    if left:
-        raise ValueError(f"the fit still shows {left} holes its start does not after {SNAP_BACK_ROUNDS} rounds "
-                         "of moving points back")
-    return fitted._replace(points=points), int(np.count_nonzero(moved))
+        # Keeping a triangle at its fitted position can uncover pixels a restore had covered.
+        while gaps:
+            rows = probes.reopened_gap_rows(*geometry(fitted._replace(points=points), copies), gaps)
+            if not len(rows):
+                break
+            keep = tris[rows[rows < fitted_count]]
+            if not np.any(points[keep] != fitted.points[keep]):
+                raise ValueError("the snap reopened a gap with its covering triangles already at the fit")
+            points[keep] = fitted.points[keep]
+            fixed[keep] = True
+    else:
+        left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
+        if left:
+            raise ValueError(f"the fit still shows {left} holes its start does not after {SNAP_BACK_ROUNDS} rounds "
+                             "of moving points back")
+    return fitted._replace(points=points), int(np.count_nonzero(np.any(points != fitted.points, axis=1)))
 
 
 def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):

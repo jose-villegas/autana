@@ -1,5 +1,4 @@
-"""Checks the steps after a fit (r3d/fit/seal.py): a fitted point on another triangle's edge splits that edge, and
-sky the fit shows that its start did not is closed by moving the points around it back to the start."""
+"""Checks that sealing closes new sky, preserves coverage added by the fit, and splits T-junctions."""
 
 import pathlib
 import sys
@@ -14,6 +13,7 @@ try:
 
     from r3d.appearance_simplify import FitMesh
     from r3d.fit import seal
+    from r3d.ray_query import RayQuery
 except ImportError:
     np = None
 
@@ -167,6 +167,7 @@ class SnapBackCopyRows(unittest.TestCase):
                 probes = mock.Mock()
                 probes.rims.side_effect = [[np.array(rim)], []]
                 probes.holes.return_value = [np.array(seen)]
+                probes.closed_gap_hits.return_value = []
                 sealed, moved = seal.snap_back(start, fitted, copies, probes)
                 expected = fitted.points.copy()
                 if 0 in rim or 0 in seen:
@@ -232,17 +233,62 @@ class SnapBack(unittest.TestCase):
         self.assertEqual(moved, 0)
         np.testing.assert_array_equal(sealed.points, self.start.points)
 
+    def test_a_closed_gap_stays_closed_when_the_fit_opens_a_nearby_hole(self):
+        wall = self.start.points[:8].tolist()
+        tris = self.start.tris[:8].tolist()
+        middle_left = 0.0
+        middle_right = START_GAP
+        right_start = middle_right - JOINED_GAP_GROWTH
+        for left, right in ((-SHEET_HALF, middle_left - START_GAP), (middle_left, middle_right),
+                            (right_start, SHEET_HALF)):
+            a = len(wall)
+            wall.extend((-SHEET_BEHIND, y, z) for y, z in (
+                (left, -SHEET_HALF), (right, -SHEET_HALF), (right, SHEET_HALF), (left, SHEET_HALF)))
+            tris.extend(((a, a + 1, a + 2), (a, a + 2, a + 3)))
+        start = mesh(wall, tris)
+        points = start.points.copy()
+        left_edge = (points[:, 0] == -SHEET_BEHIND) & (points[:, 1] == middle_left - START_GAP)
+        right_edge = (points[:, 0] == -SHEET_BEHIND) & (points[:, 1] == right_start)
+        points[left_edge, 1] = middle_right + JOINED_GAP_GROWTH
+        points[right_edge, 1] += PULLED_IN
+        fitted = start._replace(points=points)
+        probes = seal.start_probes(start, None, CAMERA)
+        self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=seal.SNAP_BACK_REACH))
+
+        sealed, _ = seal.snap_back(start, fitted, None, probes)
+
+        self.assertEqual(probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+        before = RayQuery(*seal.geometry(fitted, None))
+        after = RayQuery(*seal.geometry(sealed, None))
+        closed_count = reopened_count = 0
+        for (_, origins, directions), start_sky in zip(probes._batches(), probes.source_sky):
+            closed = start_sky & before.blocked(origins, directions)
+            closed_count += np.count_nonzero(closed)
+            reopened_count += np.count_nonzero(~after.blocked(origins[closed], directions[closed]))
+        self.assertGreater(closed_count, 0)
+        self.assertEqual(reopened_count, 0, "snap reopened probe pixels the fit had covered")
+
     def test_the_sheet_seen_through_an_unchanged_rim_moves_back(self):
         points = self.start.points.copy()
         sheet = points[:, 0] == -SHEET_BEHIND
-        points[sheet, 0] = CAMERA[0][1][0] + SHEET_BEHIND
+        points[sheet, 1:] = points[sheet, 1:].mean(axis=0)
         fitted = self.start._replace(points=points)
 
         sealed, moved = seal.snap_back(self.start, fitted, None, self.probes)
 
         np.testing.assert_array_equal(sealed.points[sheet], self.start.points[sheet])
-        self.assertEqual(moved, np.count_nonzero(sheet))
+        self.assertEqual(moved, np.count_nonzero(np.any(points != self.start.points, axis=1)))
         self.assertEqual(self.probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+
+    def test_conflicting_coverage_leaves_holes_and_reports_the_count(self):
+        points = self.start.points.copy()
+        sheet = points[:, 0] == -SHEET_BEHIND
+        # Beyond the cameras, the sheet covers sky for probes looking away from the wall.
+        points[sheet, 0] = CAMERA[0][1][0] + SHEET_BEHIND
+        fitted = self.start._replace(points=points)
+
+        with self.assertRaisesRegex(ValueError, r"still shows [1-9]\d* holes"):
+            seal.snap_back(self.start, fitted, None, self.probes)
 
     def test_sky_joined_to_a_start_opening_moves_the_points_back(self):
         start = self.start._replace(points=self.start.points.copy())
