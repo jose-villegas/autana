@@ -17,8 +17,10 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "device"))
+sys.path.insert(0, str(TOOLS.parents[1] / "scripts/device/tests"))
 
 import screenshot  # noqa: E402
+from fake_serial import FakeConnection  # noqa: E402
 
 
 def build_bmp(width, height, rows_bgr):
@@ -82,26 +84,6 @@ def extract_idat(png):
             return data
         pos += 12 + length
     raise AssertionError("no IDAT chunk found")
-
-
-class FakeConnection:
-    """Feeds queued byte chunks to read(), and records every write()."""
-
-    def __init__(self, chunks):
-        self.chunks = list(chunks)
-        self.writes = []
-
-    def read(self, unused_size):
-        return self.chunks.pop(0) if self.chunks else b""
-
-    def write(self, data):
-        self.writes.append(data)
-
-    def flush(self):
-        pass
-
-    def reset_input_buffer(self):
-        pass
 
 
 class ReadScreenshotTests(unittest.TestCase):
