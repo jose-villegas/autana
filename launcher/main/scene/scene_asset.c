@@ -16,6 +16,8 @@ enum {
     AT_HEADER_PAD = SCENE_ASSET_AT_COUNTS + (SCENE_ASSET_PART_COUNT * sizeof(uint16_t)) /* zero up to the offsets */
 };
 
+_Static_assert(SCENE_LIGHT_MODE_REALTIME == LIGHT_MODE_REALTIME && SCENE_LIGHT_MODE_BAKED == LIGHT_MODE_BAKED,
+               "the SCNE light mode byte is the light_mode_t value");
 _Static_assert(sizeof(scene_asset_name_t) == SCENE_ASSET_NAME_SIZE
                    && offsetof(scene_asset_name_t, hash) == SCENE_ASSET_NAME_AT_HASH
                    && offsetof(scene_asset_name_t, name) == SCENE_ASSET_NAME_AT_TEXT,
@@ -111,7 +113,7 @@ camera_fits(const scene_asset_t* scene, const void* row) {
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
+    return light->entity < scene->entity_count && roots(scene, light->entity) && light->mode <= SCENE_LIGHT_MODE_BAKED
            && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
            && nonnegative(light->intensity);
 }

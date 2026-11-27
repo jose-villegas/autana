@@ -2251,6 +2251,11 @@ def filled_cache(directory, test):
     return found, lock
 
 
+def first_mesh(found):
+    """The first packed mesh bundle: a pack also holds bakes of other kinds, such as a scene's probe grid."""
+    return next(item for item in found if item.output.endswith(bake.BUNDLE_SUFFIX))
+
+
 def current_lock(path):
     """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
@@ -2334,7 +2339,7 @@ class TreeTests(unittest.TestCase):
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
         with tempfile.TemporaryDirectory() as directory:
             found, lock = filled_cache(directory, self)
-            dropped = found[0]
+            dropped = first_mesh(found)
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
@@ -2344,7 +2349,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             found, lock = filled_cache(root, self)
-            some_mesh = bake.cached(lock[found[0].key], bake.BUNDLE_SUFFIX, root).read_bytes()
+            some_mesh = bake.cached(lock[first_mesh(found).key], bake.BUNDLE_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
             for entries in build_pack.pack_files([imported]).values():
@@ -2359,7 +2364,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
             found, lock = filled_cache(cache, self)
-            scratch = found[0]
+            scratch = first_mesh(found)
             mesh = cache / "scratch.bundle"
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.BUNDLE_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.BUNDLE_SUFFIX)
