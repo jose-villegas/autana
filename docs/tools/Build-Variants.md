@@ -191,8 +191,6 @@ or in the comment directly above its statement or signature. The gate uses
 the innermost inline frame in the containing function's source file.
 
 The gate rejects empty or stale notes and calls without a source line.
-`check_no_soft_double.py` accepts the same note for a deliberate soft-double
-call and also exempts functions that call a logging or formatting routine.
 
 The hot-call gate cannot see indirect calls whose targets it cannot resolve.
 It only inspects callees that are themselves hot.

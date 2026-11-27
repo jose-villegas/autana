@@ -2,15 +2,14 @@
 function's own logging call, and a function's literal pool counts as it."""
 
 import pathlib
-import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "build"))
 
 import check_no_soft_double as gate  # noqa: E402
+from objdump_calls import RELOCATION, parse_calls  # noqa: E402
 
 DUMP = """
 00000000 <hot>:
@@ -32,7 +31,7 @@ DUMP = """
 
 class SoftDoubleGate(unittest.TestCase):
     def setUp(self):
-        self.bad = gate.offenders(gate.parse_calls(DUMP, gate.RELOCATION))
+        self.bad = gate.offenders(parse_calls(DUMP, RELOCATION))
 
     def test_a_soft_double_call_with_no_logging_fails(self):
         self.assertEqual(["__muldf3"], self.bad["hot"])
@@ -50,49 +49,6 @@ class SoftDoubleGate(unittest.TestCase):
 
     def test_the_offenders_are_exactly_the_three(self):
         self.assertEqual({"hot", "hot_after_a_logger", "literal_only"}, set(self.bad))
-
-
-class AnnotatedCalls(unittest.TestCase):
-    def test_note_exempts_one_call_site_in_the_same_function(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = pathlib.Path(temp)
-            source = root / "launcher/main/example.c"
-            source.parent.mkdir(parents=True)
-            source.write_text(
-                "void sample(void) {\n"
-                "    /* Library call: preserve precision for the report. */\n"
-                "    first();\n"
-                "    second();\n"
-                "}\n",
-                encoding="utf-8",
-            )
-            dump = """Disassembly of section .text.sample:
-00000000 <sample>:
-   0: 000081 l32r a8, 0 <sample>
-      0: R_XTENSA_ASM_EXPAND __adddf3
-   3: 0008e0 callx8 a8
-   6: 000005 call8 0 <sample>
-      6: R_XTENSA_SLOT0_OP __adddf3
-"""
-            real_run = subprocess.run
-
-            def disassemble(command, *args, **kwargs):
-                if command[0] == "addr2line":
-                    self.assertEqual(".text.sample", command[command.index("-j") + 1])
-                    return subprocess.CompletedProcess(command, 0, "".join(
-                        f"{int(site, 16):#010x}\n{source}:{line}\n"
-                        for site, line in (("0x3", 3), ("0x6", 4)) if site in command
-                    ))
-                if command[0] == "objdump":
-                    return subprocess.CompletedProcess(command, 0, dump)
-                return real_run(command, *args, **kwargs)
-
-            with patch.object(gate.subprocess, "run", side_effect=disassemble):
-                both = gate.calls_by_function("objdump", root / "example.o", root=root, addr2line="addr2line")
-                self.assertEqual({"sample": ["__adddf3"]}, gate.offenders(both))
-                dump = dump.partition("   6:")[0]
-                first = gate.calls_by_function("objdump", root / "example.o", root=root, addr2line="addr2line")
-                self.assertEqual({}, gate.offenders(first))
 
 
 class ObjectsOfTheFirmware(unittest.TestCase):

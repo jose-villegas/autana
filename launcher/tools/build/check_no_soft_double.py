@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require logging or a source note for soft-double calls in firmware.
+"""Fail when firmware code calls a soft-double routine outside logging.
 
     python launcher/tools/build/check_no_soft_double.py [build-dir]
 
@@ -12,9 +12,7 @@ finds the explicit ones the compiler accepts, such as a `(double)` cast or a
 double constant, by the function that calls them.
 
 A function that calls a logging or formatting routine (esp_log, printf,
-snprintf, ...) is exempt because a `%f` argument is a double. A deliberate
-soft-double call elsewhere needs a `Library call: <reason>` note covering
-its source line, using the same convention as the hot-call link gate.
+snprintf, ...) is exempt because a `%f` argument is a double.
 
 The build directory defaults to launcher/build.diag; any build of the
 firmware works. Needs the Xtensa objdump from ESP-IDF's toolchain.
@@ -28,9 +26,8 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import packages  # noqa: E402
-from check_hot_calls import annotations, code_layout, own_source, source_site  # noqa: E402
 from espressif import xtensa_tool  # noqa: E402
-from objdump_calls import RELOCATION, disassembly_calls, parse_calls  # noqa: E402,F401
+from objdump_calls import RELOCATION, parse_calls  # noqa: E402
 
 SOFT_DOUBLE = re.compile(r"^__\w*df\w*$")
 LOGGING = re.compile(r"^(esp_log|esp_log_write|esp_log_writev|printf|snprintf|vsnprintf|sprintf|esp_rom_printf|"
@@ -47,29 +44,14 @@ def objects(build, launcher=packages.LAUNCHER):
     return found
 
 
-def calls_by_function(objdump, obj, *, root=REPO, addr2line=None, covered=None):
-    """Called symbols per function after exempting annotated soft-double sites."""
-    if covered is None:
-        covered, _ = annotations(root)
+def calls_by_function(objdump, obj):
+    """Called symbols per function in one object file."""
     text = subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout
-    calls = {}
-    soft_sites = {}
-    for function, section, site, symbol in disassembly_calls(text, RELOCATION):
-        if covered and SOFT_DOUBLE.match(symbol):
-            soft_sites.setdefault(section, []).append((function, site, symbol))
-        else:
-            calls.setdefault(function, set()).add(symbol)
-    for section, sites in soft_sites.items():
-        frames = code_layout.source_frames(addr2line or xtensa_tool("addr2line"), obj,
-                                          (site for _, site, _ in sites), section=section)
-        for function, site, symbol in sites:
-            if source_site(root, own_source(frames[site])) not in covered:
-                calls.setdefault(function, set()).add(symbol)
-    return calls
+    return parse_calls(text, RELOCATION)
 
 
 def offenders(calls):
-    """The functions with remaining soft-double calls and no logging call."""
+    """The functions with soft-double calls and no logging call."""
     found = {}
     for function, symbols in calls.items():
         soft = sorted(s for s in symbols if SOFT_DOUBLE.match(s))
@@ -81,12 +63,11 @@ def offenders(calls):
 def main(argv):
     build = pathlib.Path(argv[1]) if len(argv) > 1 else REPO / "launcher" / "build.diag"
     objdump = xtensa_tool("objdump")
-    covered, _ = annotations(REPO)
     bad = []
     count = 0
     for obj in objects(build):
         count += 1
-        for function, soft in offenders(calls_by_function(objdump, obj, covered=covered)).items():
+        for function, soft in offenders(calls_by_function(objdump, obj)).items():
             bad.append("%s: %s calls %s" % (obj.name, function, ", ".join(soft)))
     if bad:
         print("soft-double routines called outside logging (the FPU is single precision):")
