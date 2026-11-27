@@ -79,6 +79,7 @@ AREA_GROWTH_RATIO = 4.0
 MOVED_EDGES = 1.0
 # How many worst parts the log lists.
 STRETCH_WORST = 5
+# Most times the fit prunes again with a larger split reserve before a budget it cannot meet fails.
 BUDGET_ROUNDS = 4
 
 
