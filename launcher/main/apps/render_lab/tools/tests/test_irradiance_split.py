@@ -27,7 +27,8 @@ class IrradianceSplitTests(unittest.TestCase):
         dims = (2, 1, 3)
         lattice = (points, 1.0, points[0], np.ones(3), dims)
         settings = SimpleNamespace(seed=0, alpha_keep=None, double_sided=set())
-        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2)))
+        job = SimpleNamespace(settings=settings, bake=SimpleNamespace(indirect=SimpleNamespace(bounces=2),
+                                                               ray_offset=0.001))
         sun = dict(type='directional', mode=LIGHT_MODE_BAKED, direction=(0, 0, 1), color=(1, 0.9, 0.8), intensity=1)
         scene = SimpleNamespace(path=None, lights=[sun],
                                 camera=SimpleNamespace(component=SimpleNamespace(near_z=0.001)),

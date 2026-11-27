@@ -25,7 +25,10 @@
 #define POSE_PACK_ENV     "AUTANA_POSE_TEST_PACK"
 #define POSE_SKELETON_ENV "AUTANA_POSE_TEST_SKELETON"
 
-lab_t render_lab;
+/* The one key the host's --scene accepts; the app's enter loads the fixture itself. */
+static const lab_scene_t fixture = {.name = "pose fixture", .key = "fixture"};
+static const lab_scene_t* const scenes[] = {&fixture};
+lab_t render_lab = {.scenes = scenes, .scene_count = 1};
 static entity_t subject;
 
 static void

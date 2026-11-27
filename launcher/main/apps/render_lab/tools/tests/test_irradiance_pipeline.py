@@ -26,7 +26,7 @@ from asset.engine_frame import AFFINE_SIGNS, to_engine
 from build.find_cc import host_cc
 from build.c_header import read_define
 from tests.skin_probe import POSITION_SCALE, rig_glb
-from tests.r3d_env import needs_mitsuba
+from tests.r3d_env import needs_llvm
 from irradiance_sheet import compose
 from irradiance_figures import reference
 
@@ -38,7 +38,7 @@ POSE_AT = [read_define(FIXTURE, "POSE_" + axis) for axis in "XYZ"]
 
 
 class IrradiancePipelineTests(unittest.TestCase):
-    @needs_mitsuba
+    @needs_llvm
     @unittest.skipUnless(host_cc(), "needs a host compiler")
     def test_seeked_host_pose_reference_and_sheet(self):
         with tempfile.TemporaryDirectory() as directory:

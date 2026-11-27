@@ -63,7 +63,7 @@ def render(binary, scene, output, *flags, view="probes", assets=None):
 
 
 def split_probes(job, scene, total):
-    """Replay the bake's sun visibility and return two SHPR records in engine coordinates."""
+    """Replay the bake's direct lights and return two SHPR records in engine coordinates."""
     settings, camera = job.settings, scene.camera.component
     source = sh.load_source(settings)
     alpha = sh.AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
@@ -72,7 +72,8 @@ def split_probes(job, scene, total):
     moved, state = sh.classify(query, sh.face_normals(source.p, source.tri_v)[0], points, cell, camera.near_z)
     outside = state != 'inside'
     coefficients = np.zeros((len(points), shpr.COEFFICIENTS, shpr.CHANNELS))
-    coefficients[outside] = sh.sun_term(query, moved[outside], scene.lights)
+    coefficients[outside] = sh.direct_term(query, moved[outside], sh.baked_lights(scene.lights),
+                                           job.bake.ray_offset)[0]
     inside = (~outside).reshape(tuple(dims))
     sun = sh.dilate(coefficients.reshape(*dims, shpr.COEFFICIENTS, shpr.CHANNELS), inside)
     sun_data = to_engine(shpr.TYPE, shpr.encode(origin, step, dims, sun.transpose(2, 1, 0, 3, 4),

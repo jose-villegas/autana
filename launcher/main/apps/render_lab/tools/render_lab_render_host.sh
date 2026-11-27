@@ -108,7 +108,7 @@ scene_assets=main
 # The pose-export fixture links this host with its app entry substituted.
 if [ "${1:-}" = "--sources" ]; then
     . "$SCRIPT_DIR/../../../../tools/build/ui_sources.sh"
-    printf '%s\n' $scene_sources $UI_SOURCES
+    printf '%s\n' $scene_sources $UI_RENDER_HOST_SOURCES
     exit 0
 fi
 
