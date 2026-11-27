@@ -7,15 +7,12 @@ The ESP32-S3's FPU is single precision only, so every `double` operation is a
 libgcc call (__adddf3, __muldf3, __divdf3, __extendsfdf2, __truncdfsf2, ...)
 at about ten times the cost of the float one. -Werror=double-promotion and
 -Werror=float-conversion (launcher/main/CMakeLists.txt) stop the implicit
-ones at compile time; this reads the objects of the `main` component and
+ones at compile time; this reads first-party objects and
 finds the explicit ones the compiler accepts, such as a `(double)` cast or a
 double constant, by the function that calls them.
 
-A function may call a soft-double routine only when it also calls a logging
-or formatting routine (esp_log, printf, snprintf, ...): a `%f` argument
-is a double by the language, and the call itself is the evidence. Every other
-function with one fails by name, in any file, hot path or not. There is no
-list of exempt files or functions: the exemption is the function's own call.
+A function that calls a logging or formatting routine (esp_log, printf,
+snprintf, ...) is exempt because a `%f` argument is a double.
 
 The build directory defaults to launcher/build.diag; any build of the
 firmware works. Needs the Xtensa objdump from ESP-IDF's toolchain.
@@ -30,12 +27,11 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import packages  # noqa: E402
 from espressif import xtensa_tool  # noqa: E402
-from objdump_calls import parse_calls  # noqa: E402
+from objdump_calls import RELOCATION, parse_calls  # noqa: E402
 
 SOFT_DOUBLE = re.compile(r"^__\w*df\w*$")
 LOGGING = re.compile(r"^(esp_log|esp_log_write|esp_log_writev|printf|snprintf|vsnprintf|sprintf|esp_rom_printf|"
                      r"ets_printf|fprintf|vprintf|__wrap_\w*printf)$")
-RELOCATION = re.compile(r"^\s*[0-9a-f]+:\s+R_XTENSA_\w+\s+(\S+)")
 
 
 def objects(build, launcher=packages.LAUNCHER):
@@ -49,13 +45,13 @@ def objects(build, launcher=packages.LAUNCHER):
 
 
 def calls_by_function(objdump, obj):
-    """{function: set of called symbols} for one object file."""
-    return parse_calls(subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout,
-                       RELOCATION)
+    """Called symbols per function in one object file."""
+    text = subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout
+    return parse_calls(text, RELOCATION)
 
 
 def offenders(calls):
-    """The functions calling soft double without a logging call beside it."""
+    """The functions with soft-double calls and no logging call."""
     found = {}
     for function, symbols in calls.items():
         soft = sorted(s for s in symbols if SOFT_DOUBLE.match(s))

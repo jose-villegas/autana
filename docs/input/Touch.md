@@ -31,6 +31,10 @@ touch_example(touch_example_t* s, const input_t* input) {
 
 ## Delivery
 
+![Touch sample positions and the timeline of a scripted tap and home swipe](../images/input/touch-trace.png)
+
+A one-poll dropout leaves the touch down. The tap releases immediately on the lift flag, while the drag triggers the home swipe before releasing after the quiet interval.
+
 | Rule | Owner |
 |---|---|
 | The task polls at `TOUCH_POLL_HZ` and latches press and release edges, so a tap that falls entirely between rendered frames still reaches the next frame | `touch.c` |
