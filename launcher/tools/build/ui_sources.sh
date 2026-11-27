@@ -12,7 +12,7 @@ main/ui/input/ui_snap.c
 main/ui/controls/ui_widgets.c
 components/microui/src/microui.c
 "
-# A host renderer plays no sound: the UI with its stand-in for the button pulse.
+# The UI sources for a host renderer: the same, plus a stand-in for the haptic pulse, which a host has no motor for.
 UI_RENDER_HOST_SOURCES="$UI_SOURCES
 tools/render/render_host_haptics.c
 "

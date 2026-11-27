@@ -28,7 +28,9 @@ python launcher/main/apps/render_lab/tools/irradiance_figures.py \
   --entity capybara --times-ms 3000 6200 12000 --out "$OUT" --work "$WORK"
 ```
 
-The sheet shows matched crops and the total path-traced reference. The work
+The sheet crops each skin four times: sun only, bounce only and total from
+the host, then the path-traced reference, labelled with its mean dE76 against
+the total. The work
 folder's `measurements.json` reports mean linear luminance over the eroded
 reference skin masks, the bounce share and pixel differences for each still.
 
