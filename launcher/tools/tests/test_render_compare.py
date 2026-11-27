@@ -692,5 +692,27 @@ class ReferenceModeArgumentsTest(unittest.TestCase):
             self.assertIn("has no s.sh", accepted.stderr)
 
 
+@unittest.skipIf(shutil.which("sh") is None, "needs a POSIX shell")
+class OutputDirectoryTest(unittest.TestCase):
+    SCRIPT = Path(__file__).resolve().parents[1] / "render" / "render_compare.sh"
+
+    def test_a_relative_output_lands_in_the_callers_directory(self):
+        # Each side's script runs inside its checkout, so a relative -o would
+        # otherwise land there and the compare would find no images.
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        for side in ("a", "b"):
+            tree = root / side
+            tree.mkdir()
+            blank(4, 4).save(tree / "frame.bmp")
+            (tree / "s.sh").write_text('cp frame.bmp "$2/frame.bmp"\n', newline="\n")
+        caller = root / "caller"
+        caller.mkdir()
+        result = subprocess.run(["sh", str(self.SCRIPT), "--script", "s.sh", "-o", "out", str(root / "a"), str(root / "b")],
+                                cwd=caller, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((caller / "out" / "compare.png").is_file(), result.stdout + result.stderr)
+        self.assertFalse((root / "a" / "out").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
