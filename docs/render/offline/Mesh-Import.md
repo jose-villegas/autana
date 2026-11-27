@@ -234,7 +234,7 @@ chart. No `textures.toml` entry is needed.
 
 | Budget | Rule |
 |---|---|
-| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling - card triangles)`. |
+| Triangle limits | Card triangles are charged to both drawn and stored totals before allocating the remaining geometry. |
 | Fit | Accepted materials leave camera references and the fit; they remain in the light bake as occluders and bounce sources. |
 | Levels | Cards bypass simplification and carry no coarser levels. |
 
@@ -292,12 +292,22 @@ Every carved prototype and every remaining source object contributes one piece. 
 counts all its connected parts together. The error allowed for a piece is the smaller of the
 shared world-space error ε and its floor, 5% of its bounds diagonal in source units.
 
-| Step | Triangle accounting |
-|---|---|
-| Pay fixed cost | Charge cards and held triangles first. |
-| Count pieces | For each carved prototype, re-measure levels on a fixed error grid scaled to its bounds. Use the fewest triangles among levels within its allowed error. Count each rest object with meshoptimizer's absolute error and component pruning. |
-| Bisect ε | Take the smallest error whose drawn and stored counts fit. A drawn copy pays for all its triangles. A stored prototype pays once per stored mesh, including distinct mirrored or sidedness meshes. |
-| Emit and verify | Simplify the rest in one pass and lock the retained vertices of objects at their floors. If the result exceeds either limit, bisect again with measured excess. An allocation that cannot meet the limits raises a settings error. |
+```mermaid
+flowchart LR
+    Fixed[Charge cards and held triangles] --> Count[Count pieces at capped error]
+    Count --> Bisect[Bisect shared error]
+    Bisect --> Emit[Emit and check both limits]
+    Emit -->|Measured excess| Count
+```
+
+Prototype counts come from measured levels on a bounds-scaled error grid.
+Rest counts use meshoptimizer with absolute error and pruning. Each drawn copy pays in full.
+The stored total charges each distinct prototype mesh once, including mirrored and sidedness variants.
+
+Rest objects share a colour-aware pass at ε. Each object capped below ε has its own
+pass at its cap, with contact vertices locked across the split. An overrun feeds
+measured costs back into allocation. If the costs predict no fit, emission tries
+the loosest error before the drawn and stored totals decide.
 
 A small rest component can disappear within its object's error allowance.
 Camera views do not enter the allocation. The carved copies of a prototype all share its count.
@@ -310,7 +320,7 @@ The tolerance is the reciprocal of `output.position_scale`.
 
 | Policy | Simplification | Seam |
 |---|---|---|
-| `weld` | Join touched passes and sum budgets; shared vertices collapse together, touching unshared contacts are pinned. | Closed |
+| `weld` | Join touched objects in the rest. Shared vertices collapse together in a common pass. Unshared contacts and contacts across capped passes are pinned. | Closed |
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
 | `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 

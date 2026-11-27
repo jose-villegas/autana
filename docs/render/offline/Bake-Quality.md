@@ -25,9 +25,8 @@ camera-path poses; the scores are defined in
 
 </details>
 
-What the fit buys over the simplifier at the same budget: the reference, the
-fit's start (the import simplified to the fit's budget), the fit, then each
-one's ΔE heatmap on one colour scale.
+The reference, the [allocated import](Mesh-Import.md#shared-shape-error), and the fitted result.
+The import and fit have the same triangles. Their ΔE heatmaps share one colour scale.
 
 ![Reference, simplifier, fit, and each one's error heatmap on one scale](../../images/render/bake-fidelity-full-sheet.png)
 

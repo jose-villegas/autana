@@ -39,13 +39,19 @@ Source visibility is the renderer's
 region source keeps the backing surfaces that simplification and fitting would
 otherwise expose.
 
-The importer bisects one shared world-space error, capped at 5% of each piece's bounds diagonal,
-until both the drawn and stored [triangle limits](Mesh-Import.md#shared-shape-error) fit.
-The importer uses Garland and Heckbert's quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-with Hoppe's appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+The importer prepares the fit's start using [shared shape error](Mesh-Import.md#shared-shape-error).
 
-The fit adjusts the rest's positions and colours while drawing frozen copies. It keeps the start's
-triangles and checks the fitted bundle against the stored ceiling.
+```mermaid
+flowchart LR
+    Allocate[Allocate triangles] --> Emit[Emit geometry]
+    Emit --> Limits{Both limits fit?}
+    Limits -->|Retry with measured costs| Allocate
+    Limits -->|Yes| Fit[Fit rest against references]
+    Fit --> Write[Write bundle]
+```
+
+The fit adjusts the rest's positions and colours while drawing frozen copies. It keeps the
+start's triangles and checks both limits on the fitted bundle.
 
 A warm start splits the worst fitted triangles along their longest edge, grows
 the mesh to a larger budget, and fits it again.
@@ -237,7 +243,7 @@ A pixel inside a face does not depend on $`P`$, so the position gradient comes
 only from the edges. The fit draws every triangle with three vertices of its
 own, so every edge, not only a silhouette, is antialiased and passes a
 gradient to the positions on both sides; those vertices still read one welded
-position each, so faces cannot part. Pruning, the warm start and the writer
+position each, so faces cannot part. The warm start and the writer
 keep each colour with its triangle, and the device draws the result as any flat
 mesh, at a flat mesh's cost.
 

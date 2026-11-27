@@ -11,7 +11,7 @@ mesh. Nothing here runs on the board.
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [leaks.py](leaks.py) | The probe step of `seal_seams`: views of the source from probes in the camera's region and from the camera path, the holes a simplified mesh shows in them (sky enclosed by wall), and one source vertex to lock per hole; see [seal_seams](../../../docs/render/offline/Mesh-Import.md#seal_seams). |
-| [simplify.py](simplify.py) | Appearance-preserving simplification: split evenly, one colour-aware pass per part with reserved budget shares for small props, colour weighted so a colour step buys the same surface deviation in every part. `[objects] overrides` reserve fixed counts per welded group. `seal_seams=True` joins touching pieces first, regularizes lightly, locks a vertex per hole a view finds and merges near colours. |
+| [simplify.py](simplify.py) | Colour-aware simplification under [shared shape error](../../../docs/render/offline/Mesh-Import.md#shared-shape-error). `seal_seams=True` joins touching pieces first, regularizes lightly, locks a vertex per hole a view finds and merges near colours. |
 | [meshopt.py](meshopt.py) | [meshoptimizer](https://github.com/zeux/meshoptimizer)'s simplifier and meshlet clusterizer through ctypes, built once from the pinned `third_party/upstream/meshoptimizer` submodule into `.cache/`. |
 | [light.py](light.py) | Baked light from a scene's typed lights (`LIGHTS`): a point sun by shadow rays, sky visibility and ambient, distance-limited local occlusion (`[bake].ao`), albedo from textures, and culling of what no point in a region can see. |
 | [cluster_tree.py](cluster_tree.py) | Groups weighted boxes, here meshlets, into a tree by the surface area heuristic<sup>[[130]](../../../docs/Citations.md#macdonald-1990)</sup>, its leaves runs of them. |
@@ -217,11 +217,9 @@ a comment listing the selectors, as shown in the sheet header.
 
 ## Appearance fit
 
-`appearance_simplify.py` takes a smooth mesh the simplifier baked at a
-triangle budget and moves its vertices and changes their colours until its
-renders match the reference along a camera path: appearance-driven
-simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
-triangles stay as the simplifier left them, so the budget holds.
+`appearance_simplify.py` fits the import's rest mesh to reference views by moving vertices and changing colours.
+It keeps the start's triangle counts and draws carved copies frozen.
+[Shared shape error](../../../docs/render/offline/Mesh-Import.md#shared-shape-error) sets the start's counts.
 [Appearance-Fit.md](../../../docs/render/offline/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
@@ -335,7 +333,7 @@ The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
 `fit` writes the fitted mesh into the work folder and keeps the start's triangles under the
-variant's stored ceiling. The importer sets the start count by [shared shape error](../../../docs/render/offline/Mesh-Import.md#shared-shape-error).
+variant's drawn and stored limits. The importer sets the start count by [shared shape error](../../../docs/render/offline/Mesh-Import.md#shared-shape-error).
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
