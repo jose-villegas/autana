@@ -828,6 +828,13 @@ def flight_camera(scene):
     return next((obj.component for obj in scene.objects if obj.kind == "camera" and obj.component.path), None)
 
 
+def seal_camera(scene):
+    """The region and near plane for leak probes, or None without a scene camera."""
+    if scene is None or scene.camera is None:
+        return None
+    return scene.region, scene.camera.component.near_z
+
+
 def load_scene(path):
     """A scenario: objects (each a transform and one component), the sky and
     ambient settings, and the tone map the lit meshes use."""

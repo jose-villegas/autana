@@ -16,6 +16,7 @@ from scipy import ndimage
 
 from r3d.views import probes
 from r3d.geometry import face_normals, nearest_triangles, triangle_search
+from r3d.import_settings import seal_camera as seal_camera
 from r3d.poses import camera_rays
 from r3d.ray_query import LAUNCH, RayQuery
 
@@ -144,11 +145,3 @@ def pins(positions, tris, holes, result_positions, result_tris, free):
             distance = nearest_triangles(positions[candidates], search)[2]
             picked[int(candidates[np.argmax(distance)])] = float(distance.max())
     return np.array(sorted(picked, key=lambda vertex: (-picked[vertex], vertex)), dtype=np.int64)
-
-
-def seal_camera(scene):
-    """Where LeakProbes stand for a sealed import (simplify's Allocation.camera) and a fit (fit/seal.py): the scene
-    camera's region and near plane. None without a scene camera."""
-    if scene is None or scene.camera is None:
-        return None
-    return scene.region, scene.camera.component.near_z

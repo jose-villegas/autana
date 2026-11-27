@@ -71,10 +71,11 @@ def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):
     splits a triangle once; the next looks only at the halves it made. Raises ValueError past one split per
     triangle the mesh started with: splits that keep making room for more are undoing each other."""
     splits, most = 0, len(mesh.tris)
-    tree = cKDTree(mesh.points)
+    referenced = np.unique(mesh.vertex_point[mesh.tris])
+    tree = cKDTree(mesh.points[referenced])
     rows = range(len(mesh.tris))
     while True:
-        found = _edge_points(mesh, tree, distance, rows)
+        found = _edge_points(mesh, tree, referenced, distance, rows)
         if not found:
             return mesh, splits
         splits += len(found)
@@ -85,34 +86,46 @@ def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):
         rows = range(len(mesh.tris) - 2 * len(found), len(mesh.tris))
 
 
-def _edge_points(mesh, tree, distance, rows):
-    """Per triangle of `rows`, the first (side, point, parameter) of a point on the inside of one of its edges."""
+def _edge_points(mesh, tree, referenced, distance, rows):
+    """Schedule one split per face, with every incident face of an edge split through the same point."""
     corners = mesh.vertex_point[mesh.tris]
     p = mesh.points
+    edges = {}
+    candidates = {}
+    for row, triangle in enumerate(corners):
+        for side, a in enumerate(triangle):
+            b = triangle[(side + 1) % 3]
+            key = (min(a, b), max(a, b))
+            edges.setdefault(key, []).append((row, side, a > b))
+            if row in rows:
+                candidates[key] = None
     found = {}
-    for row in rows:
-        triangle = corners[row]
-        for side in range(3):
-            a, b = int(triangle[side]), int(triangle[(side + 1) % 3])
-            edge = p[b] - p[a]
-            length = float(np.linalg.norm(edge))
-            if length <= 2 * distance:
-                continue
-            near = [int(q) for q in tree.query_ball_point((p[a] + p[b]) / 2, length / 2 + distance)
-                    if q not in triangle]
-            if not near:
-                continue
-            s = (p[near] - p[a]) @ edge / (length * length)
-            off = np.linalg.norm(p[a] + s[:, None] * edge - p[near], axis=1)
-            # Neither half may come out flat: a point on the line to the third corner too would make a sliver
-            # whose own edge holds the next point, and the two splits would undo each other.
-            c = p[int(triangle[(side + 2) % 3])]
-            inside = ((off < distance) & (s * length > distance) & ((1 - s) * length > distance)
-                      & (_line_distance(p[near], p[a], c) > distance) & (_line_distance(p[near], p[b], c) > distance))
-            if np.any(inside):
-                first = np.flatnonzero(inside)[np.argmin(s[inside])]
-                found[row] = (side, near[first], float(s[first]))
-                break
+    for a, b in candidates:
+        faces = edges[a, b]
+        if any(row in found for row, _, _ in faces):
+            continue
+        edge = p[b] - p[a]
+        length = float(np.linalg.norm(edge))
+        if length <= 2 * distance:
+            continue
+        near = referenced[tree.query_ball_point((p[a] + p[b]) / 2, length / 2 + distance, return_sorted=True)]
+        near = near[(near != a) & (near != b)]
+        if not len(near):
+            continue
+        s = (p[near] - p[a]) @ edge / (length * length)
+        off = np.linalg.norm(p[a] + s[:, None] * edge - p[near], axis=1)
+        inside = (off < distance) & (s * length > distance) & ((1 - s) * length > distance)
+        if not np.any(inside):
+            continue
+        # A sliver can leave an edge that invites a split undoing this one.
+        for row, side, _ in faces:
+            third = corners[row, (side + 2) % 3]
+            inside &= ((near != third) & (_line_distance(p[near], p[a], p[third]) > distance)
+                       & (_line_distance(p[near], p[b], p[third]) > distance))
+        if np.any(inside):
+            first = np.flatnonzero(inside)[np.argmin(s[inside])]
+            for row, side, reverse in faces:
+                found[row] = (side, int(near[first]), float(1 - s[first] if reverse else s[first]))
     return found
 
 
@@ -128,7 +141,7 @@ def _line_distance(points, a, b):
 
 def _split(mesh, found):
     """`mesh` with each triangle row of `found` split at its (side, point, parameter) into two."""
-    tris, rgb, vertex_point = [mesh.tris], [mesh.rgb], [mesh.vertex_point]
+    rgb, vertex_point = [mesh.rgb], [mesh.vertex_point]
     keep = np.ones(len(mesh.tris), dtype=bool)
     halves, half_rgb, half_double = [], [], []
     added = len(mesh.vertex_point)

@@ -623,6 +623,27 @@ class StageTests(unittest.TestCase):
         self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("f" * 64))["fit"])
         self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
 
+    def test_fit_keys_the_ceiling_and_seal_camera_with_identical_input_bytes(self):
+        job, scene = fitted_job()
+        starts = AnyStart()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, starts)
+        self.assertIsNotNone(keys["fit"])
+        raised = copy.deepcopy(job)
+        raised.renderer.variant.ceiling = (job.renderer.variant.ceiling or job.renderer.variant.triangles) + 1
+        moved = copy.deepcopy(scene)
+        moved.region = ((-1, -1, -1), (1, 1, 1))
+        moved.camera.component.region = moved.region
+        nearer = copy.deepcopy(scene)
+        nearer.camera.component.near_z /= 2
+        for field, variant, camera_scene in (("ceiling", raised, scene), ("region", job, moved),
+                                                ("near_z", job, nearer)):
+            with self.subTest(field=field):
+                changed = bake.stage_keys(variant, camera_scene, TOOL_KEYS, starts)
+                for digest in ("start_sha256", "reference_sha256"):
+                    self.assertEqual(changed[digest], keys[digest])
+                self.assertIsNotNone(changed["fit"])
+                self.assertNotEqual(changed["fit"], keys["fit"])
+
     def test_a_fit_waits_for_reference_bytes_and_counts_them_independently_of_its_start(self):
         job, scene = fitted_job()
         keys = bake.stage_keys(job, scene, TOOL_KEYS)

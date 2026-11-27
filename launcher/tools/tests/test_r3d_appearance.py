@@ -738,6 +738,7 @@ class PruneAndCostTests(unittest.TestCase):
         with self.patch_fit(mesh, optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
                             write_mesh=calls.write_mesh, seal=seal, pictured=mock.Mock(return_value=True),
                             hole_pixels=calls.hole_pixels, held_out_line=calls.held_out_line):
+            appearance.start_mesh.side_effect = lambda path: start_mesh(path if path.is_absolute() else pathlib.Path(directory) / path)
             appearance.main(["--scene", "scene.toml", "--start", "card.bundle", "--poses", "poses.txt",
                              "--reference", "reference", "--budget", str(budget), "--out", str(out),
                              "--held-out-poses", "held.txt", "--held-out-reference", "held", "--closure"])
@@ -755,6 +756,7 @@ class PruneAndCostTests(unittest.TestCase):
             calls = self.run_budgeted_fit(directory, split, budget)
             written = read_lit_mesh(out / "card.bundle")
             self.assertEqual(len(written.tris), budget + splits)
+            stored = start_mesh(out / "card.bundle")
             report = json.loads((out / "stretch.json").read_text())
             self.assertEqual(sum(row["triangles"] for row in report["parts"]), budget)
             self.assertEqual(report["split_triangles"], splits)
@@ -765,9 +767,58 @@ class PruneAndCostTests(unittest.TestCase):
         self.assertEqual(len(calls.seal.split_t_junctions.call_args.args[0].tris), budget)
         calls.seal.log_lines.assert_called_once()
         calls.write_mesh.assert_called_once()
-        written = calls.write_mesh.call_args.args[2]
-        self.assertIs(calls.hole_pixels.call_args_list[1].args[0], written)
-        self.assertIs(calls.held_out_line.call_args.args[0], written)
+        scored = calls.hole_pixels.call_args_list[1].args[0]
+        self.assertIs(calls.held_out_line.call_args.args[0], scored)
+        np.testing.assert_array_equal(scored.points, stored.points)
+        np.testing.assert_array_equal(scored.tris, stored.tris)
+
+    def test_all_scores_use_the_bundle_after_a_flat_split_collapses(self):
+        from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from tests.test_fit_seal import mesh
+
+        start = mesh([(0, 0, 0), (4, 0, 0), (0, 4, 0), (1, -1, 0), (0, -3, 0), (3, -3, 0)],
+                     [(0, 1, 2), (3, 4, 5)], flat=True)._replace(scale=1)
+        points = start.points.copy()
+        points[3] = (2 * seal.T_JUNCTION_DISTANCE, 0, 0)
+        fitted = start._replace(points=points)
+        calls = mock.Mock()
+        calls.optimise.return_value = (points, start.rgb, [1.0])
+        calls.coverage.return_value = np.ones(len(start.tris))
+        calls.write_mesh.side_effect = write_mesh
+        calls.hole_pixels.return_value = 0
+        calls.held_out_line.return_value = "held-out score"
+        calls.hidden_copy_pixels.return_value = (np.zeros(1), np.zeros(1))
+        copies = start
+        source = SimpleNamespace(object_names=["copy"], names=["material"], tri_o=np.array([0]), tri_m=np.array([0]))
+        job = SimpleNamespace(settings=SimpleNamespace(meshes=[], fit=SimpleNamespace(probes=None)))
+        reference_render = SimpleNamespace(source_for=mock.Mock(return_value=(source, job)))
+        seal_stub = stub_seal(mock.Mock())
+        seal_stub.split_t_junctions.side_effect = seal.split_t_junctions
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            with self.patch_fit(start, optimise=calls.optimise, coverage=calls.coverage, seal=seal_stub,
+                                write_mesh=calls.write_mesh, pictured=mock.Mock(return_value=True),
+                                hole_pixels=calls.hole_pixels, held_out_line=calls.held_out_line,
+                                placed_copies=mock.Mock(return_value=copies), match_meshes=mock.Mock(return_value=[0]),
+                                hidden_copy_pixels=calls.hidden_copy_pixels, check_hidden_copies=mock.Mock()), \
+                    mock.patch.dict(sys.modules, {"r3d.reference_render": reference_render}):
+                appearance.start_mesh.side_effect = lambda path: start_mesh(path) if path.is_absolute() else start
+                appearance.main(["--scene", "scene.toml", "--start", "flat.bundle", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", directory, "--object", "object",
+                                 "--copies", "copies.bundle", "--copy-poses", "held.txt",
+                                 "--held-out-poses", "held.txt", "--held-out-reference", "held", "--closure"])
+            stored = start_mesh(out / "flat.bundle")
+        self.assertEqual(len(calls.write_mesh.call_args.args[2].tris), len(fitted.tris) + 1)
+        self.assertEqual(len(stored.tris), len(fitted.tris))
+        expected = appearance.joined(stored, copies)
+        for name, actual, reference in (
+                ("closure", calls.hole_pixels.call_args_list[1].args[0], expected),
+                ("held-out dE76", calls.held_out_line.call_args.args[0], expected),
+                ("hidden copies", calls.hidden_copy_pixels.call_args.args[2][1], stored)):
+            with self.subTest(score=name):
+                self.assertEqual(len(actual.tris), len(reference.tris))
+                np.testing.assert_array_equal(actual.points, reference.points)
 
     @needs_llvm
     def test_sealing_keeps_a_pruned_gap_and_restores_a_moved_rim(self):

@@ -102,7 +102,7 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
+from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, seal_camera, source_digest  # noqa: E402
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -754,9 +754,10 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
         fit_settings = fit_recipe(job.renderer.fit)
-        # Different limits can yield identical starts.
+        # Different limits and probe cameras can yield identical input bytes.
         variant = job.renderer.variant
-        fit_settings.update(triangles=variant.triangles, split_reserve=variant.split_reserve)
+        fit_settings.update(triangles=variant.triangles, split_reserve=variant.split_reserve,
+                            ceiling=getattr(variant, "ceiling", None), seal_camera=seal_camera(scene))
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
             ["fit", reference_sha256, start_sha256, fit_settings, tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)

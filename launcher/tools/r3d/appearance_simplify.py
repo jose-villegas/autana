@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fit a baked mesh's vertex positions and colours to reference renders
-along a camera path, keeping its triangles (appearance-driven
-simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
-vertex, a flat one a colour per triangle.
+along a camera path (appearance-driven simplification, Hasselgren et al.
+2021), then prune triangles to budget and split edges at T-junctions.
+A smooth mesh fits a colour per vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
@@ -22,10 +22,11 @@ The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 
 import argparse
 import json
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import os
 import pathlib
 import sys
+import tempfile
 import time
 from typing import NamedTuple
 
@@ -1264,26 +1265,36 @@ def main(argv=None):
         probes = seal.start_probes(retained_start, copies, seal_camera(scene))
         sealed, moved = seal.snap_back(retained_start, pruned, copies, probes)
         split, splits = seal.split_t_junctions(sealed)
-        scored = joined(split, copies) if held_out else None
-        if held_out and args.closure:
-            pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
-            start_holes, fitted_holes = (sum(hole_pixels(candidate, held_views, held_size, clear)
-                                             for held_views, held_size in held_out)
-                                         for candidate in (joined(fit_start, copies), scored))
-            log(check_closure(start_holes, fitted_holes, pixels))
-        if held_out:
-            log(held_out_line(scored, held_out, clear))
-        if unpictured:
-            log(not_measured_line(unpictured))
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        if copies is not None:
-            hidden = hidden_copy_pixels(source, carved, (fit_start, sealed), args.copy_poses)
-            log(check_hidden_copies(*hidden))
+        seal.log_lines(moved, splits, len(sealed.tris))
+        with ExitStack() as staging:
+            bundle_dir = out
+            if held_out or copies is not None:
+                # A failed gate must leave any previously accepted output in place.
+                out.mkdir(parents=True, exist_ok=True)
+                bundle_dir = pathlib.Path(staging.enter_context(tempfile.TemporaryDirectory(dir=out)))
+            count = write_mesh(bundle_dir, name, split)
+            if bundle_dir != out:
+                stored = start_mesh(bundle_dir / start.name)
+                if held_out:
+                    scored = joined(stored, copies)
+                    if args.closure:
+                        pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
+                        start_holes, fitted_holes = (sum(hole_pixels(candidate, held_views, held_size, clear)
+                                                         for held_views, held_size in held_out)
+                                                     for candidate in (joined(fit_start, copies), scored))
+                        log(check_closure(start_holes, fitted_holes, pixels))
+                    log(held_out_line(scored, held_out, clear))
+                if copies is not None:
+                    hidden = hidden_copy_pixels(source, carved, (fit_start, stored), args.copy_poses)
+                    log(check_hidden_copies(*hidden))
+                for path in bundle_dir.iterdir():
+                    path.replace(out / path.name)
+        if unpictured:
+            log(not_measured_line(unpictured))
         report = stretch_report(fit_start, sealed, kept)
         report["split_triangles"] = splits
-        seal.log_lines(moved, splits, len(sealed.tris))
-        count = write_mesh(out, name, split)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
             log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"

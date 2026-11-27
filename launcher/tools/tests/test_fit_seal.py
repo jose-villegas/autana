@@ -4,6 +4,7 @@ sky the fit shows that its start did not is closed by moving the points around i
 import pathlib
 import sys
 import unittest
+from collections import Counter
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -105,15 +106,15 @@ class SplitTJunctions(unittest.TestCase):
         self.assertEqual(t_junctions(after, seal.T_JUNCTION_DISTANCE), [])
 
     def test_splits_can_equal_the_start_triangle_count(self):
-        points = self.points[:3] + [self.points[4]]
-        after, splits = seal.split_t_junctions(mesh(points, self.tris[:1]))
-        self.assertEqual(splits, 1)
-        self.assertEqual(len(after.tris), 2)
+        points = self.points[:3] + [(1, 0, 0), (2, 0, 0), (1, -3, 0), (3, 0, 0), (3, -3, 0), (4, -3, 0)]
+        after, splits = seal.split_t_junctions(mesh(points, [self.tris[0], (3, 5, 4), (6, 7, 8)]))
+        self.assertEqual(splits, 3)
+        self.assertEqual(len(after.tris), 6)
 
     def test_one_more_split_than_starting_triangles_raises_with_both_counts(self):
-        points = self.points[:3] + [self.points[4], (1, -NEAR, 0)]
-        with self.assertRaisesRegex(ValueError, r"2.*1 starting triangle"):
-            seal.split_t_junctions(mesh(points, self.tris[:1]))
+        points = self.points[:3] + [(1, 0, 0), (2, 0, 0), (1, -3, 0), (3, 0, 0), (3, -3, 0), (3.5, 0, 0)]
+        with self.assertRaisesRegex(ValueError, r"4.*3 starting triangles"):
+            seal.split_t_junctions(mesh(points, [self.tris[0], (3, 5, 4), (6, 7, 8)]))
 
     def test_a_split_that_would_leave_a_flat_half_is_not_made(self):
         # Points 0, 1 and 3 nearly on one line: splitting edge 1-2 at point 3 leaves the half 1, 3, 0 flat, whose
@@ -131,6 +132,24 @@ class SplitTJunctions(unittest.TestCase):
         self.assertEqual(splits, 2)
         self.assertEqual(len(after.tris), 5)
         self.assertEqual(t_junctions(after, seal.T_JUNCTION_DISTANCE), [])
+
+    def test_both_faces_choose_the_same_point_each_pass(self):
+        points = self.points + [(2, -1, 0), (3, -NEAR, 0), (4, -3, 0)]
+        tris = [(0, 1, 2), (1, 0, 6), (3, 5, 4), (5, 8, 7)]
+        with mock.patch.object(seal, "_split", wraps=seal._split) as split:
+            after, splits = seal.split_t_junctions(mesh(points, tris))
+        first = split.call_args_list[0].args[1]
+        self.assertEqual({row: point for row, (_, point, _) in first.items()}, {0: 4, 1: 4})
+        self.assertEqual(splits, 4)
+        corners = after.vertex_point[after.tris].tolist()
+        uses = Counter(tuple(sorted(edge)) for a, b, c in corners for edge in ((a, b), (b, c), (c, a)))
+        self.assertEqual([uses[edge] for edge in ((0, 4), (4, 7), (1, 7))], [2, 2, 2])
+
+    def test_an_orphan_point_cannot_split_an_edge(self):
+        before = mesh(self.points, self.tris[:1])
+        after, splits = seal.split_t_junctions(before)
+        self.assertEqual(splits, 0)
+        self.assertIs(after, before)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

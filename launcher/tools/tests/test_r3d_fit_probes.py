@@ -61,18 +61,24 @@ class ClosureTests(unittest.TestCase):
             stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
         stack.enter_context(mock.patch.object(appearance_simplify, "seal", stub_seal(mock.Mock())))
 
-    def test_main_checks_the_pruned_fit_before_writing(self):
+    def test_main_checks_the_stored_fit_before_publishing(self):
         mesh = self.two_triangles()
         views = [object()]
         # Unbudgeted (the probe fit) keeps both triangles; a budget of one prunes the never-shown one before the check.
         for (budget, tris), fitted_holes in itertools.product(((None, 2), ("1", 1)), (self.START_HOLES, self.PIXELS)):
             with self.subTest(budget=budget, fitted_holes=fitted_holes), tempfile.TemporaryDirectory() as directory:
                 out = pathlib.Path(directory)
-                def write_mesh(*args):
-                    (out / "mesh.bundle").touch()
-                    return len(mesh.tris)
+                staged = {}
+
+                def write_mesh(directory, name, fitted):
+                    path = directory / f"{name}.bundle"
+                    path.touch()
+                    staged[path] = fitted
+                    return len(fitted.tris)
+
                 with contextlib.ExitStack() as stack:
                     self.stub_fit(stack, mesh, views)
+                    appearance_simplify.start_mesh.side_effect = lambda path: staged[path] if path.is_absolute() else mesh
                     holes = stack.enter_context(mock.patch.object(appearance_simplify, "hole_pixels",
                                                                  side_effect=[self.START_HOLES, fitted_holes]))
                     stack.enter_context(mock.patch.object(appearance_simplify, "coverage",
@@ -81,13 +87,14 @@ class ClosureTests(unittest.TestCase):
                     args = [*FitArgumentTests.BASE[:-1], str(out), *FitArgumentTests.held(out), "--closure",
                             "--coverage-poses", "path.txt", "--coverage-poses", "probes.txt",
                             *(["--budget", budget] if budget else [])]
+                    before = set(out.iterdir())
                     if fitted_holes == self.PIXELS:
                         with self.assertRaisesRegex(ValueError, "closure"):
                             appearance_simplify.main(args)
-                        self.assertFalse((out / "mesh.bundle").exists())
+                        self.assertEqual(set(out.iterdir()), before)
                     else:
                         self.assertEqual(appearance_simplify.main(args), 0)
-                        self.assertTrue((out / "mesh.bundle").exists())
+                        self.assertTrue((out / next(iter(staged)).name).exists())
                     self.assertEqual(holes.call_count, 2)
                     self.assertIs(holes.call_args_list[0].args[0], mesh)
                     self.assertEqual(len(holes.call_args_list[1].args[0].tris), tris)
