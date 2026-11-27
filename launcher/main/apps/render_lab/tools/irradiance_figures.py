@@ -14,7 +14,7 @@ import numpy as np
 from asset.asset_pack import build_pack, parse_pack
 from asset.engine_frame import to_engine
 from bake import bake, produce
-from docs.figures import gif_from_avi, save_png
+from docs.figures import gif_from_avi
 from render.check_avi import read_video
 from PIL import Image
 from r3d import sh_probe_asset as shpr, sh_probe_bake as sh
@@ -26,9 +26,7 @@ from docs.producer import Producer
 
 PRODUCER = Producer(
     area="render", needs=("host", "bakes"),
-    outputs=("capybara-sponza-irradiance.gif", "capybara-sponza-irradiance-1.png",
-             "capybara-sponza-irradiance-2.png", "capybara-sponza-irradiance-3.png",
-             "capybara-sponza-irradiance-sheet.png"),
+    outputs=("capybara-sponza-irradiance.gif", "capybara-sponza-irradiance-sheet.png"),
     run=("--scene", "capybara-sponza", "--duration-ms", "18500", "--stem", "capybara-sponza-irradiance",
          "--reference-scene", "launcher/demo/sponza/sponza.scene.toml",
          "--glb-bake", "capybara.glb", "--entity", "capybara", "--times-ms", "3000", "6200", "12000",
@@ -204,9 +202,8 @@ def main():
         render(binary, args.scene, term_movie.with_suffix(".bmp"), *timing, "--video", term_movie,
                view="shaded", assets=asset_dir)
         extract_stills(term_movie, folders, term)
-    for index, folder in enumerate(folders, 1):
+    for folder in folders:
         reference(folder, args.reference_scene, args.glb, args.entity, args.spp, args.variant)
-        save_png(folder / "ours.bmp", args.out / f"{args.stem}-{index}.png")
     stats = compose(folders, args.out / f"{args.stem}-sheet.png", tonemap_white=tonemap_white)
     (args.work / "measurements.json").write_text(json.dumps(stats, indent=2) + "\n")
 

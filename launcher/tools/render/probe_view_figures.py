@@ -16,7 +16,7 @@ PRODUCER = Producer(
     area="render",
     needs=("host", "bakes"),
     outputs=("sponza-view-probes.png", "sponza-view-probes-close.png"),
-    run=("--scene", "launcher/demo/sponza/sponza.scene.toml", "--object", "atrium",
+    run=("--scene", "launcher/demo/sponza/sponza.scene.toml", "--object", "atrium_fitted_full",
          "--wide-camera", "camera", "--wide-frame", "20", "--wide-dt", "500",
          "--close-camera", "tour", "--close-frame", "36", "--close-dt", "1000", "--probe-size", "15",
          "--stem", "sponza-view-probes", "--out", "{out}"),
