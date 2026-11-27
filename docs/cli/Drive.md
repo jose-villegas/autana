@@ -39,10 +39,6 @@ under the device lock, and autana prints the replies:
 - A line nobody answers prints `sent` once the reply window has passed.
 - `SET`, `GET` and `RESET` lines answer as `tune` does ([Live-Tuning.md](Live-Tuning.md)).
 
-```sh
-autana <word> <args...>       # replies <WORD> ..., then <WORD>_END
-```
-
 An app's own commands are sent this way, its prefix as the first word
 ([App-Commands.md](App-Commands.md)); each app lists its own.
 
