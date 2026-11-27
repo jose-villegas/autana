@@ -3380,26 +3380,35 @@ put_at(entity_t entity, float x, float y) {
 /* How far up a mover goes, a unit a frame. */
 #define MOVER_STEPS 4
 
-/* Two scenes whose quads share rows, drawn through the first's camera; the
- * second is moved back so the two never tie in depth. One quad moves over
- * frames, and each frame is the whole draw's picture from fewer rows. */
-static void
-assert_partial_frames_of_a_mover_match_the_whole_draw(bool in_second_scene) {
-    fixture();
-    const entity_t first = show("test_pair");
-    const entity_t second = load("test_solo");
+/* The pair shown, and scene `id` loaded and moved back so the two never tie
+ * in depth: its quads share the pair's rows. Returns `id`'s root, the pair's in `pair`. */
+static entity_t
+behind_the_pair(const char* id, entity_t* pair) {
+    *pair = show("test_pair");
+    const entity_t second = load(id);
     transformf_t behind = transform_local(second);
     transformf_set_position(&behind, vec3f_add(behind.position, vec3f_unit_z()));
     transform_set_local(second, behind);
-    const entity_t mover = entity_find(in_second_scene ? second : first, name_hash(in_second_scene ? "blue" : "red"));
+    return second;
+}
+
+/* Each of the next frames of `dt_ms` redraws some rows but not all, and is the whole draw's picture. */
+static void
+assert_partial_frame_is_the_whole_draw(uint32_t dt_ms) {
+    (void)scene_compose(dt_ms, 0, &fx.target);
+    const int rows = rows_the_last_frame_drew();
+    TEST_ASSERT_GREATER_THAN_INT(0, rows);
+    TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
+    assert_the_picture_is_the_whole_draw();
+}
+
+/* From a settled picture, `mover` goes up a unit a frame of `dt_ms`, each frame partial and the whole draw's. */
+static void
+assert_partial_frames_of_a_mover_match_the_whole_draw(entity_t mover, uint32_t dt_ms) {
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
         put_at(mover, 0.0F, (float)step);
-        frame_over_the_last();
-        const int rows = rows_the_last_frame_drew();
-        TEST_ASSERT_GREATER_THAN_INT(0, rows);
-        TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
-        assert_the_picture_is_the_whole_draw();
+        assert_partial_frame_is_the_whole_draw(dt_ms);
     }
 }
 
@@ -3408,42 +3417,44 @@ assert_partial_frames_of_a_mover_match_the_whole_draw(bool in_second_scene) {
  * redrawn, and the picture is a whole draw's. */
 static void
 test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does(void) {
-    assert_partial_frames_of_a_mover_match_the_whole_draw(true);
+    fixture();
+    entity_t pair;
+    const entity_t second = behind_the_pair("test_solo", &pair);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(second, name_hash("blue")), 0);
 }
 
 static void
 test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does(void) {
-    assert_partial_frames_of_a_mover_match_the_whole_draw(false);
+    fixture();
+    entity_t pair;
+    (void)behind_the_pair("test_solo", &pair);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(pair, name_hash("red")), 0);
 }
 
 /* A frame's step for a playing animator. */
 #define SKINNED_MOVER_DT_MS 16U
 
-/* A skinned renderer of a second scene moves up and plays its clip over the
- * still pair; each frame redraws its rows only and is the whole draw's
- * picture. Settle off: its refined rows are meant to differ from a live draw. */
+/* A skinned renderer of a second scene plays its clip over the still pair,
+ * first moving up, then held where it is so only its pose moves: each frame
+ * redraws its rows only and is the whole draw's picture. Settle off: its
+ * refined rows are meant to differ from a live draw. */
 static void
 test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
     fixture();
-    /* Static: the context holds the pointer, and the settings stay off the test's frame. */
+    /* Static: keeps the settings off the test's frame. */
     static render_settings_t settings;
     settings = RENDER_SETTINGS_DEFAULT;
     settings.settle.frame_us = 0;
+    settings.anim.mid_every = settings.anim.far_every = RENDER_ANIM_EVERY_MIN; /* a pose every frame */
     render_context_set_settings(render_context_main(), &settings);
-    (void)show("test_pair");
-    const entity_t skinned = load("test_skin");
-    transformf_t behind = transform_local(skinned);
-    transformf_set_position(&behind, vec3f_add(behind.position, vec3f_unit_z()));
-    transform_set_local(skinned, behind);
-    const entity_t mover = entity_find(skinned, name_hash("red"));
-    settle_the_picture();
-    for (int step = 1; step <= MOVER_STEPS; step++) {
-        put_at(mover, 0.0F, (float)step * SWAPPED_SCENE_DROP); /* clear of its last rows */
-        (void)scene_compose(SKINNED_MOVER_DT_MS, 0, &fx.target);
-        const int rows = rows_the_last_frame_drew();
-        TEST_ASSERT_GREATER_THAN_INT(0, rows);
-        TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
-        assert_the_picture_is_the_whole_draw();
+    entity_t pair;
+    const entity_t mover = entity_find(behind_the_pair("test_skin", &pair), name_hash("red"));
+    static const char* const clips[] = {"rig.move"};
+    TEST_ASSERT_TRUE(animator_set_clips(mover, "rig", clips, 1, NULL));
+    TEST_ASSERT_TRUE(animator_play(mover, 0, 0));
+    assert_partial_frames_of_a_mover_match_the_whole_draw(mover, SKINNED_MOVER_DT_MS);
+    for (int frame = 0; frame < MOVER_STEPS; frame++) {
+        assert_partial_frame_is_the_whole_draw(SKINNED_MOVER_DT_MS);
     }
 }
 
