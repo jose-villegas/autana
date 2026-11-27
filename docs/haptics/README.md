@@ -43,4 +43,5 @@ Remove these pieces together:
 | Pulse module and development verb | `launcher/main/haptics/`, its CMake entry and `suite_haptics.c` |
 | Built-in bus | `SOUND_BUS_HAPTIC`, built-in count and name in `launcher/main/sound/` |
 | Button confirmation | The `haptic_pulse()` call in `launcher/main/ui/face/ui_face.c` |
+| Host stand-in | `launcher/tools/render/render_host_haptics.c` and its `scene_ui` line in `launcher/tools/render/render_scene.sh` |
 | Registration and verification | haptics layer entry, host tests and documentation links |

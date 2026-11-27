@@ -3,7 +3,7 @@
 Each row may include any lower row, never a higher row or another folder in its
 own row.
 
-The UI face calls `haptic_pulse()` on button presses. The pulse plays through `sound/`.
+`haptics/` sits below `ui/` and `scene/` so they can request pulses, and above `sound/`, which plays them.
 
 - Project apps under `apps/` and system apps under `shell/apps/` share the apps
   tier; other folders use their first path component.
