@@ -11,6 +11,7 @@
 #include "sound/sound_engine.h"
 #include "suites.h"
 #include "testkit/cleanup.h"
+#include "ui/ui.h"
 #include "unity.h"
 
 static console_registry_t registry;
@@ -25,6 +26,7 @@ typedef struct {
     int16_t scratch[HAPTIC_TEST_FRAMES];
     int32_t accumulator[HAPTIC_TEST_FRAMES];
     sound_command_t last;
+    unsigned tone_starts;
     uint64_t now_ms;
     char reply[CONSOLE_LINE_MAX];
 } haptic_fixture_t;
@@ -69,6 +71,10 @@ haptic_collect(const char* line) {
 
 static sound_voice_t
 haptic_test_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
+    if (!haptic_rig) {
+        return SOUND_VOICE_NULL;
+    }
+    ++haptic_rig->tone_starts;
     const sound_play_opts_t opts = {.bus = bus, .gain_pct = gain_pct, .priority = SOUND_PRIORITY_MAX, .loop = true};
     const uint32_t generation = haptic_rig->control.app_generation;
     const sound_voice_t voice =
@@ -81,6 +87,9 @@ haptic_test_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bu
 
 static void
 haptic_test_stop(sound_voice_t voice) {
+    if (!haptic_rig) {
+        return;
+    }
     sound_command_t command;
     if (sound_control_voice_command(&haptic_rig->control, voice, SOUND_COMMAND_STOP, 0, &command)) {
         sound_mixer_apply(&haptic_rig->mixer, &command, haptic_rig->control.app_generation);
@@ -112,6 +121,9 @@ haptic_test_wait_audible(sound_voice_t voice, uint32_t timeout_ms) {
 
 static void
 test_haptic_console_latency_and_errors(void) {
+    for (haptic_t strength = 0; strength < HAPTIC_COUNT; ++strength) {
+        TEST_ASSERT_NOT_NULL(strength_names[strength]);
+    }
     haptic_fixture();
     haptic_render(AUDIO_OUT_AMP_STARTUP_MS);
     TEST_ASSERT_EQUAL(CONSOLE_LINE_HANDLED, console_registry_dispatch(&registry, "haptic light", haptic_collect));
@@ -122,7 +134,7 @@ test_haptic_console_latency_and_errors(void) {
     (void)snprintf(expected, sizeof expected, "HAPTIC firm audible_ms=%u", SOUND_CONTROL_POLL_MS);
     TEST_ASSERT_EQUAL_STRING(expected, haptic_rig->reply);
     TEST_ASSERT_EQUAL(CONSOLE_LINE_HANDLED, console_registry_dispatch(&registry, "haptic medium", haptic_collect));
-    TEST_ASSERT_EQUAL_STRING("HAPTIC usage: haptic <light|firm>", haptic_rig->reply);
+    TEST_ASSERT_EQUAL_STRING("HAPTIC usage: haptic <strength>", haptic_rig->reply);
     haptic_rig->control.ready = false;
     TEST_ASSERT_EQUAL(CONSOLE_LINE_HANDLED, console_registry_dispatch(&registry, "haptic light", haptic_collect));
     TEST_ASSERT_EQUAL_STRING("HAPTIC error: pulse not audible", haptic_rig->reply);
@@ -197,8 +209,48 @@ test_haptic_bus_isolation_and_music(void) {
     TEST_ASSERT_NOT_EQUAL(HAPTIC_TEST_MUSIC_SAMPLE, haptic_rig->out[HAPTIC_TEST_FRAMES - 1]);
 }
 
+static void
+test_button_haptics_follow_confirmed_taps(void) {
+    haptic_fixture();
+    ui_init();
+    ui_set_transform(affine2x_identity());
+
+    static const struct {
+        recti_t rect;
+        vec2i_t press;
+        vec2i_t release;
+        unsigned expected_pulses;
+    } gestures[] = {
+        {.rect = {24, 52, 100, 44}, .press = {40, 70}, .release = {270, 70}, .expected_pulses = 0},
+        {.rect = {90, 120, 150, 58}, .press = {127, 150}, .release = {127, 150}, .expected_pulses = 1},
+    };
+
+    for (size_t i = 0; i < sizeof gestures / sizeof gestures[0]; ++i) {
+        const vec2i_t press = gestures[i].press;
+        const input_t frames[] = {
+            {0},
+            {.pressed = true, .down = true, .point = press, .press = press},
+            {.released = true, .point = gestures[i].release, .press = press},
+            {0},
+        };
+        const unsigned tone_starts_before = haptic_rig->tone_starts;
+        unsigned presses = 0;
+        for (size_t frame = 0; frame < sizeof frames / sizeof frames[0]; ++frame) {
+            ui_begin(&frames[frame]);
+            ui_screen();
+            presses += ui_button(gestures[i].rect, "Start");
+            ui_end_for_bands(UI_NO_BACKGROUND);
+            TEST_ASSERT_EQUAL_UINT(presses, haptic_rig->tone_starts - tone_starts_before);
+        }
+        TEST_ASSERT_EQUAL_UINT(gestures[i].expected_pulses, haptic_rig->tone_starts - tone_starts_before);
+    }
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_HAPTIC.id, haptic_rig->last.bus.id);
+    TEST_ASSERT_EQUAL_UINT8(HAPTIC_FIRM_GAIN_PCT, haptic_rig->last.gain_pct);
+}
+
 void
 run_haptics_suite(void) {
+    RUN_TEST(test_button_haptics_follow_confirmed_taps);
     RUN_TEST(test_haptic_console_latency_and_errors);
     RUN_TEST(test_haptic_strengths_and_restart);
     RUN_TEST(test_haptic_bus_isolation_and_music);

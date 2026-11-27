@@ -17,24 +17,15 @@ No feedback or notify module exists today (searched `ui/`, `shell/`, `input/`,
 
 | Piece | Where |
 |---|---|
-| `haptics/haptics.h`, `haptics.c` | `launcher/main/haptics/`, engine row, above `sound/`, beside `ui/` |
+| `haptics/haptics.h`, `haptics.c` | `launcher/main/haptics/`, engine row below `ui/` and above `sound/` |
 | Docs | `docs/haptics/README.md` |
 | Depends on | `sound/sound_engine.h` (`sound_play_tone`), nothing in `ui/` or `input/` |
 | Used by | `ui/` controls and `shell/`; apps through `haptics.h` |
 
 ## 2. API
 
-```c fragment
-typedef enum { HAPTIC_LIGHT, HAPTIC_FIRM } haptic_t;
-
-void haptic_pulse(haptic_t strength);
-```
-
-```c fragment
-if (ui_button(ui, "Start")) {
-    haptic_pulse(HAPTIC_FIRM);
-}
-```
+The [haptics API](../haptics/README.md#api-and-rules) provides named strengths.
+The UI face confirms a button press with `HAPTIC_FIRM`.
 
 | Rule | Detail |
 |---|---|
@@ -71,7 +62,7 @@ Only A308 is measured. A narrow sweep on 20E8 and 2124 decides whether
 `HAPTIC_HZ` is one constant:
 
 ```sh
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --hz 150,160,170,180,190,200,210,220,230,240,250 --volumes 10,30,60 --loud 0
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up" --hz 150,160,170,180,190,200,210,220,230,240,250 --volumes 10,30,60 --loud 0
 ```
 
 No hand test: the IMU reading stands in for feel. The reference is A308's
@@ -91,7 +82,7 @@ the capture); its 10% runs (3.2-3.6 mg) were not felt.
 | Shake ridge (autana-9zf2y) | a 60% pulse at 202 Hz is 9 mg RMS, 16 mg worst peak: below the ridge's ~94 mg threshold today and the 500 mg shake reader it moves to (#1140). Tilt readers see it as noise against 1 g. No gate needed |
 | Amplifier latency | the amp is off after 2 s idle and warms for ~250 ms, so a pulse after a quiet spell lands ~250 ms late, too late for a tap. Recommended: `haptics` asks the mixer to warm the amp on touch-down (one new call on `sound_engine.h`), so the commit's pulse is on time. Milestone 2 measures the cold delay and the amp's idle current first |
 | Power | the amplifier stays on while the screen is on; pulses add speaker drive |
-| Call sites (UI orchestrator decides) | button and toggle confirm, long-press threshold, slider detents, home-edge swipe commit (`shell_home_edge`), list end stop, a refused action |
+| Call sites | UI face button confirm. Other candidates include toggle confirm, long-press threshold, slider detents, home-edge swipe commit (`shell_home_edge`), list end stop, a refused action |
 
 ## 6. Milestones
 
@@ -101,4 +92,4 @@ the capture); its 10% runs (3.2-3.6 mg) were not felt.
 | 2 | Short pulses on A308: shake window sized to the pulse, then 202 Hz at 30/60% x 30/60/100/200 ms, a cold-amp pulse, the amp's idle current | 1, #1176 merged | a generated table; each strength's length is the shortest that reaches the long tone's shake |
 | 3 | Sweep 20E8 and 2124 | #1176 merged | `HAPTIC_HZ` decided by the IMU rule in section 4 |
 | 4 | `haptics/` module, `SOUND_BUS_HAPTIC`, amp warm on touch-down, `docs/haptics/` | 2, 3 | `haptic_pulse()` on host and board; first pulse after idle on time; still removable |
-| 5 | First call site, chosen by the UI orchestrator | 4 | the maintainer calls the pulse felt and acceptable; the removability note goes |
+| 5 | UI face button confirmation | 4 | the maintainer calls the pulse felt and acceptable; the removability note goes |
