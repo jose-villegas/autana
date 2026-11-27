@@ -96,15 +96,15 @@ def bake(job, scene):
     settings, camera = job.settings, scene.camera.component
     requested = load(scene.path)
     source = load_source(settings)
-    hit_filter = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
-    query = RayQuery(source.p, source.tri_v, hit_filter=hit_filter)
+    source.alpha_test = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
+    query = RayQuery(source.p, source.tri_v, hit_filter=source.alpha_test)
     points, cell, origin, step, dims = grid(source, camera, requested.spacing, settings.seed)
     moved, state = classify(query, face_normals(source.p, source.tri_v)[0], points, cell, camera.near_z)
     outside = state != 'inside'
     lights = baked_lights(scene.lights)
     transport = PathLight(source, lights, settings.double_sided, job.bake.indirect,
                           scene.indirect.albedo_boost)
-    transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1), 'hide_emitters': False})
+    transport.integrator = transport.mi.load_dict({**integrator(job.bake.indirect.bounces + 1, transport.scene.masked), 'hide_emitters': False})
     directions = sphere_directions(requested.directions)
     coefficients = np.zeros((len(points), COEFFICIENTS, CHANNELS))
     chunk_size = max(1, LAUNCH // requested.directions)

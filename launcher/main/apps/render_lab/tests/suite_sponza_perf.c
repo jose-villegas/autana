@@ -451,7 +451,7 @@ test_sponza_frame_cost_placed(void) {
 static void
 run_with_sponza(void (*tests)(void)) {
     sponza_suite_t loaded = sponza_suite_load();
-    sponza = loaded.scene;
+    sponza = loaded.base.scene;
     pack = asset_store_loaded(loaded.load);
     flythrough = loaded.lens;
     camera_entity = handle_is_none(sponza) ? ENTITY_NONE : entity_find(sponza, name_hash(sponza_cameras[0]));
@@ -460,7 +460,6 @@ run_with_sponza(void (*tests)(void)) {
         perf_quarter = &lab_perf_quarters[q];
         tests();
     }
-    loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
     sponza = ENTITY_NONE;
     pack = NULL;

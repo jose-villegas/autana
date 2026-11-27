@@ -710,8 +710,11 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
 
 /* The pack of every quad, scene and the clip, with the CRC set. */
 static uint32_t
-make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
-    test_pack_t pack = test_pack_begin(bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES);
+make_pack(uint8_t* bytes, const skin_fixture_options_t* options, bool probes) {
+    static const char* const probe_names[] = {"test_pair" SH_PROBES_NAME_SUFFIX, "test_skin" SH_PROBES_NAME_SUFFIX};
+    const int probe_count = sizeof probe_names / sizeof *probe_names;
+    test_pack_t pack = test_pack_begin(
+        bytes, PACK_MAX, QUAD_COUNT + SCENE_COUNT + 1 + CLIP_COUNT + RIG_ENTRIES + (probes ? probe_count : 0));
     for (int i = 0; i < QUAD_COUNT; i++) {
         uint8_t* entry = test_pack_add(&pack, QUADS[i].name, R3D_LIT_MESH_ASSET, QUAD_BYTES);
         make_quad_entry(entry, QUADS[i].red, QUADS[i].green, QUADS[i].blue, 1);
@@ -730,6 +733,18 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
                         CLIPS[i].track_count);
     }
     make_rig_entries(&pack, options);
+    for (int grid = 0; probes && grid < probe_count; grid++) {
+        uint8_t* entry =
+            test_pack_add(&pack, probe_names[grid], SH_PROBES_ASSET, SH_PROBES_HEADER_SIZE + SH_PROBES_RECORD_SIZE);
+        test_pack_put16(entry + SH_PROBES_AT_VERSION, SH_PROBES_VERSION);
+        const float spacing[] = {1, 1, 1};
+        test_pack_put_floats(entry + SH_PROBES_AT_SPACING, spacing, MAT3F_AXES);
+        test_pack_put_floats(entry + SH_PROBES_AT_SCALE, spacing, 1);
+        for (int axis = 0; axis < MAT3F_AXES; axis++) {
+            test_pack_put16(entry + SH_PROBES_AT_DIMS + axis * sizeof(uint16_t), 1);
+        }
+        test_pack_put16(entry + SH_PROBES_HEADER_SIZE, grid + 1);
+    }
     return test_pack_finish(&pack);
 }
 
@@ -796,7 +811,7 @@ fixture_with_skin(const skin_fixture_options_t* options) {
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     TEST_ASSERT_NOT_NULL(fx.instances);
-    const uint32_t total = make_pack(fx.bytes, options);
+    const uint32_t total = make_pack(fx.bytes, options, false);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
     fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL, NULL};
 }
@@ -1796,8 +1811,9 @@ model_of(entity_t root, const char* name) {
 }
 
 /* Two placements agree in their top three rows: with positive scales, the
- * same position, rotation and scale. */
-static void
+ * same position, rotation and scale. Its own frame, so the two matrices stay
+ * off the stack of the test that calls it. */
+static __attribute__((noinline)) void
 assert_same_placement(mat4f_t want, mat4f_t got, float tolerance) {
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 4; c++) {
@@ -2224,7 +2240,8 @@ test_authored_rows_and_refusals(void) {
          ASSET_ERR_FORMAT},
         {"overflow clips", animator + offsetof(scene_asset_animator_t, first_clip), 4, UINT32_MAX, false,
          ASSET_ERR_FORMAT},
-        {"light pad", light + offsetof(scene_asset_light_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
+        {"light mode", light + offsetof(scene_asset_light_t, mode), 1, LIGHT_MODE_BAKED + 1, false, ASSET_ERR_FORMAT},
+        {"light baked", light + offsetof(scene_asset_light_t, mode), 1, LIGHT_MODE_BAKED, false, ASSET_OK},
         {"two lights", light + sizeof(scene_asset_light_t), 2, asset->lights[0].entity, false, ASSET_ERR_FORMAT},
         {"skin pad", skin + offsetof(scene_asset_skinned_renderer_t, pad), 2, 1, false, ASSET_ERR_FORMAT},
         {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset->skinned_renderers[0].entity, false,
@@ -5276,6 +5293,40 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
 }
 
 static void
+test_scene_adopts_its_pack_probe_grid(void) {
+    fixture();
+    entity_t root = load("test_skin");
+    TEST_ASSERT_NULL(scene_probes(root));
+    scene_release(root);
+    const uint32_t total = make_pack(fx.bytes, &SKIN_OPTIONS, true);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
+    root = load("test_skin");
+    const sh_probes_t* probes = scene_probes(root);
+    TEST_ASSERT_NOT_NULL(probes);
+    TEST_ASSERT_EQUAL_FLOAT(2, sh_probes_sample(probes, vec3f_zero()).c[0].x);
+    entity_t other = load("test_pair");
+    TEST_ASSERT_NOT_NULL(scene_probes(other));
+    TEST_ASSERT_EQUAL_FLOAT(1, sh_probes_sample(scene_probes(other), vec3f_zero()).c[0].x);
+    entity_t missing = load("test_solo");
+    TEST_ASSERT_NULL(scene_probes(missing));
+    scene_release(root);
+    TEST_ASSERT_NULL(scene_probes(ENTITY_NONE));
+    scene_unload_all();
+    char longest[ASSET_NAME_MAX];
+    memset(longest, 's', sizeof longest - 1);
+    longest[sizeof longest - 1] = '\0';
+    scene_spec_t* spec = malloc(sizeof *spec);
+    TEST_ASSERT_NOT_NULL(spec);
+    *spec = (scene_spec_t){.id = longest, .entity_count = 1, .entities = {{"root", IDENTITY}}};
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 1);
+    make_scene_entry(test_pack_add(&pack, longest, SCENE_ASSET, scene_entry_size(spec)), spec);
+    free(spec);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    root = load(longest);
+    TEST_ASSERT_NULL(scene_probes(root));
+}
+
+static void
 test_probes_sample_last_resolved_bounds_without_allocating(void) {
     static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
     static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
@@ -5297,6 +5348,105 @@ test_probes_sample_last_resolved_bounds_without_allocating(void) {
     TEST_ASSERT_EQUAL_UINT(slow, memory_free_bytes(MEMORY_PSRAM));
     (void)scene_bounds(root);
     TEST_ASSERT_GREATER_THAN_FLOAT(bounds.lo.x, renderer->world_bounds.lo.x);
+}
+
+static void
+test_probes_sample_the_half_scale_skin_centre(void) {
+    enum { ORIGIN_LIGHT = 1, CENTRE_LIGHT = 4, UNSCALED_LIGHT = 8 };
+
+    static const int16_t coefficients[][SH_PROBES_COMPONENTS] = {{ORIGIN_LIGHT}, {CENTRE_LIGHT}, {UNSCALED_LIGHT}};
+    static const sh_probes_t grid = {
+        .dims = {3, 1, 1}, .spacing = {RIG_TRAVEL / 4.0F, 1, 1}, .scale = 0.125F, .coefficients = coefficients};
+    const entity_t root = rig_fixture("rig.skin2", NULL);
+    const entity_t entity = entity_find(root, name_hash("red"));
+    scene_t* scene = columns(root);
+    const scene_skinned_renderer_t* skin = skin_of(entity);
+    const float scale = 0.5F;
+    transformf_t pose = transform_local(root);
+    transformf_set_scale(&pose, vec3f_scale(vec3f_one(), scale));
+    transform_set_local(root, pose);
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    TEST_ASSERT_TRUE(animator_set_paused(entity, ANIMATOR_CURRENT, true));
+    frame(0);
+    const scene_renderer_t* renderer = &scene->renderers[scene_renderer_index(scene, row_of(entity))];
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL * scale / 2, box3f_centre(renderer->world_bounds).x);
+
+    scene_set_probes(root, &grid);
+    scene_animation_step(scene, 0);
+    uint8_t sampled[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+    memcpy(sampled, skin->colors, sizeof sampled);
+    sh_probes_t uniform = {.dims = {1, 1, 1}, .scale = grid.scale};
+    for (size_t i = 0; i < sizeof coefficients / sizeof coefficients[0]; i++) {
+        uniform.coefficients = &coefficients[i];
+        scene_set_probes(root, &uniform);
+        scene_animation_step(scene, 0);
+        if (i == 1) {
+            TEST_ASSERT_EQUAL_MEMORY(sampled, skin->colors, sizeof sampled);
+        } else {
+            TEST_ASSERT_NOT_EQUAL(0, memcmp(sampled, skin->colors, sizeof sampled));
+        }
+    }
+    scene_set_probes(root, NULL);
+}
+
+static void
+test_light_modes_with_and_without_probes(void) {
+    static const int16_t coefficients[1][SH_PROBES_COMPONENTS] = {{1}};
+    static const sh_probes_t probes = {.dims = {1, 1, 1}, .scale = 1, .coefficients = coefficients};
+    static const skin_light_mode_t modes[] = {SKIN_LIGHT_DIRECT, SKIN_LIGHT_RENORMALISED, SKIN_LIGHT_TABLE};
+    for (size_t mode = 0; mode < sizeof modes / sizeof modes[0]; mode++) {
+        const entity_t root = rig_fixture("rig.skin2", NULL);
+        const entity_t entity = entity_find(root, name_hash("red"));
+        const entity_t sun = entity_find(root, name_hash("camera"));
+        scene_t* scene = columns(root);
+        scene_skinned_renderer_t* skin = skin_of(entity);
+        TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(entity));
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_BAKED));
+        TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, light_intensity(sun));
+        TEST_ASSERT_FALSE(light_set_mode(sun, (light_mode_t)-1));
+        TEST_ASSERT_FALSE(light_set_mode(sun, (light_mode_t)(LIGHT_MODE_BAKED + 1)));
+        TEST_ASSERT_EQUAL_INT(LIGHT_MODE_BAKED, light_mode(sun));
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+        transformf_t pose = transform_local(sun);
+        pose.rotation = quatf_from_euler((vec3f_t){MATH_PI / 2, 0, 0});
+        transform_set_local(sun, pose);
+        TEST_ASSERT_TRUE(skin_set_light_mode(entity, modes[mode]));
+        scene_animation_step(scene, 0);
+        uint8_t direct[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+        memcpy(direct, skin->colors, sizeof direct);
+        TEST_ASSERT_GREATER_THAN_UINT8(0, direct[0][0]);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        scene_set_probes(root, &probes);
+        scene_animation_step(scene, 0);
+        uint8_t probe_only[RIG_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
+        memcpy(probe_only, skin->colors, sizeof probe_only);
+        TEST_ASSERT_EQUAL_INT(0, scene->world_lights.count);
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 0));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(probe_only, skin->colors, sizeof probe_only);
+        TEST_ASSERT_TRUE(light_set_intensity(sun, 1));
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_REALTIME));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        TEST_ASSERT_GREATER_THAN_UINT8(probe_only[0][0], skin->colors[0][0]);
+        TEST_ASSERT_TRUE(light_set_mode(sun, LIGHT_MODE_BAKED));
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_MEMORY(probe_only, skin->colors, sizeof probe_only);
+        scene_set_probes(root, NULL);
+        scene_animation_step(scene, 0);
+        TEST_ASSERT_EQUAL_INT(1, scene->world_lights.count);
+        TEST_ASSERT_EQUAL_MEMORY(direct, skin->colors, sizeof direct);
+        release_fixture();
+    }
+}
+
+static void
+test_old_light_pack_defaults_to_realtime(void) {
+    fixture();
+    const entity_t root = load("test_lit");
+    const entity_t sun = entity_find(root, name_hash("sun"));
+    TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(sun));
+    TEST_ASSERT_EQUAL_INT(LIGHT_MODE_REALTIME, light_mode(ENTITY_NONE));
 }
 
 static void
@@ -5626,6 +5776,10 @@ test_feet_follow_pose_without_height_fade(void) {
     free(blobs);
 }
 
+/* A corner on the bounds' own edge may land a rounding step outside it: the device
+ * rounds the corner and the bounds through different operation orders. */
+#define CONTACT_CORNER_SLACK 1e-5F
+
 static void
 assert_contact_warp(scene_t* scene, scene_renderer_t* r, vec3f_t light, bool warp) {
     contact_blob_t blob;
@@ -5640,8 +5794,8 @@ assert_contact_warp(scene_t* scene, scene_renderer_t* r, vec3f_t light, bool war
     for (size_t i = 0; i < sizeof signs / sizeof signs[0]; i++) {
         const vec3f_t p =
             vec3f_add(blob.centre, vec3f_add(vec3f_scale(blob.u, signs[i][0]), vec3f_scale(blob.v, signs[i][1])));
-        TEST_ASSERT_TRUE(p.x >= bounds.lo.x && p.x <= bounds.hi.x);
-        TEST_ASSERT_TRUE(p.z >= bounds.lo.z && p.z <= bounds.hi.z);
+        TEST_ASSERT_TRUE(p.x >= bounds.lo.x - CONTACT_CORNER_SLACK && p.x <= bounds.hi.x + CONTACT_CORNER_SLACK);
+        TEST_ASSERT_TRUE(p.z >= bounds.lo.z - CONTACT_CORNER_SLACK && p.z <= bounds.hi.z + CONTACT_CORNER_SLACK);
     }
 }
 
@@ -9016,7 +9170,11 @@ run_scene_suite(void) {
     RUN_TEST(test_idle_lit_skin_skips_and_transform_changes_run);
     RUN_TEST(test_light_attachment_defaults_refusals_and_capacity);
     RUN_TEST(test_scene_light_rotation_shades_only_skin_and_matches_kernel);
+    RUN_TEST(test_scene_adopts_its_pack_probe_grid);
     RUN_TEST(test_probes_sample_last_resolved_bounds_without_allocating);
+    RUN_TEST(test_probes_sample_the_half_scale_skin_centre);
+    RUN_TEST(test_light_modes_with_and_without_probes);
+    RUN_TEST(test_old_light_pack_defaults_to_realtime);
     RUN_TEST(test_forgetting_another_scene_keeps_the_contact_draw_hook);
     RUN_TEST(test_contact_light_choice_and_shadow_invalidation);
     RUN_TEST(test_disabled_contact_skips_silhouette_and_warp_work);

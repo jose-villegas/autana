@@ -555,7 +555,7 @@ test_dynamic_resolution_refit_cost(void) {
 void
 run_raster_scale_perf_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
-    scene = loaded.scene;
+    scene = loaded.base.scene;
     pack = asset_store_loaded(loaded.load);
     lens = loaded.lens;
     camera_entity = handle_is_none(scene) ? ENTITY_NONE : entity_find(scene, name_hash(sponza_cameras[0]));
@@ -566,7 +566,7 @@ run_raster_scale_perf_suite(void) {
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
             ESP_LOGE(TAG, "the scene's bake did not open");
             scene_release(scene);
-            scene = ENTITY_NONE;
+            scene = loaded.base.scene = ENTITY_NONE;
         }
     }
     RUN_TEST(test_dynamic_resolution_refit_cost);
@@ -576,7 +576,6 @@ run_raster_scale_perf_suite(void) {
         RUN_TEST_CASE(test_raster_counters, perf_quarter->name);
         RUN_TEST_CASE(test_dynamic_resolution_policies_along_the_path, perf_quarter->name);
     }
-    loaded = (sponza_suite_t){scene, loaded.load, lens, loaded.arena_mark};
     sponza_suite_release(&loaded);
     scene = ENTITY_NONE;
     pack = NULL;

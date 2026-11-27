@@ -147,6 +147,8 @@ fill_masked(uint16_t* depth, uint16_t* color, int count, carry_t* c, const r3d_s
 /* u as 8.8, wrapped into [0, UV_WRAP) first so the half word holds it. */
 static inline int32_t
 fixed_uv(float u) {
+    /* Library call: fmodf only past MATHF_REPEAT_FAST_QUOTIENT. A span start
+     * wraps u and v once, never per pixel. */
     const float wrapped = mathf_repeat(u, UV_WRAP);
     return (int32_t)(wrapped * (float)UV_ONE) & (int32_t)UV_LOW_MASK;
 }

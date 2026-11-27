@@ -107,6 +107,8 @@ board_i2c_bus(void) {
 
 esp_err_t
 board_touch_open(esp_lcd_touch_handle_t* out) {
+    /* The FT3168 (ft5x06) and CST820 (cst816s) report at 0x02 using the
+     * layout decoded by input/touch/touch_report.h. */
     return bsp_touch_new(NULL, out);
 }
 

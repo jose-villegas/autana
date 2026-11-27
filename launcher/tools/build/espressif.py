@@ -78,8 +78,8 @@ def idf_commit(idf):
     if not (Path(idf) / ".git").exists():
         return None
     try:
-        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True,
-                                env=env_without_repository())
+        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, env=env_without_repository())
     except OSError:
         return None
     return result.stdout.strip() if result.returncode == 0 else None

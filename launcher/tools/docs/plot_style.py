@@ -69,9 +69,9 @@ def stacked_barh(axis, rows, colours, end_labels=None, extent=None):
         axis.spines[side].set_visible(False)
 
 
-def style_axes(axis, title, *, square=False):
+def style_axes(axis, title, *, square=False, title_y=None):
     """A panel's title, ticks and spines in the palette; square keeps one unit the same length on both axes."""
-    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
+    axis.set_title(title, fontsize=TITLE_SIZE, color=INK, y=title_y)
     if square:
         axis.set_aspect("equal")
     axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)

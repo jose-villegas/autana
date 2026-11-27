@@ -39,6 +39,7 @@ set(app_srcs
     "input/motion/imu_calib.c"
     "input/touch/touch_calib.c"
     "input/touch/touch_fsm.c"
+    "input/touch/touch_report.c"
     "input/buttons/button_fsm.c"
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
