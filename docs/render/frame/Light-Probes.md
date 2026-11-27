@@ -61,7 +61,11 @@ A probe still inside is not traced. The constants are
 [`probes.py`](../../../launcher/tools/r3d/views/probes.py)'s, shared with
 the offline fitter's choice of extra camera views.
 
-*Figure to come: Sponza's baked probes drawn as SH-shaded spheres over its host render.*
+![Sponza's nave in the probes view: each baked probe a sphere lit by its own light, over the host render](../../images/render/sponza-view-probes.png)
+
+The [probes view](View-Modes.md) draws each probe where the grid holds it, as
+a sphere lit the way a skin at that probe is; a probe still inside geometry
+is a magenta cross.
 
 ## 2. The bake
 
@@ -162,6 +166,22 @@ divides by $`\pi`$, as the direct lights are, once per mover.
 The brightest probe sits in the sunlit atrium: its sphere clips on the sun
 side and turns black on the far side, where L1's gradient passes zero.
 
+![The upper gallery in the probes view, close: sunlit probes white toward the sun and black on the far side](../../images/render/sponza-view-probes-close.png)
+
+### Against a path-traced reference
+
+`skin.albedo=1` draws every skin white, so its colour is the light alone. The
+capybara scene, rendered that way along its path:
+
+![Two white capybaras running through Sponza, lit by the probe grid](../../images/render/capybara-sponza-irradiance.gif)
+
+At three of its frames, [`skin_reference.py`](../../../launcher/tools/r3d/skin_reference.py)
+poses the same white capybaras in Sponza and traces them with Mitsuba. The
+sheet crops each skin from both renders and labels the reference crop with
+the mean CIE76 colour difference (dE76) over the skin's mask, eroded by a pixel:
+
+![Three host frames, then each skin's host crop beside its path-traced crop, labelled with their mean dE76](../../images/render/capybara-sponza-irradiance-sheet.png)
+
 Per vertex, `sh1_irradiance_eval()` is 9 multiply-adds. The sum takes the
 same albedo, tone map and gamma as the direct lights
 ([Skinned-Lighting](../animation/Skinned-Lighting.md)); how it joins them
@@ -229,8 +249,11 @@ over flat ambient is not measured.
 ## Figures
 
 [`light_probe_figures.py`](../../../launcher/tools/r3d/probes/light_probe_figures.py)
-draws every figure here from
+draws the grid, sphere and blend figures from
 [`light_probe_figures_probe.c`](../../../launcher/tools/r3d/probes/light_probe_figures_probe.c),
 which calls the runtime's SH and grid code, and from a scene's baked grid;
 [`launcher/demo/light_probe_figures.py`](../../../launcher/demo/light_probe_figures.py)
 runs it on Sponza.
+[`probe_view_figures.py`](../../../launcher/tools/render/probe_view_figures.py)
+renders the probes view. The [figure index](../../tools/Figures.md) names the
+producer of the others.
