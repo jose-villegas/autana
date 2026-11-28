@@ -44,7 +44,8 @@ def render_poses(scene, output):
     from see_through import RENDER_SIZE
 
     width, height, lens, near, path = path_poses(flight_camera(scene), RENDER_SIZE, POSE_SAMPLE_MS, either_way_up=False)
-    indices = np.linspace(0, len(path) - 1, POSE_COUNT).round().astype(int)
+    # A loop's last pose can repeat its opening view.
+    indices = np.linspace(0, len(path), min(POSE_COUNT, len(path)), endpoint=False, dtype=int)
     poses = [path[index] for index in indices]
     pose_file = output / "poses.txt"
     pose_file.write_text(poses_text(width, height, lens, near, poses), encoding="utf-8")
