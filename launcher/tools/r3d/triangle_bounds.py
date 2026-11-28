@@ -87,6 +87,8 @@ class TriangleBounds:
         count = candidates_function()(ctypes.byref(self.index), points.ctypes.data, reach_squared.ctypes.data,
                                       len(points), owners.ctypes.data, triangles.ctypes.data, len(owners))
         if count > len(owners):
+            if len(points) > 1:
+                return np.concatenate([self.distances(batch) for batch in np.array_split(points, 2)])
             if self.fallback is None:
                 self.fallback = triangle_search(self.corners)
             return nearest_triangles(points, self.fallback)[2]

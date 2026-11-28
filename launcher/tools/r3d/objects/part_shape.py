@@ -5,7 +5,9 @@ of the p99 distances from source part samples to the whole drawn mesh and from
 assigned drawn triangle samples to the whole source mesh, over the part's bounds
 diagonal.
 """
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
+from itertools import batched
 from types import SimpleNamespace
 
 import numpy as np
@@ -23,6 +25,8 @@ HAUSDORFF_PERCENTILE = 99
 MASK_SIDE = 64
 MASK_MARGIN = 1.05
 MIN_EXTENT = 1e-9
+PARTS_PER_QUERY = 8
+DISTANCE_WORKERS = 2
 
 
 def front_iou(source, drawn):
@@ -56,24 +60,28 @@ def part_samples(corners, rng):
     return samples
 
 
-def directed_p99(corners, target, rng, samples=None):
+def directed_p99(corners, target, rng):
     """Distances from area samples to the target's nearest triangles, at p99."""
     if not len(corners):
         return 0.0
-    points = part_samples(corners, rng) if samples is None else samples
+    points = part_samples(corners, rng)
     return directed_distance(points, target, percentile=HAUSDORFF_PERCENTILE)
 
 
-def shape_measure(source, drawn, source_search=None, drawn_search=None, rng=None, source_samples=None):
+def relative_distance(source, there, back):
+    return max(there, back) / max(bounds_diagonal(source.reshape(-1, 3)), MIN_EXTENT)
+
+
+def shape_measure(source, drawn, source_search=None, drawn_search=None, rng=None):
     """Front IoU and relative Hausdorff for an isolated part or a part of two searched meshes."""
     if drawn_search is None and not len(drawn):
         return 0.0, None
     source_search = source_search or triangle_search(source)
     drawn_search = drawn_search or triangle_search(drawn)
     rng = np.random.default_rng(SAMPLE_SEED) if rng is None else rng
-    distance = max(directed_p99(source, drawn_search, rng, source_samples),
-                   directed_p99(drawn, source_search, rng))
-    return front_iou(source, drawn), distance / max(bounds_diagonal(source.reshape(-1, 3)), MIN_EXTENT)
+    there = directed_p99(source, drawn_search, rng)
+    back = directed_p99(drawn, source_search, rng)
+    return front_iou(source, drawn), relative_distance(source, there, back)
 
 
 def measure_parts(source, drawn_p, drawn_tris, sample=None):
@@ -89,15 +97,40 @@ def measure_parts(source, drawn_p, drawn_tris, sample=None):
     source_search = TriangleBounds(source_corners)
     drawn_search = TriangleBounds(drawn_corners) if len(drawn_corners) else None
     rng = np.random.default_rng(SAMPLE_SEED)
+    def parts():
+        for part, indices in grouped_indices(labels).items():
+            corners = source_corners[indices]
+            fitted = drawn_corners[drawn_parts[part]] if part in drawn_parts else drawn_corners[:0]
+            yield part, corners, fitted
+
+    def samples():
+        for part, corners, fitted in parts():
+            if sample:
+                part_digest = hashlib.sha256(corners.tobytes()).digest()
+                points = sample(part_digest, rng, lambda: part_samples(corners, rng))
+            else:
+                points = part_samples(corners, rng)
+            reverse = part_samples(fitted, rng) if len(fitted) else fitted.reshape(-1, 3)
+            yield part, corners, fitted, points, reverse
+
+    def row(part, iou, distance):
+        return dict(part=names[part], source_object=source.object_names[owners[part]],
+                    material=materials[part], iou=iou, hausdorff=distance)
+
+    def measure_batch(batch):
+        part_ids, corners, fitted, forward, reverse = zip(*batch)
+        there = directed_distance(np.concatenate(forward), drawn_search, HAUSDORFF_PERCENTILE,
+                                  groups=list(map(len, forward)))
+        back = directed_distance(np.concatenate(reverse), source_search, HAUSDORFF_PERCENTILE,
+                                 groups=list(map(len, reverse)))
+        return [row(part, front_iou(model, kept), relative_distance(model, a, b))
+                for part, model, kept, a, b in zip(part_ids, corners, fitted, there, back, strict=True)]
+
+    if drawn_search is None:
+        return [row(part, 0.0, None) for part, _, _ in parts()]
     rows = []
-    for part, indices in grouped_indices(labels).items():
-        fitted = drawn_corners[drawn_parts[part]] if part in drawn_parts else drawn_corners[:0]
-        corners = source_corners[indices]
-        points = None
-        if sample and drawn_search:
-            part_digest = hashlib.sha256(corners.tobytes()).digest()
-            points = sample(part_digest, rng, lambda: part_samples(corners, rng))
-        iou, distance = shape_measure(corners, fitted, source_search, drawn_search, rng, points)
-        rows.append(dict(part=names[part], source_object=source.object_names[owners[part]],
-                         material=materials[part], iou=iou, hausdorff=distance))
+    with ThreadPoolExecutor(max_workers=DISTANCE_WORKERS) as pool:
+        for pending in batched(batched(samples(), PARTS_PER_QUERY), DISTANCE_WORKERS):
+            for measured in pool.map(measure_batch, pending):
+                rows.extend(measured)
     return rows

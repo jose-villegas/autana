@@ -275,6 +275,27 @@ class ShapeTests(unittest.TestCase):
         self.assertEqual((back["source_object"], back["material"], back["iou"]), ("back", "wood", 0.0))
         self.assertGreater(back["hausdorff"], 1)
 
+    def test_batched_parts_match_the_individual_searches(self):
+        from r3d.geometry import triangle_search
+        from r3d.objects.part_shape import PARTS_PER_QUERY, SAMPLE_SEED
+
+        count = PARTS_PER_QUERY + 1
+        originals = [self.WALL + [index * 10, 0, 0] for index in range(count)]
+        fitted = [np.concatenate([wall, wall + [0, 0, 4]]) for wall in originals[:-1]]
+        fitted.append(self.WALL[:0])
+        points = np.concatenate(originals).reshape(-1, 3)
+        triangles = np.arange(len(points)).reshape(-1, 3)
+        drawn = np.concatenate(fitted)
+        source = SimpleNamespace(p=points, tri_v=triangles, tri_o=np.repeat(np.arange(count), 2),
+                                 tri_m=np.zeros(len(triangles), dtype=int), names=["stone"],
+                                 object_names=[str(index) for index in range(count)])
+        source_search = triangle_search(np.concatenate(originals))
+        drawn_search = triangle_search(drawn)
+        rng = np.random.default_rng(SAMPLE_SEED)
+        expected = [shape_measure(a, b, source_search, drawn_search, rng) for a, b in zip(originals, fitted)]
+        rows = measure_parts(source, drawn.reshape(-1, 3), np.arange(drawn.size // 3).reshape(-1, 3))
+        self.assertEqual([(row["iou"], row["hausdorff"]) for row in rows], expected)
+
     def test_box_shift_has_known_front_iou_and_hausdorff(self):
         corners = [(0, 0), (2, 0), (2, 1), (0, 1)]
         points = np.array([(x, y, z) for z in (0, 0.75) for x, y in corners])
