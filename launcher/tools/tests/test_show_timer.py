@@ -39,6 +39,7 @@ bool app_heap_contains(const void* pointer) { (void)pointer; return false; }
 void* app_heap_alloc(size_t bytes) { return malloc(bytes); }
 void app_heap_free(void* pointer) { free(pointer); }
 void draw_line(int x0, int y0, int x1, int y1, gfx_color_t color) { (void)x0; (void)y0; (void)x1; (void)y1; (void)color; abort(); }
+void draw_pixel(int x, int y, gfx_color_t color) { (void)x; (void)y; (void)color; abort(); }
 int64_t gfx_present_waited_us(void) { abort(); }
 int main(void) {
     const int16_t positions[4][3] = {{-4, -4, 0}, {4, -4, 0}, {4, 4, 0}, {-4, 4, 0}};

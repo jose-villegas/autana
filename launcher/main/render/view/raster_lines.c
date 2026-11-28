@@ -22,8 +22,8 @@ raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int widt
 }
 
 /* Whether `p`, in lens space, lies behind what the picture drew at `at`. */
-static bool
-behind(const raster_lines_depth_t* depth, vec3f_t p, vec2f_t at) {
+bool
+raster_lines_hidden(const raster_lines_depth_t* depth, vec3f_t p, vec2f_t at) {
     const int pw = depth->drawn.width;
     const int ph = depth->drawn.height;
     const int x = (int)(at.x * (float)pw / (float)depth->width);
@@ -78,7 +78,7 @@ raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, 
         const vec2f_t end = vec2f_lerp(from, to, (float)i / (float)steps);
         const float shown = ((float)i - 0.5F) / (float)steps;
         const vec2f_t mid = vec2f_lerp(from, to, shown);
-        const bool hidden = behind(depth, vec3f_lerp(a, b, lens_share(a.z, b.z, shown)), mid);
+        const bool hidden = raster_lines_hidden(depth, vec3f_lerp(a, b, lens_share(a.z, b.z, shown)), mid);
         if (!hidden || depth->behind_keep != 0) {
             draw_line((int)start.x, (int)start.y, (int)end.x, (int)end.y, hidden ? dimmed : color);
         }

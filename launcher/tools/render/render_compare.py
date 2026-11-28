@@ -376,15 +376,20 @@ def _compose(rows, label_a, label_b, tile=1.0):
     strips = []
     for (_title, a, b), after in rows:
         named = [(label_a, a), (label_b, b), *after]
-        pictures = [captioned(_scaled(picture, tile), text) for text, picture in named]
-        strips.append(np.concatenate([_pixels(picture) for picture in pictures], axis=1))
+        pictures = [_pixels(captioned(_scaled(picture, tile), text)) for text, picture in named]
+        height = max(len(picture) for picture in pictures)
+        strips.append(np.concatenate([np.pad(picture, ((0, height - len(picture)), (0, 0), (0, 0)))
+                                      for picture in pictures], axis=1))
     widest = max(strip.shape[1] for strip in strips)
     padded = [np.pad(strip, ((0, 0), (0, widest - strip.shape[1]), (0, 0))) for strip in strips]
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
 
 
 def still_row(panels):
-    """One labelled row of still pictures, [(label, picture), ...]: at least two."""
+    """One labelled row of still pictures, [(label, picture), ...]."""
+    if len(panels) == 1:
+        label, picture = panels[0]
+        return captioned(picture, label)
     (label_a, a), (label_b, b), *after = panels
     return _compose([(("", a, b), after)], label_a, label_b)
 

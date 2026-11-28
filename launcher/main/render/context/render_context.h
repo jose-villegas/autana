@@ -56,11 +56,13 @@ typedef struct {
                         bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    /* True for a view that draws the scene's probe grid; in a scene without one the picture is the shaded one. */
+    bool needs_probes;
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   8 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   9 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;

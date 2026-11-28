@@ -8,6 +8,7 @@ extern "C" {
 #include "core/tune.h"
 #include "hash/name_hash64.h"
 #include "render/context/render_context.h"
+#include "render/view/raster_probes.h"
 #include "render_host.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"

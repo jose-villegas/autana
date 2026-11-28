@@ -61,7 +61,11 @@ A probe still inside is not traced. The constants are
 [`probes.py`](../../../launcher/tools/r3d/views/probes.py)'s, shared with
 the offline fitter's choice of extra camera views.
 
-*Figure to come: Sponza's baked probes drawn as SH-shaded spheres over its host render.*
+![Sponza's nave in the probes view: each baked probe a sphere lit by its own light, over the host render](../../images/render/sponza-view-probes.png)
+
+The [probes view](View-Modes.md) draws each probe where the grid holds it, as
+a sphere lit the way a skin at that probe is; a probe still inside geometry
+is a magenta cross.
 
 ## 2. The bake
 
@@ -162,6 +166,8 @@ divides by $`\pi`$, as the direct lights are, once per mover.
 The brightest probe sits in the sunlit atrium: its sphere clips on the sun
 side and turns black on the far side, where L1's gradient passes zero.
 
+![The upper gallery in the probes view, close: sunlit probes white toward the sun and black on the far side, the shaded ones grey](../../images/render/sponza-view-probes-close.png)
+
 Per vertex, `sh1_irradiance_eval()` is 9 multiply-adds. The sum takes the
 same albedo, tone map and gamma as the direct lights
 ([Skinned-Lighting](../animation/Skinned-Lighting.md)); how it joins them
@@ -189,6 +195,24 @@ light is not baked and lights the mover per vertex. Sponza's sun is baked.
 | Occlusion | the probe's shadow ray: a mover under the arcades is out of the sun | none without shadow maps: a mover indoors is sunlit |
 | Response | L1's soft lobe: no sharp terminator, no highlight | a sharp `max(0, N.L)` terminator |
 | Cost | none past the probe sample | an `N.L` term per vertex |
+
+### Against a path-traced reference
+
+`skin.albedo=1` draws every skin white, so its colour is the light alone. The
+capybara scene, rendered that way along its path:
+
+![Two white capybaras running through Sponza, lit by the probe grid](../../images/render/capybara-sponza-irradiance.gif)
+
+At three of its frames, [`skin_reference.py`](../../../launcher/tools/r3d/skin_reference.py)
+poses the same white capybaras in Sponza and traces them with Mitsuba. The
+sheet crops each skin four times: the sun term, the bounce term and the total
+from the host, then the path-traced crop, labelled with its mean CIE76 colour
+difference (dE76) against the total over the skin's mask, eroded by a pixel:
+
+![Three host frames, then for each skin its sun-only, bounce-only and total host crops beside the path-traced crop, labelled with its mean dE76](../../images/render/capybara-sponza-irradiance-sheet.png)
+
+In the sheet, the skins are out of the sun: the sun-only crops are black,
+and the bounce term carries their light.
 
 ## 7. Cost and goals
 
@@ -229,8 +253,11 @@ over flat ambient is not measured.
 ## Figures
 
 [`light_probe_figures.py`](../../../launcher/tools/r3d/probes/light_probe_figures.py)
-draws every figure here from
+draws the grid, sphere and blend figures from
 [`light_probe_figures_probe.c`](../../../launcher/tools/r3d/probes/light_probe_figures_probe.c),
 which calls the runtime's SH and grid code, and from a scene's baked grid;
 [`launcher/demo/light_probe_figures.py`](../../../launcher/demo/light_probe_figures.py)
 runs it on Sponza.
+[`probe_view_figures.py`](../../../launcher/tools/render/probe_view_figures.py)
+renders the probes view. The [figure index](../../tools/Figures.md) names the
+producer of the others.

@@ -198,6 +198,10 @@ setup(int quarter) {
             scene_release(scene);
             return false;
         }
+        if (render_context_debug_view(view)->needs_probes && scene_probes(scene) == NULL) {
+            fprintf(stderr, "scene_viewer: scene '%s' has no probe grid: --view %s draws the shaded picture\n",
+                    scene_id, render_context_debug_view(view)->name);
+        }
     }
     for (entity_t e = entity_next(scene, ENTITY_NONE); !handle_is_none(e); e = entity_next(scene, e)) {
         (void)camera_set_present(e, present);
