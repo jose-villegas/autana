@@ -45,7 +45,7 @@ def runs(text):
         else:
             current.append(line)
     parts.append(current)
-    return [part for part in parts if any(PREFIX in line for line in part)]
+    return [part for part in parts if any(LINE in line for line in part)]
 
 
 def parse(lines):
