@@ -770,6 +770,16 @@ scene_unload_all(void) {
     scene_draw_release();
 }
 
+const char*
+scene_held_id(void) {
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        if (!handle_is_none(scene_roots[i].root)) {
+            return scene_roots[i].id;
+        }
+    }
+    return NULL;
+}
+
 /* The index of the entity's renderer, or -1 when it draws nothing. */
 int
 scene_renderer_index(const scene_t* scene, scene_row_t entity) {

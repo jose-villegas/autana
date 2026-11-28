@@ -57,6 +57,9 @@ void scene_step(uint32_t dt_ms);
  * render context and lifts a pause. */
 void scene_unload_all(void);
 
+/* The id of a scene still held, in any state, or NULL when none is. */
+const char* scene_held_id(void);
+
 /* Where the memory a loaded scene keeps in PSRAM comes from, the render
  * context's scratch included; NULL, the default, is the heap. Set while no
  * scene is loaded. With a take, scene_release() gives none of it back: once
