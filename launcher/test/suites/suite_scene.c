@@ -102,12 +102,14 @@ enum {
     MESH_HEADER = R3D_LIT_MESH_HEADER_BYTES,
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
-    RIG_ENTRIES = 10,
+    RIG_ENTRIES = 11,
     RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_GROUND_MM_S = 300,
-    RIG_TRAVEL = 4
+    RIG_TRAVEL = 4,
+    RIG_AXIS_X = 0, /* a clip's travel axis */
+    RIG_AXIS_Y = 1
 };
 
 static void
@@ -671,7 +673,7 @@ make_rig_skin(test_pack_t* pack, const char* id, int influences, int joints, int
 }
 
 static void
-make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t root, int travel) {
+make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t root, int axis, int travel) {
     enum {
         KEYS = 2,
         WIDTH = 3,
@@ -688,7 +690,8 @@ make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t roo
                                 KEYS,   ANIM_LINEAR};
     test_track_row(entry, 0, &track);
     static const float times[] = {0, 1};
-    const float values[] = {0, 0, 0, (float)travel, 0, 0};
+    float values[KEYS * WIDTH] = {0};
+    values[WIDTH + axis] = (float)travel;
     test_pack_put_floats(entry + TIMES, times, KEYS);
     test_pack_put_floats(entry + VALUES, values, KEYS * WIDTH);
 }
@@ -702,9 +705,10 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
     make_rig_skin(pack, "rig.quad", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, QUAD_VERTICES, options->mode);
     make_rig_skin(pack, "rig.shortj", R3D_SKIN_INFLUENCES_MIN, R3D_SKIN_INFLUENCES_MIN, RIG_VERTICES,
                   R3D_SKIN_LIGHT_DIRECT);
-    make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_TRAVEL);
-    make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, -RIG_TRAVEL);
-    make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_AXIS_X, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.up", "root", ANIM_ROOT_SKELETON, RIG_AXIS_Y, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, RIG_AXIS_X, -RIG_TRAVEL);
+    make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_AXIS_X, RIG_TRAVEL);
     make_quad_entry(test_pack_add(pack, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), 255, 0, 0, 2);
 }
 
@@ -3433,11 +3437,15 @@ test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_doe
 
 /* A frame's step for a playing animator. */
 #define SKINNED_MOVER_DT_MS 16U
+/* A held frame's step: long enough that the clip carries the pose a row or
+ * more past the last frame's, with every held frame inside the clip. */
+#define SKINNED_HELD_DT_MS  200U
 
-/* A skinned renderer of a second scene plays its clip over the still pair,
- * first moving up, then held where it is so only its pose moves: each frame
- * redraws its rows only and is the whole draw's picture. Settle off: its
- * refined rows are meant to differ from a live draw. */
+/* A skinned renderer of a second scene plays a clip whose root travels up
+ * over the still pair, first moving up, then held where it is so only its
+ * pose moves it across rows: each frame redraws its rows only and is the
+ * whole draw's picture. Settle off: its refined rows are meant to differ
+ * from a live draw. */
 static void
 test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
     fixture();
@@ -3449,12 +3457,12 @@ test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
     render_context_set_settings(render_context_main(), &settings);
     entity_t pair;
     const entity_t mover = entity_find(behind_the_pair("test_skin", &pair), name_hash("red"));
-    static const char* const clips[] = {"rig.move"};
+    static const char* const clips[] = {"rig.up"};
     TEST_ASSERT_TRUE(animator_set_clips(mover, "rig", clips, 1, NULL));
     TEST_ASSERT_TRUE(animator_play(mover, 0, 0));
     assert_partial_frames_of_a_mover_match_the_whole_draw(mover, SKINNED_MOVER_DT_MS);
     for (int frame = 0; frame < MOVER_STEPS; frame++) {
-        assert_partial_frame_is_the_whole_draw(SKINNED_MOVER_DT_MS);
+        assert_partial_frame_is_the_whole_draw(SKINNED_HELD_DT_MS);
     }
 }
 
