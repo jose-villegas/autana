@@ -844,6 +844,16 @@ With only `[source]` and `[output]`:
 Scene-owned bake, visibility, shading and fit settings are described in
 [Scene-Files.md](../scene/Scene-Files.md#option-reference).
 
+Another program can read an import file through
+[`import_edit.py`](../../../launcher/tools/r3d/import_edit.py) `read`. It prints
+the tables as JSON in file order, each key with its value and line, and an array
+of tables item by item. `valid` and `error` give the import rules' verdict; an
+invalid file still lists its tables. The JSON shape is in the script's header.
+
+```sh
+python launcher/tools/r3d/import_edit.py read bistro.import.toml --out bistro.json
+```
+
 Each tool and its module, `rebake.py` and when to rebake rather than bake in
 full, and the triangle-size report are in
 [`launcher/tools/r3d/README.md`](../../../launcher/tools/r3d/README.md).
