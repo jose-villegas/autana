@@ -141,7 +141,8 @@ render_settings_t render_settings_tuned(const render_settings_t* set);
  * for a caller holding only them. */
 void render_anim_settings_tune(render_anim_settings_t* anim);
 
-/* skin.albedo and skin.direct values: plain integers, as a release build's tunables are constants. */
+/* skin.albedo and skin.direct values: defines, not an enum, since a release build's tunables are enum constants
+ * of their own, and comparing two enum types fails -Werror=enum-compare. */
 #define RENDER_SKIN_ALBEDO_SOURCE 0
 #define RENDER_SKIN_ALBEDO_WHITE  1
 #define RENDER_SKIN_DIRECT_OFF    0

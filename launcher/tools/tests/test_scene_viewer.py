@@ -323,6 +323,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         run, _ = self.render("--view", "invalid")
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
         shaded = self.pixels("--object", "card", "--view", "shaded")
+        noted = []
         for name in names[1:]:
             with self.subTest(name=name):
                 run, out = self.render("--object", "card", "--view", name)
@@ -332,9 +333,12 @@ path = { animation = "fly.anim.toml", node = "camera" }
                 if "draws the shaded picture" in run.stderr:
                     # This scene bakes no grid, as the viewer says: the view must then be exactly shaded.
                     self.assertTrue(shaded.tobytes() == picture.tobytes())
+                    noted.append(name)
                     continue
                 # Not assertNotEqual: its failure message would print both frames' bytes.
                 self.assertFalse(shaded.tobytes() == picture.tobytes())
+        # Only the probes view needs a grid, so only it may fall back to shaded.
+        self.assertEqual(noted, ["probes"])
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")
