@@ -22,6 +22,7 @@ try:
     from r3d.appearance_simplify import FitMesh, point_edges, projection, prune, refine, start_mesh, write_mesh
     from r3d.cost_model import fit, predict, triangle_terms
     from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh
+    from r3d.procedural import wave_sheet
 except ImportError:
     np = None
 
@@ -59,27 +60,10 @@ def draw(renderer, points, colours, matrix):
 
 
 def grid(count, z=0.0):
-    """A count x count quad grid in x and y over [-1, 1], facing +z, with a
-    colour seam down its middle column of vertices: the left half's vertices
-    are duplicated with a second colour."""
-    side = np.linspace(-1.0, 1.0, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.full(xs.size, z)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = []
-    for row in range(count):
-        for col in range(count):
-            a, b, c, d = index[row, col], index[row, col + 1], index[row + 1, col + 1], index[row + 1, col]
-            tris += [[a, b, c], [a, c, d]]
-    tris = np.array(tris)
-    rgb = np.where(positions[:, :1] < 0, [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
-    left = positions[tris].mean(axis=1)[:, 0] < 0
-    copies = np.unique(tris[left])
-    duplicate = {int(v): len(positions) + k for k, v in enumerate(copies)}
-    positions = np.concatenate([positions, positions[copies]])
-    rgb = np.concatenate([rgb, np.tile([[230.0, 200.0, 50.0]], (len(copies), 1))])
-    tris[left] = np.vectorize(duplicate.get)(tris[left])
-    return positions, rgb, tris
+    """A count x count quad card over [-1, 1] in x and y at `z`, facing +z: its left half one colour, its right
+    half another, the seam's vertices duplicated."""
+    card = wave_sheet.sheet(count, size=2.0, z=z, pattern="stripes", cells=2, colours=((230, 200, 50), (40, 90, 200)))
+    return card.positions, card.rgb, card.tris
 
 
 def write_start(directory, count=4):
@@ -854,13 +838,8 @@ class PruneAndCostTests(unittest.TestCase):
 
 def grid_mesh(count, half):
     """A count x count quad grid of half-width `half` facing +z."""
-    side = np.linspace(-half, half, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.zeros(xs.size)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = [[index[r, c], index[r, c + 1], index[r + 1, c + 1]] for r in range(count) for c in range(count)]
-    tris += [[index[r, c], index[r + 1, c + 1], index[r + 1, c]] for r in range(count) for c in range(count)]
-    return positions, np.array(tris)
+    card = wave_sheet.sheet(count, size=2.0 * half)
+    return card.positions, card.tris
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -1003,6 +982,51 @@ class AppearanceFitTests(unittest.TestCase):
         torch.testing.assert_close(gradient, finite, atol=0.1, rtol=0.01)
         cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
         self.assertGreater(float(cosine), 0.999)
+
+    def test_a_triangle_crossing_the_eye_plane_winds_as_its_part_in_front_does(self):
+        """The side test reads the homogeneous winding: a corner behind the eye flips the projected area's sign,
+        but not that of the clipped polygon the device draws."""
+        from r3d.appearance_simplify import Renderer
+
+        tris = torch.tensor([[0, 1, 2]])
+        # (x, y, z, w): two corners in front, one behind the eye.
+        crossing = torch.tensor([[-0.7, -0.7, 0.0, 1.0], [0.7, -0.7, 0.0, 1.0], [0.0, 0.1, 0.0, -1.0]])
+        # The part in front, clipped at w = 0.5: the corner behind moved along both edges onto that plane.
+        t = (1.0 - 0.5) / (1.0 - -1.0)
+        a, b, c = crossing[0, [0, 1, 3]], crossing[1, [0, 1, 3]], crossing[2, [0, 1, 3]]
+        clipped = torch.stack([a, b, b + (c - b) * t, a + (c - a) * t])
+        xy = clipped[:, :2] / clipped[:, 2:]
+        area = sum(xy[k, 0] * xy[(k + 1) % 4, 1] - xy[(k + 1) % 4, 0] * xy[k, 1] for k in range(4)) / 2
+        renderer = SimpleNamespace(tris=tris)
+        self.assertLess(float(area), 0.0)
+        self.assertLess(float(Renderer.winding(renderer, crossing)[0]), 0.0)
+        # In front of the eye, the winding keeps the screen area's sign.
+        ahead = crossing.clone()
+        ahead[2, 3] = 1.0
+        self.assertGreater(float(Renderer.winding(renderer, ahead)[0]), 0.0)
+
+    def test_a_double_sided_triangle_seen_from_behind_shows_its_back_colours_and_trains_only_them(self):
+        """Six-channel colours hold the back beside the front: the side the winding faces on screen picks
+        which one a pixel shows, and only that half takes the pixel's gradient, flat or smooth."""
+        from r3d.appearance_simplify import Renderer
+
+        size = (32, 24)
+        points = cuda([[-0.8, -0.7, 0.0], [0.7, -0.6, 0.0], [0.6, 0.8, 0.0]])
+        front, back = [0.8, 0.2, 0.1], [0.1, 0.6, 0.3]
+        for flat in (False, True):
+            for eye, shown in (([0, 0, 2], front), ([0, 0, -2], back)):
+                with self.subTest(flat=flat, eye=eye):
+                    render = Renderer(np.array([[0, 1, 2]]), [True], np.arange(3), size, "cuda", flat=flat)
+                    colours = cuda([front + back] * (1 if flat else 3)).requires_grad_()
+                    matrix = cuda(projection(eye, [0, 0, -eye[2]], *size, 0.62, 0.5))
+                    image = render(points, colours, matrix)
+                    centre = image[size[1] // 2, size[0] // 2]
+                    torch.testing.assert_close(centre, cuda(shown), atol=1e-5, rtol=0)
+                    gradient = torch.autograd.grad(image.sum(), colours)[0]
+                    trained = slice(0, 3) if shown is front else slice(3, 6)
+                    untouched = slice(3, 6) if shown is front else slice(0, 3)
+                    self.assertTrue((gradient[:, trained] != 0).any())
+                    self.assertTrue((gradient[:, untouched] == 0).all(), "the hidden side took a gradient")
 
     def test_renderer_backward_is_bitwise_repeatable(self):
         from r3d.appearance_simplify import Renderer, deterministic_fit

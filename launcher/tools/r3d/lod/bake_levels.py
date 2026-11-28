@@ -28,7 +28,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles
+from r3d.geometry import closest_point_on_triangles, edge_uses
 from r3d.lit_mesh import MAX_CLUSTERS, MAX_TRIANGLES, MAX_VERTICES, oriented
 from r3d.lod.levels import build_levels
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
@@ -59,9 +59,8 @@ class Baked(NamedTuple):
 def border_vertices(ids):
     """The welded ids on an edge that bounds the triangles `ids` (T x 3): used
     by one triangle, or by more than two."""
-    edges = np.sort(np.stack([ids[:, [0, 1]], ids[:, [1, 2]], ids[:, [2, 0]]], axis=1).reshape(-1, 2), axis=1)
-    unique, count = np.unique(edges, axis=0, return_counts=True)
-    return np.unique(unique[count != 2])
+    edges, _slot, uses = edge_uses(ids)
+    return np.unique(edges[uses != 2])
 
 
 def push_outward(fine_ids, fine_pos, coarse_ids, cap):
@@ -327,14 +326,16 @@ def finish(q, col, level0, entries, coarse, rows, kept):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triangles=None,
-                  meshlet_triangles=None, face_rgb=None, lod=True, vertex_uvs=None, vertex_pages=None):
-    """Assemble a plain mesh or its CPU-built hierarchy from the same welded triangles."""
+                  meshlet_triangles=None, face_rgb=None, lod=True, vertex_uvs=None, vertex_pages=None,
+                  back_rgb=None, back_face_rgb=None):
+    """Assemble a plain mesh or its CPU-built hierarchy from the same welded triangles; back colours ride every
+    level beside the front ones (lit_mesh.both_sides())."""
     from r3d import lit_mesh
     position_scale = lit_mesh.POSITION_SCALE if position_scale is None else position_scale
     leaf_triangles = lit_mesh.LEAF_TRIANGLES if leaf_triangles is None else leaf_triangles
     meshlet_triangles = lit_mesh.MESHLET_TRIANGLES if meshlet_triangles is None else meshlet_triangles
     plain = lit_mesh.bake_lit_mesh(positions, rgb, tris, double, position_scale, leaf_triangles,
-                                  meshlet_triangles, face_rgb, vertex_uvs, vertex_pages)
+                                  meshlet_triangles, face_rgb, vertex_uvs, vertex_pages, back_rgb, back_face_rgb)
     if not lod or vertex_uvs is not None:
         return plain
     q, col, tris, double, face = lit_mesh.finest_triangles(plain)
@@ -349,5 +350,6 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triang
     levels = bake_levels(q, col, tris, double, face, meshlet_triangles, np.repeat(np.arange(len(counts)), counts[by_cut]))
     if not len(levels.groups):
         return plain
-    return lit_mesh.assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles,
-                             levels.groups)
+    sided = (plain.back_rgb if face is None else plain.back_face_colors) is not None
+    return lit_mesh.split_back(lit_mesh.assemble(levels.q, levels.col, levels.entries, position_scale,
+                                                 leaf_triangles, levels.groups), sided)

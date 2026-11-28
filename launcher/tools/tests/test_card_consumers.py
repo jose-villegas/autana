@@ -105,7 +105,8 @@ class AlphaConsumerTests(unittest.TestCase):
     def test_held_out_error_assigns_parts_through_alpha_holes(self):
         source = self.source
         job = NS(settings=NS(alpha_keep=KEEP_ALPHA, double_sided=[]), asset_name='mesh', bake=None, object=NS(name='mesh'))
-        mesh = NS(points=source.p, vertex_point=np.arange(len(source.p)), tris=source.tri_v, flat=False)
+        mesh = NS(points=source.p, vertex_point=np.arange(len(source.p)), tris=source.tri_v, flat=False,
+                  rgb=np.zeros((len(source.p), 3)))
         bundle = self.root/'mesh.bundle'
         bundle.write_bytes(b'')
         seen = []

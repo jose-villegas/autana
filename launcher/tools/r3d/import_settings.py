@@ -64,6 +64,13 @@ LIGHT_FIELDS = {
 PLACED_LIGHT_FIELDS = ("direction", "position", "axis")
 
 
+def far_skin_region(settings, scene):
+    """The camera region whose centre picks the near skin of an import's closed double_sided shells, the one that
+    moves onto their midsurface (mesh_import.far_skins), or None: the scene's, when the import lists double_sided
+    materials."""
+    return scene.region if scene is not None and settings.double_sided else None
+
+
 class SettingsError(ValueError):
     """An import or scene setting cannot describe a bake."""
 
@@ -272,13 +279,6 @@ def load_visibility(table, where="visibility"):
     return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
                            size=size,
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
-
-
-def load_seal_views(table, where):
-    """The camera path's frames as views for a sealed import's probes (r3d/leaks.py): sampled every `every_ms`
-    at `size` pixels, through a square view that covers the panel held either way up."""
-    check_keys(table, ("every_ms", "size"), where)
-    return SimpleNamespace(every_ms=count(table["every_ms"], f"{where}.every_ms"), size=pixel_size(table["size"], f"{where}.size"))
 
 
 LEGACY_PROCESS_HOMES = {
@@ -661,7 +661,7 @@ def load_camera_path(path, base, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "seal_views", "fit", "indirect", "colour_set"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -691,21 +691,18 @@ def load_renderer(component, base, where):
             raise SettingsError(f"{where}.shading must be smooth or {{ flat = ... }}")
     visibility = load_visibility(component["visibility"], f"{where}.visibility") if "visibility" in component else None
     fit = load_fit(component["fit"], variant, f"{where}.fit") if "fit" in component else None
-    seal_views = load_seal_views(component["seal_views"], f"{where}.seal_views") if "seal_views" in component else None
-    if seal_views and not (settings.simplify and settings.simplify.seal_seams):
-        raise SettingsError(f"{where}.seal_views is read by no step: {component['mesh']!r} does not seal its seams")
     indirect = True
     if "indirect" in component:
         if boolean(component["indirect"], f"{where}.indirect"):
             raise SettingsError(f"{where}.indirect can only be false")
         indirect = False
-    if not bake and (face_samples or visibility or seal_views or fit or not indirect):
-        raise SettingsError(f"{where} bake = true is required for shading, visibility, seal_views, fit or indirect")
+    if not bake and (face_samples or visibility or fit or not indirect):
+        raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
     colour_set = component.get("colour_set")
     if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
         raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           seal_views=seal_views, fit=fit, indirect=indirect, colour_set=colour_set)
+                           fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
@@ -721,7 +718,7 @@ def albedo_jobs(settings):
     jobs = []
     for variant in settings.variants:
         renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
-                                   seal_views=None, fit=None, indirect=True)
+                                   fit=None, indirect=True)
         jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}{BUNDLE_SUFFIX}", None))
     return jobs
 
@@ -920,15 +917,15 @@ def load_scene(path):
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
-                                  ("camera region", region is not None, "camera_region" in sources)):
+                                  # A closed double_sided shell's near skin faces the region (mesh_import.far_skins).
+                                  ("camera region", region is not None, "camera_region" in sources
+                                   or any(far_skin_region(item.settings, scene) is not None for item in jobs))):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:
             raise SettingsError(f"scene {name} is read by no placed mesh")
     if "camera_path" in sources and camera_path is None:
         raise SettingsError("scene camera path is required: a placed mesh keeps what the camera path sees")
-    if any(item.renderer.seal_views for item in jobs) and not any(camera.component.path for camera in cameras):
-        raise SettingsError("a camera path is required: a placed mesh seals what the camera path sees")
     for item in jobs:
         if item.renderer.bake and not item.object.identity:
             raise SettingsError(f"scene.objects {item.object.name!r}: a baked renderer is traced where it "

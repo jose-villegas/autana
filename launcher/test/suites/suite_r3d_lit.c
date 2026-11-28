@@ -1371,8 +1371,14 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
     for (int v = 0; v < vertices; v++) {
         m->colors[v][0] = m->colors[v][1] = m->colors[v][2] = 200;
     }
-    m->cluster = (r3d_lit_cluster_t){
-        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, true};
+    m->cluster = (r3d_lit_cluster_t){0,
+                                     (uint16_t)vertices,
+                                     0,
+                                     (uint16_t)triangles,
+                                     {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}},
+                                     true,
+                                     0,
+                                     0};
     m->node = (r3d_lit_node_t){{{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, 0, 1, true};
     return (r3d_lit_mesh_t){.positions = m->positions,
                             .colors = m->colors,
@@ -1465,37 +1471,45 @@ test_a_triangle_with_corners_past_the_snap_range_fills_its_centres(void) {
     }
 }
 
-/* A triangle around a single centre at each edge of a window, drawn through
- * r3d_pipeline_draw: the cull that drops triangles holding no centre keeps it. */
+/* A triangle around the single centre at pixel (x, y), drawn through
+ * r3d_pipeline_draw into the window of rows [row0, row1): whether it covered
+ * that pixel and wrote its depth. */
+static void
+draw_around_one_centre(int x, int y, int row0, int row1) {
+    const int cx = (x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    const int cy = (y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
+    screen_mesh_t m;
+    const int16_t corners[3][2] = {{(int16_t)(cx - 3), (int16_t)(cy - 3)},
+                                   {(int16_t)(cx + 4), (int16_t)(cy - 3)},
+                                   {(int16_t)cx, (int16_t)(cy + 4)}};
+    for (int k = 0; k < 3; k++) {
+        m.positions[k][0] = corners[k][0];
+        m.positions[k][1] = corners[k][1];
+        m.positions[k][2] = 1;
+        m.triangles[0][k] = (uint16_t)k;
+    }
+    const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
+    const r3d_lens_t lens = r3d_pixel_lens(W, H);
+    const uint16_t visible[1] = {0};
+    r3d_pipeline_vertex_t cs[3];
+    r3d_pipeline_rows_t rows[1];
+    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, false);
+    (void)fixture();
+    const r3d_span_target_t window = fixture_rows(row0, row1);
+    r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window, pipeline_work());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
+    TEST_ASSERT_NOT_EQUAL(0, depth[(y * W) + x]);
+}
+
+/* A triangle around a single centre at each edge of a window: the cull that
+ * drops triangles holding no centre keeps it. */
 static void
 test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
     const int row0 = 10;
     const int row1 = 30;
     const int spots[4][2] = {{0, 15}, {W - 1, 15}, {20, row0}, {20, row1 - 1}};
     for (int i = 0; i < 4; i++) {
-        const int cx = (spots[i][0] * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
-        const int cy = (spots[i][1] * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2);
-        screen_mesh_t m;
-        const int16_t corners[3][2] = {{(int16_t)(cx - 3), (int16_t)(cy - 3)},
-                                       {(int16_t)(cx + 4), (int16_t)(cy - 3)},
-                                       {(int16_t)cx, (int16_t)(cy + 4)}};
-        for (int k = 0; k < 3; k++) {
-            m.positions[k][0] = corners[k][0];
-            m.positions[k][1] = corners[k][1];
-            m.positions[k][2] = 1;
-            m.triangles[0][k] = (uint16_t)k;
-        }
-        const r3d_lit_mesh_t mesh = screen_mesh(&m, 3, 1);
-        const r3d_lens_t lens = r3d_pixel_lens(W, H);
-        const uint16_t visible[1] = {0};
-        r3d_pipeline_vertex_t cs[3];
-        r3d_pipeline_rows_t rows[1];
-        r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, false);
-        (void)fixture();
-        const r3d_span_target_t window = fixture_rows(row0, row1);
-        r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window, pipeline_work());
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered(), "a one-centre triangle at a window edge was dropped");
-        TEST_ASSERT_NOT_EQUAL(0, depth[(spots[i][1] * W) + spots[i][0]]);
+        draw_around_one_centre(spots[i][0], spots[i][1], row0, row1);
     }
 }
 
@@ -1827,7 +1841,7 @@ static const r3d_lit_node_t quad_node = {{{-100, -100, 0}, {100, 100, 0}}, 0, 1,
 /* A mesh lit by its vertices, or by `face_colors` alone when given. */
 static r3d_lit_mesh_t
 quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* face_colors, r3d_lit_cluster_t* cluster) {
-    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided};
+    *cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{-100, -100, 0}, {100, 100, 0}}, double_sided, 0, 0};
     return r3d_quad_mesh(quad_positions, triangles, face_colors, cluster, &quad_node);
 }
 
@@ -1918,7 +1932,7 @@ static void
 draw_floor(const uint16_t* face_colors) {
     static const int16_t floor_positions[][3] = {
         {-1000, 0, -1000}, {1000, 0, -1000}, {1000, 0, 3000}, {-1000, 0, 3000}};
-    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false};
+    r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{-1000, 0, -1000}, {1000, 0, 3000}}, false, 0, 0};
     static const r3d_lit_node_t floor_node = {{{-1000, 0, -1000}, {1000, 0, 3000}}, 0, 1, true};
     const r3d_lit_mesh_t mesh = r3d_quad_mesh(floor_positions, NULL, face_colors, &cluster, &floor_node);
 
@@ -2055,8 +2069,8 @@ parts_add(parts_t* p, const int16_t corners[][3], int n, const uint8_t rgb[][3],
     TEST_ASSERT_TRUE(m->cluster_count < PARTS_MAX && (n == 3 || n == 4));
     const uint16_t first = (uint16_t)m->vertex_count;
     r3d_lit_cluster_t* c = &p->clusters[m->cluster_count++];
-    *c = (r3d_lit_cluster_t){first,         (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2),
-                             box3s_empty(), double_sided};
+    *c = (r3d_lit_cluster_t){
+        first, (uint16_t)n, (uint16_t)m->triangle_count, (uint16_t)(n - 2), box3s_empty(), double_sided, 0, 0};
     for (int i = 0; i < n; i++) {
         memcpy(p->positions[first + i], corners[i], sizeof p->positions[0]);
         memcpy(p->colors[first + i], rgb[i], sizeof p->colors[0]);
@@ -2170,6 +2184,88 @@ test_a_double_sided_triangle_cut_by_the_near_plane_draws_from_behind(void) {
     const int front = draw_cut(cut_corners, false);
     TEST_ASSERT_EQUAL_INT(0, draw_cut(cut_corners_reversed, false));
     TEST_ASSERT_EQUAL_INT(front, draw_cut(cut_corners_reversed, true));
+}
+
+/* The native colour at the centre of the quad draw_quad_with() frames, `mesh`
+ * drawn there. */
+static uint16_t
+quad_centre_colour(const r3d_lit_mesh_t* mesh) {
+    r3d_lens_t lens;
+    const render_view_t frame_view =
+        render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, 1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
+    r3d_lens_init(&lens, &frame_view, 1);
+    const r3d_span_target_t t = fixture();
+    (void)draw_quad_mesh(mesh, &lens, &t);
+    TEST_ASSERT_NOT_EQUAL(0, depth[((H / 2) * W) + (W / 2)]);
+    return native_of(color[((H / 2) * W) + (W / 2)]);
+}
+
+static const uint8_t quad_green[4][3] = {{0, 255, 0}, {0, 255, 0}, {0, 255, 0}, {0, 255, 0}};
+
+/* Seen from behind, a double-sided cluster shows its back colours, and from
+ * in front its front ones; without back colours it shows the front ones both
+ * ways. */
+static void
+test_a_double_sided_face_seen_from_behind_shows_its_back_colours(void) {
+    r3d_lit_cluster_t cluster;
+    r3d_lit_mesh_t green = quad_mesh(quad_front, false, NULL, &cluster);
+    green.colors = quad_green;
+    const uint16_t want_back = quad_centre_colour(&green);
+    r3d_lit_mesh_t mesh = quad_mesh(quad_front, true, NULL, &cluster);
+    const uint16_t want_front = quad_centre_colour(&mesh);
+    TEST_ASSERT_NOT_EQUAL(want_front, want_back);
+    mesh.triangles = quad_back;
+    TEST_ASSERT_EQUAL_HEX16(want_front, quad_centre_colour(&mesh));
+    mesh.back_colors = quad_green;
+    mesh.back_count = 4;
+    TEST_ASSERT_EQUAL_HEX16(want_back, quad_centre_colour(&mesh));
+    mesh.triangles = quad_front;
+    TEST_ASSERT_EQUAL_HEX16(want_front, quad_centre_colour(&mesh));
+}
+
+/* A flat mesh's double-sided cluster seen from behind fills with its back
+ * face colours. */
+static void
+test_a_double_sided_flat_face_seen_from_behind_fills_with_its_back_face_colours(void) {
+    const uint16_t red[2] = {RGB565BE(0xFF0000), RGB565BE(0xFF0000)};
+    const uint16_t blue[2] = {RGB565BE(0x0000FF), RGB565BE(0x0000FF)};
+    r3d_lit_cluster_t cluster;
+    const r3d_lit_mesh_t reference = quad_mesh(quad_front, false, blue, &cluster);
+    const uint16_t want = quad_centre_colour(&reference);
+    r3d_lit_mesh_t mesh = quad_mesh(quad_back, true, red, &cluster);
+    mesh.back_face_colors = blue;
+    mesh.back_count = 2;
+    TEST_ASSERT_EQUAL_HEX16(want, quad_centre_colour(&mesh));
+}
+
+/* The near plane's cut learns a triangle's facing only once projected: one
+ * seen from behind still fills with its back colours, every pixel. */
+static void
+test_a_double_sided_triangle_cut_by_the_near_plane_shows_its_back_colours_from_behind(void) {
+    static const uint8_t back[3][3] = {{0, 255, 0}, {0, 255, 0}, {0, 255, 0}};
+    parts_t* const p = parts_buffer(&shared_parts);
+    parts_begin(p);
+    parts_add(p, cut_corners, 3, back, false);
+    const r3d_lens_t lens = look_down_plus_z(0, 0, 100.0f);
+    r3d_span_target_t t = fixture();
+    draw_parts(p, &lens, &t, false);
+    const int front = covered();
+    uint16_t want = 0;
+    for (int i = 0; i < W * H && want == 0; i++) {
+        want = depth[i] != 0 ? native_of(color[i]) : 0;
+    }
+    parts_begin(p);
+    parts_add(p, cut_corners_reversed, 3, cut_colors, true);
+    p->mesh.back_colors = back;
+    p->mesh.back_count = 3;
+    t = fixture();
+    draw_parts(p, &lens, &t, false);
+    TEST_ASSERT_EQUAL_INT(front, covered());
+    for (int i = 0; i < W * H; i++) {
+        if (depth[i] != 0) {
+            TEST_ASSERT_EQUAL_HEX16(want, native_of(color[i]));
+        }
+    }
 }
 
 /* Rectangles at several heights over a floor that reaches behind the
@@ -3312,6 +3408,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front);
     RUN_TEST(test_colour_along_the_near_cut_is_interpolated_to_the_cut);
     RUN_TEST(test_a_double_sided_triangle_cut_by_the_near_plane_draws_from_behind);
+    RUN_TEST(test_a_double_sided_face_seen_from_behind_shows_its_back_colours);
+    RUN_TEST(test_a_double_sided_flat_face_seen_from_behind_fills_with_its_back_face_colours);
+    RUN_TEST(test_a_double_sided_triangle_cut_by_the_near_plane_shows_its_back_colours_from_behind);
     RUN_TEST(test_drawing_a_window_with_cluster_rows_matches_a_full_draw);
     RUN_TEST(test_a_triangle_over_any_side_of_the_screen_is_drawn);
 

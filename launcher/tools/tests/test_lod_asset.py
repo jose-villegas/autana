@@ -26,9 +26,9 @@ class LodAssetTests(unittest.TestCase):
 
     def test_header_and_mesh_refusals(self):
         blob = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 4, 2, 0)])
-        mesh = mesh_asset.BLOB_HEADER.pack(0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0)
+        mesh = mesh_asset.BLOB_HEADER.pack(0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0)
         lod_asset.validate_mesh(blob, mesh)
-        wrong = mesh_asset.BLOB_HEADER.pack(0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0)
+        wrong = mesh_asset.BLOB_HEADER.pack(0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0)
         with self.assertRaisesRegex(ValueError, "cluster"):
             lod_asset.validate_mesh(blob, wrong)
         for bad in (blob[:-1], blob + b"x", lod_asset.HEADER.pack(lod_asset.VERSION + 1, 1, 1) + blob[lod_asset.HEADER.size:],

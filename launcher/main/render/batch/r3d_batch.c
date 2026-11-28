@@ -57,6 +57,12 @@ r3d_batch_copy_mesh(const r3d_batch_t* batch, const r3d_lit_mesh_t* mesh, int co
     if (out->face_colors != NULL) {
         out->face_colors += at;
     }
+    if (out->back_colors != NULL) {
+        out->back_colors += at;
+    }
+    if (out->back_face_colors != NULL) {
+        out->back_face_colors += at;
+    }
 }
 
 void

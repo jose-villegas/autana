@@ -281,7 +281,7 @@ class ProbeSourceTests(unittest.TestCase):
                                            "vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n"
                                            "usemtl wall\nf 1/1 2/2 3/3 4/4\nusemtl leaf\nf 5/1 6/2 7/3 8/4\n")
             camera = SimpleNamespace(region=None, near_z=0.1)
-            settings = SimpleNamespace(source={"path": root / "card.obj"}, alpha_keep=0.5)
+            settings = SimpleNamespace(source={"path": root / "card.obj"}, alpha_keep=0.5, double_sided=())
             inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
                                      probes=SimpleNamespace(face=8, spacing=1.0),
                                      job=lambda: SimpleNamespace(settings=settings))

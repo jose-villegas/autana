@@ -1,24 +1,44 @@
-/* scene_mesh: static mesh arrays (positions, triangles, colours) and the
- * batches' copy places, copied into scene-owned PSRAM when a renderer is
- * first drawn: one take per renderer, an array it shares copied once. */
+/* scene_mesh: static mesh arrays (positions, triangles, front and back
+ * colours) and the batches' copy places, copied into scene-owned PSRAM when
+ * a renderer is first drawn: one take per renderer, an array it shares
+ * copied once. */
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
 #include "scene/scene_internal.h"
 
-#define MESH_ARRAY(member, per_vertex, colours)                                                                        \
-    {offsetof(r3d_lit_mesh_t, member), sizeof *((r3d_lit_mesh_t*)0)->member,                                           \
-     _Alignof(__typeof__(*((r3d_lit_mesh_t*)0)->member)), per_vertex, colours}
+/* What an array holds: plain geometry, a colour set's front colours, or its
+ * back colours (docs/assets/formats/LMSH.md). */
+typedef enum { ARRAY_PLAIN, ARRAY_FRONT, ARRAY_BACK } array_role_t;
 
-/* One table keeps sizing, copying and repointing in agreement about which arrays exist. */
+enum { POSITIONS, TRIANGLES, COLORS, FACE_COLORS, BACK_COLORS, BACK_FACE_COLORS, MESH_ARRAY_COUNT };
+
+#define MESH_ARRAY(member, per_vertex, role, pair)                                                                     \
+    {offsetof(r3d_lit_mesh_t, member),                                                                                 \
+     sizeof *((r3d_lit_mesh_t*)0)->member,                                                                             \
+     _Alignof(__typeof__(*((r3d_lit_mesh_t*)0)->member)),                                                              \
+     pair,                                                                                                             \
+     role,                                                                                                             \
+     per_vertex}
+
+/* One table keeps sizing, copying and repointing in agreement about which
+ * arrays exist. A colour array's sets follow the one opened, through a
+ * batch's copies; `pair` is a front array's back one and the reverse. */
 static const struct {
     size_t offset, size, alignment;
-    bool per_vertex, colours; /* colours: a batch's copies' sets follow the one opened */
-} mesh_arrays[] = {MESH_ARRAY(positions, true, false), MESH_ARRAY(triangles, false, false),
-                   MESH_ARRAY(colors, true, true), MESH_ARRAY(face_colors, false, true)};
+    int pair;
+    array_role_t role;
+    bool per_vertex;
+} mesh_arrays[MESH_ARRAY_COUNT] = {
+    [POSITIONS] = MESH_ARRAY(positions, true, ARRAY_PLAIN, POSITIONS),
+    [TRIANGLES] = MESH_ARRAY(triangles, false, ARRAY_PLAIN, TRIANGLES),
+    [COLORS] = MESH_ARRAY(colors, true, ARRAY_FRONT, BACK_COLORS),
+    [FACE_COLORS] = MESH_ARRAY(face_colors, false, ARRAY_FRONT, BACK_FACE_COLORS),
+    [BACK_COLORS] = MESH_ARRAY(back_colors, true, ARRAY_BACK, COLORS),
+    [BACK_FACE_COLORS] = MESH_ARRAY(back_face_colors, false, ARRAY_BACK, FACE_COLORS),
+};
 
-#define MESH_ARRAY_COUNT (sizeof mesh_arrays / sizeof mesh_arrays[0])
 _Static_assert(MESH_ARRAY_COUNT <= 8, "a renderer's resident bits fit its byte");
 
 /* Offsets and memcpy avoid aliasing the differently typed pointer-to-const members. */
@@ -29,12 +49,36 @@ mesh_array(const r3d_lit_mesh_t* mesh, size_t offset) {
     return source;
 }
 
+/* The elements `array` of `mesh` holds per vertex or per triangle: for a
+ * colour array, one set's front colours. */
+static size_t
+set_front(const r3d_lit_mesh_t* mesh, size_t array) {
+    return (size_t)(mesh_arrays[array].per_vertex ? mesh->vertex_count : mesh->triangle_count);
+}
+
+/* Whether front colour array `front` of `mesh` has its back colours right
+ * after it, as an LCOL set holds them, so one copy carries both. */
+static bool
+back_follows(const r3d_lit_mesh_t* mesh, size_t front) {
+    const uint8_t* colours = mesh_array(mesh, mesh_arrays[front].offset);
+    const void* back = mesh_array(mesh, mesh_arrays[mesh_arrays[front].pair].offset);
+    return colours != NULL && back != NULL && back == colours + (set_front(mesh, front) * mesh_arrays[front].size);
+}
+
 /* The elements of `array` renderer `r` draws from: a batch's colours run
- * through every copy's set. */
+ * through every copy's set, each its front colours then its back ones; back
+ * colours that follow their front ones come with them. */
 static size_t
 mesh_array_count(const scene_renderer_t* r, size_t array) {
-    const int one = mesh_arrays[array].per_vertex ? r->mesh.vertex_count : r->mesh.triangle_count;
-    return (size_t)one * (mesh_arrays[array].colours ? r->colour_sets : 1U);
+    const r3d_lit_mesh_t* mesh = &r->mesh;
+    switch (mesh_arrays[array].role) {
+        case ARRAY_FRONT:
+            return (back_follows(mesh, array) ? r3d_lit_mesh_colour_stride(mesh) : set_front(mesh, array))
+                   * (size_t)r->colour_sets;
+        case ARRAY_BACK: return back_follows(mesh, (size_t)mesh_arrays[array].pair) ? 0U : (size_t)mesh->back_count;
+        case ARRAY_PLAIN:
+        default: return set_front(mesh, array);
+    }
 }
 
 /* Whether renderer `r` draws `count` elements of `array` from `source`. */
@@ -44,13 +88,18 @@ mesh_array_is(const scene_renderer_t* r, size_t array, const void* source, size_
 }
 
 /* Points every renderer that draws `array` from `source` and is not yet
- * resident in it at `copy`, so a shared array is copied once. */
+ * resident in it at `copy`, and the back colours that follow, so a shared
+ * array is copied once. */
 static void
 mesh_array_repoint(scene_t* scene, const scene_renderer_t* r, size_t array, const void* source, void* copy) {
     const size_t count = mesh_array_count(r, array);
     for (int j = 0; j < scene->asset.renderer_count; j++) {
         scene_renderer_t* target = &scene->renderers[j];
         if ((target->resident_arrays & (1U << array)) == 0 && mesh_array_is(target, array, source, count)) {
+            if (mesh_arrays[array].role == ARRAY_FRONT && back_follows(&target->mesh, array)) {
+                void* back = (uint8_t*)copy + (set_front(&target->mesh, array) * mesh_arrays[array].size);
+                memcpy((uint8_t*)&target->mesh + mesh_arrays[mesh_arrays[array].pair].offset, &back, sizeof back);
+            }
             memcpy((uint8_t*)&target->mesh + mesh_arrays[array].offset, &copy, sizeof copy);
             target->resident_arrays |= (uint8_t)(1U << array);
         }
@@ -88,6 +137,9 @@ resident_walk(scene_t* scene, int index, void* block, asset_copy_t* told, int* c
             continue;
         }
         const size_t bytes = mesh_array_count(r, a) * mesh_arrays[a].size;
+        if (bytes == 0) {
+            continue;
+        }
         void* copy = copy_in(block, &end, mesh_arrays[a].alignment, source, bytes, told, count);
         if (copy != NULL) {
             mesh_array_repoint(scene, r, a, source, copy);

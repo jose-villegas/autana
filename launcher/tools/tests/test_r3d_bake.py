@@ -27,6 +27,7 @@ try:
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
+    from r3d.procedural import wave_sheet
     from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, TREE_DEPTH_MAX, WELD_PER_TICK, bake_lit_mesh,
                               read_lit_mesh, validate, weld_quantised, write_lit_mesh)
     from r3d.meshopt import build_meshlets, simplify_with_update
@@ -81,13 +82,8 @@ def directed_edges(tris):
 def grid(n):
     """An n by n square of unit cells in the plane z = 0, two triangles each,
     counter-clockwise seen from +z."""
-    p = np.array([(x, y, 0.0) for y in range(n + 1) for x in range(n + 1)])
-    tris = []
-    for y in range(n):
-        for x in range(n):
-            v = y * (n + 1) + x
-            tris += [(v, v + 1, v + n + 2), (v, v + n + 2, v + n + 1)]
-    return p, np.array(tris, dtype=np.int64)
+    card = wave_sheet.sheet(n, size=n, centre=(n / 2, n / 2))
+    return card.positions, card.tris
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -248,6 +244,10 @@ class RepairStepTests(unittest.TestCase):
         rgb[2] = (80.0, 0.0, 0.0)  # the coarse piece's seam runs from vertex 1 to vertex 2, y = 0 to 4
         _, out, _, _ = repair(p, rgb, tris, np.zeros(len(tris), dtype=int), 0.01)
         self.assertEqual(sorted(out[len(p):, 0].tolist()), [20.0, 40.0, 60.0])
+        # Back colours beside the front ones (six channels) split along with them.
+        _, sided, _, _ = repair(p, np.concatenate([rgb, rgb / 2], axis=1), tris, np.zeros(len(tris), dtype=int), 0.01)
+        self.assertEqual(sided.shape[1], 6)
+        self.assertEqual(sorted(sided[len(p):, 3].tolist()), [10.0, 20.0, 30.0])
 
     def test_repairing_repaired_output_adds_and_moves_nothing(self):
         p, tris = two_pieces(gap=0.0625)
@@ -627,6 +627,36 @@ class ClusterTreeTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class LitMeshTests(unittest.TestCase):
+    def test_back_colours_round_trip_for_double_sided_clusters_alone(self):
+        """A grid half single-sided, half double-sided: only the double-sided clusters' vertices (or triangles,
+        flat) store back colours, each run from its back_first in cluster order, and they read back as written."""
+        from r3d.mesh_asset import CLUSTER, BLOB_HEADER, back_entries
+        p, tris = grid(4)
+        double = (np.arange(len(tris)) % 2).astype(int)
+        front = np.tile([200, 40, 40], (len(p), 1))
+        back = np.tile([30, 180, 60], (len(p), 1))
+        for flat in (False, True):
+            with self.subTest(flat=flat), tempfile.TemporaryDirectory() as directory:
+                face = dict(face_rgb=np.tile([200, 40, 40], (len(tris), 1)),
+                            back_face_rgb=np.tile([30, 180, 60], (len(tris), 1))) if flat else dict(back_rgb=back)
+                write_lit_mesh(directory, "sheet", p, None if flat else front, tris, double, **face)
+                blob = parse_pack((pathlib.Path(directory) / "sheet.bundle").read_bytes())["sheet"][1]
+                read = read_lit_mesh(pathlib.Path(directory) / "sheet.bundle")
+                clusters_at = BLOB_HEADER.unpack_from(blob)[8]
+                runs = [(CLUSTER.unpack_from(blob, clusters_at + i * CLUSTER.size)[-1], c)
+                        for i, c in enumerate(read.clusters)]
+                stored = sum((c[3] if flat else c[1]) for _, c in runs if c[-1])
+                self.assertGreater(stored, 0)
+                self.assertEqual(back_entries(blob, not flat), stored)
+                self.assertTrue(all(first == 0 for first, c in runs if not c[-1]))
+                sides = read.back_face_colors if flat else read.back_rgb
+                fronts = read.face_colors if flat else read.rgb
+                for _, (vb, vc, tb, tc, *_, dbl) in runs:
+                    rows = slice(tb, tb + tc) if flat else slice(vb, vb + vc)
+                    want = ([30, 180, 60] if dbl else [200, 40, 40])
+                    np.testing.assert_allclose(sides[rows], np.tile(want, (len(sides[rows]), 1)), atol=8)
+                    np.testing.assert_allclose(fronts[rows], np.tile([200, 40, 40], (len(fronts[rows]), 1)), atol=8)
+
     def test_a_colourless_mesh_writes_and_reads_without_colour_arrays(self):
         p, tris = grid(1)
         with tempfile.TemporaryDirectory() as directory:
@@ -644,13 +674,13 @@ class LitMeshTests(unittest.TestCase):
         p = np.array([[0., 0, 0], [1, 0, 0], [0, 1, 0]])
         positions = p.astype(int) * scale
         arrays = [struct.pack('<9h', *positions.ravel()), struct.pack('<3H', 0, 1, 2),
-                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0),
+                  CLUSTER.pack(0, 3, 0, 1, 0, 0, 0, scale, scale, 0, 0, 0),
                   NODE.pack(0, 0, 0, scale, scale, 0, 0, 1, 1)]
         offsets, at = [], BLOB_HEADER.size
         for array in arrays:
             offsets.append(at)
             at += len(array) + (-len(array) % struct.calcsize('<I'))
-        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0)
+        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0, 0)
         expected += b''.join(array + bytes(-len(array) % struct.calcsize('<I')) for array in arrays)
         with tempfile.TemporaryDirectory() as directory:
             write_lit_mesh(directory, 'triangle', p, None, np.array([[0, 1, 2]]), np.zeros(1, dtype=int))
@@ -862,6 +892,37 @@ class FlatLightTests(unittest.TestCase):
         return face_colours(p, tris, np.zeros(len(tris), dtype=int), [0], set(), grey, intersector, lights, 0.5, 0.35, **kw)
 
     @needs_llvm
+    def test_a_flat_double_sided_face_gets_its_front_lit_alone_and_its_back_turned_over(self):
+        """In a scene with a double-sided material, a flat variant's colours hold the front, lit on the face normal
+        alone, then the back: the face turned over and lit single-sided with what it shows from behind; a
+        single-sided face's back is zero."""
+        from unittest import mock
+
+        from r3d import mesh_import
+
+        p, tris, intersector = walled_floors([0])
+        lights = lighting_lights(sun=[0.8, 1.0, 0.0], sun_intensity=1.0, sky_intensity=1.0, ambient=0.02)
+        geometry = SimpleNamespace(positions=p, tris=tris, tri_mat=np.array([0, 1]), intersector=intersector, bounce=None,
+                                   src=SimpleNamespace(names=["drape", "floor"], two_sided=True))
+        job = SimpleNamespace(settings=SimpleNamespace(double_sided=["drape"]),
+                              bake=SimpleNamespace(ray_offset=0.5, ao=None))
+        scene = SimpleNamespace(lights=lights, tonemap_white=0.35, indirect=SimpleNamespace(intensity=1.0))
+        grey = lambda points, spacing, m: np.full((len(points), 3), 0.3)
+        light = lambda points, spacing, m: np.full((len(points), 3), 0.6)
+        with mock.patch.object(mesh_import, "albedo_at", lambda src, points, spacing, m: grey(points, spacing, m)), \
+                mock.patch.object(mesh_import, "back_albedo_at",
+                                  lambda src, points, normals, front, spacing: light(points, spacing, 0)):
+            sided = mesh_import.flat_colours(job, scene, geometry, (1, 1, 1, None))
+        alone = face_colours(p, tris, geometry.tri_mat, [0, 1], set(), grey, intersector, lights, 0.5, 0.35, samples=1)
+        turned = face_colours(p, tris[:, ::-1], geometry.tri_mat, [0], set(), light, intersector, lights, 0.5, 0.35,
+                              samples=1)
+        self.assertEqual(sided.shape, (2, 6))
+        np.testing.assert_array_equal(sided[:, :3], alone)
+        np.testing.assert_array_equal(sided[0, 3:], turned[0])
+        np.testing.assert_array_equal(sided[1, 3:], 0)
+        self.assertFalse(np.array_equal(sided[0, 3:], sided[0, :3]))
+
+    @needs_llvm
     def test_coplanar_faces_with_the_same_surroundings_get_the_same_colour(self):
         c = self.colours([0, 64])
         self.assertEqual(c[:2].tolist(), c[2:].tolist())
@@ -1024,9 +1085,10 @@ def exact_output_digest(*values):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class ExactSplitTests(unittest.TestCase):
-    # Output digests from main e9dc4d138f; metadata and midpoint order are part of the contract.
+    # Output digests from main e9dc4d138f; metadata and midpoint order are part of the contract. The densify
+    # digest is of that code on grid(3) in wave_sheet's triangle order.
     SPLIT_DIGEST = "a74966c8177e7b47bac53d43c28ca0b227228380559e3afce042183f7fc0a51a"
-    DENSIFY_DIGEST = "ac378455206752dbbc9f9ba3c9a377faefafc1ede98f0123e1c32c97e93e25ff"
+    DENSIFY_DIGEST = "7acfd388709e225dbd6a001eb2bcca2b02727368e819829ef98dd2212b6e3e26"
 
     def test_split_preserves_every_case_rotation_dtype_and_midpoint(self):
         outputs = []
