@@ -29,7 +29,7 @@ indirect lab_clips.c:reply_line : console_reply_stdio suite_lab_clips.c:capture_
 
 indirect render_context_draw : app_arena_take
 
-indirect suite_render_lab_frame_profile.c:test_real_time_frame_profile>frame_profile_play : lab_test_profile_frame
+indirect suite_render_lab_frame_profile.c:test_real_time_frame_profile>frame_profile_play : suite_render_lab_frame_profile.c:profile_frame
 indirect suite_framegen_perf.c:test_mode>frame_profile_play : suite_framegen_perf.c:shown_frame
 indirect suite_render_lab_frame_profile.c:send : render_lab_console
 indirect render_lab_test.c:replay_path_seeks_itself : scene_baked_path capybara_path scene_herd.c:scene_herd_path scene_stress.c:scene_stress_path

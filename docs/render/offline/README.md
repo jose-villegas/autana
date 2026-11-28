@@ -23,6 +23,7 @@ flowchart LR
 | Simplify | lit triangles → the variant at its budget: the fit's start | `geometry.simplify`, the variant's `triangles` | [Mesh-Import.md](Mesh-Import.md#simplify) |
 | Fit | the start, reference renders → the fitted mesh; CUDA GPU, else the start is the mesh | the renderer's `fit` | [Appearance-Fit.md](Appearance-Fit.md) |
 | Meshlets | the final mesh → clusters and nodes inside a `.bundle` | `geometry.meshlet_triangles` | [Baked-Mesh.md](Baked-Mesh.md#meshlets) |
+| [Track-Scorecard.md](Track-Scorecard.md) | Compare fitted scenes across revisions with board captures, source measurements and paired renders |
 | Asset pack | a scene, its meshes and clip → one pack per root | an app's demo assets | [Building-Packs.md](../../assets/Building-Packs.md#packs) |
 
 | Page | Covers |

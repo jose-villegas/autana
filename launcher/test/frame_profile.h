@@ -25,6 +25,7 @@
  * a suite that replays a pose logs what the cull counted there and its frame-cost report. */
 #define FRAME_PROFILE_PATH_POSES   64 /* poses replayed evenly along the path, for the counter curves */
 #define FRAME_PROFILE_REPLAY_DRAWS 3  /* frames drawn at a replayed pose for its frame-cost report */
+#define FRAME_PROFILE_HEAP         "frame_heap: %s free=%zu largest=%zu"
 /* A trace line carries up to FRAME_PROFILE_LINE_FRAMES frames, its count first, so a burst of lines between
  * two presents stays within what the frame watch queues. The trace and its peaks go out through the
  * console's waiting writer, as a log line burst of this size loses whole lines through stdio. */

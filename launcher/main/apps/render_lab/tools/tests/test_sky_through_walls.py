@@ -12,96 +12,26 @@ Needs the r3d environment (launcher/tools/r3d/requirements.txt) and the scene's 
 """
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 SCENE = TOOLS.parents[3] / "demo" / "sponza" / "sponza.scene.toml"
-sys.path.insert(0, str(TOOLS.parents[3] / "tools" / "render"))
+sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS.parents[3] / "tools"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import host_render  # noqa: E402
 
 try:
     import numpy as np
-    from scipy import ndimage
-
-    from r3d.obj import load_obj
-    from r3d.poses import flight_camera, sample_camera_rows
     from r3d.import_settings import load_scene
     from r3d.ray_query import RayQuery
-    from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, pose_rays
-    from check_avi import read_video
-    from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
-    from render_compare import expand_565
+    from sky_through_walls import MOST_HOLED_FRAMES, SourceSky, measure_sky, pixel_sky, sky_pixels
+    from tests.r3d_env import needs_llvm
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
     needs_llvm = unittest.skip("the r3d environment is not installed")
-
-DT_MS = 33
-MIN_OPEN_SKY_PIXELS = 25
-FRAME_COUNT_SIZE = (1, 1)
-# A pixel and the eight around it.
-BESIDE = np.ones((3, 3), dtype=bool) if np is not None else None
-# Rays per side of a render pixel when asking the source for sky. A notch in a jagged rim or the gap under a
-# flagpole opens to the sky through a channel narrower than a pixel, so a ray through the centre can hit the
-# wall beside it.
-SUBPIXELS = 8
-# Per scene, the most holed frames a bake may show: the holed frames of a clean bake plus one.
-MOST_HOLED_FRAMES = {"sponza": 1}
-
-
-def clear_colour():
-    """The scene's camera background as the 16-bit framebuffer shows it."""
-    rgb = load_scene(SCENE).camera.component.background
-    return expand_565((rgb >> 16, (rgb >> 8) & 0xFF, rgb & 0xFF))
-
-
-def sky_pixels(frame, sky, source_sky=None):
-    """(holes, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
-    those that are. With `source_sky`, which answers for the (ys, xs) it is given whether the source shows sky
-    there, an enclosed pixel is no hole when the source shows sky in it or in an enclosed pixel beside it, by
-    side or corner: the bake drew that sky at most a pixel wider than the source."""
-    mask, enclosed = enclosed_sky(frame, sky)
-    open_ = int(mask.sum() - enclosed.sum())
-    if source_sky is None:
-        return int(enclosed.sum()), open_
-    shown = np.zeros_like(enclosed)
-    ys, xs = np.nonzero(enclosed)
-    if len(ys):
-        shown[ys, xs] = source_sky(ys, xs)
-    return int((enclosed & ~ndimage.binary_dilation(shown, BESIDE)).sum()), open_
-
-
-def pixel_sky(query, width, height, lens, near, pose, ys, xs, samples=SUBPIXELS):
-    """Whether `query`'s mesh leaves any of `samples` x `samples` rays spread over each render pixel (ys, xs) of
-    a width x height view from `pose` empty: sky the source shows in part of a pixel counts."""
-    origins, directions = pose_rays(width, height, lens, near, pose, samples)
-    per_pixel = samples * samples
-    rays = ((ys * width + xs)[:, None] * per_pixel + np.arange(per_pixel)).reshape(-1)
-    return ~query.blocked(origins[rays], directions[rays]).reshape(-1, per_pixel).all(axis=1)
-
-
-class SourceSky:
-    """Where the scene's source mesh shows sky in a flythrough frame's render pixel (pixel_sky)."""
-
-    def __init__(self, scene, frames, size):
-        sources = {job.settings.source["path"] for job in scene.renderers}
-        if len(sources) != 1:
-            raise ValueError(f"the scene's renderers draw {len(sources)} sources; the test traces one")
-        positions, _, tri_v, *_ = load_obj(sources.pop())
-        self.query = RayQuery(positions, tri_v)
-        self.width, self.height, self.lens, self.near, self.poses = flythrough_poses(flight_camera(scene), DT_MS,
-                                                                                     size, frames)
-
-    def of_frame(self, frame):
-        """`source_sky` of sky_pixels for the flythrough's frame `frame`, drawn at poses[frame + 1]."""
-        def source_sky(ys, xs):
-            return pixel_sky(self.query, self.width, self.height, self.lens, self.near, self.poses[frame + 1], ys, xs)
-        return source_sky
-
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyCount(unittest.TestCase):
@@ -214,12 +144,7 @@ class PixelSky(unittest.TestCase):
 class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        scene = load_scene(SCENE)
-        camera = flight_camera(scene)
-        cls.frames = len(sample_camera_rows(
-            camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
-            camera.half_fov_short_tan, camera.near_z)[4])
-        cls.scene = scene
+        cls.scene = load_scene(SCENE)
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="sky_through_walls_"))
         run, cls.binary = host_render.run(cls.out, "--build-only")
         cls.build_output = run.stdout + run.stderr
@@ -235,25 +160,8 @@ class SkyThroughWalls(unittest.TestCase):
 
     def assert_few_holed_frames(self, scene, most):
         self.assertTrue(self.binary.exists(), self.build_output[-2000:])
-        video = self.out / f"{scene}.avi"
-        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--scene", scene, "--frames", str(self.frames),
-                              "--dt", str(DT_MS), "-o", str(self.out / f"{scene}.bmp"), "--video", str(video)],
-                             capture_output=True, text=True, timeout=600)
-        self.assertEqual(run.returncode, 0, run.stderr[-2000:])
-        sky = clear_colour()
-        counts, source = [], None
-        for index, frame in enumerate(read_video(video)[1]):
-            # A --quarter 1 video draws each render pixel VIDEO_SCALE times across and down.
-            frame = np.ascontiguousarray(frame[::VIDEO_SCALE, ::VIDEO_SCALE])
-            source = source or SourceSky(self.scene, self.frames, frame.shape[1::-1])
-            counts.append(sky_pixels(frame, sky, source.of_frame(index)))
-        video.unlink()
-        self.assertEqual(len(counts), self.frames)
-        # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour
-        # matched, so a count of no holes is real.
-        self.assertTrue(any(open_ >= MIN_OPEN_SKY_PIXELS for _, open_ in counts), f"{scene}: no sky found")
-        holed = [frame for frame, (holes, _) in enumerate(counts) if holes > 0]
-        print(f"{scene}: {len(holed)}/{self.frames} holed frames (ceiling {most}): {holed}", flush=True)
+        holed, frames = measure_sky(self.scene, scene, self.out, self.binary)
+        print(f"{scene}: {len(holed)}/{frames} holed frames (ceiling {most}): {holed}", flush=True)
         self.assertLessEqual(len(holed), most, f"{scene}: {len(holed)} holed frames exceeds {most}")
 
 

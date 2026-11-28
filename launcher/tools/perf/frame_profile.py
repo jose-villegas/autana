@@ -17,7 +17,7 @@ QUARTER_FORMAT = " " + read_define(HEADER, "FRAME_PROFILE_QUARTER") + "%s"
 
 
 def _log_pattern(name, fields):
-    parts = re.split(r"%[\d.]*(?:ll)?[sudf]", read_define(HEADER, name) + QUARTER_FORMAT)
+    parts = re.split(r"%[\d.]*(?:ll|z)?[sudf]", read_define(HEADER, name) + QUARTER_FORMAT)
     if len(parts) != len(fields) + 1:
         raise ValueError(f"{name}: format fields differ from parser")
     return "".join(re.escape(part) + rf"\s*(?P<{field}>{pattern})"
@@ -38,6 +38,8 @@ PEAK_RE = re.compile(_log_pattern("FRAME_PROFILE_PEAK", (
     ("quarter", r"\w+"))))
 REPLAY_RE = re.compile(_log_pattern("FRAME_PROFILE_REPLAY", (
     ("row", r"\S+"), ("t_ms", r"\d+"), ("counts", r"[^|\n]*?"), ("report", r"[^\n]*?"), ("quarter", r"\w+"))))
+HEAP_RE = re.compile(_log_pattern("FRAME_PROFILE_HEAP", (
+    ("row", r"\S+"), ("free", r"\d+"), ("largest", r"\d+"), ("quarter", r"\w+"))))
 PATH_POSES = read_define(HEADER, "FRAME_PROFILE_PATH_POSES")
 PEAK_PERCENT = read_define(HEADER, "FRAME_PROFILE_PEAK_PERCENT")
 COUNT = re.compile(r"(\w+)=(-?\d+)")
@@ -63,6 +65,11 @@ def judged(text):
 
 def profiles(text):
     return _records(PROFILE_RE, text)
+
+
+def first_frame_heaps(text):
+    """App heap readings sampled after each playback's warm-up frame."""
+    return _records(HEAP_RE, text)
 
 
 def summaries(text):

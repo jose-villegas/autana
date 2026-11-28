@@ -21,104 +21,18 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 LAUNCHER = TOOLS.parents[3]
-sys.path.insert(0, str(LAUNCHER / "tools" / "render"))
+sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(LAUNCHER / "tools"))
 
 try:
     import numpy as np
-    from scipy import ndimage
-
-    from bake import bake
-    from r3d.appearance_simplify import start_mesh
-    from r3d.fit.copies import joined, placed_copies
-    from r3d.import_settings import flight_camera, lfs_pointer_oid, load_scene, source_files
-    from r3d.light import drop_masked
-    from r3d.mesh_source import load_source
-    from r3d.objects.instances import place
-    from r3d.poses import path_poses
-    from r3d.ray_query import RayQuery
-    from r3d.scene_asset import world_placement
-    from pinhole_rays import FrontMesh, front_hits, pose_rays
+    from r3d.import_settings import lfs_pointer_oid, source_files
+    from see_through import (BEHIND, EVERY_MS, MOST_SEE_THROUGH, Tracer, baked_scenes, measure_see_through,
+                             merged, see_through_ceiling)
     from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
     needs_llvm = unittest.skip("the r3d environment is not installed")
-
-# The landscape panel at half resolution, as the host renderer draws a --quarter 1 frame.
-RENDER_SIZE = (224, 184)
-# The camera path's step, as a baked renderer's camera-path visibility samples it.
-EVERY_MS = 500
-# A bake hit this much farther than the source's is the view going past the surface, not the surface moved.
-BEHIND = 1.5
-# The square a see-through region must hold whole somewhere to count.
-OPENING = 3
-# Per scene, the most see-through pixels its bakes may show over the path: the measured sum plus PEG_MARGIN of it.
-MOST_SEE_THROUGH = {"bistro": 165414, "sponza": 2306}
-PEG_MARGIN = 0.01
-
-
-def placed(points, scene, job):
-    """`points` in the scene, under the renderer's object's world transform."""
-    placement = world_placement(scene, job.object)
-    return place(points, placement.matrix, placement.position)
-
-
-def kept_source(scene, job):
-    """The renderer's source as its import keeps it: (points, triangles) placed in the scene."""
-    settings = job.settings
-    source = load_source(settings)
-    triangles, materials = source.tri_v, source.tri_m
-    if settings.alpha_keep is not None:
-        triangles, _, materials, _ = drop_masked(source.p, source.uv, source.tri_v, source.tri_t, source.tri_m,
-                                                 source.textures, settings.alpha_keep)
-    if settings.thin:
-        triangles = triangles[np.array([source.names[m] != settings.thin.material for m in materials], dtype=bool)]
-    return placed(source.p, scene, job), triangles
-
-
-def drawn_bake(scene, job):
-    """The bundle the scene draws for the renderer: (points, triangles, double-sided flags) placed in the scene."""
-    bundle = bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels" if job.renderer.fit else "mesh"))
-    rest = start_mesh(bundle)
-    mesh = joined(rest, placed_copies(bundle, rest.flat))
-    return placed(mesh.points[mesh.vertex_point], scene, job), np.asarray(mesh.tris), np.asarray(mesh.double, bool)
-
-
-def merged(parts):
-    """One (points, triangles, ...) of several, each part's triangles offset past the points before it."""
-    points, triangles, rest, offset = [], [], [], 0
-    for part in parts:
-        points.append(part[0])
-        triangles.append(part[1] + offset)
-        rest.append(part[2:])
-        offset += len(part[0])
-    return (np.concatenate(points), np.concatenate(triangles), *(np.concatenate(column) for column in zip(*rest)))
-
-
-class Tracer:
-    """The source and the drawn bake of a scene's baked renderers, traced from one pose at a time."""
-
-    def __init__(self, source, drawn):
-        points, triangles = source
-        self.source = RayQuery(points, triangles)
-        self.drawn = FrontMesh(*drawn)
-
-    def see_through(self, width, height, lens, near, pose):
-        """The pose's see-through regions as a height x width mask."""
-        origins, directions = pose_rays(width, height, lens, near, pose)
-        hit, distance, _ = self.source.first_hits(origins, directions)
-        _, depth = front_hits(self.drawn, pose[:3], origins, directions)
-        past = hit & (depth > BEHIND * np.where(hit, distance, 0.0))
-        return ndimage.binary_opening(past.reshape(height, width), np.ones((OPENING, OPENING), bool))
-
-
-def baked_scenes():
-    """(key, scene) for every demo scene with a camera path and a baked renderer."""
-    for path in sorted((LAUNCHER / "demo").glob("*/*.scene.toml")):
-        scene = load_scene(path)
-        if flight_camera(scene) is not None and any(job.bake for job in scene.renderers):
-            yield path.name.removesuffix(".scene.toml"), scene
-
 
 def wall(x0, x1, y0, y1, z):
     """A quad from (x0, y0) to (x1, y1) at depth z, facing +z."""
@@ -190,14 +104,10 @@ class SeeThroughBakes(unittest.TestCase):
                 unpulled = [path for job in baked for path in source_files(job.settings) if lfs_pointer_oid(path)]
                 if unpulled:
                     self.skipTest(f"{key}: {unpulled[0]} is a Git LFS pointer; run git lfs pull --exclude=\"\"")
-                tracer = Tracer(merged([kept_source(scene, job) for job in baked]),
-                                merged([drawn_bake(scene, job) for job in baked]))
-                width, height, lens, near, poses = path_poses(flight_camera(scene), RENDER_SIZE, EVERY_MS,
-                                                              either_way_up=False)
-                pixels = [int(tracer.see_through(width, height, lens, near, pose).sum()) for pose in poses]
+                pixels = measure_see_through(scene)
                 worst = int(np.argmax(pixels))
-                most = round(MOST_SEE_THROUGH[key] * (1 + PEG_MARGIN))
-                print(f"{key}: {sum(pixels)} see-through pixels over {len(poses)} poses (ceiling {most}); "
+                most = see_through_ceiling(key)
+                print(f"{key}: {sum(pixels)} see-through pixels over {len(pixels)} poses (ceiling {most}); "
                       f"worst pose {worst} at {worst * EVERY_MS} ms with {pixels[worst]}", flush=True)
                 self.assertLessEqual(sum(pixels), most, f"{key}: {sum(pixels)} see-through pixels exceeds {most}")
 
