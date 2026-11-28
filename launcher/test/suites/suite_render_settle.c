@@ -294,6 +294,12 @@ fixture(int budget, bool levels, bool coarse_near) {
 
 static render_context_frame_t
 frame(raster_rig_t* r, const box3f_t* changed, int count) {
+    /* A held frame plans its rows from the cost a band taught it, measured in
+     * wall time, which a loaded host or QEMU stretches: plan at a known one.
+     * An unmeasured cost stays 0, so a band that taught nothing still fails. */
+    if (f->c[0].settle.row_us != 0) {
+        f->c[0].settle.row_us = ROW_COST << RENDER_SETTLE_COST_FRAC_BITS;
+    }
     render_context_set_changed(&f->c[0], changed, count);
     render_context_set_changed(&f->c[LIVE], changed, count);
     for (int k = 0; k < CONTEXTS; k++) {
@@ -344,11 +350,6 @@ settle_held(int budget, bool levels, bool coarse_near) {
     }
     const int rounds = budget == 1 ? RENDER_SETTLE_BANDS : 2;
     for (int i = 0; i < rounds; i++) {
-        if (i == 1 && budget != 1) {
-            /* The band before taught row_us from wall time, which a loaded
-             * host or QEMU stretches: plan the large budget at a known cost. */
-            f->c[0].settle.row_us = ROW_COST << RENDER_SETTLE_COST_FRAC_BITS;
-        }
         const render_context_frame_t out = frame(r, NULL, 0);
         TEST_ASSERT_FALSE(out.unchanged);
         const int band = RENDER_SETTLE_BANDS / 2 + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
