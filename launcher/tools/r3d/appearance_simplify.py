@@ -28,7 +28,6 @@ import pathlib
 import sys
 import tempfile
 import time
-from types import SimpleNamespace
 from typing import NamedTuple
 
 import numpy as np
@@ -1264,14 +1263,13 @@ def main(argv=None):
             retained_start = pruned._replace(points=fit_start.points, rgb=start_rgb)
         probes = seal.start_probes(retained_start, copies, seal_camera(scene))
         presplit, _ = seal.split_t_junctions(pruned)
-        snap_record = SimpleNamespace()
-        sealed, moved, left = seal.snap_back(retained_start, presplit, copies, probes, record=snap_record)
+        sealed, moved, left, rounds = seal.snap_back(retained_start, presplit, copies, probes)
         split, _ = seal.split_t_junctions(sealed)
         before = len(pruned.tris)
         splits = len(split.tris) - before
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        seal.log_lines(moved, left, snap_record.rounds, splits, before)
+        seal.log_lines(moved, left, rounds, splits, before)
         with ExitStack() as staging:
             bundle_dir = out
             if held_out or copies is not None:

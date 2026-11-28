@@ -30,9 +30,9 @@ def start_probes(start, copies, camera):
     return LeakProbes(*geometry(start, copies), *camera)
 
 
-def snap_back(start, fitted, copies, probes, *, record=None):
+def snap_back(start, fitted, copies, probes):
     """Restore points on fitted rims and start triangles seen through unshared sky regions.
-    Return (mesh, points moved, holes left). If given, record stores the number of restore rounds."""
+    Return (mesh, points moved, holes left, restore rounds run)."""
     points = fitted.points.copy()
     fitted_count, start_count = len(fitted.tris), len(start.tris)
     rounds = left = 0
@@ -51,10 +51,8 @@ def snap_back(start, fitted, copies, probes, *, record=None):
         rounds = width
     else:
         left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
-    if record is not None:
-        record.rounds = rounds
     moved = int(np.count_nonzero(np.any(points != fitted.points, axis=1)))
-    return fitted._replace(points=points), moved, left
+    return fitted._replace(points=points), moved, left, rounds
 
 
 def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):

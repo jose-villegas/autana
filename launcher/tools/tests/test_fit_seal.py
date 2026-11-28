@@ -4,7 +4,6 @@ import pathlib
 import sys
 import unittest
 from collections import Counter
-from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -168,7 +167,7 @@ class SnapBackCopyRows(unittest.TestCase):
                 probes = mock.Mock()
                 probes.rims.side_effect = [[np.array(rim)], []]
                 probes.holes.return_value = [np.array(seen)]
-                sealed, moved, left = seal.snap_back(start, fitted, copies, probes)
+                sealed, moved, left, _ = seal.snap_back(start, fitted, copies, probes)
                 expected = fitted.points.copy()
                 if 0 in rim or 0 in seen:
                     expected[:3] = start.points[:3]
@@ -218,7 +217,7 @@ class SnapBack(unittest.TestCase):
 
     def test_sky_the_fit_opened_closes_with_its_points_back_at_the_start(self):
         self.assertGreater(len(self.probes.holes(*seal.geometry(self.fitted, None))), 0)
-        sealed, moved, left = seal.snap_back(self.start, self.fitted, None, self.probes)
+        sealed, moved, left, _ = seal.snap_back(self.start, self.fitted, None, self.probes)
         self.assertEqual(left, 0)
         self.assertEqual(self.probes.holes(*seal.geometry(sealed, None)), [])
         self.assertGreater(moved, 0)
@@ -228,11 +227,11 @@ class SnapBack(unittest.TestCase):
     def test_a_point_away_from_the_hole_keeps_its_fitted_place(self):
         fitted = self.fitted._replace(points=self.fitted.points.copy())
         fitted.points[self.bottom, 0] -= SHEET_BEHIND
-        sealed, _, _ = seal.snap_back(self.start, fitted, None, self.probes)
+        sealed, _, _, _ = seal.snap_back(self.start, fitted, None, self.probes)
         np.testing.assert_array_equal(sealed.points[self.bottom], fitted.points[self.bottom])
 
     def test_a_fit_that_opens_nothing_moves_nothing(self):
-        sealed, moved, left = seal.snap_back(self.start, self.start, None, self.probes)
+        sealed, moved, left, _ = seal.snap_back(self.start, self.start, None, self.probes)
         self.assertEqual((moved, left), (0, 0))
         np.testing.assert_array_equal(sealed.points, self.start.points)
 
@@ -242,7 +241,7 @@ class SnapBack(unittest.TestCase):
         points[sheet, 1:] = points[sheet, 1:].mean(axis=0)
         fitted = self.start._replace(points=points)
 
-        sealed, moved, left = seal.snap_back(self.start, fitted, None, self.probes)
+        sealed, moved, left, _ = seal.snap_back(self.start, fitted, None, self.probes)
 
         np.testing.assert_array_equal(sealed.points[sheet], self.start.points[sheet])
         self.assertEqual(left, 0)
@@ -257,7 +256,7 @@ class SnapBack(unittest.TestCase):
         probes = seal.start_probes(start, None, CAMERA)
         self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=OUTLINE_REACH))
 
-        sealed, moved, left = seal.snap_back(start, fitted, None, probes)
+        sealed, moved, left, _ = seal.snap_back(start, fitted, None, probes)
 
         self.assertEqual((moved, left), (0, 0))
         np.testing.assert_array_equal(sealed.points, fitted.points)
@@ -265,17 +264,16 @@ class SnapBack(unittest.TestCase):
     def test_sky_moving_points_cannot_close_is_counted_and_logged(self):
         # Restoring positions cannot replace the missing sheet.
         missing = self.start._replace(tris=self.start.tris[:8], double=self.start.double[:8])
-        record = SimpleNamespace()
         rounds = 1
         with mock.patch.object(seal, "SNAP_BACK_ROUNDS", rounds):
-            sealed, moved, left = seal.snap_back(self.start, missing, None, self.probes, record=record)
+            sealed, moved, left, ran = seal.snap_back(self.start, missing, None, self.probes)
 
-        self.assertEqual(record.rounds, rounds)
+        self.assertEqual(ran, rounds)
         self.assertGreater(left, 0)
         self.assertEqual(left, len(self.probes.holes(*seal.geometry(sealed, None), reach=None)))
         self.assertEqual(moved, 0)
         with mock.patch.object(seal, "log") as log:
-            seal.log_lines(moved, left, record.rounds, 0, len(missing.tris))
+            seal.log_lines(moved, left, ran, 0, len(missing.tris))
         self.assertEqual(log.call_args_list[1], mock.call(f"snap back: {left} holes left after {rounds} rounds"))
 
 
