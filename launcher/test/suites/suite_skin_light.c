@@ -835,7 +835,7 @@ test_direct_off_matches_no_sun(void) {
     fx->lights.direction[0] = vec3f_unit_y();
     fx->lights.color[0] = vec3f_one();
     fx->lights.ambient = (vec3f_t){0.2F, 0.4F, 0.6F};
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "skin.direct", R3D_SKIN_LIGHT_DIRECT_OFF));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "skin.direct", R3D_SKIN_TUNE_DIRECT_OFF));
     (void)r3d_skin_lights_tune(&fx->lights);
     TEST_ASSERT_EQUAL_INT(0, fx->lights.count);
     const vec3f_t got = light_irradiance(vec3f_unit_y(), &fx->lights);
