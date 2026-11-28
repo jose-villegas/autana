@@ -125,10 +125,12 @@ def statements(text):
 
 
 class Container:
-    """The file's top level or one item of an array of tables: its own keys and its tables, in file order."""
+    """The file's top level or one item of an array of tables: its own keys and its tables, in file order, and the
+    values tomllib reads for it."""
 
-    def __init__(self, out):
+    def __init__(self, out, node):
         self.out = out
+        self.node = node
         self.tables = {}  # a table's key parts, as a tuple, to its entry in out["tables"]
         self.items = {}  # an array of tables' key parts to its items' Containers
 
@@ -141,13 +143,14 @@ class Container:
             self.out["tables"].append(self.tables[tuple(parts)])
         return self.tables[tuple(parts)]["keys"]
 
-    def item(self, parts, line):
-        """A new item of the array of tables `parts` names, the array listed at `line` when this is its first."""
+    def item(self, parts, line, node):
+        """A new item, holding `node`, of the array of tables `parts` names, the array listed at `line` when this is
+        its first."""
         if tuple(parts) not in self.items:
             self.tables[tuple(parts)] = dict(name=".".join(parts), line=line, array=True, items=[])
             self.out["tables"].append(self.tables[tuple(parts)])
             self.items[tuple(parts)] = []
-        item = Container(dict(line=line, keys=[], tables=[]))
+        item = Container(dict(line=line, keys=[], tables=[]), node)
         self.tables[tuple(parts)]["items"].append(item.out)
         self.items[tuple(parts)].append(item)
         return item
@@ -182,29 +185,35 @@ class Container:
 
 
 def written(text, values):
-    """The file's top-level keys and tables, each key with its value from `values` (tomllib's reading of `text`)."""
-    top = Container(dict(keys=[], tables=[]))
+    """The file's top-level keys and tables, each key with its value from `values` (tomllib's reading of `text`);
+    Refused when a header's or a key's line does not open with it."""
+    top = Container(dict(keys=[], tables=[]), values)
+    lines = text.split("\n")
 
     def resolve(parts):
         """The container, the parts left within it and the values the header `parts` names: a name through an
-        array of tables reaches into its last item."""
+        array of tables reaches into the item read last."""
         container, inner, node = top, [], values
         for part in parts:
             node, inner = node[part], inner + [part]
             if isinstance(node, list):
-                container, inner, node = container.items[tuple(inner)][-1], [], node[-1]
+                container = container.items[tuple(inner)][-1]
+                inner, node = [], container.node
         return container, inner, node
 
     container, inner, node = top, [], values
     for line, kind, parts in statements(text):
+        opening = lines[line - 1].lstrip(BLANK)
+        if not opening.startswith("[" if kind != "key" else (parts[0], '"', "'")):
+            raise Refused(f"line {line} does not open with the {kind} found there")
         if kind == "table":
             container, inner, node = resolve(parts)
             container.table(inner, line)
         elif kind == "array":
             owner, inner, node = resolve(parts[:-1])
-            container = owner.item(inner + parts[-1:], line)
-            node = node[parts[-1]][len(owner.items[tuple(inner + parts[-1:])]) - 1]
-            inner = []
+            index = len(owner.items.get(tuple(inner + parts[-1:]), []))
+            container = owner.item(inner + parts[-1:], line, node[parts[-1]][index])
+            inner, node = [], container.node
         else:
             held, path = node, list(inner)
             for part in parts[:-1]:
@@ -223,7 +232,7 @@ def describe(path):
         return dict(file=str(path), valid=False, error=str(error), keys=[], tables=[])
     try:
         top = written(text, values)
-    except (KeyError, IndexError, TypeError, AttributeError) as error:
+    except (Refused, KeyError, IndexError, TypeError, AttributeError) as error:
         raise Refused(f"{path}: its keys' lines could not be found ({error!r})") from error
     if top.values() != values:
         raise Refused(f"{path}: the keys found on its lines do not hold what the file does")

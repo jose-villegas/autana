@@ -851,7 +851,7 @@ of tables item by item. `valid` and `error` give the import rules' verdict; an
 invalid file still lists its tables. The JSON shape is in the script's header.
 
 ```sh
-python launcher/tools/r3d/import_edit.py read bistro.import.toml --out bistro.json
+python launcher/tools/r3d/import_edit.py read launcher/demo/bistro/bistro.import.toml --out bistro.json
 ```
 
 Each tool and its module, `rebake.py` and when to rebake rather than bake in

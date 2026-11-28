@@ -9,6 +9,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -69,6 +70,59 @@ KINDS_TABLES = {
     ],
 }
 
+# The lexer's other paths: literal strings on one line and several, an escaped quote and a # inside a string, a
+# quoted and spaced header with a comment after it, a quoted key, a string closed by four quotes, a sub-table named
+# before its parent, and no line end after the last value.
+LEXER = """\
+a = 'x # y'
+b = \'\'\'one
+two\'\'\'
+c = "say \\"hi\\" # not a comment"
+[ "s t" . u ]  # comment
+"q k" = 1
+d = \"\"\"ends with a quote\"\"\"\"
+[p.q]
+r = 2
+[p]
+s = 3"""
+
+LEXER_TABLES = {
+    "keys": [{"key": "a", "value": "x # y", "line": 1}, {"key": "b", "value": "one\ntwo", "line": 2},
+             {"key": "c", "value": 'say "hi" # not a comment', "line": 4}],
+    "tables": [
+        {"name": "s t.u", "line": 5, "keys": [{"key": "q k", "value": 1, "line": 6},
+                                              {"key": "d", "value": 'ends with a quote"', "line": 7}]},
+        {"name": "p.q", "line": 8, "keys": [{"key": "r", "value": 2, "line": 9}]},
+        {"name": "p", "line": 10, "keys": [{"key": "s", "value": 3, "line": 11}]},
+    ],
+}
+
+# Arrays of tables whose sub-tables and inner arrays sit in an item before the last.
+EARLY_ITEMS = """\
+[[variants]]
+name = "near"
+[variants.lod]
+levels = 2
+[[variants.steps]]
+k = 1
+[[variants.steps]]
+k = 2
+[[variants]]
+name = "far"
+[[variants.steps]]
+k = 3
+"""
+
+EARLY_ITEMS_TABLES = [{"name": "variants", "line": 1, "array": True, "items": [
+    {"line": 1, "keys": [{"key": "name", "value": "near", "line": 2}], "tables": [
+        {"name": "lod", "line": 3, "keys": [{"key": "levels", "value": 2, "line": 4}]},
+        {"name": "steps", "line": 5, "array": True, "items": [
+            {"line": 5, "keys": [{"key": "k", "value": 1, "line": 6}], "tables": []},
+            {"line": 7, "keys": [{"key": "k", "value": 2, "line": 8}], "tables": []}]}]},
+    {"line": 9, "keys": [{"key": "name", "value": "far", "line": 10}], "tables": [
+        {"name": "steps", "line": 11, "array": True, "items": [
+            {"line": 11, "keys": [{"key": "k", "value": 3, "line": 12}], "tables": []}]}]}]}]
+
 SOURCE = '[source]\npath = "m.obj"\ncredit = "test"\n\n[output]\nname = "m"\n'
 # geometry.probes shapes a fit, so it needs geometry.simplify, which this file lacks.
 PROBES_WITHOUT_SIMPLIFY = SOURCE + "\n[geometry]\nprobes = {}\n"
@@ -91,14 +145,15 @@ def read(path):
 
 
 def every_key(container, prefix=()):
-    """(table path, key, value, line) of every key in a read container, items' keys under their array's path."""
+    """(path, key, value, line) of every key in a read container; an item's path holds its index after its array's
+    name."""
     for key in container["keys"]:
         yield prefix, key["key"], key["value"], key["line"]
     for table in container["tables"]:
         name = prefix + tuple(table["name"].split("."))
         if table.get("array"):
-            for item in table["items"]:
-                yield from every_key(item, name)
+            for index, item in enumerate(table["items"]):
+                yield from every_key(item, name + (index,))
         else:
             yield from every_key(dict(keys=table["keys"], tables=[]), name)
 
@@ -123,6 +178,24 @@ class ImportEditTests(unittest.TestCase):
         result = read(self.fixture(KINDS))
         self.assertEqual({"keys": result["keys"], "tables": result["tables"]}, KINDS_TABLES)
 
+    def test_the_lexer_finds_lines_through_every_string_and_header_form(self):
+        result = read(self.fixture(LEXER))
+        self.assertEqual({"keys": result["keys"], "tables": result["tables"]}, LEXER_TABLES)
+
+    def test_sub_tables_and_inner_arrays_of_an_item_before_the_last_are_listed_in_it(self):
+        self.assertEqual(read(self.fixture(EARLY_ITEMS))["tables"], EARLY_ITEMS_TABLES)
+
+    def test_lines_that_do_not_hold_what_the_file_does_are_refused(self):
+        path = self.fixture(KINDS)
+        found = import_edit.statements(KINDS)
+        wrong_path = [(line, kind, ["nowhere"] if kind == "key" else parts) for line, kind, parts in found]
+        wrong_line = [(line + 1, kind, parts) for line, kind, parts in found]
+        for name, statements in (("path", wrong_path), ("line", wrong_line)):
+            with self.subTest(wrong=name), mock.patch.object(import_edit, "statements", return_value=statements):
+                code, out, err = run("read", path)
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn("lines", err)
+
     def test_crlf_line_ends_give_the_same_lines(self):
         result = read(self.fixture(KINDS.replace("\n", "\r\n")))
         self.assertEqual(result["tables"], KINDS_TABLES["tables"])
@@ -137,10 +210,10 @@ class ImportEditTests(unittest.TestCase):
         self.assertIn("geometry.simplify", names)
         self.assertEqual(len(result["tables"][-1]["items"]), len(values["variants"]))
         for path, key, value, line in every_key(result):
-            self.assertRegex(lines[line - 1], rf"^\s*{key}\s*=|[{{,]\s*{key}\s*=", f"{key} at line {line}")
+            self.assertRegex(lines[line - 1], rf"^\s*([\w-]+\.)*{key}\s*=|[{{,]\s*{key}\s*=", f"{key} at line {line}")
             node = values
             for part in path:
-                node = node[part][0] if isinstance(node[part], list) else node[part]
+                node = node[part]
             self.assertEqual(node[key], value)
 
     def test_every_tracked_import_reads_valid(self):
