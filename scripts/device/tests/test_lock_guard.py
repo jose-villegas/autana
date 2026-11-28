@@ -1572,6 +1572,7 @@ class FlashImageScriptTests(unittest.TestCase):
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
                          "launcher/tools/build/build_paths.py", "launcher/tools/build/build_lock.py",
                          "launcher/tools/build/c_header.py", "launcher/tools/build/math_constants.py",
+                         "launcher/tools/perf/perf_targets.py",
                          "launcher/main/console/console_tune.h", "launcher/main/core/tune.h",
                          "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
