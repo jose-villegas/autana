@@ -4,7 +4,11 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d import log
-from r3d.leaks import LeakProbes
+from r3d.geometry import face_normals
+from r3d.leaks import LeakProbes, see_through_count
+from r3d.mesh_source import camera_filter
+from r3d.ray_query import RayQuery
+from render.pinhole_rays import front_hits
 
 # A fitted point within this distance (model units) of the inside of an edge it does not end splits that edge.
 # A held seam point lands on its target's edge: one fit had 363 points this close where its start had 9.
@@ -24,35 +28,53 @@ def geometry(mesh, copies):
             np.concatenate([tris, copies.vertex_point[copies.tris] + len(positions)]))
 
 
-def start_probes(start, copies, camera):
-    """Leak probes over the start and its copies from `camera`, (region, near) as
-    returned by `import_settings.seal_camera`. Sky they show counts as the start's own."""
-    return LeakProbes(*geometry(start, copies), *camera)
+def start_probes(start, copies, camera, source):
+    """Probe the start and its copies for sky and the fit's source for reference depth."""
+    reference = RayQuery(source.p, source.tri_v, hit_filter=camera_filter(source))
+    return LeakProbes(*geometry(start, copies), *camera, reference=reference)
 
 
 def snap_back(start, fitted, copies, probes):
-    """Restore points on fitted rims and start triangles seen through unshared sky regions.
-    Return (mesh, points moved, holes left, restore rounds run)."""
+    """Restore hole rims and the start triangles seen through them if see-through does not grow.
+    Return (mesh, points moved, holes left, rounds run, restores kept, restores reverted)."""
     points = fitted.points.copy()
     fitted_count, start_count = len(fitted.tris), len(start.tris)
-    rounds = left = 0
+    positions, tris = geometry(fitted, copies)
+    result = RayQuery(positions, tris)
+    normals, _ = face_normals(positions, tris)
+    double = fitted.double if copies is None else np.concatenate([fitted.double, copies.double])
+    double = np.asarray(double, dtype=bool)
+    rounds = left = kept = reverted = 0
     for width in range(1, SNAP_BACK_ROUNDS + 1):
-        positions, tris = geometry(fitted._replace(points=points), copies)
-        rims = probes.rims(positions, tris, width, reach=SNAP_BACK_REACH)
-        if not rims:
+        for origins, directions, source_depth, holes in probes.restore_views(result, width, SNAP_BACK_REACH):
+            rounds = width
+            _, depth = front_hits(result, normals, double, origins, directions)
+            before = see_through_count(source_depth, depth.reshape(source_depth.shape))
+            for rim_rows, seen_rows in holes:
+                rim_points = tris[rim_rows[rim_rows < fitted_count]]
+                seen_points = start.vertex_point[start.tris[seen_rows[seen_rows < start_count]]]
+                restore = np.union1d(rim_points, seen_points)
+                previous = points[restore]
+                if np.array_equal(previous, start.points[restore]):
+                    continue
+                points[restore] = start.points[restore]
+                trial_positions, _ = geometry(fitted._replace(points=points), copies)
+                trial = RayQuery(trial_positions, tris)
+                trial_normals, _ = face_normals(trial_positions, tris)
+                _, depth = front_hits(trial, trial_normals, double, origins, directions)
+                after = see_through_count(source_depth, depth.reshape(source_depth.shape))
+                if after <= before:
+                    result, normals, before = trial, trial_normals, after
+                    kept += 1
+                else:
+                    points[restore] = previous
+                    reverted += 1
+        if rounds != width:
             break
-        holes = probes.holes(positions, tris, reach=SNAP_BACK_REACH)
-        rim_rows = np.unique(np.concatenate(rims))
-        seen_rows = np.unique(np.concatenate(holes))
-        rim_points = tris[rim_rows[rim_rows < fitted_count]]
-        seen_points = start.vertex_point[start.tris[seen_rows[seen_rows < start_count]]]
-        restore = np.union1d(rim_points, seen_points)
-        points[restore] = start.points[restore]
-        rounds = width
     else:
         left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
     moved = int(np.count_nonzero(np.any(points != fitted.points, axis=1)))
-    return fitted._replace(points=points), moved, left, rounds
+    return fitted._replace(points=points), moved, left, rounds, kept, reverted
 
 
 def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):
@@ -162,8 +184,9 @@ def _point_vertex(mesh, point):
     return int(np.flatnonzero(mesh.vertex_point == point)[0])
 
 
-def log_lines(moved, left, rounds, splits, before):
+def log_lines(moved, left, rounds, kept, reverted, splits, before):
     """Log snap-back results and the combined triangle increase from both splits."""
     log(f"snap back: {moved} points moved back to their start")
     log(f"snap back: {left} holes left after {rounds} rounds")
+    log(f"snap back: {kept} restores kept, {reverted} reverted for adding see-through")
     log(f"T-junctions: {splits} edges split, {before} -> {before + splits} triangles")

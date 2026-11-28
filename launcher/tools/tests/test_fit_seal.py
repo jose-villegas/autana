@@ -4,6 +4,7 @@ import pathlib
 import sys
 import unittest
 from collections import Counter
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -13,6 +14,7 @@ try:
 
     from r3d.appearance_simplify import FitMesh
     from r3d.fit import seal
+    from r3d.views import probes as probe_views
 except ImportError:
     np = None
 
@@ -153,8 +155,12 @@ class SplitTJunctions(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class SnapBackCopyRows(unittest.TestCase):
-    def test_only_real_rim_and_seen_rows_restore_points(self):
+    @mock.patch("r3d.fit.seal.RayQuery")
+    @mock.patch("r3d.fit.seal.front_hits")
+    def test_only_real_rim_and_seen_rows_restore_points(self, front_hits, _query):
+        front_hits.return_value = (None, np.ones(1))
         points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (2, 0, 0), (3, 0, 0), (2, 1, 0)]
         start = mesh(points, [(0, 1, 2), (3, 4, 5)])
         fitted = start._replace(points=start.points + [0, 0, 1], tris=start.tris[:1], double=start.double[:1])
@@ -165,9 +171,9 @@ class SnapBackCopyRows(unittest.TestCase):
                           ([fitted_copy], [0, start_copy])):
             with self.subTest(rim=rim, seen=seen):
                 probes = mock.Mock()
-                probes.rims.side_effect = [[np.array(rim)], []]
-                probes.holes.return_value = [np.array(seen)]
-                sealed, moved, left, _ = seal.snap_back(start, fitted, copies, probes)
+                view = (None, None, np.ones((1, 1)), [(np.array(rim), np.array(seen))])
+                probes.restore_views.side_effect = [[view], []]
+                sealed, moved, left, *_ = seal.snap_back(start, fitted, copies, probes)
                 expected = fitted.points.copy()
                 if 0 in rim or 0 in seen:
                     expected[:3] = start.points[:3]
@@ -213,25 +219,47 @@ class SnapBack(unittest.TestCase):
         cls.bottom = np.flatnonzero((points[:, 0] < 0) & (points[:, 2] == -SHEET_HALF))
         points[cls.top, 2] -= PULLED_IN
         cls.fitted = cls.start._replace(points=points)
-        cls.probes = seal.start_probes(cls.start, None, CAMERA)
+        cls.source = SimpleNamespace(p=cls.start.points, tri_v=cls.start.tris)
+        cls.probes = seal.start_probes(cls.start, None, CAMERA, cls.source)
 
     def test_sky_the_fit_opened_closes_with_its_points_back_at_the_start(self):
         self.assertGreater(len(self.probes.holes(*seal.geometry(self.fitted, None))), 0)
-        sealed, moved, left, _ = seal.snap_back(self.start, self.fitted, None, self.probes)
+        sealed, moved, left, _, kept, _ = seal.snap_back(self.start, self.fitted, None, self.probes)
+        self.assertGreaterEqual(kept, 1)
         self.assertEqual(left, 0)
         self.assertEqual(self.probes.holes(*seal.geometry(sealed, None)), [])
         self.assertGreater(moved, 0)
         self.assertEqual(int(np.count_nonzero(np.any(sealed.points != self.fitted.points, axis=1))), moved)
         np.testing.assert_array_equal(sealed.points[self.top], self.start.points[self.top])
 
+    def test_restore_that_adds_see_through_is_reverted(self):
+        eye_x = 2 * HOLE_HALF
+        offset = 0.47
+        pose = (eye_x, offset, offset / 2, -1, 0, 0)
+        start = self.start._replace(points=self.start.points.copy())
+        fitted = self.fitted._replace(points=self.fitted.points.copy())
+        fitted.points[self.top, 2] = HOLE_HALF
+        depth_scale = 3
+        start.points[self.top, 0] = eye_x - depth_scale * (eye_x + SHEET_BEHIND)
+        start.points[self.top, 1] *= depth_scale
+        start.points[self.top, 2] = depth_scale * (HOLE_HALF + SHEET_BEHIND)
+        with mock.patch.object(probe_views, "region_poses", return_value=([pose], None)), \
+                mock.patch.object(seal, "SNAP_BACK_ROUNDS", 1):
+            probes = seal.start_probes(start, None, CAMERA, self.source)
+            self.assertEqual(len(probes.holes(*seal.geometry(fitted, None), reach=seal.SNAP_BACK_REACH)), 1)
+            sealed, moved, left, _, kept, reverted = seal.snap_back(start, fitted, None, probes)
+
+        np.testing.assert_array_equal(sealed.points, fitted.points)
+        self.assertEqual((moved, left, kept, reverted), (0, 1, 0, 1))
+
     def test_a_point_away_from_the_hole_keeps_its_fitted_place(self):
         fitted = self.fitted._replace(points=self.fitted.points.copy())
         fitted.points[self.bottom, 0] -= SHEET_BEHIND
-        sealed, _, _, _ = seal.snap_back(self.start, fitted, None, self.probes)
+        sealed, *_ = seal.snap_back(self.start, fitted, None, self.probes)
         np.testing.assert_array_equal(sealed.points[self.bottom], fitted.points[self.bottom])
 
     def test_a_fit_that_opens_nothing_moves_nothing(self):
-        sealed, moved, left, _ = seal.snap_back(self.start, self.start, None, self.probes)
+        sealed, moved, left, *_ = seal.snap_back(self.start, self.start, None, self.probes)
         self.assertEqual((moved, left), (0, 0))
         np.testing.assert_array_equal(sealed.points, self.start.points)
 
@@ -241,7 +269,7 @@ class SnapBack(unittest.TestCase):
         points[sheet, 1:] = points[sheet, 1:].mean(axis=0)
         fitted = self.start._replace(points=points)
 
-        sealed, moved, left, _ = seal.snap_back(self.start, fitted, None, self.probes)
+        sealed, moved, left, *_ = seal.snap_back(self.start, fitted, None, self.probes)
 
         np.testing.assert_array_equal(sealed.points[sheet], self.start.points[sheet])
         self.assertEqual(left, 0)
@@ -253,10 +281,10 @@ class SnapBack(unittest.TestCase):
         start.points[self.bottom, 2] = -HOLE_HALF + START_GAP
         fitted = start._replace(points=start.points.copy())
         fitted.points[self.bottom, 2] += JOINED_GAP_GROWTH
-        probes = seal.start_probes(start, None, CAMERA)
+        probes = seal.start_probes(start, None, CAMERA, self.source)
         self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=OUTLINE_REACH))
 
-        sealed, moved, left, _ = seal.snap_back(start, fitted, None, probes)
+        sealed, moved, left, *_ = seal.snap_back(start, fitted, None, probes)
 
         self.assertEqual((moved, left), (0, 0))
         np.testing.assert_array_equal(sealed.points, fitted.points)
@@ -266,15 +294,17 @@ class SnapBack(unittest.TestCase):
         missing = self.start._replace(tris=self.start.tris[:8], double=self.start.double[:8])
         rounds = 1
         with mock.patch.object(seal, "SNAP_BACK_ROUNDS", rounds):
-            sealed, moved, left, ran = seal.snap_back(self.start, missing, None, self.probes)
+            sealed, moved, left, ran, kept, reverted = seal.snap_back(self.start, missing, None, self.probes)
 
         self.assertEqual(ran, rounds)
         self.assertGreater(left, 0)
         self.assertEqual(left, len(self.probes.holes(*seal.geometry(sealed, None), reach=None)))
         self.assertEqual(moved, 0)
         with mock.patch.object(seal, "log") as log:
-            seal.log_lines(moved, left, ran, 0, len(missing.tris))
+            seal.log_lines(moved, left, ran, kept, reverted, 0, len(missing.tris))
         self.assertEqual(log.call_args_list[1], mock.call(f"snap back: {left} holes left after {rounds} rounds"))
+        self.assertEqual(log.call_args_list[2],
+                         mock.call("snap back: 0 restores kept, 0 reverted for adding see-through"))
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest import mock
 from types import SimpleNamespace
 
@@ -713,13 +714,18 @@ def fit_scene():
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    @contextmanager
     def patch_fit(self, mesh, **patches):
         from r3d import appearance_simplify as appearance
 
-        return mock.patch.multiple(appearance, load_scene=mock.Mock(return_value=fit_scene()),
-                                   start_mesh=mock.Mock(return_value=mesh),
-                                   load_views=mock.Mock(return_value=(["training"], (24, 20))),
-                                   seal_camera=mock.Mock(), **patches)
+        source = SimpleNamespace(p=mesh.points, tri_v=mesh.vertex_point[mesh.tris])
+        reference_render = SimpleNamespace(source_for=mock.Mock(return_value=(source, None)))
+        with mock.patch.dict(sys.modules, {"r3d.reference_render": reference_render}), \
+                mock.patch.multiple(appearance, load_scene=mock.Mock(return_value=fit_scene()),
+                                    start_mesh=mock.Mock(return_value=mesh),
+                                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                                    seal_camera=mock.Mock(), **patches) as calls:
+            yield calls
 
     def run_budgeted_fit(self, directory, split, budget):
         from r3d import appearance_simplify as appearance
@@ -767,7 +773,7 @@ class PruneAndCostTests(unittest.TestCase):
         self.assertEqual([len(call.args[0].tris) for call in calls.seal.split_t_junctions.call_args_list],
                          [budget, budget + splits_per_pass])
         self.assertEqual(len(calls.seal.snap_back.call_args.args[1].tris), budget + splits_per_pass)
-        calls.seal.log_lines.assert_called_once_with(0, 0, 0, splits, budget)
+        calls.seal.log_lines.assert_called_once_with(0, 0, 0, 0, 0, splits, budget)
         calls.write_mesh.assert_called_once()
         scored = calls.hole_pixels.call_args_list[1].args[0]
         self.assertIs(calls.held_out_line.call_args.args[0], scored)
@@ -833,7 +839,8 @@ class PruneAndCostTests(unittest.TestCase):
         shown[0] = 0
         budget = int(shown.sum())
         pruned, _ = prune(start, shown, budget)
-        full = seal.start_probes(start, None, CAMERA)
+        source = SimpleNamespace(p=start.points, tri_v=start.vertex_point[start.tris])
+        full = seal.start_probes(start, None, CAMERA, source)
         self.assertTrue(full.holes(*seal.geometry(pruned, None), reach=seal.SNAP_BACK_REACH))
         top = (start.points[:, 0] < 0) & (start.points[:, 2] == SHEET_HALF)
         for pull in (0, PULLED_IN):
@@ -850,7 +857,10 @@ class PruneAndCostTests(unittest.TestCase):
                     sealed = appearance.write_mesh.call_args.args[2]
                 np.testing.assert_array_equal(sealed.tris, pruned.tris)
                 np.testing.assert_array_equal(sealed.points, start.points)
-                log.assert_called_once_with(np.count_nonzero(top) if pull else 0, 0, int(bool(pull)), 0, budget)
+                moved, left, rounds, kept, reverted, splits, count = log.call_args.args
+                self.assertEqual((moved, left, rounds, reverted, splits, count),
+                                 (np.count_nonzero(top) if pull else 0, 0, int(bool(pull)), 0, 0, budget))
+                self.assertEqual(bool(kept), bool(pull))
 
     @needs_llvm
     def test_the_presplit_closes_a_t_junction_crack_before_points_move_back(self):
@@ -869,7 +879,8 @@ class PruneAndCostTests(unittest.TestCase):
         lens = 2 * NEAR / eye_x
         with mock.patch.object(probe_views, "region_poses", return_value=([pose], None)), \
                 mock.patch.object(probe_views, "FACE_LENS", lens):
-            probes = seal.start_probes(start, None, CAMERA)
+            source = SimpleNamespace(p=start.points, tri_v=start.vertex_point[start.tris])
+            probes = seal.start_probes(start, None, CAMERA, source)
             self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=seal.SNAP_BACK_REACH))
 
             with tempfile.TemporaryDirectory() as out, \
@@ -915,6 +926,7 @@ class PruneAndCostTests(unittest.TestCase):
                                       "seal.snap_back", "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
                     start, snapped, _copies, probes = calls.seal.snap_back.call_args.args
                     self.assertIs(start, calls.seal.start_probes.call_args.args[0])
+                    self.assertIs(calls.optimise.call_args.kwargs["source"], calls.seal.start_probes.call_args.args[3])
                     self.assertIs(start.points, mesh.points)
                     np.testing.assert_array_equal(start.tris, pruned.tris)
                     self.assertIs(snapped, pruned)

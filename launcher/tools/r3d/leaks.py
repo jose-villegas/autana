@@ -28,12 +28,28 @@ CONNECTED = np.ones((3, 3), dtype=int)
 REACH = 3
 # Most times a pass is simplified again; a pass that still leaks after these keeps its last accepted run.
 ROUNDS = 24
+# A hit past this multiple of the source distance counts as see-through.
+BEHIND = 1.5
+# A see-through region must contain a square this many pixels on a side.
+OPENING = 3
+
+
+def see_through_count(source_depth, fit_depth):
+    """Count see-through pixels in two view depth images with infinite depth for misses."""
+    past = np.isfinite(source_depth) & (fit_depth > BEHIND * source_depth)
+    return np.count_nonzero(ndimage.binary_opening(past, np.ones((OPENING, OPENING), bool)))
+
+
+def probe_depth(query, origins, directions):
+    """First-hit distances for probe rays, with infinite depth for misses."""
+    hit, distance, _ = query.first_hits(origins, directions)
+    return np.where(hit, distance, np.inf)
 
 
 class LeakProbes:
     """Cube faces from probes in `region` ((lo, hi), or the source's bounds when None)."""
 
-    def __init__(self, positions, tris, region, near):
+    def __init__(self, positions, tris, region, near, reference=None):
         self.positions, self.tris = np.asarray(positions, dtype=float), np.asarray(tris)
         lo, hi = region if region is not None else (self.positions.min(axis=0), self.positions.max(axis=0))
         self.query = RayQuery(self.positions, self.tris)
@@ -41,7 +57,11 @@ class LeakProbes:
                                        probes.spacing_for(lo, hi, None, near), near, PROBE_SEED)
         face = probes.PROBE_FACE
         self.views = [(face, face, probes.FACE_LENS, pose) for pose in poses]
-        self.source_sky = [~self.query.first_hits(origins, directions)[0] for _, origins, directions in self._batches()]
+        self.source_sky, self.reference_depth = [], []
+        for _, origins, directions in self._batches():
+            self.source_sky.append(~self.query.first_hits(origins, directions)[0])
+            if reference is not None:
+                self.reference_depth.append(probe_depth(reference, origins, directions))
         self.source = np.ones(len(self.tris), dtype=bool)
         self.finished = []
 
@@ -60,25 +80,26 @@ class LeakProbes:
     def holes(self, positions, tris, reach=REACH):
         """Per hole a mesh shows, the source triangles seen through it."""
         holes = []
-        for origins, directions, masks in self._view_holes(RayQuery(positions, tris), reach):
+        for _, _, origins, directions, masks in self._view_holes(RayQuery(positions, tris), reach):
             hit, _, seen = self.query.first_hits(origins, directions)
             holes.extend(np.unique(seen[mask.reshape(-1) & hit]) for mask in masks)
         return holes
 
-    def rims(self, positions, tris, width=1, reach=REACH):
-        """Per hole a mesh shows, the rows of its `tris` seen within `width` pixels around the hole."""
-        result = RayQuery(positions, tris)
-        rims = []
-        for origins, directions, masks in self._view_holes(result, reach):
+    def restore_views(self, result, width, reach):
+        """Each holed view's rays, reference depth, and pairs of rim and start triangle rows per hole."""
+        for batch, rows, origins, directions, masks in self._view_holes(result, reach):
             hit, _, seen = result.first_hits(origins, directions)
+            start_hit, _, start_seen = self.query.first_hits(origins, directions)
+            holes = []
             for mask in masks:
                 ring = (ndimage.binary_dilation(mask, CONNECTED, iterations=width) & ~mask).reshape(-1)
-                rims.append(np.unique(seen[ring & hit]))
-        return rims
+                holes.append((np.unique(seen[ring & hit]), np.unique(start_seen[mask.reshape(-1) & start_hit])))
+            yield origins, directions, self.reference_depth[batch][rows].reshape(masks[0].shape), holes
 
     def _view_holes(self, result, reach=REACH):
-        """(origins, directions, hole masks) of each view where the RayQuery `result` shows a hole."""
-        for (views, origins, directions), source_sky in zip(self._batches(), self.source_sky):
+        """Batch index, ray slice, rays and masks for each view where `result` shows a hole."""
+        for batch, (views, origins, directions) in enumerate(self._batches()):
+            source_sky = self.source_sky[batch]
             sky = ~result.blocked(origins, directions)
             if not np.any(sky & ~source_sky):
                 continue
@@ -90,7 +111,7 @@ class LeakProbes:
                     continue
                 masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width), reach=reach)
                 if masks:
-                    yield origins[rows], directions[rows], masks
+                    yield batch, rows, origins[rows], directions[rows], masks
 
     def repair(self, rows, result_positions, result_tris, free):
         """(number of holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the

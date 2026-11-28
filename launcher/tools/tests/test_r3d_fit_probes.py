@@ -60,6 +60,7 @@ class ClosureTests(unittest.TestCase):
                     "worst": dict(stretch=[], area_growth=[], moved=[])}).items():
             stack.enter_context(mock.patch.object(appearance_simplify, name, return_value=value))
         stack.enter_context(mock.patch.object(appearance_simplify, "seal", stub_seal(mock.Mock())))
+        stack.enter_context(mock.patch("r3d.reference_render.source_for", return_value=(None, None)))
 
     def test_main_checks_the_stored_fit_before_publishing(self):
         mesh = self.two_triangles()

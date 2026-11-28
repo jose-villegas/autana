@@ -202,7 +202,7 @@ class ViewHoleTests(unittest.TestCase):
         sky[2, 2], sky[3, 3] = False, True
         self.assertEqual(len(leaks.view_holes(sky, none)), 2)
 
-    def test_probe_holes_and_rims_use_the_requested_reach(self):
+    def test_probe_holes_and_restore_views_use_the_requested_reach(self):
         narrow_reach = leaks.REACH - 1
         width, height = 3, leaks.REACH + 1
         source_sky = np.zeros((height, width), dtype=bool)
@@ -215,6 +215,8 @@ class ViewHoleTests(unittest.TestCase):
         rays = np.zeros((sky.size, 3))
         probes = leaks.LeakProbes.__new__(leaks.LeakProbes)
         probes.source_sky = [source_sky.ravel()]
+        reference_depth = np.arange(sky.size)
+        probes.reference_depth = [reference_depth]
         probes.query = mock.Mock()
         probes.query.first_hits.return_value = (~source_sky.ravel(), None, source_seen)
         views = [(width, height, None, None)]
@@ -223,11 +225,36 @@ class ViewHoleTests(unittest.TestCase):
             result = ray_query.return_value
             result.blocked.return_value = ~sky.ravel()
             result.first_hits.return_value = (~sky.ravel(), None, fitted_seen)
-            for method, row in ((probes.holes, source_row), (probes.rims, rim_row)):
-                with self.subTest(method=method.__name__):
-                    self.assertEqual(method(None, None), [])
-                    found = method(None, None, reach=narrow_reach)
-                    self.assertEqual([rows.tolist() for rows in found], [[row]])
+            self.assertEqual(probes.holes(None, None), [])
+            found = probes.holes(None, None, reach=narrow_reach)
+            self.assertEqual([rows.tolist() for rows in found], [[source_row]])
+            self.assertEqual(list(probes.restore_views(result, 1, leaks.REACH)), [])
+            (_, _, depth, [(rim, seen)]), = probes.restore_views(result, 1, narrow_reach)
+            np.testing.assert_array_equal(depth, reference_depth.reshape(height, width))
+            np.testing.assert_array_equal(rim, [rim_row])
+            np.testing.assert_array_equal(seen, [source_row])
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SeeThroughCountTests(unittest.TestCase):
+    def test_counts_farther_and_missing_hits_in_a_full_region(self):
+        side = leaks.OPENING
+        source = np.ones((side, side))
+        fit = np.full_like(source, np.nextafter(leaks.BEHIND, np.inf))
+        fit[0, 0] = np.inf
+        self.assertEqual(leaks.see_through_count(source, fit), source.size)
+        fit[:] = np.nextafter(leaks.BEHIND, 0)
+        self.assertEqual(leaks.see_through_count(source, fit), 0)
+        source[:] = np.inf
+        fit[:] = np.inf
+        self.assertEqual(leaks.see_through_count(source, fit), 0)
+
+    def test_discards_a_one_pixel_sliver(self):
+        side = leaks.OPENING
+        source = np.ones((side, side))
+        fit = source.copy()
+        fit[:, 0] = np.inf
+        self.assertEqual(leaks.see_through_count(source, fit), 0)
 
 
 @needs_llvm
