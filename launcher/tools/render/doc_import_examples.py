@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from r3d.bake_fidelity import write_assets
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import write_lit_mesh
+from r3d.mesh_bundle import start_file
 from r3d.mesh_import import bake_geometry
 from r3d.scene_name import scene_id
 
@@ -22,9 +23,9 @@ def main(scene_path, object_name, host, work, out, frames, dt):
     scratch = work / "albedo"
     scratch.mkdir(exist_ok=True)
     geometry = bake_geometry(job, scene)
-    write_lit_mesh(scratch, job.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
+    write_lit_mesh(scratch, job.asset_name, geometry.positions, geometry.rgb, geometry.tris,
                    geometry.tri_double, **geometry.scale)
-    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.bundle", scratch, scene_path)
+    assets = write_assets(job.asset_name, start_file(job, scratch), scratch, scene_path)
     subprocess.run([str(host), "--quarter", "0", "--scene", scene_id(scene_path), "--object", object_name,
                     "--frames", str(frames), "--dt", str(dt), "-o", str(scratch / "last.bmp")], check=True,
                    env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})

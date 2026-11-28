@@ -96,17 +96,19 @@ def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, tar
     import traceback
     from r3d.process_budget import NULL_RECORDER
     from r3d.lit_mesh import read_lit_mesh
+    from r3d.mesh_bundle import start_file
     target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.bundle" if target is None else target
     log_path = pathlib.Path(point_dir) / "fit.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     recording = recorder is not None
     recorder = NULL_RECORDER if recorder is None else recorder
-    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.bundle").tris) if recording else 0
+    start = start_file(job, inputs)
+    triangles = len(read_lit_mesh(start).tris) if recording else 0
     try:
         with recorder.step("fit", triangles, gpu=True) as step:
             with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                 mesh = fit(scene_path, scene, job, pathlib.Path(point_dir), budget=point.get("budget"),
-                       cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs)
+                       cost_weight=point.get("cost_weight", 0.0), smoke=smoke, target=target, inputs=inputs, start=start)
             if recording:
                 step["triangles_out"] = len(read_lit_mesh(mesh).tris)
         return {"mesh": str(mesh)}

@@ -334,9 +334,9 @@ way up at `fit.poses.size`. `fit` fits with
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
-`fit` prunes the fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. The fit uses deterministic
-reductions and seeded sampling; the lock pins the bytes a fit made.
+`prepare` writes `<asset>.bundle` in the work folder. `fit` prunes to
+`fit.prune.budget` and writes `fit/<asset>.bundle` there. The fit uses
+deterministic reductions and seeded sampling. The lock pins its output bytes.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;

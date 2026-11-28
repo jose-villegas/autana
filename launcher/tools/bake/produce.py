@@ -132,15 +132,16 @@ def with_source(job, path):
 
 
 def produce_mesh(bake, cache, lock):
+    from r3d.mesh_bundle import start_file
     from r3d.mesh_import import write_baked
 
     job = bake.job
     if keys.is_blend(job.settings):
         job = with_source(job, export_file(job.settings, lock, cache))
     with tempfile.TemporaryDirectory() as work:
-        name = job.asset_name
-        write_baked(job, bake.scene, pathlib.Path(work), name)
-        return record(bake, pathlib.Path(work) / (name + bake.suffix), cache)
+        start = start_file(job, work)
+        write_baked(job, bake.scene, start.parent, job.asset_name)
+        return record(bake, start, cache)
 
 
 def blender_program(given=None):

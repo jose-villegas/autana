@@ -33,6 +33,7 @@ from r3d.reference_set import (ReferenceInputs, POSE_SPACING, canonical,
                                poses_text, split_poses, reference_inputs, prepare_references)
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
+from r3d.mesh_bundle import start_file
 
 CSV_FIELDS = ("budget", "cost_weight", "triangles", "mean_delta_e", "p95_delta_e", "predicted_ms", "board_ms")
 BOARD_SCALE = 2
@@ -66,7 +67,7 @@ def prepare(scene_path, scene, job, work, recorder=None):
 
     inputs = reference_inputs(job, scene)
     work.mkdir(parents=True, exist_ok=True)
-    start = write_baked(job, scene, work, job.renderer.variant.name, recorder=recorder)
+    start = write_baked(job, scene, work, start_file(job, work).stem, recorder=recorder)
     training = prepare_references(inputs, work)
     log(f"prepared {job.renderer.variant.name}: start of {len(start.tris)} triangles, {training} training poses")
 
@@ -83,7 +84,7 @@ def sweep_references(scene_path, scene, job, work):
     """Prepare one reusable reference set for a sweep's unchanged inputs."""
     marker = pathlib.Path(work) / "references.json"
     digest = reference_digest(job, scene)
-    if marker.is_file() and json.loads(marker.read_text()).get("digest") == digest:
+    if start_file(job, work).is_file() and marker.is_file() and json.loads(marker.read_text()).get("digest") == digest:
         return
     prepare(scene_path, scene, job, work)
     marker.write_text(json.dumps({"digest": digest}, sort_keys=True) + "\n")
@@ -254,8 +255,10 @@ def sweep_main(argv):
         from r3d.fit.stage import fit
 
         work = point_dir / "work"
+        work.mkdir(exist_ok=True)
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
-                   smoke=args.smoke, target=point_dir / f"{variant.name}.bundle", inputs=reference_work)
+                   smoke=args.smoke, target=start_file(job, point_dir), inputs=reference_work,
+                   start=start_file(job, reference_work))
         mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh
@@ -299,7 +302,9 @@ def main(argv=None):
     else:
         from r3d.fit.stage import fit
 
-        fit(scene_path, scene, job, work)
+        fit_work = work / "fit"
+        fit_work.mkdir(exist_ok=True)
+        fit(scene_path, scene, job, fit_work, inputs=work, start=start_file(job, work))
     return 0
 
 

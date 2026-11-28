@@ -25,6 +25,13 @@ METADATA_FIELDS = ("owner", "first", "source", "match")
 HASH_HEX_DIGITS = 8
 
 
+def start_file(job, work):
+    """Path to the asset-named start bundle in a work directory."""
+    from pathlib import Path
+
+    return Path(work) / (job.asset_name + SUFFIX)
+
+
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
     from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it

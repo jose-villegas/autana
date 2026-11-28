@@ -66,7 +66,7 @@ class DocImageFailureTest(unittest.TestCase):
                     mock.patch("r3d.bake_fidelity.write_packs"), \
                     mock.patch.object(examples.subprocess, "run") as run:
                 examples.main(scene_path, "painting", pathlib.Path("viewer"), work, work, 3, 17)
-            pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.bundle'}"])
+            pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/gallery.paint.bundle'}"])
             args = run.call_args_list[0].args[0]
             for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
                 self.assertEqual(args[args.index(flag) + 1], value)
