@@ -225,13 +225,12 @@ test_hidden_cluster_scan_cost(void) {
     }
     r3d_span_target_t target = r3d_span_target(pixels, depth, HIDDEN_SCAN_WIDTH, 0, HIDDEN_SCAN_HEIGHT);
     r3d_hidden_slice_t slice = {0};
-    target.hidden = &slice;
     const r3d_pipeline_rows_t rows = {.x1 = HIDDEN_SCAN_WIDTH * R3D_SUBPIXEL,
                                       .y1 = HIDDEN_SCAN_HEIGHT * R3D_SUBPIXEL,
                                       .depth = R3D_DEPTH_NEAREST - 1};
     const int64_t start = timing_now_us();
     for (int i = 0; i < HIDDEN_SCAN_RUNS; i++) {
-        (void)r3d_pipeline_cluster_hidden(&rows, &target);
+        (void)r3d_pipeline_cluster_hidden(&rows, &target, &slice);
     }
     const int64_t elapsed = timing_now_us() - start;
     memory_free(pixels);

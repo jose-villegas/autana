@@ -42,6 +42,7 @@ typedef enum {
     RASTER_FATE_CULLED,
     RASTER_FATE_NOT_SET_UP,
     RASTER_FATE_HIDDEN,
+    RASTER_FATE_SKIPPED,
     RASTER_FATE_DRAWN,
     RASTER_FATE_COUNT,
 } raster_cluster_fate_t;
@@ -92,6 +93,7 @@ typedef struct {
     X(clusters_coarse, counts.clusters_coarse)                                                                         \
     X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
     X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \
+    X(clusters_skipped, clusters[RASTER_FATE_SKIPPED])                                                                 \
     X(clusters_drawn, clusters[RASTER_FATE_DRAWN])                                                                     \
     X(triangles_submitted, counts.triangles_submitted)                                                                 \
     X(triangles_behind, counts.triangles_behind)                                                                       \
@@ -122,11 +124,13 @@ typedef struct {
      * slot k in the arrays below; a tag names a mesh index, which the list finds. */
     uint16_t drawn[RASTER_CULL_CLUSTERS_MAX];
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
-    uint8_t hidden_outcome[2][RASTER_CULL_CLUSTERS_MAX];
+    /* The draw slices run concurrently, so each owns its own bits. */
+    uint32_t skipped[2][BITS32_WORDS(RASTER_CULL_CLUSTERS_MAX)];
 
-    /* One array for three steps of the frame, each done with it before the next. */
+    /* Scratch reused after drawing, counting, and tallying. */
     union {
-        uint16_t set_up[RASTER_CULL_CLUSTERS_MAX]; /* counting: an instance's kept clusters' set-up triangles */
+        uint16_t drawn_head[RASTER_CULL_CLUSTERS_MAX]; /* drawing: each entry's header in drawn */
+        uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];     /* counting: an instance's kept clusters' set-up triangles */
         uint32_t triangle_first[RASTER_CULL_CLUSTERS_MAX / 2]; /* tallying: each drawn pair's first drawn triangle */
         uint16_t node[RASTER_CULL_CLUSTERS_MAX];               /* painting: each slot's node at cullview.level */
     };

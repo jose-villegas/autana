@@ -25,14 +25,7 @@ typedef struct {
 } raster_split_hidden_tally_t;
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-typedef enum {
-    RASTER_SPLIT_HIDDEN_VISIBLE = 1,
-    RASTER_SPLIT_HIDDEN_SKIPPED,
-    RASTER_SPLIT_HIDDEN_BYPASSED,
-} raster_split_hidden_outcome_t;
-
-typedef void (*raster_split_hidden_report_t)(void* state, int entry, int cluster, unsigned slice,
-                                             raster_split_hidden_outcome_t outcome);
+typedef void (*raster_split_hidden_report_t)(void* state, int entry, int cluster, unsigned slice);
 #endif
 
 /* Each stage's offset from an even share, in permille; per instance where a

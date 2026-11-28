@@ -547,9 +547,10 @@ static const int16_t scene_corners[SCENE_QUADS][4][3] = {
 };
 static const fixture_camera_t scene_camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F, 1.0F}, 0.5F, 1.0F};
 static const char* const CULL_VIEW = "cull";
-/* The cull view's colours for a culled and a drawn cluster, as raster_cull_view.c paints them. */
+/* The cull view's fate colours. */
 static const uint32_t CULLED_RGB = 0x505050;
 static const uint32_t DRAWN_RGB = 0x3CC850;
+static const uint32_t SKIPPED_RGB = 0xAA63EE;
 /* What scene_draw() clears to. */
 static const uint32_t CLEAR_RGB = 0x000000;
 static const int TRIANGLES_PER_QUAD = 2;
@@ -608,6 +609,7 @@ scene_open(void) {
     scene_now = s;
     suite_set_test_cleanup(scene_release);
     s->view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
+    s->view.skip_hidden = false;
     /* Flat fates, so a culled cluster's pixels carry its colour to count. */
     const tune_entry_t* paint = tune_find(tune_shared(), TUNE_NAME(cullview, paint));
     TEST_ASSERT_NOT_NULL(paint);
@@ -679,6 +681,39 @@ test_cull_view_frame_counts_clusters_by_fate(void) {
         total += frame.clusters[f];
     }
     TEST_ASSERT_EQUAL_INT(SCENE_QUADS, total);
+}
+
+static void
+test_cull_view_paints_and_counts_skipped_clusters(void) {
+    scene_t* s = scene_open();
+    s->view.skip_hidden = true;
+    /* The observer can see the cluster from the far side of the wall. */
+    const fixture_camera_t back = {{0.0F, 0.0F, 400.0F}, {0.0F, 0.0F, -1.0F}, 0.5F, 1.0F};
+    const transformf_t observer = transformf_looking(back.eye, back.forward, vec3f_unit_y());
+    render_context_set_observer(&s->context, &observer);
+    scene_draw(s);
+    const raster_cull_t* state = scene_state(s);
+    TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_SKIPPED, state->fate[SCENE_HIDDEN]);
+    TEST_ASSERT_EQUAL_INT(1, state->frame.clusters[RASTER_FATE_SKIPPED]);
+    TEST_ASSERT_EQUAL_INT(0, state->frame.clusters[RASTER_FATE_HIDDEN]);
+    TEST_ASSERT_TRUE(pixels_of(s, SKIPPED_RGB) > 0);
+}
+
+static void
+test_cull_view_counts_a_cluster_drawn_in_one_slice_as_drawn(void) {
+    scene_t* s = scene_open();
+    static const int16_t half_wall[4][3] = {{-400, 0, 0}, {400, 0, 0}, {400, 400, 0}, {-400, 400, 0}};
+    static const int16_t tall_quad[4][3] = {{-15, -120, 100}, {15, -120, 100}, {15, 120, 100}, {-15, 120, 100}};
+    r3d_quad_init(&s->quad[SCENE_WALL], half_wall);
+    r3d_quad_init(&s->quad[SCENE_HIDDEN], tall_quad);
+    s->view.skip_hidden = true;
+    set_cull_from(RASTER_CULL_FROM_TOP);
+    scene_draw(s);
+    const raster_cull_t* state = scene_state(s);
+    TEST_ASSERT_TRUE(bits32_get(state->skipped[0], SCENE_HIDDEN) != bits32_get(state->skipped[1], SCENE_HIDDEN));
+    TEST_ASSERT_EQUAL_UINT8(RASTER_FATE_DRAWN, state->fate[SCENE_HIDDEN]);
+    TEST_ASSERT_EQUAL_INT(0, state->frame.clusters[RASTER_FATE_SKIPPED]);
+    TEST_ASSERT_EQUAL_INT(0, pixels_of(s, SKIPPED_RGB));
 }
 
 /* Each scene quad's vertex_count: its four corners plus unused padding the
@@ -1371,6 +1406,8 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_per_triangle_writer_tags_the_triangle_that_won_each_pixel);
     RUN_TEST(test_cull_view_gives_each_cluster_its_fate);
     RUN_TEST(test_cull_view_frame_counts_clusters_by_fate);
+    RUN_TEST(test_cull_view_paints_and_counts_skipped_clusters);
+    RUN_TEST(test_cull_view_counts_a_cluster_drawn_in_one_slice_as_drawn);
     RUN_TEST(test_cull_view_frame_counts_the_vertices_of_kept_clusters_only);
     RUN_TEST(test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance);
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);

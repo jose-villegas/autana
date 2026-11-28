@@ -7,7 +7,7 @@ indirect text_in_clip ui_icon_button_id : measure_text_width
 indirect writer_rows r3d_span_triangle_write r3d_span_screen_triangle r3d_span_textured.c:r3d_span_write : raster_attachment_tag raster_overdraw.c:count_span
 indirect shell_systems_update : scene_shell_render
 indirect instance_writers : raster_meshlets.c:writer raster_cull_view.c:writer raster_overdraw.c:writer raster_copies.c:writer
-indirect r3d_pipeline_cluster_hidden : raster_cull_view.c:hidden_result
+indirect r3d_pipeline_cluster_hidden : raster_cull_view.c:hidden_skipped
 indirect raster_draw raster_draw_culled : raster_meshlets.c:begin raster_cull_view.c:begin raster_copies.c:begin
 indirect raster_draw>job_run_steered : raster.c:transform_slice raster.c:draw_slice raster.c:job_range_run
 indirect raster_draw_culled>job_run_steered : raster.c:transform_slice raster.c:draw_slice

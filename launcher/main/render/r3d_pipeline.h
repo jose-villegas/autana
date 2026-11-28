@@ -140,9 +140,13 @@ typedef struct r3d_hidden_slice {
 #endif
 } r3d_hidden_slice_t;
 
+/* Set before drawing with a skip_hidden target. NULL scans every candidate without feedback. */
+void r3d_pipeline_work_set_hidden(r3d_pipeline_work_t* work, r3d_hidden_slice_t* hidden);
+
 /* The gate can skip the scan. A tested box is hidden only where every pixel
  * already holds depth nearer than its fills can write, attachments included. */
-bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target);
+bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+                                 r3d_hidden_slice_t* slice);
 
 /* `rows`, when not NULL, holds mesh->cluster_count entries and is filled for
  * each cluster transformed: its rows, and when `boxed` its columns and

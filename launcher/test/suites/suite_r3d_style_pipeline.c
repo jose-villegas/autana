@@ -15,6 +15,7 @@
 #define r3d_lens_init                  constant_r3d_lens_init
 #define r3d_lens_fit                   constant_r3d_lens_fit
 #define r3d_lens_place                 constant_r3d_lens_place
+#define r3d_pipeline_work_set_hidden   constant_r3d_pipeline_work_set_hidden
 #define r3d_pipeline_work_bytes        constant_r3d_pipeline_work_bytes
 #define r3d_pipeline_cull              constant_r3d_pipeline_cull
 #define r3d_pipeline_cull_cut          constant_r3d_pipeline_cull_cut
@@ -140,7 +141,7 @@ test_styles_match_pipeline_colours(void) {
     pixels = calloc(TEST_PIXELS * 4, sizeof(*pixels));
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(pixels);
-    work = malloc(r3d_pipeline_work_bytes());
+    work = calloc(1, r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     TEST_ASSERT_EQUAL_UINT(8, sizeof(r3d_pipeline_vertex_t));
     static const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
@@ -187,7 +188,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     pixels = calloc(TEST_PIXELS * 4, sizeof(*pixels));
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(pixels);
-    work = malloc(r3d_pipeline_work_bytes());
+    work = calloc(1, r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     static const int16_t positions[6][3] = {{1, 1, 0}, {32, 0, 4}, {0, 32, 4}, {0, 0, 4}, {24, 0, 4}, {0, 24, 4}};
     static const uint8_t colors[6][3] = {{255, 0, 0},  {0, 255, 0},    {0, 0, 255},
@@ -293,7 +294,7 @@ scene_open(void) {
     suite_set_test_cleanup(cleanup);
     scene = calloc(1, sizeof(*scene));
     planes = calloc((size_t)PLANES_PER_DRAW * SCENE_DRAWS * SCENE_W * SCENE_H, sizeof(*planes));
-    work = malloc(r3d_pipeline_work_bytes());
+    work = calloc(1, r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(scene);
     TEST_ASSERT_NOT_NULL(planes);
     TEST_ASSERT_NOT_NULL(work);
@@ -568,13 +569,12 @@ scene_draws_alike_with_different_hidden_tests(bool writes, bool gate) {
     for (int run = 0; run < 2; run++) {
         r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
         target.skip_hidden = run == 0 || gate;
-        target.hidden = gate ? (run == 0 ? &ungated : &gated) : NULL;
+        r3d_pipeline_work_set_hidden(work, gate ? (run == 0 ? &ungated : &gated) : NULL);
         r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
         if (run == 0) {
-            target.hidden = NULL;
-            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_NEAR], &target));
-            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_FAR], &target));
-            TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&scene->rows[PARTLY_BEHIND], &target));
+            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_NEAR], &target, NULL));
+            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_FAR], &target, NULL));
+            TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&scene->rows[PARTLY_BEHIND], &target, NULL));
         }
     }
     if (gate) {

@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from build.c_enum import read_enum
 from build.c_header import read_define
-from cull_counts import CULL_HEADER, plot_counts
+from cull_counts import CULL_HEADER, cluster_series, plot_counts
 from check_avi import read_video
 from docs.figures import render_scene, save_png
 from docs.plot_style import save, subplots
@@ -114,11 +114,12 @@ def means_table(args, rows):
         return sum(row[key] for row in rows) / len(rows)
 
     submitted = mean("triangles_submitted")
+    kept_fates = [(name, key) for name, key, _ in cluster_series(kept_only=True)]
     lines = [
         ("Nodes visited / cut", f"{mean('nodes_visited'):.0f} / {mean('nodes_cut'):.0f}"),
         ("Clusters tested / kept", f"{mean('clusters_tested'):.0f} / {mean('clusters_kept'):.0f}"),
-        ("Kept clusters: nothing set up / hidden / drawn",
-         f"{mean('clusters_not_set_up'):.0f} / {mean('clusters_hidden'):.0f} / {mean('clusters_drawn'):.0f}"),
+        ("Kept clusters: " + " / ".join(name for name, _ in kept_fates),
+         " / ".join(f"{mean(key):.0f}" for _, key in kept_fates)),
         ("Triangles submitted", f"{submitted:.0f}"),
     ]
     for label, key in (("behind the near plane", "triangles_behind"), ("clipped", "triangles_clipped"),

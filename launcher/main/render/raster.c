@@ -299,6 +299,15 @@ raster_depth_near(const raster_t* raster) {
     return *raster_carve(raster).depth_near;
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Keep observer bookkeeping out of the draw's device stack frame. */
+static __attribute__((noinline)) void
+set_hidden_entry(const slice_t* s, int k) {
+    draw_work_t* work = s->buffers->draw;
+    work->hidden[s->work_index].entry = work->drawn_entries[k];
+}
+#endif
+
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -327,9 +336,7 @@ draw_slice(void* ctx) {
         target->writers = item->writers;
         target->writer_count = item->writer_count;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        if (target->hidden != NULL) {
-            target->hidden->entry = work->drawn_entries[k];
-        }
+        set_hidden_entry(s, k);
 #endif
         if (item->plain_count > 0) {
             r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->plain_count, b->cs + item->vertex_base,
@@ -1026,7 +1033,7 @@ begin_hidden_frame(const raster_t* raster, draw_work_t* work) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const raster_attachment_t* observer = NULL;
     for (int i = 0; i < raster->attachment_count; i++) {
-        if (raster->attachments[i]->hidden_result != NULL) {
+        if (raster->attachments[i]->hidden_skipped != NULL) {
             observer = raster->attachments[i];
             collect = true;
             break;
@@ -1038,12 +1045,12 @@ begin_hidden_frame(const raster_t* raster, draw_work_t* work) {
         *slice = (r3d_hidden_slice_t){.rates = rates};
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
         if (observer != NULL) {
-            slice->report = observer->hidden_result;
+            slice->report = observer->hidden_skipped;
             slice->report_state = observer->state;
             slice->slice = i;
         }
 #endif
-        work->targets[i].hidden = work->skip_hidden && collect ? slice : NULL;
+        r3d_pipeline_work_set_hidden(work->buffers.work[i], work->skip_hidden && collect ? slice : NULL);
     }
 }
 

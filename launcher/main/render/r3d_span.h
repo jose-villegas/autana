@@ -59,11 +59,7 @@ typedef struct r3d_span_target {
     union {
         gfx_target_t rows;
 
-        /* Keep the row offsets fixed in the span loops' instructions. */
-        struct {
-            GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
-            struct r3d_hidden_slice* hidden; /* caller-owned feedback for cluster scans */
-        };
+        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
     };
 } r3d_span_target_t;
 

@@ -56,7 +56,7 @@ static void release_fixture(void);
 static r3d_pipeline_work_t*
 pipeline_work(void) {
     if (work == NULL) {
-        work = malloc(r3d_pipeline_work_bytes());
+        work = calloc(1, r3d_pipeline_work_bytes());
     }
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_NOT_NULL(work);
@@ -1553,7 +1553,7 @@ test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing(void) {
         depth[i] = (uint16_t)(rows.depth + 1);
     }
     depth[0] = R3D_DEPTH_EMPTY; /* outside the quad's box */
-    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&rows, &target));
+    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&rows, &target, NULL));
     const uint16_t visible[1] = {0};
     const r3d_lens_t lens = r3d_pixel_lens(W, H);
     r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, &rows, &target, pipeline_work());
@@ -1563,7 +1563,7 @@ test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing(void) {
 
     const int inside = (24 * W) + 32;
     depth[inside] = rows.depth;
-    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target, NULL));
 }
 
 /* A cluster with a vertex behind the near plane has no box to test: never hidden. */
@@ -1582,7 +1582,7 @@ test_an_unbounded_cluster_is_never_hidden(void) {
     for (int i = 0; i < W * H; i++) {
         depth[i] = R3D_DEPTH_NEAREST;
     }
-    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target, NULL));
 }
 
 /* A target taller than the fixture's, for triangles that run far down. */
@@ -1639,7 +1639,7 @@ test_a_sliver_over_depth_above_its_limit_draws_nothing(void) {
                                          .x1 = (int16_t)v[2].x,
                                          .y1 = (int16_t)(SLIVER_BOTTOM_ROW * R3D_SUBPIXEL),
                                          .depth = limit};
-    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&carried, &target));
+    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&carried, &target, NULL));
 }
 
 /* The hidden test's box: a cluster spanning these subpixels holds the pixel
@@ -1667,7 +1667,7 @@ hidden_but_for(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
         depth[i] = nearer;
     }
     depth[(y * W) + x] = rows->depth;
-    return r3d_pipeline_cluster_hidden(rows, target);
+    return r3d_pipeline_cluster_hidden(rows, target, NULL);
 }
 
 /* A not-nearer pixel in any outermost row or column of the box keeps the
@@ -1687,7 +1687,7 @@ test_a_not_nearer_pixel_on_the_box_edge_keeps_the_cluster_and_just_outside_does_
     }
     TEST_ASSERT_FALSE(hidden_but_for(&rows, &target, EDGE_FIRST_COL, EDGE_FIRST_ROW));
     depth[(EDGE_FIRST_ROW * W) + EDGE_FIRST_COL] = R3D_DEPTH_EMPTY;
-    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target, NULL));
 }
 
 /* A window of rows narrower than the cluster tests only its own rows of the

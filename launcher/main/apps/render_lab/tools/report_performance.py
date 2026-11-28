@@ -232,8 +232,8 @@ def frame_report(text, rows, playback):
 
 
 # The counts each frame peak lists, as (column, count names); the "why" weighs them all.
-PEAK_COUNTS = (("Clusters tested / kept / hidden / drawn",
-                 ("clusters_tested", "clusters_kept", "clusters_hidden", "clusters_drawn")),
+PEAK_COUNTS = (("Clusters tested / kept / hidden / skipped / drawn",
+                 ("clusters_tested", "clusters_kept", "clusters_hidden", "clusters_skipped", "clusters_drawn")),
                 ("Triangles submitted / set up / cover / miss / away",
                  ("triangles_submitted", "triangles_set_up", "triangles_covering", "triangles_missed",
                   "triangles_facing_away")))
@@ -266,8 +266,9 @@ def why(pose, path):
     ratios = {}
     for _, names in PEAK_COUNTS:
         for name in names:
-            median = statistics.median(p["counts"][name] for p in path)
-            if median > 0:
+            samples = [p["counts"][name] for p in path if name in p["counts"]]
+            median = statistics.median(samples) if samples else 0
+            if median > 0 and name in pose["counts"]:
                 ratios[name] = pose["counts"][name] / median
     reason = f"{stage} {stages[stage]:+.1f} ms"
     if not ratios:
@@ -297,7 +298,7 @@ def frame_peaks(text):
             cells = [row, quarter, str(frame["rank"]), f"{frame['t_ms'] / MS_PER_SECOND:.2f}",
                      f"{frame['frame_us'] / US_PER_MS:.1f}", f"{frame['prominence_us'] / US_PER_MS:.1f}"]
             cells.extend(f"{pose['stages'][name]:.2f}" if name in pose["stages"] else "–" for name in stages)
-            cells.extend(" / ".join(str(pose["counts"][name]) for name in names) for _, names in PEAK_COUNTS)
+            cells.extend(" / ".join(str(pose["counts"].get(name, "–")) for name in names) for _, names in PEAK_COUNTS)
             cells.append(why(pose, path))
             lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"

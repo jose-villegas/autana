@@ -28,8 +28,8 @@ struct raster_attachment {
      * attachment. */
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    /* The first attachment with this hook receives decisions on the draw slice that made them. */
-    raster_split_hidden_report_t hidden_result;
+    /* The first attachment with this hook receives skips on the draw slice that made them. */
+    raster_split_hidden_report_t hidden_skipped;
 #endif
     void* state; /* the attachment's own */
 };

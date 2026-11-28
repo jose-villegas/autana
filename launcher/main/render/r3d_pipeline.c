@@ -110,9 +110,9 @@ struct r3d_pipeline_work {
             } blend;
 
             /* A draw with writers: the target it fills, retagged per cluster
-             * or triangle. Here, not on the draw's stack; the target last, as
-             * its rows end in a flexible array. */
+             * or triangle. The target must stay last for its flexible rows. */
             r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+            r3d_hidden_slice_t* hidden;
             r3d_span_target_t writing;
         } clip;
     };
@@ -810,10 +810,15 @@ hidden_test_pays(const raster_split_hidden_rates_t* rates, recti_t box, unsigned
     return saving > cost;
 }
 
+void
+r3d_pipeline_work_set_hidden(r3d_pipeline_work_t* work, r3d_hidden_slice_t* hidden) {
+    work->clip.hidden = hidden;
+}
+
 /* The box covers the same centres as r3d_span_extent(). Keep its scan and
  * accounting out of the draw copies' IRAM and stack frames. */
 __attribute__((noinline)) bool
-r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
+r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, r3d_hidden_slice_t* slice) {
     if (r->unbounded) {
         return false;
     }
@@ -823,7 +828,6 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
     }
     /* + 1: a tag writer also writes where the fill's depth equals what is there. */
     const int32_t bound = (int32_t)r->depth + 1;
-    r3d_hidden_slice_t* slice = target->hidden;
     if (slice == NULL) {
         return r3d_span_hidden(target, bound, box);
     }
@@ -845,10 +849,8 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
         }
     }
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (slice->report != NULL) {
-        const raster_split_hidden_outcome_t outcome =
-            test ? (skipped ? RASTER_SPLIT_HIDDEN_SKIPPED : RASTER_SPLIT_HIDDEN_VISIBLE) : RASTER_SPLIT_HIDDEN_BYPASSED;
-        slice->report(slice->report_state, slice->entry, cluster, slice->slice, outcome);
+    if (skipped && slice->report != NULL) {
+        slice->report(slice->report_state, slice->entry, cluster, slice->slice);
     }
 #endif
     return skipped;
@@ -857,8 +859,10 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
 /* Rows outside the target's skip a cluster always; with DRAW_SKIPPING, so
  * does depth already drawn over its box. */
 static inline __attribute__((always_inline)) bool
-cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, draw_mode_t mode) {
-    return rows_miss_target(r, target) || ((mode & DRAW_SKIPPING) != 0 && r3d_pipeline_cluster_hidden(r, target));
+cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, draw_mode_t mode,
+                const r3d_pipeline_work_t* work) {
+    return rows_miss_target(r, target)
+           || ((mode & DRAW_SKIPPING) != 0 && r3d_pipeline_cluster_hidden(r, target, work->clip.hidden));
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
@@ -1191,7 +1195,7 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
     }
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode, work)) {
             continue;
         }
         /* Whole clusters, or one triangle at a time when a writer steps per
@@ -1234,9 +1238,10 @@ static __attribute__((noinline)) void
 prepare_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipeline_rows_t* rows,
              const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     build_guard_planes(lens, work);
-    if (target->hidden != NULL) {
-        target->hidden->rows = rows;
-        target->hidden->clusters = mesh->clusters;
+    r3d_hidden_slice_t* hidden = target->skip_hidden ? work->clip.hidden : NULL;
+    if (hidden != NULL) {
+        hidden->rows = rows;
+        hidden->clusters = mesh->clusters;
     }
 }
 
@@ -1245,7 +1250,7 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                 draw_mode_t mode, r3d_pipeline_work_t* work, blend_t blend) {
     for (int i = 0; i < count; i++) {
-        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode, work)) {
             continue;
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];

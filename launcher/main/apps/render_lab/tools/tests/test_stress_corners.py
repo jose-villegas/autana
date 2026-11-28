@@ -287,13 +287,13 @@ class StressCorners(unittest.TestCase):
     def test_open_hides_and_culls_nothing(self):
         c = self.last_counts("open")
         self.assertGreater(c["clusters_drawn"], 0)
-        self.assertEqual(0, c["clusters_hidden"])
+        self.assertEqual(0, c["clusters_hidden"] + c["clusters_skipped"])
         self.assert_all_in_view(c)
 
     def test_stack_hides_most_of_what_it_keeps(self):
         c = self.last_counts("stack")
         self.assertGreater(c["clusters_drawn"], 0)
-        self.assertGreater(c["clusters_hidden"], c["clusters_drawn"])
+        self.assertGreater(c["clusters_hidden"] + c["clusters_skipped"], c["clusters_drawn"])
 
     def test_tiny_copies_are_all_in_view(self):
         c = self.last_counts("tiny-copies")
@@ -340,7 +340,7 @@ class StressCorners(unittest.TestCase):
         c = self.last_counts("two-sided")
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(0, c["triangles_facing_away"])
-        self.assertGreater(c["clusters_hidden"], 0)
+        self.assertGreater(c["clusters_hidden"] + c["clusters_skipped"], 0)
 
     def test_noisy_tiny_copies_are_all_in_view(self):
         c = self.last_counts("noisy-tiny")

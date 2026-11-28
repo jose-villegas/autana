@@ -54,9 +54,11 @@ def fates(source=CULL_VIEW):
             for name, rgb in re.findall(r"\[RASTER_FATE_(\w+)\] = 0x([0-9A-Fa-f]{6})", table)]
 
 
-def cluster_series():
-    """(label, count, colour): the clusters tested and kept, then each kept fate in its view colour."""
+def cluster_series(kept_only=False):
+    """(label, count, colour) for the kept fates, with cull totals unless kept_only."""
     kept = [(name, f"clusters_{name.replace(' ', '_')}", colour) for name, colour in fates()[1:]]
+    if kept_only:
+        return kept
     return [("tested", "clusters_tested", MUTED), ("kept", "clusters_kept", INK), *kept]
 
 
@@ -79,7 +81,9 @@ def plot_counts(clusters, triangles, seconds, rows, label, legend=True):
     check_series()
     for axis, series, what in ((clusters, cluster_series(), "clusters"), (triangles, TRIANGLE_SERIES, "triangles")):
         for name, key, colour in series:
-            axis.plot(seconds, [row[key] for row in rows], label=name, color=colour, linewidth=LINE_WIDTH)
+            values = [row.get(key) for row in rows]
+            if any(value is not None for value in values):
+                axis.plot(seconds, values, label=name, color=colour, linewidth=LINE_WIDTH)
         style_axes(axis, f"{label}: {what} per frame")
         axis.set_ylim(bottom=0)
         if legend:
