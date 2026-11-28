@@ -399,7 +399,7 @@ setup(int quarter) {
     }
     if (counts_path != NULL && (counts = render_counts_open(counts_path, "render_lab_render_host")) == NULL) {
         if (poses != NULL) {
-            fclose(poses);
+            (void)fclose(poses);
             poses = NULL;
         }
         return false;

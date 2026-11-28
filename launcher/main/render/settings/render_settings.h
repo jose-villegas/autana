@@ -141,9 +141,11 @@ render_settings_t render_settings_tuned(const render_settings_t* set);
  * for a caller holding only them. */
 void render_anim_settings_tune(render_anim_settings_t* anim);
 
-enum { RENDER_SKIN_ALBEDO_SOURCE, RENDER_SKIN_ALBEDO_WHITE };
-
-enum { RENDER_SKIN_DIRECT_OFF, RENDER_SKIN_DIRECT_ON };
+/* skin.albedo and skin.direct values: plain integers, as a release build's tunables are constants. */
+#define RENDER_SKIN_ALBEDO_SOURCE 0
+#define RENDER_SKIN_ALBEDO_WHITE  1
+#define RENDER_SKIN_DIRECT_OFF    0
+#define RENDER_SKIN_DIRECT_ON     1
 
 /* The frame's skin lights under development overrides; returns their revision. */
 uint32_t render_skin_lights_tune(r3d_skin_lights_t* lights);

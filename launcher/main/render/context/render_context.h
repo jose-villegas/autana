@@ -56,6 +56,8 @@ typedef struct {
                         bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    /* It draws the scene's probe grid: without one it is the shaded view. */
+    bool needs_probes;
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2

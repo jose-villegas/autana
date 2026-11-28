@@ -15,6 +15,9 @@
 #include "suites.h"
 #include "unity.h"
 
+/* A radiance far past the encode table's last bin. */
+#define SKIN_LIGHT_FAR_OVER_RANGE 4096.0F
+
 enum { VERTICES = 4, CLUSTERS = 2, JOINTS = 4, SENTINEL = 19 };
 
 static const r3d_lit_cluster_t CLUSTER_ROWS[] = {{.vertex_first = 0, .vertex_count = 2},
@@ -135,7 +138,8 @@ test_transfer_error_against_float_bake(void) {
             }
         }
         TEST_ASSERT_EQUAL_UINT8(0, light_encode(0, transfer));
-        TEST_ASSERT_UINT8_WITHIN(1, skin_light_reference_encode(4096, whites[w]), light_encode(4096, transfer));
+        TEST_ASSERT_UINT8_WITHIN(1, skin_light_reference_encode(SKIN_LIGHT_FAR_OVER_RANGE, whites[w]),
+                                 light_encode(SKIN_LIGHT_FAR_OVER_RANGE, transfer));
     }
     free(transfer);
 }

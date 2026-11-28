@@ -16,7 +16,7 @@ PRODUCER = Producer(
     area="render",
     needs=("host", "bakes"),
     outputs=("sponza-view-probes.png", "sponza-view-probes-close.png"),
-    run=("--scene", "launcher/demo/sponza/sponza.scene.toml", "--object", "atrium_fitted_full",
+    run=("--scene", "launcher/demo/sponza/sponza.scene.toml",
          "--wide-camera", "camera", "--wide-frame", "20", "--wide-dt", "500",
          "--close-camera", "tour", "--close-frame", "36", "--close-dt", "1000", "--probe-size", "15",
          "--stem", "sponza-view-probes", "--out", "{out}"),
@@ -27,7 +27,6 @@ PRODUCER = Producer(
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", required=True, type=pathlib.Path)
-    parser.add_argument("--object", required=True)
     for view in ("wide", "close"):
         parser.add_argument(f"--{view}-camera", required=True)
         parser.add_argument(f"--{view}-frame", required=True, type=int)
@@ -42,7 +41,7 @@ def main():
     width, height = (read_define(GFX_HEADER, f"GFX_{axis}") for axis in ("WIDTH", "HEIGHT"))
     for view, suffix in (("wide", ""), ("close", "-close")):
         picture = args.work / f"{args.stem}{suffix}.bmp"
-        render_scene(args.scene, "--object", args.object, "--view", "probes",
+        render_scene(args.scene, "--view", "probes",
                      "--camera", getattr(args, f"{view}_camera"),
                      "--frames", getattr(args, f"{view}_frame"), "--dt", getattr(args, f"{view}_dt"),
                      "--quarter", 1, "--size", f"{width}x{height}", "--framegen", 0,

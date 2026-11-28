@@ -325,7 +325,14 @@ path = { animation = "fly.anim.toml", node = "camera" }
         shaded = self.pixels("--object", "card", "--view", "shaded")
         for name in names[1:]:
             with self.subTest(name=name):
-                picture = self.pixels("--object", "card", "--view", name)
+                run, out = self.render("--object", "card", "--view", name)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                with Image.open(out) as image:
+                    picture = image.copy()
+                if "draws the shaded picture" in run.stderr:
+                    # This scene bakes no grid, as the viewer says: the view must then be exactly shaded.
+                    self.assertTrue(shaded.tobytes() == picture.tobytes())
+                    continue
                 # Not assertNotEqual: its failure message would print both frames' bytes.
                 self.assertFalse(shaded.tobytes() == picture.tobytes())
 
