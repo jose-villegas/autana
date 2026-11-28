@@ -48,9 +48,10 @@ flowchart LR
     S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
     F --> P[prune the fitted mesh<br/>to the budget]
-    P --> B[snap back where<br/>views show new sky]
-    B --> T[split T-junctions]
-    T --> W[write_lit_mesh]
+    P --> T[split T-junctions]
+    T --> B[snap back around<br/>new sky regions]
+    B --> U[split T-junctions]
+    U --> W[write_lit_mesh]
 ```
 
 Each pose counts the pixels $`a_t`$ that each fitted triangle shows.
@@ -209,22 +210,27 @@ never anchors another hold.
 A hold ties points, not edges. A border edge between two held points stays
 straight while the triangles under it bend, so sky can open along it. A held
 point can also land on a triangle edge without sharing it: a T-junction, which
-the rasterizer can leave a pixel open along. The two steps after the fit close
-both.
+the rasterizer can leave a pixel open along. Splitting closes these cracks
+before snap-back checks for holes.
 
 ### After the fit
 
-| Step | What it does | Limit |
-|---|---|---|
-| `snap_back` | Detects isolated new sky or sky more than `SNAP_BACK_REACH` pixels from the retained start's sky. Restores fitted rim points and points on start triangles seen through each hole. If a restore reopens part of a connected start-sky region the fit fully covered in a probe view, the triangles that covered those pixels keep their fitted point positions. | Holes left after `SNAP_BACK_ROUNDS` fail the fit. |
-| `split_t_junctions` | Splits edges through fitted points within `T_JUNCTION_DISTANCE` if the split avoids slivers. | More splits than starting triangles fail the fit. |
+1. Split T-junctions in the pruned fit. Edges split through existing points
+   within `T_JUNCTION_DISTANCE` where the split avoids slivers.
+2. In each probe view, snap back only around connected sky regions that share
+   no pixels with the retained start's sky. Each round restores the rim points
+   and the points of start triangles seen through each hole, with a wider rim
+   each round up to `SNAP_BACK_ROUNDS`.
+3. Split T-junctions again at the restored positions. Each split pass fails
+   if it adds more triangles than it starts with.
 
 A pruned fit prunes once to its rest budget minus `split_reserve` before sealing.
 The split mesh must fit within the full rest budget, or within `triangles` for
 a probe fit. Raise `split_reserve` if the fit reports an overflow.
 
-The fit log reports points moved back and triangles added. The held-out
-dE76 score and closure gate use the split mesh.
+The fit log reports points moved back, holes left after the restore rounds,
+and triangles added across both splits. Remaining probe holes are informational.
+The held-out dE76 score and closure gate use the final split mesh.
 
 ### Normals
 

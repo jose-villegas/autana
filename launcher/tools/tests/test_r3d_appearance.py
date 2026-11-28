@@ -745,11 +745,12 @@ class PruneAndCostTests(unittest.TestCase):
         return calls
 
     def test_the_fit_prunes_once_then_writes_and_scores_the_split_mesh(self):
-        budget, splits = 4, 1
+        budget, splits_per_pass = 4, 1
+        splits = 2 * splits_per_pass
 
         def split(start, pruned):
-            count = len(pruned.tris) + splits
-            return pruned._replace(tris=start.tris[:count], double=start.double[:count]), splits
+            count = len(pruned.tris) + splits_per_pass
+            return pruned._replace(tris=start.tris[:count], double=start.double[:count]), splits_per_pass
 
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory) / "out"
@@ -763,9 +764,10 @@ class PruneAndCostTests(unittest.TestCase):
         calls.prune.assert_called_once()
         self.assertEqual(calls.prune.call_args.args[2], budget)
         calls.seal.snap_back.assert_called_once()
-        calls.seal.split_t_junctions.assert_called_once()
-        self.assertEqual(len(calls.seal.split_t_junctions.call_args.args[0].tris), budget)
-        calls.seal.log_lines.assert_called_once()
+        self.assertEqual([len(call.args[0].tris) for call in calls.seal.split_t_junctions.call_args_list],
+                         [budget, budget + splits_per_pass])
+        self.assertEqual(len(calls.seal.snap_back.call_args.args[1].tris), budget + splits_per_pass)
+        calls.seal.log_lines.assert_called_once_with(0, 0, 0, splits, budget)
         calls.write_mesh.assert_called_once()
         scored = calls.hole_pixels.call_args_list[1].args[0]
         self.assertIs(calls.held_out_line.call_args.args[0], scored)
@@ -848,7 +850,40 @@ class PruneAndCostTests(unittest.TestCase):
                     sealed = appearance.write_mesh.call_args.args[2]
                 np.testing.assert_array_equal(sealed.tris, pruned.tris)
                 np.testing.assert_array_equal(sealed.points, start.points)
-                log.assert_called_once_with(np.count_nonzero(top) if pull else 0, 0, budget)
+                log.assert_called_once_with(np.count_nonzero(top) if pull else 0, 0, int(bool(pull)), 0, budget)
+
+    @needs_llvm
+    def test_the_presplit_closes_a_t_junction_crack_before_points_move_back(self):
+        from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from r3d.views import probes as probe_views
+        from tests.test_fit_seal import CAMERA, NEAR, mesh
+
+        start = mesh([(0, -2, 0), (0, 2, 0), (0, 0, 3), (0, 0, 0), (0, -2, -3), (0, 2, -3)],
+                     [(0, 1, 2), (0, 4, 3), (4, 5, 3), (3, 5, 1)])
+        points = start.points.copy()
+        points[3, 2] -= NEAR
+        fitted = start._replace(points=points)
+        eye_x = CAMERA[0][0][0]
+        pose = (eye_x, 0, -NEAR / 2, -1, 0, 0)
+        lens = 2 * NEAR / eye_x
+        with mock.patch.object(probe_views, "region_poses", return_value=([pose], None)), \
+                mock.patch.object(probe_views, "FACE_LENS", lens):
+            probes = seal.start_probes(start, None, CAMERA)
+            self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=seal.SNAP_BACK_REACH))
+
+            with tempfile.TemporaryDirectory() as out, \
+                    self.patch_fit(start, optimise=mock.Mock(return_value=(points, start.rgb, [1.0])),
+                                   coverage=mock.Mock(return_value=np.ones(len(start.tris))),
+                                   write_mesh=mock.Mock(return_value=len(start.tris) + 1)), \
+                    mock.patch.object(appearance, "seal_camera", return_value=CAMERA):
+                appearance.main(["--scene", "scene.toml", "--start", "wall.bundle", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", out])
+                sealed = appearance.write_mesh.call_args.args[2]
+
+            self.assertEqual(probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+        self.assertEqual(len(sealed.tris), len(start.tris) + 1)
+        np.testing.assert_array_equal(sealed.points, fitted.points)
 
     def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
         from r3d import appearance_simplify as appearance
@@ -876,8 +911,8 @@ class PruneAndCostTests(unittest.TestCase):
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
-                                     ["optimise", "coverage", "prune", "seal.start_probes", "seal.snap_back",
-                                      "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
+                                     ["optimise", "coverage", "prune", "seal.start_probes", "seal.split_t_junctions",
+                                      "seal.snap_back", "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
                     start, snapped, _copies, probes = calls.seal.snap_back.call_args.args
                     self.assertIs(start, calls.seal.start_probes.call_args.args[0])
                     self.assertIs(start.points, mesh.points)
@@ -941,7 +976,7 @@ class PruneAndCostTests(unittest.TestCase):
             calls["coverage"].assert_called_once()
             calls["prune"].assert_called_once()
             seal.snap_back.assert_called_once()
-            seal.split_t_junctions.assert_called_once()
+            self.assertEqual(seal.split_t_junctions.call_count, 2)
             self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)

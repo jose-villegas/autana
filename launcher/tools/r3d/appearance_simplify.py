@@ -28,6 +28,7 @@ import pathlib
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 from typing import NamedTuple
 
 import numpy as np
@@ -1262,11 +1263,15 @@ def main(argv=None):
             start_rgb = fit_start.rgb[kept] if fit_start.flat else fit_start.rgb
             retained_start = pruned._replace(points=fit_start.points, rgb=start_rgb)
         probes = seal.start_probes(retained_start, copies, seal_camera(scene))
-        sealed, moved = seal.snap_back(retained_start, pruned, copies, probes)
-        split, splits = seal.split_t_junctions(sealed)
+        presplit, _ = seal.split_t_junctions(pruned)
+        snap_record = SimpleNamespace()
+        sealed, moved, left = seal.snap_back(retained_start, presplit, copies, probes, record=snap_record)
+        split, _ = seal.split_t_junctions(sealed)
+        before = len(pruned.tris)
+        splits = len(split.tris) - before
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        seal.log_lines(moved, splits, len(sealed.tris))
+        seal.log_lines(moved, left, snap_record.rounds, splits, before)
         with ExitStack() as staging:
             bundle_dir = out
             if held_out or copies is not None:
@@ -1292,7 +1297,7 @@ def main(argv=None):
                     path.replace(out / path.name)
         if unpictured:
             log(not_measured_line(unpictured))
-        report = stretch_report(fit_start, sealed, kept)
+        report = stretch_report(fit_start, pruned._replace(points=sealed.points), kept)
         report["split_triangles"] = splits
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")

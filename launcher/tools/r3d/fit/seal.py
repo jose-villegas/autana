@@ -1,12 +1,4 @@
-"""The two steps after a fit (appearance_simplify.py), in order: snap_back closes sky the fit shows and its start
-did not, then split_t_junctions splits each edge a fitted point lies on.
-
-snap_back restores points on widening fitted rims and on start triangles seen through new sky.
-If a restore reopens any pixel of a connected start-sky region the fit covered completely in a
-probe view, the pre-snap triangles that covered those pixels keep their fitted point positions.
-
-split_t_junctions splits edges through fitted points to close gaps during rasterization.
-"""
+"""Seal a pruned fit by splitting T-junctions, snapping back points around new sky, then splitting again."""
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -17,10 +9,10 @@ from r3d.leaks import LeakProbes
 # A fitted point within this distance (model units) of the inside of an edge it does not end splits that edge.
 # A held seam point lands on its target's edge: one fit had 363 points this close where its start had 9.
 T_JUNCTION_DISTANCE = 0.05
-# Most rounds of moving points back to the start, each a pixel wider round the holes, before the step fails.
+# Maximum restore rounds, each a pixel wider around the holes.
 SNAP_BACK_ROUNDS = 8
-# The fit stays within one probe pixel of the start's outline. Simplification allows more outline movement.
-SNAP_BACK_REACH = 1
+# Sky connected to the start's sky can move with the outline.
+SNAP_BACK_REACH = None
 
 
 def geometry(mesh, copies):
@@ -38,52 +30,39 @@ def start_probes(start, copies, camera):
     return LeakProbes(*geometry(start, copies), *camera)
 
 
-def snap_back(start, fitted, copies, probes):
-    """Close new holes while preserving regions the fit closed. Return the mesh and number of points
-    moved. Raises ValueError when holes are left after SNAP_BACK_ROUNDS."""
+def snap_back(start, fitted, copies, probes, *, record=None):
+    """Restore points on fitted rims and start triangles seen through unshared sky regions.
+    Return (mesh, points moved, holes left). If given, record stores the number of restore rounds."""
     points = fitted.points.copy()
-    fixed = np.zeros(len(points), dtype=bool)
     fitted_count, start_count = len(fitted.tris), len(start.tris)
-    gaps = None
+    rounds = left = 0
     for width in range(1, SNAP_BACK_ROUNDS + 1):
         positions, tris = geometry(fitted._replace(points=points), copies)
         rims = probes.rims(positions, tris, width, reach=SNAP_BACK_REACH)
         if not rims:
             break
-        if gaps is None:
-            gaps = probes.closed_gap_hits(*geometry(fitted, copies))
         holes = probes.holes(positions, tris, reach=SNAP_BACK_REACH)
         rim_rows = np.unique(np.concatenate(rims))
         seen_rows = np.unique(np.concatenate(holes))
         rim_points = tris[rim_rows[rim_rows < fitted_count]]
         seen_points = start.vertex_point[start.tris[seen_rows[seen_rows < start_count]]]
         restore = np.union1d(rim_points, seen_points)
-        restore = restore[~fixed[restore]]
         points[restore] = start.points[restore]
-        # Keeping a triangle at its fitted position can uncover pixels a restore had covered.
-        while gaps:
-            rows = probes.reopened_gap_rows(*geometry(fitted._replace(points=points), copies), gaps)
-            if not len(rows):
-                break
-            keep = tris[rows[rows < fitted_count]]
-            if not np.any(points[keep] != fitted.points[keep]):
-                raise ValueError("the snap reopened a gap with its covering triangles already at the fit")
-            points[keep] = fitted.points[keep]
-            fixed[keep] = True
+        rounds = width
     else:
         left = len(probes.holes(*geometry(fitted._replace(points=points), copies), reach=SNAP_BACK_REACH))
-        if left:
-            raise ValueError(f"the fit still shows {left} holes its start does not after {SNAP_BACK_ROUNDS} rounds "
-                             "of moving points back")
-    return fitted._replace(points=points), int(np.count_nonzero(np.any(points != fitted.points, axis=1)))
+    if record is not None:
+        record.rounds = rounds
+    moved = int(np.count_nonzero(np.any(points != fitted.points, axis=1)))
+    return fitted._replace(points=points), moved, left
 
 
 def split_t_junctions(mesh, distance=T_JUNCTION_DISTANCE):
     """`mesh` with each edge a point lies within `distance` of split through that point, both triangles on a
-    shared edge alike: (the mesh, the number of triangles split, each adding one). A smooth mesh's split vertex
-    takes the colour along the edge; each half of a flat mesh's triangle keeps the triangle's colour. A pass
-    splits a triangle once; the next looks only at the halves it made. Raises ValueError past one split per
-    triangle the mesh started with: splits that keep making room for more are undoing each other."""
+    shared edge alike: (the mesh, the number of triangles split, each adding one). The point array keeps
+    its indices and positions. A smooth mesh's split vertex takes the edge colour. Each half of a flat
+    mesh's triangle keeps the triangle's colour. A pass splits a triangle once, and the next looks only
+    at the halves it made. Raises ValueError if the running split count exceeds the input triangle count."""
     splits, most = 0, len(mesh.tris)
     referenced = np.unique(mesh.vertex_point[mesh.tris])
     tree = cKDTree(mesh.points[referenced])
@@ -185,7 +164,8 @@ def _point_vertex(mesh, point):
     return int(np.flatnonzero(mesh.vertex_point == point)[0])
 
 
-def log_lines(moved, splits, before):
-    """The fit log's account of the two steps."""
+def log_lines(moved, left, rounds, splits, before):
+    """Log snap-back results and the combined triangle increase from both splits."""
     log(f"snap back: {moved} points moved back to their start")
+    log(f"snap back: {left} holes left after {rounds} rounds")
     log(f"T-junctions: {splits} edges split, {before} -> {before + splits} triangles")

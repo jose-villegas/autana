@@ -134,6 +134,20 @@ class ViewHoleTests(unittest.TestCase):
         self.assertEqual(len(holes), 1)
         np.testing.assert_array_equal(holes[0], expected)
 
+    def test_no_reach_counts_only_sky_separate_from_the_source_sky(self):
+        first_hole = leaks.REACH + 1
+        source_sky = np.zeros((first_hole + 2, first_hole + 2), dtype=bool)
+        source_sky[0, 0] = True
+        sky = source_sky.copy()
+        np.fill_diagonal(sky, True)
+        enclosed = np.zeros_like(sky)
+        enclosed[-1, 0] = True
+        sky |= enclosed
+
+        holes = leaks.view_holes(sky, source_sky, reach=None)
+        self.assertEqual(len(holes), 1)
+        np.testing.assert_array_equal(holes[0], enclosed)
+
     def test_outline_movement_at_or_below_the_reach_is_allowed(self):
         source_sky = np.zeros((leaks.REACH + 1, 2), dtype=bool)
         source_sky[0] = True
