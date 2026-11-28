@@ -14,7 +14,9 @@ import pathlib
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 SCENE = TOOLS.parents[3] / "demo" / "sponza" / "sponza.scene.toml"
@@ -27,7 +29,8 @@ try:
     import numpy as np
     from r3d.import_settings import load_scene
     from r3d.ray_query import RayQuery
-    from sky_through_walls import MOST_HOLED_FRAMES, SourceSky, measure_sky, pixel_sky, sky_pixels
+    from sky_through_walls import (MOST_HOLED_FRAMES, VIDEO_SCALE, SourceSky, clear_colour, measure_sky,
+                                   pixel_sky, sky_pixels)
     from tests.r3d_env import needs_llvm
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
@@ -129,6 +132,34 @@ class PixelSky(unittest.TestCase):
         ys, xs = (axis.reshape(-1) for axis in np.mgrid[0:2, 0:4])
         expected = ~((ys == 0) & (xs == 3))
         np.testing.assert_array_equal(pixel_sky(quad(-20.3, -9.7, -0.3, 10.3), 4, 2, 1.0, 0.1, FORWARD, ys, xs), expected)
+
+    def test_hole_behind_a_second_source_mesh_counts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder)
+            renderers = []
+            for name, x in (("left", -20.3125), ("right", -0.3125)):
+                source = path / f"{name}.obj"
+                source.write_text("v 0 -3 10\nv 20 -3 10\nv 20 3 10\nv 0 3 10\nf 1 2 3 4\n", encoding="utf-8")
+                obj = SimpleNamespace(name=name, matrix=np.eye(3), position=np.array([x, 0, 0]))
+                renderers.append(SimpleNamespace(object=obj, settings=SimpleNamespace(source={"path": source})))
+            camera = SimpleNamespace(background=0x9CC0E6, path=SimpleNamespace(animation="camera", node="camera"),
+                                     half_fov_short_tan=1.0, near_z=0.1)
+            scene = SimpleNamespace(camera=SimpleNamespace(component=camera), renderers=[],
+                                    objects=[job.object for job in renderers])
+            sky = clear_colour(scene)
+            side = 32
+            frame = np.zeros((side, side, 3), dtype=np.uint8)
+            frame[0] = frame[side // 2, side // 2] = sky
+            video_frame = frame.repeat(VIDEO_SCALE, axis=0).repeat(VIDEO_SCALE, axis=1)
+            with (patch("sky_through_walls.flight_camera", return_value=camera),
+                  patch("sky_through_walls.sample_camera_rows", return_value=(side, side, 1.0, 0.1, [FORWARD])),
+                  patch("sky_through_walls.flythrough_poses", return_value=(side, side, 1.0, 0.1, [FORWARD] * 2)),
+                  patch("sky_through_walls.subprocess.run", return_value=SimpleNamespace(returncode=0)),
+                  patch("sky_through_walls.read_video", return_value=(None, [video_frame]))):
+                for jobs, expected in ((renderers, [0]), (renderers[:1], []), (renderers[1:], [])):
+                    scene.renderers = jobs
+                    (path / "wall.avi").touch()
+                    self.assertEqual(measure_sky(scene, "wall", path, binary="renderer"), (expected, 1))
 
     def test_a_frame_asks_the_source_at_the_next_pose(self):
         # Frame i is drawn at the pose (i + 1) steps along the clip.

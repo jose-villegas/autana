@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Measure and compare the fitted rendering track across two engine revisions."""
 import argparse
+from contextlib import contextmanager
 import json
 import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 from captures import labeled_capture, scene_captures
 from report import overlay_callable, write_report
@@ -67,6 +69,16 @@ def render_poses(scene, output):
     return images, [pose.tolist() for pose in poses], [width, height]
 
 
+@contextmanager
+def timed_row(scene, row):
+    """Log the wall time of a scorecard measurement in seconds."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        print(f"scorecard timing: {scene} | {row} | {time.perf_counter() - start:.3f} s", flush=True)
+
+
 def measure_scene(key, capture, output):
     sys.path.insert(0, str(TOOLS.parent / "main/apps/render_lab/tools"))
     from bake import bake
@@ -84,28 +96,30 @@ def measure_scene(key, capture, output):
     folder = output / key
     folder.mkdir(parents=True, exist_ok=True)
     captures = scene_captures(capture, key)
-    print(f"{key}: pack and see-through", flush=True)
-    packs = pack_bytes([scene.path])
-    pack_size = len(packs[key])
-    del packs
-    see_through = dict(pixels=sum(measure_see_through(scene)), ceiling=see_through_ceiling(key))
-    print(f"{key}: sky holes", flush=True)
-    try:
-        with tempfile.TemporaryDirectory(dir=folder) as sky_work:
-            holed, frames = measure_sky(scene, key, pathlib.Path(sky_work))
-        sky = dict(holed=len(holed), frames=frames, ceiling=MOST_HOLED_FRAMES.get(key))
-    except SkyUnavailable as error:
-        sky = dict(reason=str(error))
-    print(f"{key}: held-out score", flush=True)
-    fit = bake.locked_fit(scene.path, job.object.name)
-    cache = bake.default_cache()
-    with tempfile.TemporaryDirectory(dir=folder) as work:
-        held_out = measure_held_out(fit, cache, pathlib.Path(work), drawn_mesh(bake.fetch(fit, cache)))
-    print(f"{key}: part shapes and comparison poses", flush=True)
-    drawn = drawn_mesh(bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels"), cache))
-    parts = measure_parts(load_source(job.settings, texture_dtype="float32"),
-                          drawn.points[drawn.vertex_point], drawn.tris)
-    images, poses, size = render_poses(scene, folder)
+    with timed_row(key, "pack bytes"):
+        packs = pack_bytes([scene.path])
+        pack_size = len(packs[key])
+        del packs
+    with timed_row(key, "see-through"):
+        see_through = dict(pixels=sum(measure_see_through(scene)), ceiling=see_through_ceiling(key))
+    with timed_row(key, "sky holes"):
+        try:
+            with tempfile.TemporaryDirectory(dir=folder) as sky_work:
+                holed, frames = measure_sky(scene, key, pathlib.Path(sky_work))
+            sky = dict(holed=len(holed), frames=frames, ceiling=MOST_HOLED_FRAMES.get(key))
+        except SkyUnavailable as error:
+            sky = dict(reason=str(error))
+    with timed_row(key, "held-out mean dE76"):
+        fit = bake.locked_fit(scene.path, job.object.name)
+        cache = bake.default_cache()
+        with tempfile.TemporaryDirectory(dir=folder) as work:
+            held_out = measure_held_out(fit, cache, pathlib.Path(work), drawn_mesh(bake.fetch(fit, cache)))
+    with timed_row(key, "part shapes"):
+        drawn = drawn_mesh(bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels"), cache))
+        parts = measure_parts(load_source(job.settings, texture_dtype="float32"),
+                              drawn.points[drawn.vertex_point], drawn.tris)
+    with timed_row(key, "comparison poses"):
+        images, poses, size = render_poses(scene, folder)
     return dict(path=scene.path.relative_to(REPO).as_posix(), captures=captures,
                 pack_bytes=pack_size, see_through=see_through, sky=sky, held_out=held_out, parts=parts,
                 images=[p.relative_to(output.parent).as_posix() for p in images], poses=poses, size=size)

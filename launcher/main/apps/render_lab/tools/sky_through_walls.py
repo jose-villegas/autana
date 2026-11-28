@@ -18,6 +18,7 @@ from r3d.ray_query import RayQuery
 from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, pose_rays
 from check_avi import read_video
 from render_compare import expand_565
+from see_through import merged, placed
 
 DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 25
@@ -64,11 +65,14 @@ def pixel_sky(query, width, height, lens, near, pose, ys, xs, samples=SUBPIXELS)
 
 
 class SourceSky:
-    """Where the scene's source mesh shows sky in a flythrough frame's render pixel (pixel_sky)."""
+    """Where the scene's source meshes show sky in a flythrough frame's render pixel (pixel_sky)."""
 
-    def __init__(self, scene, source, frames, size):
-        positions, _, tri_v, *_ = load_obj(source)
-        self.query = RayQuery(positions, tri_v)
+    def __init__(self, scene, frames, size):
+        parts = []
+        for job in scene.renderers:
+            points, _, triangles, *_ = load_obj(job.settings.source["path"])
+            parts.append((placed(points, scene, job), triangles))
+        self.query = RayQuery(*merged(parts))
         self.width, self.height, self.lens, self.near, self.poses = flythrough_poses(flight_camera(scene), DT_MS,
                                                                                      size, frames)
 
@@ -86,10 +90,8 @@ class SkyUnavailable(ValueError):
 
 def measure_sky(scene, key, out, binary=None):
     """Holed frame indices and total frames at the device flythrough step."""
-    sources = {job.settings.source["path"] for job in scene.renderers}
-    if len(sources) != 1:
-        raise SkyUnavailable(f"the scene draws {len(sources)} source meshes and the sky measure traces one")
-    source_path, = sources
+    if not scene.renderers:
+        raise SkyUnavailable(f"{key}: the scene draws no source meshes")
     camera = flight_camera(scene)
     frames = len(sample_camera_rows(camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
                                     camera.half_fov_short_tan, camera.near_z)[4])
@@ -107,7 +109,7 @@ def measure_sky(scene, key, out, binary=None):
     counts, source = [], None
     for index, frame in enumerate(read_video(video)[1]):
         frame = np.ascontiguousarray(frame[::VIDEO_SCALE, ::VIDEO_SCALE])
-        source = source or SourceSky(scene, source_path, frames, frame.shape[1::-1])
+        source = source or SourceSky(scene, frames, frame.shape[1::-1])
         counts.append(sky_pixels(frame, sky, source.of_frame(index)))
     video.unlink()
     if len(counts) != frames:

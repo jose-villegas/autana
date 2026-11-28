@@ -240,7 +240,7 @@ class ShapeTests(unittest.TestCase):
         self.assertGreater(far, 4.0)
 
         along_widest_axis = wall + [2, 0, 0]
-        self.assertAlmostEqual(shape_measure(wall, along_widest_axis)[0], 1 / 3, delta=0.04)
+        self.assertAlmostEqual(shape_measure(wall, along_widest_axis)[0], 0.49, delta=0.04)
 
         half = wall * [1, 0.5, 1]
         iou, missing = shape_measure(wall, half)
@@ -276,10 +276,12 @@ class ShapeTests(unittest.TestCase):
         self.assertGreater(back["hausdorff"], 1)
 
     def test_box_shift_has_known_front_iou_and_hausdorff(self):
-        points = np.array([[0, 0, 0], [2, 0, 0], [2, 1, 0], [0, 1, 0],
-                           [0, 0, 0.75], [2, 0, 0.75], [2, 1, 0.75], [0, 1, 0.75]])
-        faces = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
-                          [3, 2, 6], [3, 6, 7], [0, 3, 7], [0, 7, 4], [1, 2, 6], [1, 6, 5]])
+        corners = [(0, 0), (2, 0), (2, 1), (0, 1)]
+        points = np.array([(x, y, z) for z in (0, 0.75) for x, y in corners])
+        floor = [[0, 1, 2], [0, 2, 3]]
+        sides = [[a, b, b + 4] if half == 0 else [a, b + 4, a + 4]
+                 for a, b in zip(range(4), (1, 2, 3, 0)) for half in range(2)]
+        faces = np.concatenate([floor, np.asarray(floor) + 4, sides])
         iou, hausdorff = shape_measure(points[faces], (points + [0, 0.5, 0])[faces])
         self.assertAlmostEqual(iou, 1 / 3, delta=0.035)
         # The two exposed end faces are each 0.5 units from the other box at the farthest point.

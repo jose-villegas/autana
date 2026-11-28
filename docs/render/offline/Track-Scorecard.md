@@ -33,7 +33,7 @@ Captures are optional and repeatable. Supply A308 logs from the fitted playback 
 | A308 mean and p95 | `perf/frame_profile.py` reads the playback profiles. Each capture supplies its logged mean goal and p95 ceiling by row and quarter. |
 | App heap after the first frame | The playback suite samples app heap free bytes and largest block after its warm-up draw. The parser shows **not logged** for a capture without a reading. |
 | See-through pixels | `see_through.py` sums pixels where the source blocks a view that the baked mesh opens, along the camera path. |
-| Sky holed frames | `sky_through_walls.py` counts frames with enclosed sky absent from the source. Bistro has multiple source meshes and the sky measure traces one. |
+| Sky holed frames | `sky_through_walls.py` counts frames with enclosed sky absent from the source. The tracer combines the scene's source meshes in world space. |
 | Held-out mean dE76 | `r3d/appearance_simplify.py` scores the fit's held-out views with its CUDA rasterizer. The cell names the sets and view count, or why the rasterizer is unavailable. |
 | Front IoU and relative Hausdorff | `r3d/objects/part_shape.py` uses the object error report's part names, materials and triangle assignment. |
 | Pack bytes | `r3d/build_pack.py` builds the scene's pack and the scorecard reports its length. |
