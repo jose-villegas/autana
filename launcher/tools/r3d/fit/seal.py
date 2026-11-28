@@ -4,6 +4,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d import log
+from r3d.fit.copies import joined
 from r3d.leaks import LeakProbes, see_through_count
 from r3d.mesh_source import camera_filter
 from r3d.ray_query import RayQuery
@@ -20,11 +21,8 @@ SNAP_BACK_REACH = None
 
 def geometry(mesh, copies):
     """(positions, triangles) of a FitMesh and the copies drawn with it, the mesh's triangles first."""
-    positions, tris = mesh.points, mesh.vertex_point[mesh.tris]
-    if copies is None:
-        return positions, tris
-    return (np.concatenate([positions, copies.points]),
-            np.concatenate([tris, copies.vertex_point[copies.tris] + len(positions)]))
+    drawn = joined(mesh, copies)
+    return drawn.points, drawn.vertex_point[drawn.tris]
 
 
 def start_probes(start, copies, camera, source):
@@ -38,9 +36,8 @@ def snap_back(start, fitted, copies, probes):
     Return (mesh, points moved, holes left, rounds run, restores kept, restores reverted)."""
     points = fitted.points.copy()
     fitted_count, start_count = len(fitted.tris), len(start.tris)
-    positions, tris = geometry(fitted, copies)
-    double = fitted.double if copies is None else np.concatenate([fitted.double, copies.double])
-    double = np.asarray(double, dtype=bool)
+    whole = joined(fitted, copies)
+    positions, tris, double = whole.points, whole.vertex_point[whole.tris], np.asarray(whole.double, dtype=bool)
     result, drawn = RayQuery(positions, tris), FrontMesh(positions, tris, double)
     rounds = left = kept = reverted = 0
     for width in range(1, SNAP_BACK_ROUNDS + 1):

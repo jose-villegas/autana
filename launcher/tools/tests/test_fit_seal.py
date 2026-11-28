@@ -155,7 +155,6 @@ class SplitTJunctions(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
-@unittest.skipIf(np is None, "the r3d environment is not installed")
 class SnapBackCopyRows(unittest.TestCase):
     @mock.patch("r3d.fit.seal.RayQuery")
     @mock.patch("r3d.fit.seal.front_hits")

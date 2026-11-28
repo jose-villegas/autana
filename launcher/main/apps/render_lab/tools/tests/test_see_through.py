@@ -47,7 +47,6 @@ RENDER_SIZE = (224, 184)
 # The camera path's step, as a baked renderer's camera-path visibility samples it.
 EVERY_MS = 500
 # Per scene, the most see-through pixels its bakes may show over the path: the measured sum plus PEG_MARGIN of it.
-# Bistro holds the guarded snap-back's measured sum until its carved pieces land.
 MOST_SEE_THROUGH = {"bistro": 287780, "sponza": 2306}
 PEG_MARGIN = 0.01
 
