@@ -25,6 +25,9 @@ UPDATE = read_define(LOG_HEADER, "WATER_PERF_UPDATE")
 BEFORE, RUNNING, AFTER = (read_define(LOG_HEADER, "WATER_PERF_" + name) for name in ("BEFORE", "RUNNING", "AFTER"))
 BASE = "base"
 RUN_MARK = "RUN="
+# Every format in the header starts so: a line under the same tag in another
+# format (a frame_replay) is not the suite's.
+LINE = PREFIX + " config="
 FIELD = re.compile(r"(\w+)=(\S+)")
 TRIPLE = ("mean", "p95", "worst")
 R3D = "r3d."
@@ -49,9 +52,9 @@ def parse(lines):
     """Rows by (config, phase), with their stages and r3d brackets, and heap readings by (config, phase)."""
     rows, heaps = {}, {}
     for line in lines:
-        if PREFIX not in line:
+        if LINE not in line:
             continue
-        body = line.split(PREFIX, 1)[1]
+        body = line[line.index(LINE) + len(PREFIX):]
         window = frame_cost_window(body)
         fields = dict(FIELD.findall(body.split("ms/frame", 1)[0]))
         if "internal_free" in fields:
