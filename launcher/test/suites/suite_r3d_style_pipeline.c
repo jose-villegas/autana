@@ -504,6 +504,45 @@ pixel_index(int x, int y) {
     return (y * SCENE_W) + x;
 }
 
+/* The ungated draw always tests its box. */
+#define R3D_HIDDEN_PROBE_EVERY 32U
+
+typedef struct {
+    float hidden_rate, scan_rate;
+    bool valid;
+    unsigned probe_phase;
+} r3d_hidden_rates_t;
+
+static bool
+hidden_test_pays(const r3d_hidden_rates_t* rates, recti_t box, unsigned triangles, unsigned candidate) {
+    return true;
+}
+
+#define GATE_SMALL_BOX_SIDE 2
+#define GATE_LARGE_BOX_SIDE 64
+
+static void
+test_hidden_gate_weighs_saving_against_the_box_scan(void) {
+    scene_open();
+    const r3d_span_target_t target = scene_target(0, SCENE_H, NULL);
+    const r3d_pipeline_rows_t near = {.x1 = GATE_SMALL_BOX_SIDE * R3D_SUBPIXEL,
+                                      .y1 = GATE_SMALL_BOX_SIDE * R3D_SUBPIXEL};
+    const r3d_pipeline_rows_t wide = {.x1 = GATE_LARGE_BOX_SIDE * R3D_SUBPIXEL,
+                                      .y1 = GATE_LARGE_BOX_SIDE * R3D_SUBPIXEL};
+    const recti_t small = r3d_span_window_box(&target, r3d_span_centres(near.x0, near.y0, near.x1, near.y1));
+    const recti_t large = r3d_span_window_box(&target, r3d_span_centres(wide.x0, wide.y0, wide.x1, wide.y1));
+    const r3d_hidden_rates_t cold = {0};
+    const r3d_hidden_rates_t profitable = {.hidden_rate = 1.0F, .scan_rate = 1.0F, .valid = true};
+    const r3d_hidden_rates_t unprofitable = {.scan_rate = 1.0F, .valid = true};
+    TEST_ASSERT_TRUE(hidden_test_pays(NULL, large, 1, 1));
+    TEST_ASSERT_TRUE(hidden_test_pays(&cold, large, 1, 1));
+    TEST_ASSERT_TRUE(hidden_test_pays(&profitable, small, 1, 1));
+    TEST_ASSERT_FALSE(hidden_test_pays(&profitable, large, 1, 1));
+    for (unsigned i = 0; i < R3D_HIDDEN_PROBE_EVERY; i++) {
+        TEST_ASSERT_EQUAL(i == unprofitable.probe_phase, hidden_test_pays(&unprofitable, small, 1, i));
+    }
+}
+
 /* The scene drawn with the hidden test on, and again with it off, ends the
  * same in every plane; with it on, the clusters wholly behind the wall were
  * skipped and the one partly behind it was drawn. */
@@ -839,6 +878,7 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_transform_fast_range_bits);
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
+    RUN_TEST(test_hidden_gate_weighs_saving_against_the_box_scan);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_writing_draw);
     RUN_TEST(test_rows_change_no_pixel_of_a_draw);
