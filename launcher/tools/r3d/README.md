@@ -21,6 +21,8 @@ mesh. Nothing here runs on the board.
 | [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under a cluster tree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [sh_probe_bake.py](sh_probe_bake.py) | Incident-radiance L1 probe grids: shared ProbeViews placement, visible sky, path bounces and analytic sun. See [SH probe baking](../../../docs/render/offline/SH-Probes.md) and [SHPR](../../../docs/assets/formats/SHPR.md). |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
+| [import_edit.py](import_edit.py) | Prints an import file as JSON for another program: its tables in file order, each key's value and line, and whether `import_settings` accepts it. |
+| [settings_cli.py](settings_cli.py) | The refusal, file reading and JSON output `import_edit.py` and `scene/scene_edit.py` share. |
 | [cards/](cards/) | Selects cut-out materials with probe-weighted billboard clouds, bakes MASK1 pages and LUVS, and reports their coverage and budget. |
 | [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.bundle` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
 | [rebake.py](rebake.py) | Rewrites a baked `.bundle`'s clusters from its own triangles and colours, with no relighting. |
