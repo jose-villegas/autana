@@ -108,6 +108,38 @@ class ContactTests(unittest.TestCase):
         self.assertTrue(edge.unshared)
         np.testing.assert_array_equal(sweep.call_args.args[1], pos.reshape(2, 3, 3).max(axis=1) + TOLERANCE)
 
+    def test_low_side_halo_pairs_with_the_second_object_below_the_first(self):
+        gap = TOLERANCE / 2
+        pos = np.array([[0, 0, 0], [4, 0, 0], [0, 4, 0], [0, 0, -gap], [4, 0, -gap], [0, 4, -gap]])
+        with patch.object(contact, "_overlapping_pairs", wraps=contact._overlapping_pairs) as sweep:
+            edge, = contact.contact_pairs(pos, np.arange(6).reshape(2, 3), np.array([0, 1]), SCALE)
+        self.assertEqual((edge.a, edge.b), (0, 1))
+        np.testing.assert_array_equal(sweep.call_args.args[0], pos.reshape(2, 3, 3).min(axis=1) - TOLERANCE)
+
+    def test_untouched_vertices_do_not_make_a_contact_unshared(self):
+        pos = np.array([[0., 0, 0], [4., 0, 0], [0., 4, 0], [0., 0, 0], [-4., 0, 0], [0., -4, 0]])
+        edge, = contact.contact_pairs(pos, np.arange(6).reshape(2, 3), np.array([0, 1]), SCALE)
+        self.assertFalse(edge.unshared)
+
+    def test_float32_triangle_contacts_at_the_tolerance(self):
+        origin = np.float32(2**16)
+        ulp = np.spacing(origin)
+        leg = ulp / 8
+        faces = np.array([[0, 1, 2]])
+        # The native centroid rounds away from the query at one ULP and toward it at two.
+        for corner_steps in (1, 2):
+            with self.subTest(corner_steps=corner_steps):
+                corner_x = origin + corner_steps * ulp
+                pos = np.array([[origin, -leg, 0], [origin, leg, 0], [corner_x, 0, 0],
+                                [corner_x + TOLERANCE, 0, 0]], dtype=np.float32)
+                self.assertEqual(contact.surface_border(pos, [3], faces, TOLERANCE), ({3}, {0, 1, 2}, True))
+
+        # The centroids coincide and the diagonal radius rounds down in float32.
+        pos = np.array([[leg, origin, leg], [-leg, origin, 0], [0, origin, -leg],
+                        [2 * leg, origin, 2 * leg]], dtype=np.float32)
+        tolerance = np.hypot(float(leg), float(leg))
+        self.assertEqual(contact.surface_border(pos, [3], faces, tolerance), ({3}, {0, 1, 2}, True))
+
     def test_tolerance_reaches_past_a_corner_in_each_band(self):
         gap = TOLERANCE / 2
         pos = np.array([[0, 0, 0], [8, 0, 0], [0, 8, 0], [16, 0, 0], [17, 0, 0], [16, 1, 0],
@@ -164,6 +196,13 @@ class ContactTests(unittest.TestCase):
         faces = np.array([[0, 1, 2]])
         self.assertEqual(contact.surface_border(pos, [3], faces, TOLERANCE), ({3}, {0, 1, 2}, False))
         self.assertEqual(contact.surface_border(pos, [4], faces, TOLERANCE), ({4}, {0, 1, 2}, True))
+
+    def test_off_grid_corner_and_point_share_at_float32_resolution(self):
+        ulp = float(np.spacing(np.float32(1)))
+        corner, point = 1 + ulp / 8, 1 + ulp / 4
+        pos = np.array([[corner, 0, 0], [corner, 1, 0], [corner, 0, 1], [point, 0, 0]])
+        self.assertEqual(contact.surface_border(pos, [3], np.array([[0, 1, 2]]), TOLERANCE),
+                         ({3}, {0, 1, 2}, False))
 
     def test_batches_bound_closest_point_work_even_with_one_crowded_vertex(self):
         pos = np.array([[0., 0, 0], [4., 0, 0], [0., 4, 0], [1., 1, 0], [2., 1, 0], [1., 2, 0]])
