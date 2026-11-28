@@ -218,17 +218,21 @@ before snap-back checks for holes.
 1. Split T-junctions in the pruned fit. Edges split through existing points
    within `T_JUNCTION_DISTANCE` where the split avoids slivers.
 2. In each probe view, snap back only around connected sky regions that share
-   no pixels with the retained start's sky. Each round restores the rim points
-   and the points of start triangles seen through each hole, with a wider rim
-   each round up to `SNAP_BACK_ROUNDS`.
+   no pixels with the retained start's sky. Each round tries the rim points and
+   the points of start triangles seen through each hole. The rim widens each
+   round up to `SNAP_BACK_ROUNDS`.
 3. Split T-junctions again at the restored positions. Each split pass fails
    if it adds more triangles than it starts with.
+
+Each hole's restore stays only if its probe view's see-through count holds or
+falls. A source hit counts when the fit misses or lies beyond `BEHIND` times
+the source depth, after a square binary opening of width `OPENING`.
 
 A pruned fit prunes once to its rest budget minus `split_reserve` before sealing.
 The split mesh must fit within the full rest budget, or within `triangles` for
 a probe fit. Raise `split_reserve` if the fit reports an overflow.
 
-The fit log reports points moved back, holes left after the restore rounds,
+The fit log reports points moved back, holes left, restores kept and reverted,
 and triangles added across both splits. Remaining probe holes are informational.
 The held-out dE76 score and closure gate use the final split mesh.
 

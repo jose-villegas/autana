@@ -294,6 +294,12 @@ fixture(int budget, bool levels, bool coarse_near) {
 
 static render_context_frame_t
 frame(raster_rig_t* r, const box3f_t* changed, int count) {
+    /* A held frame plans its rows from the cost a band taught it, measured in
+     * wall time, which QEMU or a busy board stretches: plan at a known one.
+     * An unmeasured cost stays 0, so a band that taught nothing still fails. */
+    if (f->c[0].settle.row_us != 0) {
+        f->c[0].settle.row_us = ROW_COST << RENDER_SETTLE_COST_FRAC_BITS;
+    }
     render_context_set_changed(&f->c[0], changed, count);
     render_context_set_changed(&f->c[LIVE], changed, count);
     for (int k = 0; k < CONTEXTS; k++) {

@@ -14,8 +14,8 @@ the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
 own. A mesh is written as NAME.bundle by the same writer as mesh_import.py,
-under DIR, or DIR/shot<k>. The surface term anchors the fit to the scene's
-alpha-masked source; --object names its renderer.
+under DIR, or DIR/shot<k>. The surface term and seal use the scene renderer's
+alpha-masked source. --object names the renderer.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
@@ -1182,7 +1182,7 @@ def main(argv=None):
     parser.add_argument("--closure", action="store_true", help="fail when the fit loses held-out surface (check_closure)")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
-    parser.add_argument("--object", help="the scene object whose source anchors the fit")
+    parser.add_argument("--object", help="the scene object whose source the fit and seal use (default: first mesh renderer)")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
@@ -1231,6 +1231,12 @@ def main(argv=None):
     mesh, copies = matched(mesh, None if args.copies is None else placed_copies(args.copies, mesh.flat))
     if copies is not None:
         log(f"copies: {len(copies.tris)} triangles drawn with the start")
+    if not args.score:
+        from r3d.reference_render import source_for
+
+        source, job = source_for(scene, args.object, lit=False, hide_cards=True,
+                                 hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
+                                                   else set(args.hidden_materials)))
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -1244,13 +1250,6 @@ def main(argv=None):
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
-        source = None
-        if args.surface_weight or copies is not None:
-            from r3d.reference_render import source_for
-
-            source, job = source_for(scene, args.object, lit=False, hide_cards=True,
-                                     hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
-                                                       else set(args.hidden_materials)))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)
@@ -1284,15 +1283,15 @@ def main(argv=None):
             # Coverage can remove whole surfaces, including ones the start's leak probes would see.
             start_rgb = fit_start.rgb[kept] if fit_start.flat else fit_start.rgb
             retained_start = pruned._replace(points=fit_start.points, rgb=start_rgb)
-        probes = seal.start_probes(retained_start, copies, seal_camera(scene))
+        probes = seal.start_probes(retained_start, copies, seal_camera(scene), source)
         presplit, _ = seal.split_t_junctions(pruned)
-        sealed, moved, left, rounds = seal.snap_back(retained_start, presplit, copies, probes)
+        sealed, moved, left, rounds, restores_kept, reverted = seal.snap_back(retained_start, presplit, copies, probes)
         split, _ = seal.split_t_junctions(sealed)
         before = len(pruned.tris)
         splits = len(split.tris) - before
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        seal.log_lines(moved, left, rounds, splits, before)
+        seal.log_lines(moved, left, rounds, restores_kept, reverted, splits, before)
         with ExitStack() as staging:
             bundle_dir = out
             if held_out or copies is not None:

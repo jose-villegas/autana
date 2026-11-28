@@ -6,3 +6,5 @@ launcher/main/apps/render_lab/tools/README.md	2026-11-15
 docs/kinematics/Hinge.md	2026-11-17
 docs/render/frame/Texture-Mapping.md	2026-11-18
 docs/image/Colour.md	2026-11-20
+docs/cli/Drive.md	2026-11-27
+launcher/main/apps/render_lab/README.md	2026-11-27
