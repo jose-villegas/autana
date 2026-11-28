@@ -344,6 +344,11 @@ settle_held(int budget, bool levels, bool coarse_near) {
     }
     const int rounds = budget == 1 ? RENDER_SETTLE_BANDS : 2;
     for (int i = 0; i < rounds; i++) {
+        if (i == 1 && budget != 1) {
+            /* The band before taught row_us from wall time, which a loaded
+             * host or QEMU stretches: plan the large budget at a known cost. */
+            f->c[0].settle.row_us = ROW_COST << RENDER_SETTLE_COST_FRAC_BITS;
+        }
         const render_context_frame_t out = frame(r, NULL, 0);
         TEST_ASSERT_FALSE(out.unchanged);
         const int band = RENDER_SETTLE_BANDS / 2 + (i % 2 == 0 ? i / 2 : -(i + 1) / 2);
