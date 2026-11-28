@@ -20,6 +20,7 @@ from gltf.gltf_write import build_glb
 from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
+from r3d.objects import contact
 from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
                                    source_objects)
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
@@ -56,6 +57,17 @@ def pair_shapes(points=POINTS, triangles=TRIANGLES, materials=MATERIALS, toleran
 
 
 class ObjectsTests(unittest.TestCase):
+    def test_contact_sweep_matches_all_pairs_including_touching_boxes(self):
+        for seed in (0, 1, 2):
+            lows = np.random.default_rng(seed).integers(-4, 5, size=(32, 3)).astype(float)
+            lows[:4] = [[0, 0, 0], [2, 0, 0], [1, 1, 1], [20, 20, 20]]
+            highs = lows + 2
+            for incident in (np.ones(len(lows), bool), np.arange(len(lows)) % 3 == 0, np.zeros(len(lows), bool)):
+                expected = [(a, b) for a in range(len(lows)) for b in range(a + 1, len(lows))
+                            if (incident[a] or incident[b]) and not
+                            (np.any(lows[a] > highs[b]) or np.any(lows[b] > highs[a]))]
+                self.assertEqual(sorted(contact._overlapping_pairs(lows, highs, incident)), expected)
+
     def test_obj_rotated_instance(self):
         rotation = Rotation.from_rotvec(np.array([1., 2., 3.]) * 0.37).as_matrix()
         shapes = pair_shapes(POINTS @ rotation.T + [7, 4, 9])
