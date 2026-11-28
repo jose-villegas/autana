@@ -64,6 +64,13 @@ LIGHT_FIELDS = {
 PLACED_LIGHT_FIELDS = ("direction", "position", "axis")
 
 
+def far_skin_region(settings, scene):
+    """The camera region whose centre picks the near skin of an import's closed double_sided shells, the one that
+    moves onto their midsurface (mesh_import.far_skins), or None: the scene's, when the import lists double_sided
+    materials."""
+    return scene.region if scene is not None and settings.double_sided else None
+
+
 class SettingsError(ValueError):
     """An import or scene setting cannot describe a bake."""
 
@@ -923,7 +930,9 @@ def load_scene(path):
         raise SettingsError("scene indirect settings is read by no placed mesh")
     for name, present, needed in (("lights", bool(lights), lit or (runtime_lit and bool(lights))),
                                   ("tonemap_white", scene.tonemap_white is not None, lit or (runtime_lit and scene.tonemap_white is not None)),
-                                  ("camera region", region is not None, "camera_region" in sources)):
+                                  # A closed double_sided shell's near skin faces the region (mesh_import.far_skins).
+                                  ("camera region", region is not None, "camera_region" in sources
+                                   or any(far_skin_region(item.settings, scene) is not None for item in jobs))):
         if needed and not present:
             raise SettingsError(f"scene {name} is required: a placed mesh has a step that reads it")
         if present and not needed:

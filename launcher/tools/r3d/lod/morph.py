@@ -19,7 +19,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d import morph_asset
-from r3d.geometry import closest_point_on_triangles
+from r3d.geometry import closest_point_on_triangles, vertex_normals
 from r3d.lit_mesh import morph_deltas, read_lit_mesh
 from r3d.mesh_asset import LOD_NONE
 
@@ -37,14 +37,6 @@ def unit(vectors):
     return vectors / np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), NORMAL_EPSILON)
 
 
-def area_normals(points, local):
-    """Each of `points`' area-weighted normal over the triangles `local` (rows into points)."""
-    corners = points[local].astype(np.float64)
-    area = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    around = np.zeros((len(points), 3))
-    for k in range(3):
-        np.add.at(around, local[:, k], area)
-    return unit(around)
 
 
 class Coarse:
@@ -185,7 +177,7 @@ def read_targets(mesh):
         points, at = np.unique(pos[rows], axis=0, return_inverse=True)
         at = at.reshape(-1)
         local = at[np.searchsorted(rows, tris)]
-        normals = area_normals(points, local)
+        normals = vertex_normals(points.astype(np.float64), local)
         numbers = np.concatenate(coarse[parent])
         corners = mesh.tris[numbers]
         surface = Coarse(pos[corners], numbers)

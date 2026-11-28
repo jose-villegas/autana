@@ -18,7 +18,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from r3d.mitsuba_reference import import_mitsuba
+from r3d.mitsuba_reference import LLVM_TRACES, import_mitsuba
 
 VARIANT = "llvm_ad_rgb"
 
@@ -89,6 +89,8 @@ class RayQuery:
             raise RuntimeError("ray queries need Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
         if not is_jit(variant):
             raise RuntimeError(f"ray queries run on a JIT variant (llvm_ad_rgb or cuda_ad_rgb), not {variant}")
+        if variant.startswith("llvm") and not LLVM_TRACES:
+            raise RuntimeError("ray queries do not run on Windows yet: its LLVM is unpinned (autana-dz1nq); use WSL")
         import drjit as dr
 
         if variant.startswith("llvm") and not dr.has_backend(dr.JitBackend.LLVM):

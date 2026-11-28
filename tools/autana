@@ -1,20 +1,35 @@
 #!/usr/bin/env bash
 #
 # autana - the terminal command. scripts/autana/autana.py is all of it; this
-# finds a Python to start it with, and autana.py picks ESP-IDF's own for
-# anything that needs pyserial. scripts/add-tools-to-path.sh puts this folder
-# on PATH.
+# finds a Python to start it with. autana.py runs device.py's status and
+# lock verbs in its own process and starts device.py under it for the rest;
+# device.py re-runs itself under ESP-IDF's own when this one lacks pyserial.
+# scripts/add-tools-to-path.sh puts this folder on PATH.
 unset _AUTANA_CALLER_PID
-# Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that ran
-# this; PPID 1 means a Windows program started bash, so autana.py finds the
-# caller itself.
-here=$(cd "$(dirname "$0")/.." && pwd -P)
+# With the pinned minor on PATH, nothing here starts a process before the
+# exec: on a loaded Windows machine each one costs a second. The checkout's
+# folder comes from $0 (a Windows program may pass backslashes): entered as
+# named, so a symlinked tools/ still means this checkout, then made physical
+# by cd -P . and read back from $PWD, then the caller's folder again.
+case "$0" in
+    *[/\\]*) here=${0%[/\\]*}/.. ;;
+    *) here=.. ;;
+esac
+caller=$PWD
+CDPATH= cd "$here" && cd -P . && here=$PWD && cd "$caller" || exit 1
+# Under Git Bash, /proc/<ppid>/winpid is the Windows pid of the shell that
+# ran this; PPID 1 means a Windows program started bash, so autana.py finds
+# the caller itself.
 . "$here/scripts/lib/process_pid.sh"
 if [ -r "/proc/$PPID/winpid" ] || [ "$PPID" != 1 ]; then
-    export _AUTANA_CALLER_PID=$(host_pid "$PPID")
+    host_pid "$PPID"
+    export _AUTANA_CALLER_PID=$HOST_PID
 fi
 # shellcheck source=../scripts/lib/python.sh
 . "$here/scripts/lib/python.sh"
+if pinned_python; then
+    exec "$PYTHON_PICKED" "$here/scripts/autana/autana.py" "$@"
+fi
 if python=$(find_python 2>/dev/null); then
     exec "$python" "$here/scripts/autana/autana.py" "$@"
 fi

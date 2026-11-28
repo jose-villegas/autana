@@ -9,7 +9,7 @@ drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 flowchart TB
     subgraph Cut["1 · Choose triangles"]
     direction LR
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Collapse to midsurface<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
     subgraph Light["2 · Colour vertices"]
     direction LR
@@ -74,6 +74,30 @@ number of quantisation ticks per model unit.
 #### materials
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
+
+A double-sided triangle carries what it shows from behind as well: its back colours, lit on the reversed
+normal, which the renderer picks by winding ([LMSH](../../assets/formats/LMSH.md)). Its front is lit on its
+normal alone. Cards keep one texture on both sides; only their light differs.
+
+Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import collapses it to
+one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[152]](../../Citations.md#rezayat-1996)</sup><sup>[[153]](../../Citations.md#ye-2026-gmidsurf)</sup>.
+
+Faces joined by smooth welded edges share a skin label. Of the two dominant components, the one facing the
+camera region's centre more strongly by area is the near skin. Smaller components form the hem.
+
+Inward rays pair the skins and measure thickness<sup>[[154]](../../Citations.md#shapira-2008)</sup>.
+Pairs face back within `REACH` times the median thickness. The whole near skin stays, including faces whose rays miss.
+
+When a shell lacks two dominant components, each component faces the region as a unit. Ray hits identify
+the sheet, including unpaired patches enclosed by it. A shell without a thickness keeps both skins.
+
+Each sheet vertex moves halfway along its inward ray, or by half the median thickness where the ray misses.
+Where a move turns a triangle over, its corners take the mean move around them, as Laplacian smoothing
+does<sup>[[5]](../../Citations.md#sorkine-2005)</sup>. If needed, the corners of an identified near skin shorten
+their moves. A shell with a triangle still turned over keeps both skins.
+The far skin stays the source of its sheet's back colours, read where a vertex's ray meets it, or at its nearest
+point where the ray misses; a point farther from every sheet than half that shell's thickness reads its front.
+Simplification keeps the sheet's border on its border. The sheet casts the light; open sheets stay whole.
 
 ### Skin lighting
 

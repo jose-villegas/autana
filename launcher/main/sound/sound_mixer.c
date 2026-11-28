@@ -90,7 +90,7 @@ void
 sound_control_init(sound_control_t* control, bool ready) {
     *control = (sound_control_t){
         .ready = ready, .app_generation = SOUND_APP_GENERATION_ENGINE, .next_generation = SOUND_APP_GENERATION_FIRST};
-    static const char* const names[] = {"SYSTEM", "SFX", "MUSIC"};
+    static const char* const names[] = {"SYSTEM", "SFX", "MUSIC", "HAPTIC"};
     _Static_assert(sizeof names / sizeof names[0] == SOUND_BUS_BUILTIN_COUNT, "built-in bus names");
     for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
         control->buses[i].used = true;
@@ -306,7 +306,7 @@ sound_control_complete(sound_control_t* control, const sound_mixer_t* mixer) {
 
 void
 sound_mixer_init(sound_mixer_t* mixer) {
-    *mixer = (sound_mixer_t){.master_gain = SOUND_GAIN_MAX_PCT};
+    *mixer = (sound_mixer_t){.amp = SOUND_AMP_WARMING, .master_gain = SOUND_GAIN_MAX_PCT};
     for (int i = 0; i < SOUND_BUS_COUNT_MAX; i++) {
         mixer->bus_gain[i] = SOUND_GAIN_MAX_PCT;
     }
@@ -443,24 +443,14 @@ read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
 
 static bool AUDIO_IRAM_ATTR
 amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
+    if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_started_ms >= startup_ms) {
+        mixer->amp = SOUND_AMP_ON;
+    }
     bool active = false;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         active |= mixer->voices[i].playing;
     }
-    if (active) {
-        mixer->last_active_ms = now_ms;
-        if (mixer->amp == SOUND_AMP_OFF) {
-            mixer->amp = SOUND_AMP_WARMING;
-            mixer->amp_changed_ms = now_ms;
-        }
-    } else if (mixer->amp != SOUND_AMP_OFF && now_ms - mixer->last_active_ms >= SOUND_AMP_IDLE_MS) {
-        mixer->amp = SOUND_AMP_OFF;
-        mixer->residual = 0;
-    }
-    if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_changed_ms >= startup_ms) {
-        mixer->amp = SOUND_AMP_ON;
-    }
-    return (active || (mixer->declick_frames && mixer->residual)) && mixer->amp == SOUND_AMP_ON;
+    return (active || mixer->residual) && mixer->amp == SOUND_AMP_ON;
 }
 
 static void AUDIO_IRAM_ATTR
@@ -539,6 +529,7 @@ void AUDIO_IRAM_ATTR
 sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int16_t* scratch, size_t frames,
                    uint64_t now_ms, uint32_t startup_ms) {
     if (!amp_ready(mixer, now_ms, startup_ms)) {
+        /* Library call: one bulk clear per block, only until the amplifier is ready. */
         memset(out, 0, frames * sizeof *out);
         return;
     }
@@ -554,6 +545,7 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
     for (int i = 0; i < SOUND_BUS_COUNT_MAX; i++) {
         factors[i] = (uint32_t)mixer->bus_gain[i] * mixer->master_gain;
     }
+    /* Library call: one bulk clear per mixed block. */
     memset(accumulator, 0, frames * sizeof *accumulator);
     if (mixer->declick_frames) {
         const int32_t residual = mixer->residual;
@@ -568,6 +560,7 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
             continue;
         }
         const uint32_t gain = (uint32_t)voice->gain_pct * factors[voice->bus.id];
+        /* Library call: a uint64_t divide, once per playing voice per mixed block. */
         const int32_t factor =
             (int32_t)(((uint64_t)gain * SOUND_GAIN_ONE) / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
         mix_voice(mixer, voice, accumulator, scratch, frames, factor);

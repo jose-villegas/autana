@@ -20,6 +20,11 @@ typedef struct {
 typedef probe_pose_t (*probe_pose_at_t)(float t);
 typedef void (*probe_linear_at_t)(float t, float out[3]);
 
+typedef struct {
+    float offset_g[3];
+    float scale[3];
+} probe_accel_error_t;
+
 static inline float
 probe_ease(float t, float start, float end) {
     const float fraction = mathf_clamp((t - start) / (end - start), 0.0F, 1.0F);
@@ -83,9 +88,11 @@ probe_body_rate(probe_pose_at_t pose, float t, float dt, float rate[3]) {
 }
 
 /* Screen counts of specific force (world linear acceleration minus gravity) and body rate plus offset_dps.
- * linear supplies world acceleration in g; NULL means zero. */
+ * linear supplies world acceleration in g; error supplies chip-axis acceleration error before quantization.
+ * NULL means zero linear acceleration or an ideal accelerometer, respectively. */
 static inline input_motion_t
-probe_motion_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3], probe_linear_at_t linear) {
+probe_motion_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3], probe_linear_at_t linear,
+                    const probe_accel_error_t* error) {
     const probe_pose_t now = pose(t);
     float force_device[3], rate[3];
     float force[3] = {0, 0, 0};
@@ -97,7 +104,11 @@ probe_motion_sample(probe_pose_at_t pose, float t, float dt, const float offset_
     probe_body_rate(pose, t, dt, rate);
     int16_t accel[3], gyro[3];
     for (int i = 0; i < 3; i++) {
-        accel[i] = (int16_t)lroundf(probe_dot(force_device, probe_chip_axes[i]) * IMU_COUNTS_PER_G);
+        float chip_g = probe_dot(force_device, probe_chip_axes[i]);
+        if (error != NULL) {
+            chip_g = chip_g * error->scale[i] + error->offset_g[i];
+        }
+        accel[i] = (int16_t)lroundf(chip_g * IMU_COUNTS_PER_G);
         gyro[i] = (int16_t)lroundf((probe_dot(rate, probe_chip_axes[i]) / PROBE_DEG_TO_RAD + offset_dps[i])
                                    * IMU_COUNTS_PER_DPS);
     }

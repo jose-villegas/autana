@@ -99,7 +99,7 @@ step_batch(gravity_t* g, probe_pose_at_t pose_at, probe_linear_at_t linear, cons
            int count, float dt) {
     input_motion_batch_t batch = {.count = count};
     for (int i = 0; i < batch.count; i++, (*index)++) {
-        batch.samples[i] = probe_motion_sample(pose_at, *index * dt, dt, bias, linear);
+        batch.samples[i] = probe_motion_sample(pose_at, *index * dt, dt, bias, linear, NULL);
     }
     gravity_update_batch(g, &batch);
     return (*index - 1) * dt;

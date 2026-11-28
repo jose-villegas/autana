@@ -12,7 +12,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 |---|---|---|---|
 | [anim](#anim) | 5 | 0 | 0 |
 | [audio](#audio) | 40 | 0 | 0 |
-| [input](#input) | 11 | 0 | 0 |
+| [input](#input) | 15 | 0 | 0 |
 | [kinematics](#kinematics) | 8 | 4 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 49 | 0 | 0 |
@@ -80,17 +80,21 @@ is stale, so rerun it after changing an image or the pages that show one.
 
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
+| <a href="../images/input/button-timeline.png"><img src="../images/input/button-timeline.png" width="160" alt=""></a> | BOOT raw and debounced levels during a scripted tap and hold | [input/Buttons](../input/Buttons.md) | not declared yet |
 | <a href="../images/input/gravity-bias.gif"><img src="figure-thumbnails/input/gravity-bias.gif" width="160" alt=""></a> | The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-motion.gif"><img src="figure-thumbnails/input/gravity-motion.gif" width="160" alt=""></a> | The pitched device rolls while carried sideways; the plots show acceleration magnitude deviation from 1 g and the acceleration angle from the estimate and the estimate angle from true down | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-reader.gif"><img src="figure-thumbnails/input/gravity-reader.gif" width="160" alt=""></a> | The device tilts and rolls, then holds its pose in free fall; the plots show in-plane strength and acceleration magnitude with their direction and free-fall thresholds | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-trust.png"><img src="../images/input/gravity-trust.png" width="160" alt=""></a> | Acceleration magnitude trust ramp | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/motion-axes.png"><img src="../images/input/motion-axes.png" width="160" alt=""></a> | The cased device from the front and the back: chip axes X Y Z at the IMU behind the PCB, screen axes x y z at the glass centre | [input/Motion-Axes](../input/Motion-Axes.md) | not declared yet |
+| <a href="../images/input/motion-calibration-fit.png"><img src="../images/input/motion-calibration-fit.png" width="160" alt=""></a> | Number lines marking the two pose means, midpoint offset, and half-span scale for each axis, with fitted and scripted values side by side | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
+| <a href="../images/input/motion-calibration-round.gif"><img src="figure-thumbnails/input/motion-calibration-round.gif" width="160" alt=""></a> | Six accelerometer poses with true down, measured acceleration, and error arrows, next to traces of the rest windows and fitted offsets | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
 | <a href="../images/input/motion-page.png"><img src="../images/input/motion-page.png" width="160" alt=""></a> | Motion page: raw and filtered readings, stored offset and the tilt bubble | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
 | <a href="../images/input/motion-results.png"><img src="../images/input/motion-results.png" width="160" alt=""></a> | Results page: per-axis residual, scale and gyro offset with SAVE and CLEAR | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
 | <a href="../images/input/motion-rotation.gif"><img src="figure-thumbnails/input/motion-rotation.gif" width="160" alt=""></a> | The device turning out and back about rotation x, y and z, with its acceleration (the vector the code treats as down) and rotation axis, and the rotation and turn_speed it reports | [input/Motion-Axes](../input/Motion-Axes.md) | not declared yet |
 | <a href="../images/input/shake-level.png"><img src="../images/input/shake-level.png" width="160" alt=""></a> | Deliberate shake level from smoothed linear acceleration | [input/Shake](../input/Shake.md) | not declared yet |
 | <a href="../images/input/shake-motion.gif"><img src="figure-thumbnails/input/shake-motion.gif" width="160" alt=""></a> | The cased device posed from the capture's gravity, its acceleration beside it, while the smoothed size and the level follow | [input/Shake](../input/Shake.md) | not declared yet |
 | <a href="../images/input/shake-trace.png"><img src="../images/input/shake-trace.png" width="160" alt=""></a> | Size, smoothed size and level against START and FULL while walking, shaking gently and shaking hard | [input/Shake](../input/Shake.md) | not declared yet |
+| <a href="../images/input/touch-trace.png"><img src="../images/input/touch-trace.png" width="160" alt=""></a> | Touch sample positions and the timeline of a scripted tap and home swipe | [input/Touch](../input/Touch.md) | not declared yet |
 
 ## kinematics
 

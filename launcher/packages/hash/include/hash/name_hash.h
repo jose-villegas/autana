@@ -16,7 +16,7 @@ typedef uint32_t name_hash_t;
  * Inline: per-frame callers fold a few bytes at a time, so a call would cost more than the fold. */
 static inline name_hash_t
 name_hash_seeded_n(name_hash_t seed, const void* data, size_t size) {
-    const unsigned char* bytes = data;
+    const unsigned char* bytes = (const unsigned char*)data;
     for (size_t i = 0; i < size; i++) {
         seed ^= bytes[i];
         seed *= NAME_HASH_PRIME;

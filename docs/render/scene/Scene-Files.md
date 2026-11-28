@@ -92,6 +92,7 @@ or skinned renderer.
 |---|---|---|
 | a baked renderer (`bake = true`) | a light (a directional, point or spot object, `[sky]` or `[ambient]`), `tonemap_white` and `[bake]`; the camera `region` for region visibility, its `path` for path visibility | `[indirect]`, when a renderer bakes `[bake].indirect` |
 | skinned renderers only | nothing | directional lights, `[ambient]`, `tonemap_white` |
+| a mesh whose import lists `double_sided` | nothing | the camera `region`: its closed shells keep the skin the region faces ([Mesh-Import](../offline/Mesh-Import.md#materials)) |
 
 The importer rejects a light, `tonemap_white`, a region or `[indirect]` that no
 placed renderer reads; `[sky]` and point and spot lights are read only by a bake.

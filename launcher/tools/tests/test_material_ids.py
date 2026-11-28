@@ -232,7 +232,7 @@ class MaterialIdsTests(unittest.TestCase):
                                        np.array([True]), colourless=True)
             entries.extend(bundle_entries(name, copy_mesh))
             entries.append((lcol_asset.name_for_mesh(name), lcol_asset.TYPE,
-                            lcol_asset.encode(lcol_asset.RGB888, len(copy_mesh.pos), [bytes(copy_mesh.pos.size)])))
+                            lcol_asset.encode(lcol_asset.RGB888, len(copy_mesh.pos), 0, [bytes(copy_mesh.pos.size)])))
             copies.append(dict(name=name + '.place', mesh=name, colour_set=0, owner='fixture',
                                source='dropped', first='fixture', match={}, matrix=np.eye(3).tolist(),
                                position=[x, 0, 0]))

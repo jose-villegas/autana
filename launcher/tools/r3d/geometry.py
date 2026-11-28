@@ -7,6 +7,10 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
+# Positions closer than this (model units) are one point.
+WELD_TOLERANCE = 1e-3
+
+
 def grouped_indices(keys):
     """Indices for each integer key, preserving input order within each group."""
     keys = np.asarray(keys)
@@ -51,7 +55,7 @@ def distinct_corners(tris):
     return (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
 
 
-def weld(p, tris, tolerance=1e-3):
+def weld(p, tris, tolerance=WELD_TOLERANCE):
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     tris = inverse.reshape(-1)[tris]
@@ -59,17 +63,63 @@ def weld(p, tris, tolerance=1e-3):
     return p[first], tris[good]
 
 
-def weld_keeping(p, tris, tolerance=1e-3):
+def weld_keeping(p, tris, tolerance=WELD_TOLERANCE):
     """Merges coincident vertices across materials; every triangle stays."""
     first, inverse = weld_map(p, tolerance)
     return p[first], inverse[tris]
 
 
-def weld_map(p, tolerance=1e-3):
+def weld_map(p, tolerance=WELD_TOLERANCE):
     """(first, inverse): one source vertex per position within `tolerance`, and each vertex's welded index."""
     key = np.round(p / tolerance).astype(np.int64)
     _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
     return first, inverse.reshape(-1)
+
+
+def corner_edges(tris):
+    """Each triangle's edges as directed pairs: every first edge, then every second, then every third."""
+    return np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]])
+
+
+def edge_uses(tris):
+    """(edges, slot, uses): the distinct undirected edges of `tris`, the slot among them of each of
+    corner_edges(tris), and how many triangle edges lie on each."""
+    edges, slot, uses = np.unique(np.sort(corner_edges(tris), axis=1), axis=0, return_inverse=True,
+                                  return_counts=True)
+    return edges, slot.reshape(-1), uses
+
+
+def closed_shells(p, tris, tolerance=WELD_TOLERANCE):
+    """Each triangle's closed shell, -1 for none: a piece, once positions within `tolerance` are welded and
+    triangles joined across each edge exactly two of them use, each of whose edges two of its own triangles
+    use. A closed shell shows only its outside, whatever materials make it up; an edge three or more use,
+    where a shell touches another piece, joins nothing, and the shell stays closed."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    _first, welded = weld_map(p, tolerance)
+    _edges, slot, uses = edge_uses(welded[tris])
+    owner = np.tile(np.arange(len(tris)), 3)
+    # A triangle joins the node of each edge it shares with one other; the pieces are the graph's components.
+    shared = uses[slot] == 2
+    graph = coo_matrix((np.ones(int(shared.sum())), (owner[shared], len(tris) + slot[shared])),
+                       shape=(len(tris) + len(uses),) * 2)
+    _count, piece = connected_components(graph, directed=False)
+    piece = piece[:len(tris)]
+    _, within, own_uses = np.unique(piece[owner] * len(uses) + slot, return_inverse=True, return_counts=True)
+    open_pieces = piece[owner[own_uses[within.reshape(-1)] != 2]]
+    return np.where(np.isin(piece, open_pieces), -1, piece)
+
+
+def vertex_normals(p, tris, index=None, count=None):
+    """Area-weighted unit normals of `tris` at each point of `p`, or at each of `count` vertices `index` (one per
+    point) maps the points onto, as weld_map()'s inverse does."""
+    index = np.arange(len(p)) if index is None else index
+    cross = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    normals = np.zeros((len(p) if count is None else count, 3))
+    for k in range(3):
+        np.add.at(normals, index[tris[:, k]], cross)
+    return normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
 
 
 def corner_normals(p, tris, crease_deg=40.0):

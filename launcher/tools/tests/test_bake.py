@@ -1144,6 +1144,32 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(before, bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({})),
                             "the seal's probes stand by the camera whether the mesh is lit or not")
 
+    def test_a_double_sided_mesh_is_keyed_by_the_camera_region_alone(self):
+        self.job.renderer.visibility = None
+        self.job.settings.simplify.seal_seams = False
+
+        def start_after(change):
+            before = self.keys()["start"]
+            change()
+            return before, self.keys()["start"]
+
+        def move_region():
+            low, high = self.scene.region
+            self.scene.region = (low, tuple(value + 1.0 for value in high))
+
+        def move_lens():
+            self.scene.camera.component.near_z += 1.0
+
+        self.scene.region = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        self.job.settings.double_sided = set()
+        before, after = start_after(move_region)
+        self.assertEqual(before, after, "a mesh with no double_sided material reads no region")
+        self.job.settings.double_sided = {"m"}
+        before, after = start_after(move_region)
+        self.assertNotEqual(before, after, "a closed double_sided shell keeps the skin the camera region faces")
+        before, after = start_after(move_lens)
+        self.assertEqual(before, after, "the far skins read the region, not the lens")
+
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
 
@@ -2266,6 +2292,11 @@ def filled_cache(directory, test):
     return found, lock
 
 
+def first_mesh(found):
+    """The first packed mesh bundle: a pack also holds bakes of other kinds, such as a scene's probe grid."""
+    return next(item for item in found if item.output.endswith(bake.BUNDLE_SUFFIX))
+
+
 def current_lock(path):
     """Writes the lock the tree's own keys need to `path`, every row with a placeholder digest: what the
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
@@ -2349,7 +2380,7 @@ class TreeTests(unittest.TestCase):
     def test_a_mesh_no_bake_keys_fails_instead_of_taking_another_file(self):
         with tempfile.TemporaryDirectory() as directory:
             found, lock = filled_cache(directory, self)
-            dropped = found[0]
+            dropped = first_mesh(found)
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
@@ -2359,7 +2390,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             found, lock = filled_cache(root, self)
-            some_mesh = bake.cached(lock[found[0].key], bake.BUNDLE_SUFFIX, root).read_bytes()
+            some_mesh = bake.cached(lock[first_mesh(found).key], bake.BUNDLE_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
             for entries in build_pack.pack_files([imported]).values():
@@ -2374,7 +2405,7 @@ class TreeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cache = pathlib.Path(directory)
             found, lock = filled_cache(cache, self)
-            scratch = found[0]
+            scratch = first_mesh(found)
             mesh = cache / "scratch.bundle"
             mesh.write_bytes(bake.cached(lock[scratch.key], bake.BUNDLE_SUFFIX, cache).read_bytes())
             name = scratch.output.removesuffix(bake.BUNDLE_SUFFIX)

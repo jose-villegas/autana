@@ -74,6 +74,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
 | Estimate the board's current draw | [Power docs](docs/power/README.md), [Power budget](docs/power/Power-Budget.md) |
+| Add tactile feedback | [Haptics](docs/haptics/README.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

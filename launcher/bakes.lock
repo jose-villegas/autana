@@ -1,16 +1,6 @@
 # Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
 
 [[bake]]
-output = "bistro.street_fitted_full.reference.tar.xz"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "5578b5c6f64491dbfcb8a425be54a958790b03d125cbb03f2c3349282113a4ad"
-sha256 = "3ac72d5fbfabf598c0c3cfea555a1ecaec27037f719742ca2c843d188b72523a"
-size = 71673532
-run = 45743400260
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
-
-[[bake]]
 output = "capybara.glb"
 source = "launcher/demo/capybara/capybara.import.toml"
 key = "55b3a299778ec80110e5a45aecb918a3fb53c7d12d5e1b6124fa0a486ed69328"
@@ -29,25 +19,6 @@ run = 44712078693
 host = "Linux x86_64"
 
 [[bake]]
-output = "sponza.atrium_fitted_full.reference.tar.xz"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "6abe6db4633fa968cbada845665b4506afd341ce9551723ddc779322e9d10574"
-sha256 = "19ab2992f119a60ac1e5b2a93403d51156d1c7034b605eba08d4e5c7c8ae879b"
-size = 173461776
-run = 45743400260
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
-
-[[bake]]
-output = "sponza.shpr"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "a53eef7a9caeb9eeefa7b20ac6d0531ed65b058005d0e4787a0b943abdd3bd18"
-sha256 = "a5801f15aac5ab6000142481521365f21290cb9aad23be8b9ce5cb399b9e66f3"
-size = 16590
-run = 45743400260
-host = "Linux x86_64"
-
-[[bake]]
 output = "tap.sond"
 source = "launcher/main/engine/sounds/tap.sound.toml"
 key = "f318a6910593ee908e8f39ab707105aa0e8234bf487e71a349b6ae833e85c7ff"
@@ -60,28 +31,21 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "23c81f12642845b2390e327121b01c61f9182139a933a19f55d2bd8e1844b38a"
+key = "2f5173136b249fdd7efbf169cc5330165ad35343bf6cc83c75970b680af36501"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "333444d54af4c6bed83e2f9e4d8128209746b7cf2c71f38d084dc7440bbff5f8"
-poses = "30e8fbe2e7b6a1b0047a0e8619736448cb0983617dfc12312a848e6174ecbf14"
-count = 1101
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "756ab784ae6b279666bf833cd335dc9cf7d99e95a4953d0691bfe9e1060adc91"
+key = "442d69f192a85b98731a145a02689b8d58140c64cf6c7714114ab4080a1be50f"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "c3cda067aed4af9c4774f74ee4100e6223e0149375a348a7238c6b4ee0113e41"
+key = "bf93861a66061fbf3c71fac50e7e8088acd8c077b51ba8f06462d11a8315d0cd"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"

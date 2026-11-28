@@ -26,6 +26,7 @@
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/entity/entity.h"
+#include "scene/light/light.h"
 #include "scene/scene.h"
 #include "scene/skin/skin.h"
 #include "scene/skin/skin_contact.h"
@@ -45,6 +46,7 @@ typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
 typedef struct {
     scene_light_kind_t kind;
+    light_mode_t mode;
     vec3f_t color;
     float intensity;
 } scene_light_t;
@@ -222,6 +224,7 @@ struct scene {
     r3d_skin_light_table_t* light_table;
     int light_table_users;
     bool light_table_dirty;
+    sh_probes_t owned_probes;
     const sh_probes_t* probes;
     bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
     int starved_count;  /* skins and renderers whose memory did not fit; root->failure says which */

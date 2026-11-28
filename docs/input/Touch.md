@@ -31,10 +31,14 @@ touch_example(touch_example_t* s, const input_t* input) {
 
 ## Delivery
 
+![Touch sample positions and the timeline of a scripted tap and home swipe](../images/input/touch-trace.png)
+
+A one-poll dropout leaves the touch down. The tap releases immediately on the lift flag, while the drag triggers the home swipe before releasing after the quiet interval.
+
 | Rule | Owner |
 |---|---|
 | The task polls at `TOUCH_POLL_HZ` and latches press and release edges, so a tap that falls entirely between rendered frames still reaches the next frame | `touch.c` |
-| Release needs the quiet interval `TOUCH_RELEASE_QUIET_US`; an INT deassertion is not a release | `input/touch/touch_fsm.h` |
+| A report with the UP flag and zero contacts releases immediately. Otherwise, release waits for `TOUCH_RELEASE_QUIET_US`. | `input/touch/touch_report.c`, `input/touch/touch_fsm.h` |
 | The UI bridge defers DOWN until microui's hover root is settled; keep this for every control, not only buttons | [firmware/UI.md](../firmware/UI.md#two-things-to-know-before-touching-it) |
 
 ## Calibration and targets

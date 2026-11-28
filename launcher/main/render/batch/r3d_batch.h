@@ -46,7 +46,7 @@ typedef struct {
     const r3d_copy_place_t* places; /* copy_count */
     const r3d_copy_turn_t* turns;   /* copy_count */
     uint32_t* lod_coarse;           /* lod_words a copy, copy by copy, or NULL: the finest level */
-    uint32_t colour_stride;         /* elements of one colour set; the mesh view holds set 0 */
+    uint32_t colour_stride;         /* elements of one colour set, front and back; the mesh view holds set 0 */
     float copy_radius;              /* a copy's sphere about its position, whatever its turn: r3d_batch_copy_radius() */
     uint16_t copy_count, chunk_count, lod_words;
 } r3d_batch_t;

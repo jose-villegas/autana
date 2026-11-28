@@ -37,6 +37,28 @@ def _mirror_box(box):
     return (*low[:Z_AXIS], high[Z_AXIS], *high[:Z_AXIS], low[Z_AXIS])
 
 
+def _mirror_probes(entry):
+    """Flip an SHPR grid along the mirrored axes: records and inside bits move, and the L1 rows of those axes change
+    sign. The standard library only, as the firmware build packs with it."""
+    version, flags, origin, spacing, scale, dims, mask_at = sh.layout(entry)
+    signs = (1, *(AXIS_SIGNS[axis] for axis in sh.L1_AXES))
+    row_signs = tuple(signs[coefficient] for coefficient in range(sh.COEFFICIENTS) for _ in range(sh.CHANNELS))
+    records = bytearray()
+    inside = bytearray(len(entry) - mask_at)
+    for target, at in enumerate((x, y, z) for z in range(dims[2]) for y in range(dims[1]) for x in range(dims[0])):
+        x, y, z = (value if sign > 0 else count - 1 - value for value, count, sign in zip(at, dims, AXIS_SIGNS))
+        source = (z * dims[1] + y) * dims[0] + x
+        values = sh.RECORD.unpack_from(entry, sh.HEADER.size + source * sh.RECORD.size)
+        if any(value == INT16_MIN and sign < 0 for value, sign in zip(values, row_signs)):
+            raise ValueError("mirrored SH coefficient does not fit int16")
+        records += sh.RECORD.pack(*(value * sign for value, sign in zip(values, row_signs)))
+        if inside and entry[mask_at + source // sh.MASK_BITS_PER_BYTE] >> (source % sh.MASK_BITS_PER_BYTE) & 1:
+            inside[target // sh.MASK_BITS_PER_BYTE] |= 1 << (target % sh.MASK_BITS_PER_BYTE)
+    origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
+                   for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
+    return sh.HEADER.pack(version, flags, *origin, *spacing, scale, *dims) + bytes(records) + bytes(inside)
+
+
 def mirror_matrix(matrix, column_signs=AXIS_SIGNS):
     """Conjugate a flat or row-shaped affine matrix across the source and engine axes."""
     if hasattr(matrix, "shape") and matrix.ndim == 2:
@@ -81,35 +103,21 @@ def to_engine(kind, entry):
         return entry
     out = bytearray(entry)
     if kind == mesh_asset.TYPE:
-        (vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at) = mesh_asset.BLOB_HEADER.unpack_from(entry)
+        (vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at,
+         back_at) = mesh_asset.BLOB_HEADER.unpack_from(entry)
         for index in range(vertices):
             at = pos_at + index * POSITION.size
             POSITION.pack_into(out, at, *_mirror_position(POSITION.unpack_from(entry, at)))
         for index in range(clusters):
             at = cl_at + index * mesh_asset.CLUSTER.size
-            vb, vc, tb, tc, *box, double = mesh_asset.CLUSTER.unpack_from(entry, at)
-            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double)
+            vb, vc, tb, tc, *box, double, back_first = mesh_asset.CLUSTER.unpack_from(entry, at)
+            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double, back_first)
         for index in range(nodes):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
     elif kind == sh.TYPE:
-        import numpy as np  # here, not at the top: bake.py list and check run where only the standard library is
-
-        origin, spacing, dims, scale, coefficients, inside = sh.decode(entry)
-        slices = tuple(slice(None, None, sign) for sign in reversed(AXIS_SIGNS))
-        shape = tuple(reversed(dims))
-        quantized = np.rint(coefficients / scale).astype('<i2').reshape(
-            *shape, sh.COEFFICIENTS, sh.CHANNELS)[slices].copy()
-        signs = (1, *(AXIS_SIGNS[axis] for axis in sh.L1_AXES))
-        quantized *= np.asarray(signs, dtype=np.int16)[:, None]
-        origin = tuple(value if sign > 0 else -(value + (count - 1) * step)
-                       for value, step, count, sign in zip(origin, spacing, dims, AXIS_SIGNS))
-        version, flags, *_ = sh.HEADER.unpack_from(entry)
-        header = sh.HEADER.pack(version, flags, *origin, *spacing, scale, *dims)
-        mask = (np.packbits(inside.reshape(shape)[slices].ravel(), bitorder='little').tobytes()
-                if flags & sh.SH_PROBES_FLAG_INSIDE_MASK else b'')
-        return header + quantized.tobytes() + mask
+        return _mirror_probes(entry)
     elif kind == lod_asset.TYPE:
         pairs, groups = lod_asset.decode(entry)
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size

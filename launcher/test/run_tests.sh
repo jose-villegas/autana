@@ -145,6 +145,7 @@ $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch/touch_fsm.c
+$MAIN_DIR/input/touch/touch_report.c
 $MAIN_DIR/input/motion/imu_rest.c
 $MAIN_DIR/input/motion/imu_calib.c
 $MAIN_DIR/input/touch/touch_calib.c
@@ -537,6 +538,8 @@ UNLOCKED="$BUILD_DIR/unlocked_packs.txt"
 "$PYTHON" "$TEST_DIR/../tools/r3d/build_pack.py" -o "$AUTANA_ASSET_DIR" --skip-unlocked "$UNLOCKED" "$MAIN_DIR" > /dev/null
 AUTANA_PACKS_WAITING=$(paste -sd, "$UNLOCKED")
 export AUTANA_PACKS_WAITING
+AUTANA_SH_PROBES="$TEST_DIR/../tools/tests/data/sh_probes.shpr"
+export AUTANA_SH_PROBES
 # The test clip suite_anim_tracks.c holds to the Python sampler.
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE

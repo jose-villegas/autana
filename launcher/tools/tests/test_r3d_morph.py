@@ -108,7 +108,7 @@ class MorphCodecTests(unittest.TestCase):
 
 def mesh_with(vertices, clusters, triangles=0):
     """The LMSH header bytes `validate_mesh` reads: vertex, triangle and cluster counts."""
-    return mesh_asset.BLOB_HEADER.pack(vertices, triangles, clusters, 0, 1, 0, 0, 0, 0, 0, 0)
+    return mesh_asset.BLOB_HEADER.pack(vertices, triangles, clusters, 0, 1, 0, 0, 0, 0, 0, 0, 0)
 
 
 class MorphMeshBindingTests(unittest.TestCase):

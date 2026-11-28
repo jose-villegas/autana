@@ -27,6 +27,12 @@ typedef struct {
     uint16_t triangle_first, triangle_count;
     box3s_t bounds; /* bounds of its vertices, position ticks */
     bool double_sided;
+    uint8_t reserved; /* 0 */
+    /* A double-sided cluster's first entry in the mesh's back colours: its
+     * vertices' there, or its triangles' for face colours, in order; the
+     * double-sided clusters' runs tile that array in cluster order. 0 for a
+     * single-sided cluster. */
+    uint16_t back_first;
 } r3d_lit_cluster_t;
 
 /* The tree lit_mesh.py writes: a node has at most eight children, and no
@@ -81,7 +87,14 @@ typedef struct {
     const r3d_lit_node_t* nodes; /* children of a node sit together */
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
-    const uint16_t* face_colors;              /* target-format RGB565, one per triangle, or NULL */
+    const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
+    /* What a double-sided cluster's triangles show from behind, picked by
+     * facing at triangle setup (docs/assets/formats/LMSH.md): back_colors
+     * beside colors, back_face_colors beside face_colors, back_count entries
+     * from each cluster's back_first; NULL draws the front colours both ways. */
+    const uint8_t (*back_colors)[3];
+    const uint16_t* back_face_colors;
+    int back_count;
     const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
     const r3d_lit_lod_group_t* lod_groups;
     int lod_group_count;
@@ -118,7 +131,7 @@ typedef struct r3d_lit_landing {
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
 #define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
-#define R3D_LIT_MESH_HEADER_BYTES 44
+#define R3D_LIT_MESH_HEADER_BYTES 48
 
 /* Fills `mesh` with pointers into `asset`, which must outlive it, after
  * checking every array and every cluster and node range against the entry.
@@ -151,6 +164,14 @@ asset_status_t r3d_lit_mesh_open_sibling(const asset_pack_t* pack, const char* i
 /* Colour ownership: docs/assets/formats/LCOL.md. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
+
+/* Checks a colour set against the mesh geometry, independently of the mesh's current colours. */
+asset_status_t r3d_lit_mesh_validate_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
+                                             const r3d_lit_mesh_t* mesh);
+
+/* The entries of one colour set of `mesh`: a colour per vertex (or per
+ * triangle, with face colours), then its back colours. */
+uint32_t r3d_lit_mesh_colour_stride(const r3d_lit_mesh_t* mesh);
 
 /* Recomputes every node's bounds from its children's. An inner node's
  * children come after it, so walking from the last node back meets every

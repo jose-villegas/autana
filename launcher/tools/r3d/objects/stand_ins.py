@@ -9,7 +9,8 @@ from scipy.sparse.csgraph import connected_components
 
 from render.colour_maths import lab
 from r3d import log
-from r3d.geometry import bounds_diagonal, closest_point_on_triangles
+from r3d.geometry import bounds_diagonal, closest_point_on_triangles, face_normals
+from r3d.lit_mesh import RGB_CHANNELS
 from r3d.meshopt import simplify_with_update
 from r3d.objects.contact import surface_border
 from r3d.ray_query import RayQuery
@@ -123,11 +124,17 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
 
 
 def _draw(mesh, query, origins, directions):
-    colours = np.zeros((len(origins), 3))
+    """What each ray sees of `mesh`: with back colours beside the front ones (lit_mesh.both_sides()), the side
+    of the triangle it meets."""
+    colours = np.zeros((len(origins), RGB_CHANNELS))
     locations, rays, hits = query.first_hit(origins, directions)
     faces = mesh.positions[mesh.tris[hits]]
     bary, _ = closest_point_on_triangles(locations, faces[:, 0], faces[:, 1], faces[:, 2])
-    colours[rays] = (mesh.rgb[mesh.tris[hits]] * bary[:, :, None]).sum(axis=1) / RGB_MAX
+    seen = (mesh.rgb[mesh.tris[hits]] * bary[:, :, None]).sum(axis=1) / RGB_MAX
+    if seen.shape[1] > RGB_CHANNELS:
+        behind = np.einsum("ij,ij->i", face_normals(mesh.positions, mesh.tris[hits])[0], directions[rays]) > 0
+        seen = np.where(behind[:, None], seen[:, RGB_CHANNELS:], seen[:, :RGB_CHANNELS])
+    colours[rays] = seen
     covered = np.zeros(len(origins), dtype=bool)
     covered[rays] = True
     return colours, covered

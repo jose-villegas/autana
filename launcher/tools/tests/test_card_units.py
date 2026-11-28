@@ -343,7 +343,7 @@ class CardFormatTests(unittest.TestCase):
         entries += bundle_entries('rest', build_lit_mesh(p, np.full((3, 3), 128),
                                                        np.array([[0, 1, 2]]), np.ones(1)))
         entries.append((lcol_asset.name_for_mesh('card'), lcol_asset.TYPE,
-                        lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [bytes(len(mesh.pos)*3)])))
+                        lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), 0, [bytes(len(mesh.pos)*3)])))
         with tempfile.TemporaryDirectory() as folder:
             bundle = pathlib.Path(folder) / 'start.bundle'
             bundle.write_bytes(mesh_bundle.encode(entries, [row]))

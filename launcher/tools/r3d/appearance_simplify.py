@@ -37,11 +37,11 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
-from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.geometry import closest_point_on_triangles, corner_edges, triangle_areas  # noqa: E402
+from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, matched, placed_copies  # noqa: E402
 from r3d.fit import gbuffer, seal  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes, seal_camera  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
+from r3d.lit_mesh import RGB_CHANNELS, finest_triangles, read_bundle_mesh, turned  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
@@ -155,8 +155,7 @@ def start_mesh(path):
 
 def point_edges(tris, vertex_point):
     """The unique undirected edges between welded positions."""
-    corners = vertex_point[tris]
-    edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
+    edges = corner_edges(vertex_point[tris])
     edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
     return np.unique(edges, axis=0)
 
@@ -465,7 +464,9 @@ class Renderer:
     `flat` one colour per triangle, single-sided triangles culled when they
     face away, `clear` (0..1 RGB) where nothing is drawn. A flat mesh is drawn
     with three vertices of its own per triangle, so every edge between two
-    colours is antialiased and moves its positions."""
+    colours is antialiased and moves its positions. Six-channel colours hold
+    back colours beside the front ones: a pixel of a triangle seen from behind
+    shows the back ones, as the device picks the side by winding."""
 
     def __init__(self, tris, double, vertex_point, size, device, clear=(0.0, 0.0, 0.0), flat=False):
         import nvdiffrast.torch as dr
@@ -509,20 +510,30 @@ class Renderer:
         import torch
 
         with torch.no_grad():
-            corners = clip[self.tris.long()]
-            w = corners[..., 3]
-            xy = corners[..., :2] / w.clamp_min(1e-6)[..., None]
-            area = (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
-            return self.double | (area > 0) | (w <= 0).any(dim=1)
+            return self.double | (self.winding(clip) > 0) | (clip[self.tris.long()][..., 3] <= 0).any(dim=1)
+
+    def winding(self, clip):
+        """Each triangle's winding on screen, positive where its corners turn counter-clockwise: the determinant
+        of its corners' (x, y, w). With every w positive it is their product times the signed screen area; for a
+        triangle crossing the eye plane it keeps the sign of the part in front, as the device's clipped polygon
+        does."""
+        import torch
+
+        corners = clip[self.tris.long()][..., [0, 1, 3]]
+        return torch.linalg.det(corners)
+
+    @staticmethod
+    def pixel_triangles(rast, keep):
+        """The triangle each pixel of a raster() shows, -1 where none."""
+        import torch
+
+        local = rast[0, ..., 3].long() - 1
+        return torch.cat([keep, keep.new_full((1,), -1)])[torch.where(local >= 0, local, len(keep))]
 
     def visible_ids(self, points, clip_matrix):
         """The triangle each pixel shows, -1 where none."""
-        import torch
-
         _clip, rast, keep = self.raster(points, clip_matrix)
-        local = rast[0, ..., 3].long() - 1
-        mapping = torch.cat([keep, keep.new_full((1,), -1)])
-        return mapping[torch.where(local >= 0, local, len(keep))]
+        return self.pixel_triangles(rast, keep)
 
 
     def raster(self, points, clip_matrix, clip=None):
@@ -649,6 +660,14 @@ class Renderer:
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
 
+    def front_pixels(self, clip, rast, keep):
+        """Which pixels show the front of their triangle: its corners wind counter-clockwise on screen."""
+        import torch
+
+        with torch.no_grad():
+            shown = self.pixel_triangles(rast, keep)
+            return (self.winding(clip)[shown.clamp_min(0)] > 0) | (shown < 0)
+
     def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch
 
@@ -657,6 +676,9 @@ class Renderer:
             attributes = colours.repeat_interleave(3, dim=0) if self.flat else colours
             values = self.interpolate(attributes, clip, rast, keep)
         colour = values
+        if colour.shape[-1] > RGB_CHANNELS:
+            colour = torch.where(self.front_pixels(clip, rast, keep)[..., None], colour[..., :RGB_CHANNELS],
+                                 colour[..., RGB_CHANNELS:])
         colour = torch.where(rast[0, ..., 3:] > 0, colour, self.clear.expand_as(colour))
         return self.antialias(colour, clip, rast, keep).flip(0)
 
@@ -902,7 +924,7 @@ def refine(mesh, error, budget):
         if flat:
             colours = rgb[parent]
         else:
-            colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), 3))])
+            colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), rgb.shape[1]))])
             for (a, b), m in midpoint.items():
                 colours[m] = (rgb[a] + rgb[b]) / 2
         rgb, double, error = colours, np.asarray(double)[parent], error[parent] / 2
@@ -1036,6 +1058,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
         error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        channels = colours.shape[1]
         if normal_weight:
             render = renderer_for(chosen[0])
             vertex = vertex_normals(draw, render.tris.long(), render.vertex_point, render.normal_signs.sign)
@@ -1048,7 +1071,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             if normal_weight:
                 raster = render.raster(draw, matrices[i], clip)
                 values = render.interpolate(attributes, *raster)
-                samples = dict(raster=raster, values=values[..., :3])
+                samples = dict(raster=raster, values=values[..., :channels])
             if buffers is not None:
                 samples.setdefault("raster", render.raster(draw, matrices[i], clip))
                 fitted, shown = gbuffer.distance(render, draw, matrices[i], samples["raster"])
@@ -1063,7 +1086,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                                                      scale) / len(chosen)
             if normal_weight:
                 distance, _angles = normal_l1(render, draw, (matrices[i], None, normals[i], views[i][3]), clip,
-                                              angles=False, raster=raster, values=values[..., 3:])
+                                              angles=False, raster=raster, values=values[..., channels:])
                 error = error + normal_weight * distance / len(chosen)
         if geometry_rng is not None:
             count = len(geometry_views.matrices)
@@ -1129,7 +1152,7 @@ def write_mesh(out_dir, name, mesh):
                                )
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
-            obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
+            obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c[:RGB_CHANNELS]))
         for t in tris:
             obj.write("f %d %d %d\n" % tuple(t + 1))
     return len(baked.tris)
@@ -1205,7 +1228,7 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
+    mesh, copies = matched(mesh, None if args.copies is None else placed_copies(args.copies, mesh.flat))
     if copies is not None:
         log(f"copies: {len(copies.tris)} triangles drawn with the start")
     pairs = list(zip(args.poses, args.reference))

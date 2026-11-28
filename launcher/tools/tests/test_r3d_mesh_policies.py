@@ -260,7 +260,7 @@ class MeshPolicyTests(unittest.TestCase):
         faces = np.concatenate([t, t[:, ::-1] + len(p)])
         src = SimpleNamespace(p=points, tri_v=faces, tri_t=None, uv=None, tri_m=np.zeros(len(faces), dtype=int),
                               tri_o=np.repeat([0, 1], len(t)), names=['plain'], object_names=['vase_a', 'vase_b'],
-                              textures=[None], materials={}, colors=None)
+                              textures=[None], materials={}, colors=None, two_sided=False, far_skin=None)
         settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, double_sided=set(), cards=None,
                      meshes=[{'match': {'object': 'vase*'}, 'triangles': 40}],
                      simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))

@@ -252,26 +252,23 @@ open_batches(scene_t* scene, const asset_pack_t* pack) {
         const scene_asset_batch_t* row = &asset->batches[i];
         scene_renderer_t* r = &scene->renderers[row->renderer];
         const char* mesh = asset->renderers[row->renderer].mesh;
-        uint16_t sets = 0;
+        uint32_t sets = 0;
         for (int c = 0; c < row->copy_count; c++) {
-            sets = asset->places[row->first_copy + c].colour_set >= sets
-                       ? (uint16_t)(asset->places[row->first_copy + c].colour_set + 1U)
-                       : sets;
+            const uint32_t set = asset->places[row->first_copy + c].colour_set;
+            sets = set >= sets ? set + 1U : sets;
         }
-        /* The highest set opens only when every lower one is there too. */
-        r3d_lit_mesh_t highest = r->mesh;
-        highest.colors = NULL;
-        highest.face_colors = NULL;
-        const asset_status_t status = asset->renderers[row->renderer].colour_set != 0
+        /* The highest set opens only when every lower one is there too; the
+         * sets' count fits the renderer's. */
+        const asset_status_t status = asset->renderers[row->renderer].colour_set != 0 || sets > UINT16_MAX
                                           ? ASSET_ERR_FORMAT
-                                          : r3d_lit_mesh_open_colours(pack, mesh, (uint16_t)(sets - 1U), &highest);
+                                          : r3d_lit_mesh_validate_colours(pack, mesh, (uint16_t)(sets - 1U), &r->mesh);
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
         r3d_batch_t* batch = &scene->batches[i];
         *batch = scene_asset_batch(asset, i, &r->mesh, scene->chunks);
         r->batch = batch;
-        r->colour_sets = sets;
+        r->colour_sets = (uint16_t)sets;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
@@ -381,11 +378,31 @@ open_skins(scene_t* scene) {
 }
 
 static scene_failure_t
+open_probes(scene_t* scene, const asset_pack_t* pack) {
+    if (strlen(scene->root->id) + sizeof SH_PROBES_NAME_SUFFIX > ASSET_NAME_MAX) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+    }
+    asset_view_t entry;
+    asset_status_t status =
+        r3d_lit_mesh_open_sibling(pack, scene->root->id, SH_PROBES_NAME_SUFFIX, SH_PROBES_ASSET, false, &entry);
+    if (status != ASSET_OK || entry.data == NULL) {
+        return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    status = sh_probes_read(entry, &scene->owned_probes);
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    scene_set_probes(scene->root->root, &scene->owned_probes);
+    return scene_failure_make(scene->probes != NULL ? SCENE_OK : SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
+}
+
+static scene_failure_t
 open_lights(scene_t* scene) {
     for (int i = 0; i < scene->asset.light_count; i++) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
         if (!light_set_color(scene_row_entity(scene, row->entity), row->color)
-            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)) {
+            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)
+            || !light_set_mode(scene_row_entity(scene, row->entity), (light_mode_t)row->mode)) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }
@@ -490,6 +507,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     if (done.status == SCENE_OK) {
         done = open_animators(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_probes(scene, pack);
     }
     if (done.status == SCENE_OK) {
         done = open_skins(scene);

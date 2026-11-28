@@ -102,7 +102,9 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, seal_camera, source_digest  # noqa: E402
+from r3d.import_settings import (  # noqa: E402
+    BLEND_SUFFIX, SettingsError, content_checksum, far_skin_region, seal_camera, source_digest,
+)
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -689,6 +691,9 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+    region = far_skin_region(job.settings, scene)
+    if region is not None:
+        recipe["far_skins"] = {"region": canonical(region)}
     simplify = job.settings.simplify
     if simplify and simplify.seal_seams and scene.camera is not None:
         recipe.setdefault("camera", camera_inputs(scene))
@@ -858,7 +863,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                 probes.setdefault(scene.path, Bake(
                     output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
                     key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
-                    job=job, scene=scene, packed=False))
+                    job=job, scene=scene, packed=True))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name

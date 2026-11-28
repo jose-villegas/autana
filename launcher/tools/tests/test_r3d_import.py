@@ -410,6 +410,13 @@ class SceneTests(unittest.TestCase):
         self.rejects("tonemap_white is read by no placed mesh", self.two_imports, renderer("a.import.toml"), TONEMAP)
         self.rejects("camera region is read by no placed mesh", self.two_imports, renderer("a.import.toml") + camera())
 
+    def test_a_double_sided_material_reads_the_camera_region(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_import(directory, body='[materials]\ndouble_sided = ["m"]\n')
+            self.assertIsNotNone(load_scene(write_scene(directory, renderer() + camera())).region)
+            self.assertIsNone(load_scene(write_scene(directory, renderer() + camera(region=False))).region)
+        self.rejects("camera region is read by no placed mesh", self.plain_import, renderer() + camera())
+
     def test_visibility_reads_its_source(self):
         scene = load_scene(self.lit(REGION + PATH.replace("visibility = ", "#"), objects=camera()))
         region = scene.renderers[0].renderer.visibility

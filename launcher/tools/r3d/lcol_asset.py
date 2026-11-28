@@ -1,8 +1,8 @@
-"""LCOL v1 colour sets; layout constants belong to render/lcol_format.h."""
+"""LCOL v2 colour sets, each its front colours then its back ones; layout constants belong to render/lcol_format.h."""
 import pathlib
 from asset.asset_pack import NAME_BYTES, PackError
 from build.c_header import read_define
-from r3d.mesh_asset import read_mesh_header, checked_struct
+from r3d.mesh_asset import back_entries, read_mesh_header, checked_struct
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/render/lcol_format.h"
 TYPE = b"LCOL"
@@ -11,7 +11,7 @@ RGB888 = read_define(OWNER, "LCOL_ENCODING_RGB888")
 RGB565 = read_define(OWNER, "LCOL_ENCODING_RGB565")
 STRIDES = {RGB888: read_define(OWNER, "LCOL_RGB888_BYTES"), RGB565: read_define(OWNER, "LCOL_RGB565_BYTES")}
 NAME_SUFFIX = read_define(OWNER, "LCOL_NAME_SUFFIX")
-HEADER_FIELDS = (("VERSION", "H"), ("ENCODING", "H"), ("SET_COUNT", "I"), ("COUNT", "I"))
+HEADER_FIELDS = (("VERSION", "H"), ("ENCODING", "H"), ("SET_COUNT", "I"), ("COUNT", "I"), ("BACK_COUNT", "I"))
 HEADER = checked_struct(OWNER, "LCOL", HEADER_FIELDS)
 
 
@@ -26,31 +26,36 @@ def sibling_name(mesh, suffix):
 
 
 def decode(entry):
+    """(encoding, count, back_count, sets): each set the bytes of its `count` front colours, then its
+    `back_count` back ones."""
     if len(entry) < HEADER.size:
         raise ValueError("LCOL header is truncated")
-    version, encoding, sets, count = HEADER.unpack_from(entry)
+    version, encoding, sets, count, back_count = HEADER.unpack_from(entry)
     if version != VERSION or encoding not in STRIDES or not sets:
         raise ValueError("LCOL version, encoding or set count is invalid")
-    size = count * STRIDES[encoding]
+    size = (count + back_count) * STRIDES[encoding]
     if HEADER.size + sets * size != len(entry):
         raise ValueError("LCOL sets do not match the entry size")
-    return encoding, count, [entry[HEADER.size + k * size:HEADER.size + (k + 1) * size] for k in range(sets)]
+    return encoding, count, back_count, [entry[HEADER.size + k * size:HEADER.size + (k + 1) * size]
+                                         for k in range(sets)]
 
 
-def encode(encoding, count, sets):
-    entry = HEADER.pack(VERSION, encoding, len(sets), count) + b"".join(sets)
+def encode(encoding, count, back_count, sets):
+    entry = HEADER.pack(VERSION, encoding, len(sets), count, back_count) + b"".join(sets)
     decoded = decode(entry)
-    if list(sets) != decoded[2]:
-        raise ValueError("LCOL set size does not match count and encoding")
+    if list(sets) != decoded[3]:
+        raise ValueError("LCOL set size does not match the counts and encoding")
     return entry
 
 
 def validate_mesh(entry, mesh, colour_set):
-    encoding, count, sets = decode(entry)
+    encoding, count, back_count, sets = decode(entry)
     header = read_mesh_header(mesh)
     expected = header.vertices if encoding == RGB888 else header.triangles
     if colour_set >= len(sets) or count != expected or header.colors_at or header.face_at:
         raise ValueError("LCOL set, count or mesh colour ownership is invalid")
+    if back_count and back_count != back_entries(mesh, encoding == RGB888):
+        raise ValueError("LCOL back colours do not cover the mesh's double-sided clusters")
 
 
 def name_for_mesh(mesh):

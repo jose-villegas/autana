@@ -82,3 +82,12 @@ and the rules are in [Build-Variants.md](../tools/Build-Variants.md):
 | `-ffp-contract=off` | the host builds [Build-Variants.md](../tools/Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
 | libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |
+
+## C-runtime calls in hot code
+
+The [hot-call link gate](../tools/Build-Variants.md#hot-call-link-gate) requires
+a reason for C-runtime calls in hot functions.
+
+In hot functions, use [`bytes_read_u16` or `bytes_read_u32`](../../launcher/packages/collections/include/collections/bytes.h)
+for unaligned reads. The hot-call gate rejects the library call from
+`memcpy(&v, p, 2)` without a `Library call:` note.<sup>[[155]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>

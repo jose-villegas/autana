@@ -134,7 +134,7 @@ class BakeTests(unittest.TestCase):
         tri_m = np.repeat([0, 1], [len(leaf_v), len(ball_v)])
         src = SimpleNamespace(p=p, tri_v=tri_v, tri_t=None, uv=None, tri_m=tri_m, tri_o=tri_m.copy(),
                               names=['leaf', 'wall'], object_names=['tree', 'ball'], textures=[None, None],
-                              materials={}, colors=None)
+                              materials={}, colors=None, two_sided=False, far_skin=None)
         budget = len(tri_v) // 4
         steps = SimpleNamespace(dense_edge=100.0, props=set(), props_share=0, seal_seams=False, colour_deviation=1.0)
         settings = SimpleNamespace(seed=3, position_scale=None, alpha_keep=None, thin=None, cards=None, double_sided=set(),

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_bytes.h"
 #include "asset/asset_store.h"
 #include "core/tune.h"
 #include "gfx/gfx.h"
@@ -16,6 +17,7 @@
 #include "hash/crc32.h"
 #include "render/batch/r3d_batch.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
+#include "render/lcol_format.h"
 #include "render/record/frame_record_format.h"
 #include "render/skin/r3d_skinning.h"
 #include "scene/scene_asset.h"
@@ -540,6 +542,22 @@ build_mesh(stream_mesh_t* m) {
     return fitted == (row.fitted != 0) || refuse("dynamic build fit differs");
 }
 
+/* An LCOL set holds its back colours right after its front ones, so a
+ * recorded set's backs follow the front colours the record points at. */
+static bool
+set_backs(stream_mesh_t* m, const asset_entry_t* colours, const frame_record_mesh_t* row, size_t front) {
+    const uint32_t backs = asset_read_u32(colours->view.data + LCOL_AT_BACK_COUNT);
+    const size_t bytes = (size_t)backs * (row->faces != 0 ? LCOL_RGB565_BYTES : LCOL_RGB888_BYTES);
+    if (bytes > colours->view.size - row->colours.offset - front) {
+        return refuse("back colours past their entry at %u:%u", row->colours.pack, row->colours.entry);
+    }
+    const void* back = backs == 0 ? NULL : colours->view.data + row->colours.offset + front;
+    m->mesh.back_colors = row->faces != 0 ? NULL : back;
+    m->mesh.back_face_colors = row->faces != 0 ? back : NULL;
+    m->mesh.back_count = (int)backs;
+    return true;
+}
+
 static bool
 open_mesh(stream_mesh_t* m, const frame_record_mesh_t* row) {
     asset_entry_t entry;
@@ -557,6 +575,9 @@ open_mesh(stream_mesh_t* m, const frame_record_mesh_t* row) {
         const uint8_t* at = colours.view.data + row->colours.offset;
         m->mesh.colors = row->faces != 0 ? NULL : (const uint8_t (*)[3])at;
         m->mesh.face_colors = row->faces != 0 ? (const uint16_t*)(const void*)at : NULL;
+        if (colours.type == LCOL_ASSET && !set_backs(m, &colours, row, bytes)) {
+            return false;
+        }
     }
     if (row->kind == FRAME_RECORD_SKINNED && !pose_mesh(m)) {
         return false;

@@ -37,33 +37,3 @@ gfx_panel_send(int x0, int y0, int x1, int y1, const gfx_color_t* rgb565be) {
 #endif
     return err;
 }
-
-#ifndef ESP_PLATFORM
-/* Standalone render tools have no panel or capture sender. */
-__attribute__((weak)) bool console_panelcap_on;
-
-__attribute__((weak)) void
-console_panelcap_begin_active(void) {}
-
-__attribute__((weak)) void
-console_panelcap_commit_active(void) {}
-
-__attribute__((weak)) void
-console_panelcap_window(int x0, int y0, int x1, int y1, const gfx_color_t* pixels) {
-    (void)x0;
-    (void)y0;
-    (void)x1;
-    (void)y1;
-    (void)pixels;
-}
-
-__attribute__((weak)) int
-gfx_panel_host_draw(int x0, int y0, int x1, int y1, const gfx_color_t* rgb565be) {
-    (void)x0;
-    (void)y0;
-    (void)x1;
-    (void)y1;
-    (void)rgb565be;
-    return 0;
-}
-#endif
