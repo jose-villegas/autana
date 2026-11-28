@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from render_host_build import run
+from render_host_build import SCRIPT, run
 
 
 class BuiltRenderer(unittest.TestCase):
