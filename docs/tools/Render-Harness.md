@@ -53,6 +53,12 @@ model matrix, one hue per mesh. `--set boxview.copies=2` keeps only meshes drawn
 more than once; edges behind the drawn depth are left out, and
 `--set boxview.behind=1` dims them instead (2 draws them in full).
 
+`--view probes` draws the scene's [probe grid](../render/frame/Light-Probes.md)
+over the picture; `--set probeview.size=N` sets each sphere's radius in
+hundredths of the grid spacing. `--set skin.albedo=1` lights every skin as
+white, so its colour is the light alone, and `--set skin.direct=0` leaves out
+the realtime lights, so a skin takes only its ambient or probe light.
+
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
 `--set render.FIELD=value` sets a render setting instead, as a pack's

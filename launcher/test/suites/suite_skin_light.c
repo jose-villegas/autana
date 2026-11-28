@@ -4,14 +4,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core/tune.h"
 #include "math/linear/transformf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_skin_format.h"
+#include "render/settings/render_settings.h"
 #include "render/skin/r3d_skin_light_directions.h"
 #include "render/skin/r3d_skin_light_internal.h"
+#include "render/skin/r3d_skin_light_tune.h"
 #include "skin_light_reference.h"
 #include "suites.h"
 #include "unity.h"
+
+/* A radiance far past the encode table's last bin. */
+#define SKIN_LIGHT_FAR_OVER_RANGE 4096.0F
 
 enum { VERTICES = 4, CLUSTERS = 2, JOINTS = 4, SENTINEL = 19 };
 
@@ -133,7 +139,8 @@ test_transfer_error_against_float_bake(void) {
             }
         }
         TEST_ASSERT_EQUAL_UINT8(0, light_encode(0, transfer));
-        TEST_ASSERT_UINT8_WITHIN(1, skin_light_reference_encode(4096, whites[w]), light_encode(4096, transfer));
+        TEST_ASSERT_UINT8_WITHIN(1, skin_light_reference_encode(SKIN_LIGHT_FAR_OVER_RANGE, whites[w]),
+                                 light_encode(SKIN_LIGHT_FAR_OVER_RANGE, transfer));
     }
     free(transfer);
 }
@@ -774,8 +781,78 @@ test_sh_gradient_ignores_uniform_entity_scale(void) {
     free(fx);
 }
 
+static void
+test_white_albedo_matches_probe_irradiance(void) {
+    ambient_fixture_t* fx = fixture_ambient();
+    fixture_t* f = &fx->skin;
+    static const uint8_t colors[VERTICES][3] = {{32, 64, 128}, {19, 83, 47}, {211, 128, 91}, {173, 237, 64}};
+    f->bind.colors = colors;
+    fx->lights.white_albedo = true;
+    const sh1_rgb_t radiance = {.c = {{0.5F, 0.75F, 1.0F}, {0.1F, 0.2F, 0.3F}}};
+    const sh1_irradiance_t ambient = r3d_skin_light_ambient_sh(&radiance);
+    fx->lights.table_scale = r3d_skin_light_table_build(&fx->lights, &fx->table);
+    for (size_t k = 0; k < sizeof modes / sizeof modes[0]; k++) {
+        r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &fx->posed, f->normals, &fx->lights,
+                                  f->out, &ambient, modes[k].mode);
+        for (int v = 0; v < VERTICES; v++) {
+            const vec3f_t normal = skin_light_reference_normal(&f->skin, f->normals, v, modes[k].normalise);
+            const vec3f_t sum = sh1_irradiance_eval(&ambient, normal);
+            const uint8_t expected[] = {r3d_skin_light_encode(sum.x, &fx->transfer),
+                                        r3d_skin_light_encode(sum.y, &fx->transfer),
+                                        r3d_skin_light_encode(sum.z, &fx->transfer)};
+            TEST_ASSERT_EQUAL_MEMORY(expected, f->out[v], sizeof expected);
+        }
+    }
+    free(fx->block);
+    free(fx);
+}
+
+static void
+test_debug_defaults_preserve_source_bytes(void) {
+    ambient_fixture_t* fx = fixture_ambient();
+    r3d_skin_lights_t* lights = &fx->lights;
+    lights->count = 1;
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), "skin.albedo"));
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), "skin.direct"));
+    (void)r3d_skin_lights_tune(lights);
+    TEST_ASSERT_EQUAL_INT(1, lights->count);
+    TEST_ASSERT_FALSE(lights->white_albedo);
+    const vec3f_t sum = {0.2F, 0.4F, 0.6F};
+    const uint8_t albedo[] = {32, 128, 211};
+    const uint8_t expected[] = {light_encode(light_decode(albedo[0], lights->transfer) * sum.x, lights->transfer),
+                                light_encode(light_decode(albedo[1], lights->transfer) * sum.y, lights->transfer),
+                                light_encode(light_decode(albedo[2], lights->transfer) * sum.z, lights->transfer)};
+    uint8_t got[R3D_SKIN_LIGHT_CHANNELS];
+    light_shade(sum, lights, albedo, got);
+    TEST_ASSERT_EQUAL_MEMORY(expected, got, sizeof got);
+    free(fx->block);
+    free(fx);
+}
+
+static void
+test_direct_off_matches_no_sun(void) {
+    ambient_fixture_t* fx = fixture_ambient();
+    fx->lights.count = 1;
+    fx->lights.direction[0] = vec3f_unit_y();
+    fx->lights.color[0] = vec3f_one();
+    fx->lights.ambient = (vec3f_t){0.2F, 0.4F, 0.6F};
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "skin.direct", R3D_SKIN_TUNE_DIRECT_OFF));
+    (void)r3d_skin_lights_tune(&fx->lights);
+    TEST_ASSERT_EQUAL_INT(0, fx->lights.count);
+    const vec3f_t got = light_irradiance(vec3f_unit_y(), &fx->lights);
+    TEST_ASSERT_EQUAL_FLOAT(fx->lights.ambient.x, got.x);
+    TEST_ASSERT_EQUAL_FLOAT(fx->lights.ambient.y, got.y);
+    TEST_ASSERT_EQUAL_FLOAT(fx->lights.ambient.z, got.z);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), "skin.direct"));
+    free(fx->block);
+    free(fx);
+}
+
 void
 suite_skin_light(void) {
+    RUN_TEST(test_debug_defaults_preserve_source_bytes);
+    RUN_TEST(test_direct_off_matches_no_sun);
+    RUN_TEST(test_white_albedo_matches_probe_irradiance);
     RUN_TEST(test_sh_gradient_ignores_uniform_entity_scale);
     RUN_TEST(test_table_flat_ambient_is_quantized_with_direct_light);
     RUN_TEST(test_flat_ambient_kernels_match_flat_reference);

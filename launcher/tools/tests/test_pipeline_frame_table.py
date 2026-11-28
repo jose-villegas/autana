@@ -271,7 +271,7 @@ class PipelineFrameTableTests(unittest.TestCase):
 
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
-        self.assertEqual(names, ["depth", "tiles", "meshlets", "cull", "boxes", "overdraw", "copies", "triangles"])
+        self.assertEqual(names, ["depth", "tiles", "meshlets", "cull", "boxes", "probes", "overdraw", "copies", "triangles"])
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / "context.c"
             source.write_text('static const render_debug_view_t views[] = {\n'

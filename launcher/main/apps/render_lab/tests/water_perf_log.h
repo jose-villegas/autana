@@ -1,6 +1,6 @@
 /* The water perf suite's log lines, each WATER_PERF_PREFIX and a space
- * then a format below; tools/water_tables.py reads these formats, so a
- * field renamed here is renamed there. */
+ * then a format below, each starting config=; tools/water_tables.py reads
+ * these formats, so a field renamed here is renamed there. */
 #pragma once
 
 #define WATER_PERF_PREFIX      "water_perf:"

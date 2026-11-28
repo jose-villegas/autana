@@ -102,12 +102,14 @@ enum {
     MESH_HEADER = R3D_LIT_MESH_HEADER_BYTES,
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
-    RIG_ENTRIES = 10,
+    RIG_ENTRIES = 11,
     RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_GROUND_MM_S = 300,
-    RIG_TRAVEL = 4
+    RIG_TRAVEL = 4,
+    RIG_AXIS_X = 0, /* a clip's travel axis */
+    RIG_AXIS_Y = 1
 };
 
 static void
@@ -671,7 +673,7 @@ make_rig_skin(test_pack_t* pack, const char* id, int influences, int joints, int
 }
 
 static void
-make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t root, int travel) {
+make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t root, int axis, int travel) {
     enum {
         KEYS = 2,
         WIDTH = 3,
@@ -688,7 +690,8 @@ make_rig_clip(test_pack_t* pack, const char* id, const char* target, uint8_t roo
                                 KEYS,   ANIM_LINEAR};
     test_track_row(entry, 0, &track);
     static const float times[] = {0, 1};
-    const float values[] = {0, 0, 0, (float)travel, 0, 0};
+    float values[KEYS * WIDTH] = {0};
+    values[WIDTH + axis] = (float)travel;
     test_pack_put_floats(entry + TIMES, times, KEYS);
     test_pack_put_floats(entry + VALUES, values, KEYS * WIDTH);
 }
@@ -702,9 +705,10 @@ make_rig_entries(test_pack_t* pack, const skin_fixture_options_t* options) {
     make_rig_skin(pack, "rig.quad", R3D_SKIN_INFLUENCES_MIN, RIG_JOINTS, QUAD_VERTICES, options->mode);
     make_rig_skin(pack, "rig.shortj", R3D_SKIN_INFLUENCES_MIN, R3D_SKIN_INFLUENCES_MIN, RIG_VERTICES,
                   R3D_SKIN_LIGHT_DIRECT);
-    make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_TRAVEL);
-    make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, -RIG_TRAVEL);
-    make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.move", "root", ANIM_ROOT_SKELETON, RIG_AXIS_X, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.up", "root", ANIM_ROOT_SKELETON, RIG_AXIS_Y, RIG_TRAVEL);
+    make_rig_clip(pack, "rig.back", "root", ANIM_ROOT_SKELETON, RIG_AXIS_X, -RIG_TRAVEL);
+    make_rig_clip(pack, "property.move", "red", ANIM_ROOT_SCENE, RIG_AXIS_X, RIG_TRAVEL);
     make_quad_entry(test_pack_add(pack, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), 255, 0, 0, 2);
 }
 
@@ -1313,6 +1317,17 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_release(scene);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
+}
+
+/* The shell fails a suite that ends with a scene held (shell.c), by this id. */
+static void
+test_a_held_scene_is_named_until_it_is_released(void) {
+    fixture();
+    TEST_ASSERT_NULL(scene_held_id());
+    entity_t scene = load("test_pair");
+    TEST_ASSERT_EQUAL_STRING("test_pair", scene_held_id());
+    scene_release(scene);
+    TEST_ASSERT_NULL(scene_held_id());
 }
 
 static bool
@@ -3380,26 +3395,35 @@ put_at(entity_t entity, float x, float y) {
 /* How far up a mover goes, a unit a frame. */
 #define MOVER_STEPS 4
 
-/* Two scenes whose quads share rows, drawn through the first's camera; the
- * second is moved back so the two never tie in depth. One quad moves over
- * frames, and each frame is the whole draw's picture from fewer rows. */
-static void
-assert_partial_frames_of_a_mover_match_the_whole_draw(bool in_second_scene) {
-    fixture();
-    const entity_t first = show("test_pair");
-    const entity_t second = load("test_solo");
+/* The pair shown, and scene `id` loaded and moved back so the two never tie
+ * in depth: its quads share the pair's rows. Returns `id`'s root, the pair's in `pair`. */
+static entity_t
+behind_the_pair(const char* id, entity_t* pair) {
+    *pair = show("test_pair");
+    const entity_t second = load(id);
     transformf_t behind = transform_local(second);
     transformf_set_position(&behind, vec3f_add(behind.position, vec3f_unit_z()));
     transform_set_local(second, behind);
-    const entity_t mover = entity_find(in_second_scene ? second : first, name_hash(in_second_scene ? "blue" : "red"));
+    return second;
+}
+
+/* Each of the next frames of `dt_ms` redraws some rows but not all, and is the whole draw's picture. */
+static void
+assert_partial_frame_is_the_whole_draw(uint32_t dt_ms) {
+    (void)scene_compose(dt_ms, 0, &fx.target);
+    const int rows = rows_the_last_frame_drew();
+    TEST_ASSERT_GREATER_THAN_INT(0, rows);
+    TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
+    assert_the_picture_is_the_whole_draw();
+}
+
+/* From a settled picture, `mover` goes up a unit a frame, each frame partial and the whole draw's. */
+static void
+assert_partial_frames_of_a_mover_match_the_whole_draw(entity_t mover) {
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
         put_at(mover, 0.0F, (float)step);
-        frame_over_the_last();
-        const int rows = rows_the_last_frame_drew();
-        TEST_ASSERT_GREATER_THAN_INT(0, rows);
-        TEST_ASSERT_LESS_THAN_INT(SIZE, rows);
-        assert_the_picture_is_the_whole_draw();
+        assert_partial_frame_is_the_whole_draw(0);
     }
 }
 
@@ -3408,12 +3432,46 @@ assert_partial_frames_of_a_mover_match_the_whole_draw(bool in_second_scene) {
  * redrawn, and the picture is a whole draw's. */
 static void
 test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does(void) {
-    assert_partial_frames_of_a_mover_match_the_whole_draw(true);
+    fixture();
+    entity_t pair;
+    const entity_t second = behind_the_pair("test_solo", &pair);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(second, name_hash("blue")));
 }
 
 static void
 test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does(void) {
-    assert_partial_frames_of_a_mover_match_the_whole_draw(false);
+    fixture();
+    entity_t pair;
+    (void)behind_the_pair("test_solo", &pair);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(pair, name_hash("red")));
+}
+
+/* A held frame's step: the clip cut into one more step than the held frames, so
+ * each carries the pose a row or more on and the last ends inside the clip. */
+#define SKINNED_HELD_DT_MS ((uint32_t)RIG_DURATION_MS / (MOVER_STEPS + 1U))
+
+/* A skinned renderer of a second scene, held where it is, plays a clip whose
+ * root travels up over the still pair, so only its pose moves it across rows:
+ * each frame redraws its rows only and is the whole draw's picture. Settle
+ * off: its refined rows are meant to differ from a live draw. */
+static void
+test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
+    fixture();
+    /* Static: keeps the settings off the test's frame. */
+    static render_settings_t settings;
+    settings = RENDER_SETTINGS_DEFAULT;
+    settings.settle.frame_us = 0;
+    settings.anim.mid_every = settings.anim.far_every = RENDER_ANIM_EVERY_MIN; /* a pose every frame */
+    render_context_set_settings(render_context_main(), &settings);
+    entity_t pair;
+    const entity_t mover = entity_find(behind_the_pair("test_skin", &pair), name_hash("red"));
+    static const char* const clips[] = {"rig.up"};
+    TEST_ASSERT_TRUE(animator_set_clips(mover, "rig", clips, 1, NULL));
+    TEST_ASSERT_TRUE(animator_play(mover, 0, 0));
+    settle_the_picture();
+    for (int frame = 0; frame < MOVER_STEPS; frame++) {
+        assert_partial_frame_is_the_whole_draw(SKINNED_HELD_DT_MS);
+    }
 }
 
 /* Two crowds, the second drawn through the first's camera, settled, then
@@ -9125,6 +9183,7 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
 #endif
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
+    RUN_TEST(test_a_held_scene_is_named_until_it_is_released);
     RUN_TEST(test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender);
     RUN_TEST(test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing);
     RUN_TEST(test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first);
@@ -9180,6 +9239,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_renderer_swapped_for_its_twin_in_another_scene_redraws_the_frame);
     RUN_TEST(test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_does);
+    RUN_TEST(test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does);
     RUN_TEST(test_more_changed_renderers_than_the_cap_over_two_scenes_draws_every_row);
     RUN_TEST(test_as_many_changed_renderers_as_the_cap_over_two_scenes_redraws_only_their_rows);
     RUN_TEST(test_the_drawn_list_follows_the_scenes_that_join_and_leave);

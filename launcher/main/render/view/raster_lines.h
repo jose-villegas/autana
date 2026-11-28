@@ -29,6 +29,9 @@ typedef struct {
 void raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int width, int height,
                         unsigned behind_keep);
 
+/* Whether lens-space `point` is behind the composed picture at `at`. */
+bool raster_lines_hidden(const raster_lines_depth_t* depth, vec3f_t point, vec2f_t at);
+
 /* From `a` to `b` in `lens`'s space; `depth` NULL draws it all at full colour. */
 void raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, vec3f_t a, vec3f_t b,
                           gfx_color_t color);

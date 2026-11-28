@@ -87,6 +87,8 @@ static const char* dump_dir;
 /* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
 static const char* counts_path;
 static FILE* counts;
+static const char* pose_path;
+static FILE* poses;
 
 /* --path-hits PATH: after the last frame, every renderer path and how often
  * the run took it (render_counts.h). */
@@ -333,6 +335,7 @@ options(int argc, char** argv) {
         {"--counts", &counts_path},
         {"--path-hits", &path_hits_path},
         {"--transforms", &transforms_path},
+        {"--pose-json", &pose_path},
         {"--contact-shape", &shape},
         {"--contact-warp", &warp},
     };
@@ -388,9 +391,20 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    /* Last, so that no failure after it leaves the file open. */
-    return tune_options(option_count, option_args, "--live-tune")
-           && (counts_path == NULL || (counts = render_counts_open(counts_path, "render_lab_render_host")) != NULL);
+    if (!tune_options(option_count, option_args, "--live-tune")) {
+        return false;
+    }
+    if (pose_path != NULL && (poses = render_rows_open(pose_path, "[", "render_lab_render_host")) == NULL) {
+        return false;
+    }
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "render_lab_render_host")) == NULL) {
+        if (poses != NULL) {
+            (void)fclose(poses);
+            poses = NULL;
+        }
+        return false;
+    }
+    return true;
 }
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */
@@ -488,6 +502,10 @@ dump_transforms(int frame) {
 
 static void
 draw(const provider_frame_t* frame) {
+    /* The shell composed this picture before console commands can seek the next one. */
+    if (poses != NULL) {
+        render_pose_row(&poses, frame);
+    }
     ui_clear_band_overlay();
     /* The frame watch's frames past the image's hold the last pose. */
     if (perf_poses != NULL && frame->index < frame->count) {
