@@ -144,7 +144,7 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
 }
 
 static void
-hidden_result(void* state, int entry, int cluster, unsigned slice, r3d_hidden_outcome_t outcome) {
+hidden_result(void* state, int entry, int cluster, unsigned slice, raster_split_hidden_outcome_t outcome) {
     raster_cull_t* s = state;
     if (s->spectating || s->raster->finest_levels) {
         return;
@@ -596,10 +596,11 @@ static uint32_t
 fate_rgb(const raster_cull_t* s, int cluster) {
     const uint8_t a = s->hidden_outcome[0][cluster];
     const uint8_t b = s->hidden_outcome[1][cluster];
-    if (a == R3D_HIDDEN_BYPASSED || b == R3D_HIDDEN_BYPASSED) {
+    if (a == RASTER_SPLIT_HIDDEN_BYPASSED || b == RASTER_SPLIT_HIDDEN_BYPASSED) {
         return GATE_BYPASSED_RGB;
     }
-    if (a != R3D_HIDDEN_VISIBLE && b != R3D_HIDDEN_VISIBLE && (a == R3D_HIDDEN_SKIPPED || b == R3D_HIDDEN_SKIPPED)) {
+    if (a != RASTER_SPLIT_HIDDEN_VISIBLE && b != RASTER_SPLIT_HIDDEN_VISIBLE
+        && (a == RASTER_SPLIT_HIDDEN_SKIPPED || b == RASTER_SPLIT_HIDDEN_SKIPPED)) {
         return DEPTH_SKIPPED_RGB;
     }
     return FATE_RGB[s->fate[cluster]];

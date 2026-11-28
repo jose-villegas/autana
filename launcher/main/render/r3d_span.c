@@ -719,33 +719,34 @@ r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, recti_
     return low >= 0 && high <= max;
 }
 
-RENDER_IRAM_ATTR bool
-r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
-    for (int y = box.y; y < recti_bottom(box); y++) {
+/* Pass the box by address so inlining preserves the per-triangle Xtensa loop. */
+static inline __attribute__((always_inline)) bool
+scan_hidden(const r3d_span_target_t* target, int32_t bound, const recti_t* box, bool count, uint32_t* pixels_read) {
+    for (int y = box->y; y < recti_bottom(*box); y++) {
         const uint16_t* depth = gfx_target_depth(&target->rows, y);
-        for (int x = box.x, end = recti_right(box); x < end; x++) {
+        for (int x = box->x, end = recti_right(*box); x < end; x++) {
             if (depth[x] < bound) {
+                if (count) {
+                    *pixels_read = (uint32_t)((y - box->y) * box->w + (x - box->x) + 1);
+                }
                 return false;
             }
         }
+    }
+    if (count) {
+        *pixels_read = (uint32_t)(box->w * box->h);
     }
     return true;
 }
 
+RENDER_IRAM_ATTR bool
+r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
+    return scan_hidden(target, bound, &box, false, NULL);
+}
+
 bool
 r3d_span_hidden_counted(const r3d_span_target_t* target, int32_t bound, recti_t box, uint32_t* pixels_read) {
-    for (int row = 0; row < box.h; row++) {
-        const uint16_t* first = gfx_target_depth(&target->rows, box.y + row) + box.x;
-        const uint16_t* end = first + box.w;
-        for (const uint16_t* pixel = first; pixel < end; pixel++) {
-            if (*pixel < bound) {
-                *pixels_read = (uint32_t)(row * box.w + (pixel - first) + 1);
-                return false;
-            }
-        }
-    }
-    *pixels_read = (uint32_t)(box.w * box.h);
-    return true;
+    return scan_hidden(target, bound, &box, true, pixels_read);
 }
 
 static bool

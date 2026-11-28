@@ -28,9 +28,6 @@ typedef struct {
     int vertex_base, cluster_base;
     int writer_count;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    int drawn_entry;
-#endif
 } batch_item_t;
 
 /* Whether `mesh` fits a batch past `*vertices` and `*clusters`, within the
@@ -148,6 +145,10 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_hidden_slice_t hidden[2];
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    /* Keep observer entries outside the batch so the cull's lens offsets stay in reach. */
+    int drawn_entries[RASTER_BATCH_INSTANCES];
+#endif
     r3d_span_small_fill_t small_fill;
     bool skip_hidden; /* the view's */
     render_texture_settings_t texture;
@@ -307,8 +308,9 @@ draw_slice(void* ctx) {
     FRAME_LAP("r3d.draw.clear");
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
-    target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
-    r3d_span_set_texture(target, &((const draw_work_t*)b->draw)->texture);
+    const draw_work_t* work = b->draw;
+    target->skip_hidden = work->skip_hidden;
+    r3d_span_set_texture(target, &work->texture);
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -326,7 +328,7 @@ draw_slice(void* ctx) {
         target->writer_count = item->writer_count;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
         if (target->hidden != NULL) {
-            target->hidden->entry = item->drawn_entry;
+            target->hidden->entry = work->drawn_entries[k];
         }
 #endif
         if (item->plain_count > 0) {
@@ -936,7 +938,7 @@ batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instan
     batch_item_t* item = &batch->items[batch->count];
     item->writer_count = instance_writers(raster, first, item->writers);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    item->drawn_entry = first;
+    work->drawn_entries[batch->count] = first;
 #endif
     if (culled[0] > 0) {
         batch->count++;
@@ -1019,7 +1021,7 @@ census(const raster_t* raster, const render_view_t* view, raster_stats_t* stats,
 
 static __attribute__((noinline)) void
 begin_hidden_frame(const raster_t* raster, draw_work_t* work) {
-    const r3d_hidden_rates_t* rates = raster->split != NULL ? &raster->split->hidden : NULL;
+    const raster_split_hidden_rates_t* rates = raster->split != NULL ? &raster->split->hidden : NULL;
     bool collect = rates != NULL;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const raster_attachment_t* observer = NULL;

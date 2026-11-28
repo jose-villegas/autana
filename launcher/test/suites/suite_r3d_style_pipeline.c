@@ -518,14 +518,14 @@ test_hidden_gate_weighs_saving_against_the_box_scan(void) {
                                       .y1 = GATE_LARGE_BOX_SIDE * R3D_SUBPIXEL};
     const recti_t small = cluster_window_box(&near, &target);
     const recti_t large = cluster_window_box(&wide, &target);
-    const r3d_hidden_rates_t cold = {0};
-    const r3d_hidden_rates_t profitable = {.hidden_rate = 1.0F, .scan_rate = 1.0F, .valid = true};
-    const r3d_hidden_rates_t unprofitable = {.scan_rate = 1.0F, .valid = true};
+    const raster_split_hidden_rates_t cold = {0};
+    const raster_split_hidden_rates_t profitable = {.hidden_rate = 1.0F, .scan_rate = 1.0F, .valid = true};
+    const raster_split_hidden_rates_t unprofitable = {.scan_rate = 1.0F, .valid = true};
     TEST_ASSERT_TRUE(hidden_test_pays(NULL, large, 1, 1));
     TEST_ASSERT_TRUE(hidden_test_pays(&cold, large, 1, 1));
     TEST_ASSERT_TRUE(hidden_test_pays(&profitable, small, 1, 1));
     TEST_ASSERT_FALSE(hidden_test_pays(&profitable, large, 1, 1));
-    for (unsigned i = 0; i < R3D_HIDDEN_PROBE_EVERY; i++) {
+    for (unsigned i = 0; i < RASTER_SPLIT_HIDDEN_PROBE_EVERY; i++) {
         TEST_ASSERT_EQUAL(i == unprofitable.probe_phase, hidden_test_pays(&unprofitable, small, 1, i));
     }
 }
@@ -533,9 +533,9 @@ test_hidden_gate_weighs_saving_against_the_box_scan(void) {
 static void
 test_hidden_rates_fold_and_forget(void) {
     raster_split_t split = {0};
-    const r3d_hidden_tally_t top = {.tested = 3, .skipped = 2, .box_pixels = 100, .pixels_read = 80};
-    const r3d_hidden_tally_t bottom = {.tested = 5, .skipped = 1, .box_pixels = 300, .pixels_read = 20};
-    const r3d_hidden_tally_t empty = {0};
+    const raster_split_hidden_tally_t top = {.tested = 3, .skipped = 2, .box_pixels = 100, .pixels_read = 80};
+    const raster_split_hidden_tally_t bottom = {.tested = 5, .skipped = 1, .box_pixels = 300, .pixels_read = 20};
+    const raster_split_hidden_tally_t empty = {0};
     raster_split_fold_hidden(&split, &top, &bottom);
     TEST_ASSERT_TRUE(split.hidden.valid);
     TEST_ASSERT_EQUAL_FLOAT(0.375F, split.hidden.hidden_rate);
@@ -561,8 +561,8 @@ scene_draws_alike_with_different_hidden_tests(bool writes, bool gate) {
     const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
     r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
     r3d_span_writer_t writers[2];
-    const r3d_hidden_rates_t unprofitable = {
-        .scan_rate = 1.0F, .valid = true, .probe_phase = R3D_HIDDEN_PROBE_EVERY - 1U};
+    const raster_split_hidden_rates_t unprofitable = {
+        .scan_rate = 1.0F, .valid = true, .probe_phase = RASTER_SPLIT_HIDDEN_PROBE_EVERY - 1U};
     r3d_hidden_slice_t ungated = {0};
     r3d_hidden_slice_t gated = {.rates = &unprofitable};
     for (int run = 0; run < 2; run++) {

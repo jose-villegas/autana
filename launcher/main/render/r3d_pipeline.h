@@ -128,12 +128,12 @@ typedef struct {
 } r3d_pipeline_rows_t;
 
 typedef struct r3d_hidden_slice {
-    const r3d_hidden_rates_t* rates;
+    const raster_split_hidden_rates_t* rates;
     const r3d_pipeline_rows_t* rows;
     const r3d_lit_cluster_t* clusters;
-    r3d_hidden_tally_t tally;
+    raster_split_hidden_tally_t tally;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    r3d_hidden_report_t report;
+    raster_split_hidden_report_t report;
     void* report_state;
     int entry;
     unsigned slice;

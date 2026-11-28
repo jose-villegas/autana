@@ -801,8 +801,8 @@ cluster_window_box(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* tar
 }
 
 static bool
-hidden_test_pays(const r3d_hidden_rates_t* rates, recti_t box, unsigned triangles, unsigned candidate) {
-    if (rates == NULL || !rates->valid || candidate % R3D_HIDDEN_PROBE_EVERY == rates->probe_phase) {
+hidden_test_pays(const raster_split_hidden_rates_t* rates, recti_t box, unsigned triangles, unsigned candidate) {
+    if (rates == NULL || !rates->valid || candidate % RASTER_SPLIT_HIDDEN_PROBE_EVERY == rates->probe_phase) {
         return true;
     }
     const float saving = rates->hidden_rate * (float)(HIDDEN_CLUSTER_SETUP_NS + triangles * HIDDEN_TRIANGLE_SETUP_NS);
@@ -829,7 +829,7 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
     }
     const int cluster = slice->rows != NULL ? (int)(r - slice->rows) : 0;
     const unsigned triangles = slice->clusters != NULL ? slice->clusters[cluster].triangle_count : 0U;
-    r3d_hidden_tally_t* tally = &slice->tally;
+    raster_split_hidden_tally_t* tally = &slice->tally;
     const bool test = hidden_test_pays(slice->rates, box, triangles, tally->candidates++);
     bool skipped = false;
     if (test) {
@@ -837,13 +837,17 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
         skipped = r3d_span_hidden_counted(target, bound, box, &pixels_read);
         tally->tested++;
         tally->skipped += skipped;
-        tally->box_pixels += hidden_box_pixels(box);
-        tally->pixels_read += pixels_read;
+        const uint32_t box_pixels = hidden_box_pixels(box);
+        /* Drop the whole sample if the area total would overflow. Reads are bounded by the area. */
+        if (box_pixels <= UINT32_MAX - tally->box_pixels) {
+            tally->box_pixels += box_pixels;
+            tally->pixels_read += pixels_read;
+        }
     }
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (slice->report != NULL) {
-        const r3d_hidden_outcome_t outcome =
-            test ? (skipped ? R3D_HIDDEN_SKIPPED : R3D_HIDDEN_VISIBLE) : R3D_HIDDEN_BYPASSED;
+        const raster_split_hidden_outcome_t outcome =
+            test ? (skipped ? RASTER_SPLIT_HIDDEN_SKIPPED : RASTER_SPLIT_HIDDEN_VISIBLE) : RASTER_SPLIT_HIDDEN_BYPASSED;
         slice->report(slice->report_state, slice->entry, cluster, slice->slice, outcome);
     }
 #endif
