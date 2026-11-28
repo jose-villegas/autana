@@ -447,6 +447,35 @@ r3d_lit_mesh_colour_stride(const r3d_lit_mesh_t* mesh) {
     return (uint32_t)((mesh->colors != NULL ? mesh->vertex_count : mesh->triangle_count) + mesh->back_count);
 }
 
+/* Where one colour set lies in an LCOL asset: front colours, then back ones. */
+typedef struct {
+    bool vertex;
+    uint32_t count;
+    uint32_t back_count;
+    uint32_t stride;
+    uint64_t set_bytes;
+} lcol_layout_t;
+
+static asset_status_t
+lcol_layout(const asset_view_t* asset, uint16_t set, const r3d_lit_mesh_t* mesh, lcol_layout_t* layout) {
+    const uint16_t encoding = asset_read_u16(asset->data + LCOL_AT_ENCODING);
+    const uint32_t sets = asset_read_u32(asset->data + LCOL_AT_SET_COUNT);
+    if (encoding != LCOL_ENCODING_RGB888 && encoding != LCOL_ENCODING_RGB565) {
+        return ASSET_ERR_FORMAT;
+    }
+    layout->vertex = encoding == LCOL_ENCODING_RGB888;
+    layout->count = asset_read_u32(asset->data + LCOL_AT_COUNT);
+    layout->back_count = asset_read_u32(asset->data + LCOL_AT_BACK_COUNT);
+    layout->stride = layout->vertex ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
+    const uint32_t expected = (uint32_t)(layout->vertex ? mesh->vertex_count : mesh->triangle_count);
+    if (sets == 0 || set >= sets || layout->count != expected
+        || (layout->back_count != 0 && (int64_t)layout->back_count != back_entries(mesh, layout->vertex))) {
+        return ASSET_ERR_FORMAT;
+    }
+    layout->set_bytes = (uint64_t)(layout->count + layout->back_count) * layout->stride;
+    return LCOL_HEADER_SIZE + (layout->set_bytes * sets) == asset->size ? ASSET_OK : ASSET_ERR_BOUNDS;
+}
+
 static asset_status_t
 open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, const r3d_lit_mesh_t* mesh,
              r3d_lit_mesh_t* out) {
@@ -455,40 +484,23 @@ open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, const 
     if (status == ASSET_OK) {
         status = asset_entry_validate(view, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
     }
-    if (status != ASSET_OK) {
+    lcol_layout_t layout;
+    if (status == ASSET_OK) {
+        status = lcol_layout(&view, set, mesh, &layout);
+    }
+    if (status != ASSET_OK || out == NULL) {
         return status;
     }
-    const asset_view_t* asset = &view;
-    const uint16_t encoding = asset_read_u16(asset->data + LCOL_AT_ENCODING);
-    const uint32_t sets = asset_read_u32(asset->data + LCOL_AT_SET_COUNT);
-    const uint32_t count = asset_read_u32(asset->data + LCOL_AT_COUNT);
-    const uint32_t back_count = asset_read_u32(asset->data + LCOL_AT_BACK_COUNT);
-    if (encoding != LCOL_ENCODING_RGB888 && encoding != LCOL_ENCODING_RGB565) {
+    if (mesh->colors != NULL || mesh->face_colors != NULL) {
         return ASSET_ERR_FORMAT;
     }
-    const bool vertex = encoding == LCOL_ENCODING_RGB888;
-    const uint32_t expected = (uint32_t)(vertex ? mesh->vertex_count : mesh->triangle_count);
-    const uint32_t stride = vertex ? LCOL_RGB888_BYTES : LCOL_RGB565_BYTES;
-    if (sets == 0 || set >= sets || count != expected
-        || (out != NULL && (mesh->colors != NULL || mesh->face_colors != NULL))
-        || (back_count != 0 && (int64_t)back_count != back_entries(mesh, vertex))) {
-        return ASSET_ERR_FORMAT;
-    }
-    /* Each set is its front colours, then its back ones. */
-    const uint64_t bytes = (uint64_t)(count + back_count) * stride;
-    if (LCOL_HEADER_SIZE + (bytes * sets) != asset->size) {
-        return ASSET_ERR_BOUNDS;
-    }
-    if (out == NULL) {
-        return ASSET_OK;
-    }
-    const uint8_t* colors = asset->data + LCOL_HEADER_SIZE + (bytes * set);
-    const void* back = back_count == 0 ? NULL : colors + ((size_t)count * stride);
-    out->colors = vertex ? (const void*)colors : NULL;
-    out->face_colors = vertex ? NULL : (const void*)colors;
-    out->back_colors = vertex ? back : NULL;
-    out->back_face_colors = vertex ? NULL : back;
-    out->back_count = (int)back_count;
+    const uint8_t* colors = view.data + LCOL_HEADER_SIZE + (layout.set_bytes * set);
+    const void* back = layout.back_count == 0 ? NULL : colors + ((size_t)layout.count * layout.stride);
+    out->colors = layout.vertex ? (const void*)colors : NULL;
+    out->face_colors = layout.vertex ? NULL : (const void*)colors;
+    out->back_colors = layout.vertex ? back : NULL;
+    out->back_face_colors = layout.vertex ? NULL : back;
+    out->back_count = (int)layout.back_count;
     return ASSET_OK;
 }
 
