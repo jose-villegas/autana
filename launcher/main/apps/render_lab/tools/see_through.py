@@ -10,9 +10,8 @@ import numpy as np
 from scipy import ndimage
 
 from bake import bake
-from r3d.appearance_simplify import start_mesh
-from r3d.fit.copies import joined, placed_copies
-from r3d.import_settings import flight_camera, lfs_pointer_oid, load_scene, source_files
+from r3d.fit.copies import drawn_mesh
+from r3d.import_settings import flight_camera, load_scene
 from r3d.light import drop_masked
 from r3d.mesh_source import load_source
 from r3d.objects.instances import place
@@ -56,8 +55,7 @@ def kept_source(scene, job):
 def drawn_bake(scene, job):
     """The bundle the scene draws for the renderer: (points, triangles, double-sided flags) placed in the scene."""
     bundle = bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels" if job.renderer.fit else "mesh"))
-    rest = start_mesh(bundle)
-    mesh = joined(rest, placed_copies(bundle, rest.flat))
+    mesh = drawn_mesh(bundle)
     return placed(mesh.points[mesh.vertex_point], scene, job), np.asarray(mesh.tris), np.asarray(mesh.double, bool)
 
 
@@ -108,4 +106,5 @@ def measure_see_through(scene):
 
 def see_through_ceiling(key):
     """The total pixel ceiling of a scene, including its margin."""
-    return round(MOST_SEE_THROUGH[key] * (1 + PEG_MARGIN))
+    measured = MOST_SEE_THROUGH.get(key)
+    return None if measured is None else round(measured * (1 + PEG_MARGIN))

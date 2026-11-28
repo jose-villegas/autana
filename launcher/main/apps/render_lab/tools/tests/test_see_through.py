@@ -27,7 +27,7 @@ sys.path.insert(0, str(LAUNCHER / "tools"))
 try:
     import numpy as np
     from r3d.import_settings import lfs_pointer_oid, source_files
-    from see_through import (BEHIND, EVERY_MS, MOST_SEE_THROUGH, Tracer, baked_scenes, measure_see_through,
+    from see_through import (BEHIND, EVERY_MS, MOST_SEE_THROUGH, PEG_MARGIN, Tracer, baked_scenes, measure_see_through,
                              merged, see_through_ceiling)
     from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
 except ImportError:  # pragma: no cover - the tool tests' environment has them
@@ -44,6 +44,15 @@ def with_hole(half, hole, z):
     """A square wall of half-width `half` at depth z, facing +z, with a square hole of half-width `hole`."""
     return merged([wall(-half, half, hole, half, z), wall(-half, half, -half, -hole, z),
                    wall(-half, -hole, -hole, hole, z), wall(hole, half, -hole, hole, z)])
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SeeThroughCeiling(unittest.TestCase):
+    def test_ceiling_is_the_measured_total_plus_the_rounded_peg_margin(self):
+        for key, measured in MOST_SEE_THROUGH.items():
+            with self.subTest(scene=key):
+                self.assertEqual(see_through_ceiling(key), round(measured * (1 + PEG_MARGIN)))
+        self.assertIsNone(see_through_ceiling("unknown"))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

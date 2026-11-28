@@ -169,6 +169,14 @@ def nearest_triangles(points, search):
     return tuple(np.concatenate(part) for part in zip(*parts))
 
 
+def directed_distance(points, search, percentile=None):
+    """Maximum or percentile distance of points to the nearest triangles of search."""
+    _, _, distances = nearest_triangles(points, search)
+    if percentile is None or not len(distances):
+        return float(distances.max(initial=0.0))
+    return float(np.percentile(distances, percentile))
+
+
 def nearest_chunk(points, search):
     corners = search.corners
     tri, bary, best = np.zeros(len(points), dtype=int), np.zeros((len(points), 3)), np.full(len(points), np.inf)

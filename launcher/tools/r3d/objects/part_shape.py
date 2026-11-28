@@ -10,8 +10,9 @@ from types import SimpleNamespace
 import numpy as np
 from PIL import Image, ImageDraw
 
-from r3d.geometry import bounds_diagonal, grouped_indices, nearest_triangles, triangle_areas, triangle_search
+from r3d.geometry import bounds_diagonal, grouped_indices, directed_distance, triangle_areas, triangle_search
 from r3d.objects.object_error import main_materials, nearest_source, part_labels, part_names
+from r3d.objects.objects_report import principal_view
 from r3d.surface_samples import area_samples
 
 SAMPLE_COUNT = 256
@@ -28,8 +29,7 @@ def front_iou(source, drawn):
         return 0.0
     vertices = np.unique(source.reshape(-1, 3), axis=0)
     centre = vertices.mean(axis=0)
-    _, _, axes = np.linalg.svd(vertices - centre, full_matrices=False)
-    plane = (axes if len(axes) == 3 else np.eye(3))[:2].T
+    plane = principal_view(vertices, np.eye(3))[:, :2]
     span = max(np.abs((vertices - centre) @ plane).max(), MIN_EXTENT) * MASK_MARGIN
     masks = []
     for corners in (source, drawn):
@@ -53,8 +53,7 @@ def directed_p99(corners, target, rng):
     if triangle_areas(points, triangles).any():
         samples, _ = area_samples(SimpleNamespace(p=points, tri_v=triangles), np.arange(len(triangles)),
                                   SAMPLE_COUNT, rng)
-    _, _, distances = nearest_triangles(samples, target)
-    return float(np.percentile(distances, HAUSDORFF_PERCENTILE))
+    return directed_distance(samples, target, percentile=HAUSDORFF_PERCENTILE)
 
 
 def shape_measure(source, drawn, source_search=None, drawn_search=None, rng=None):

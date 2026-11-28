@@ -30,21 +30,15 @@ from device_lock import board_label
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, ERROR_LINE_RE, RESULT_RE, SELFTEST_COMPLETE_RE,
                             crash_signs, results, suite_failure_signs)  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
+from perf.perf_targets import parse_perf_targets, parse_unpegged_targets  # noqa: E402, F401
+
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
 # selected=/unmatched=, and echoes a filtered request whole as the name
 # ("name=sand fire found=0"), so the name runs to the first " found=".
 SUITE_COMPLETE_RE = re.compile(r"RUNSUITE_COMPLETE name=(?P<name>.+?) found=(?P<found>\d)"
                                r"(?: selected=(?P<selected>\d+) unmatched=(?P<unmatched>\d+))?")
-# Searched, not anchored: a real line carries the ESP-IDF log prefix
-# ("I (32139) device_tests: PERF TARGET full-size step: ..."), and a target's
-# name contains spaces.
-PERF_TARGET_RE = re.compile(
-    r"PERF TARGET (?!SUMMARY:)(?P<name>.+?): measured (?P<measured>\d+) us, "
-    r"goal (?P<goal>\d+) us, distance (?P<distance>[+-]?\d+(?:\.\d+)?%)")
-PERF_SUMMARY_RE = re.compile(r"PERF TARGET SUMMARY:\s*(?P<unmet>\d+)\s*unmet")
-# A target whose goal is still zero (perf_goal in launcher/test/perf_budget.h).
-PERF_UNPEGGED_RE = re.compile(r"PERF TARGET (?P<name>.+?): measured (?P<measured>\d+) us, goal not yet pegged")
 # A measurement a perf test logs before its own result line, e.g.
 # "I (32138) device_tests: sand_step on 184x224 with 10304 grains: 7159 us".
 # The first number followed by "us" is the measurement: sizes and counts
@@ -152,25 +146,6 @@ def parse_suite_results(text):
     parsed = results(text)
     failures = [(r["name"], r["message"] or "") for r in parsed if r["status"] == "FAIL"]
     return sum(r["status"] == "PASS" for r in parsed), len(failures), failures
-
-def parse_perf_targets(text):
-    targets = []
-    summary_unmet = None
-    for line in text.splitlines():
-        m = PERF_SUMMARY_RE.search(line)
-        if m:
-            summary_unmet = int(m.group("unmet"))
-            continue
-        m = PERF_TARGET_RE.search(line)
-        if m:
-            targets.append(m.groupdict())
-    return targets, summary_unmet
-
-
-def parse_unpegged_targets(text):
-    """Targets measured with no goal yet, as {name, measured}."""
-    return [m.groupdict() for m in PERF_UNPEGGED_RE.finditer(text)]
-
 
 def parse_timed_results(text):
     """test name -> (status, measurement in us or None, failure message).

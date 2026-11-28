@@ -102,6 +102,14 @@ def joined(rest, copies):
                          vertex_point=np.concatenate([rest.vertex_point, copies.vertex_point + len(rest.points)]))
 
 
+def drawn_mesh(bundle):
+    """The bundle's finest rest mesh and all its drawn copies in object space."""
+    from r3d.appearance_simplify import start_mesh
+
+    rest = start_mesh(bundle)
+    return joined(rest, placed_copies(bundle, rest.flat))
+
+
 def hidden_copy_pixels(source, carved, meshes, poses_path, device="cuda"):
     """For each mesh of `meshes`, per pose of `poses_path`: the fraction of the frame where the source shows
     a carved triangle (`carved`, one flag per source triangle) and the mesh stands in front of it."""

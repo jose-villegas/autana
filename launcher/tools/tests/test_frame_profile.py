@@ -8,7 +8,8 @@ sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf"),
                 str(ROOT / "scripts/device")]
 from layout_measure import PROFILE_RE, parse_timings
 from build.c_header import read_define
-from device_report import DEVICE_TIMING_RE, PERF_TARGET_RE
+from device_report import DEVICE_TIMING_RE
+from perf.perf_targets import PERF_TARGET_RE
 
 
 class FrameProfileTests(unittest.TestCase):

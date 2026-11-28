@@ -1,15 +1,13 @@
 """Score the fit on its held-out reference sets with its own rasterizer."""
 import re
-from types import SimpleNamespace
 
 from r3d import appearance_simplify as appearance
 from r3d.fitted_variant import BOARD_SCALE
-from r3d.mesh_source import camera_path_poses
 from r3d.reference_render import render_sets
-from r3d.reference_set import (HELD_OUT, PROBE_HELD_OUT, poses_text, reference_inputs, split_poses,
-                               unpack_references)
+from r3d.reference_set import HELD_OUT, PROBE_HELD_OUT, reference_inputs, unpack_references
 
-SCORE = re.compile(r"(?P<mean>[\d.]+) over (?P<views>\d+) views$")
+# Parses appearance.held_out_line pending a separate held_out_mean at the next fit re-key.
+SCORE = re.compile(r"^held-out dE76 \(fit rasteriser\): (?P<mean>\d+\.\d+) over (?P<views>\d+) views$")
 SET_NAMES = {HELD_OUT: "path", PROBE_HELD_OUT: "probe"}
 RGB_CHANNELS = 3
 RGB8_MAX = 255
@@ -27,37 +25,25 @@ def fit_rasterizer_reason():
     return None
 
 
-def prepare_path_reference(fit, inputs, cache, work):
-    """Trace the held-out flight poses when the fit archive carries no images for them."""
-    from bake import produce
-
-    spacing = SimpleNamespace(**inputs.poses)
-    view = SimpleNamespace(size=inputs.size, every_ms=None)
-    width, height, lens, near, poses = camera_path_poses(inputs.scene(), view, spacing.train_every_ms,
-                                                        either_way_up=False)
-    _, held_out = split_poses(spacing, poses)
-    poses_file, reference = (work / filename for filename in HELD_OUT)
-    poses_file.write_text(poses_text(width, height, lens, near, held_out), encoding="utf-8")
-    store = produce.PoseStore(cache, fit.stages["reference_pose"])
-    render_sets(inputs, [(poses_file, reference)], store=store)
-
-
 def held_out_sets(fit, cache, work):
     """The same held-out pose sets the fit stage passes to the rasterizer."""
     from bake import bake, produce
 
     inputs = reference_inputs(fit.job, fit.scene)
     sets = inputs.sets().held_out
+    if not sets:
+        return []
     cached = produce.reference_folder(cache, fit.stages["reference"])
     if (cached / produce.DONE).is_file():
         produce.read_references(cached)
         work = cached
     else:
         work.mkdir(parents=True, exist_ok=True)
-        if PROBE_HELD_OUT in sets:
-            unpack_references(bake.fetch(fit.reference, cache).read_bytes(), work)
-        if HELD_OUT in sets and not appearance.pictured(work / HELD_OUT[1]):
-            prepare_path_reference(fit, inputs, cache, work)
+        unpack_references(bake.fetch(fit.reference, cache).read_bytes(), work)
+        missing = [(work / poses, work / reference) for poses, reference in sets
+                   if not appearance.pictured(work / reference)]
+        if missing:
+            render_sets(inputs, missing, store=produce.PoseStore(cache, fit.stages["reference_pose"]))
     return [(SET_NAMES[pair], work / pair[0], work / pair[1]) for pair in sets]
 
 

@@ -10,12 +10,28 @@ python launcher/tools/render/scorecard/scorecard.py compare \
 
 Both refs must contain the scorecard. The command fetches locked bakes in temporary detached worktrees and saves each revision's JSON and pose images next to the Markdown report.
 
+```mermaid
+sequenceDiagram
+    participant C as compare
+    participant W as Worktrees
+    participant B as bake.py fetch
+    participant M as measure
+    participant T as table
+    C->>W: Check out parent and tip
+    loop Each revision tree
+        C->>B: Fetch locked bakes
+        C->>M: Measure with this tree
+        M-->>C: Revision JSON and pose images
+    end
+    C->>T: Join both revisions
+```
+
 Captures are optional and repeatable. Supply A308 logs from the fitted playback suite and name each with its job ID.
 
 | Row | Measurement owner |
 |---|---|
-| A308 mean and p95 | `perf/frame_profile.py` reads the playback profiles. The fitted playback suite gives the mean goal and p95 ceiling for each quarter. |
-| First-frame heap | The playback suite samples app heap free bytes and largest block after its warm-up draw. The parser shows **not logged** for a capture without a reading. |
+| A308 mean and p95 | `perf/frame_profile.py` reads the playback profiles. Each capture supplies its logged mean goal and p95 ceiling by row and quarter. |
+| App heap after the first frame | The playback suite samples app heap free bytes and largest block after its warm-up draw. The parser shows **not logged** for a capture without a reading. |
 | See-through pixels | `see_through.py` sums pixels where the source blocks a view that the baked mesh opens, along the camera path. |
 | Sky holed frames | `sky_through_walls.py` counts frames with enclosed sky absent from the source. Bistro has multiple source meshes and the sky measure traces one. |
 | Held-out mean dE76 | `r3d/appearance_simplify.py` scores the fit's held-out views with its CUDA rasterizer. The cell names the sets and view count, or why the rasterizer is unavailable. |
@@ -39,7 +55,7 @@ python launcher/tools/render/scorecard/scorecard.py table \
   --parent /path/to/parent.json --tip /path/to/tip.json --out /path/to/report
 ```
 
-The sheets use evenly spaced flight poses drawn at the quarter-resolution landscape panel size. Nearest-neighbour enlargement preserves the render pixels.
+The sheets use evenly spaced flight poses drawn at the landscape panel size at half resolution. Nearest-neighbour enlargement preserves the render pixels.
 
 Pass `--overlay MODULE:FUNCTION` to add a tinted tip column. The callable receives the tip scene path, tip revision tree, pose rows and `(width, height)`.
 

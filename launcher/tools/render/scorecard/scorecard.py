@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 
-from captures import labeled_capture, scene_captures, suite_rows
+from captures import labeled_capture, scene_captures
 from report import overlay_callable, write_report
 
 SCRIPT = pathlib.Path(__file__).resolve()
@@ -70,12 +70,11 @@ def render_poses(scene, output):
 def measure_scene(key, capture, output):
     sys.path.insert(0, str(TOOLS.parent / "main/apps/render_lab/tools"))
     from bake import bake
-    from r3d.appearance_simplify import start_mesh
     from r3d.build_pack import pack_bytes
-    from r3d.fit.copies import joined, placed_copies
+    from r3d.fit.copies import drawn_mesh
     from r3d.import_settings import load_scene
     from r3d.mesh_source import load_source
-    from r3d.objects.held_out_reference import measure_held_out
+    from held_out_reference import measure_held_out
     from r3d.objects.part_shape import measure_parts
     from see_through import measure_see_through, see_through_ceiling
     from sky_through_walls import MOST_HOLED_FRAMES, SkyUnavailable, measure_sky
@@ -84,8 +83,7 @@ def measure_scene(key, capture, output):
     job, = (job for job in scene.renderers if job.renderer.fit)
     folder = output / key
     folder.mkdir(parents=True, exist_ok=True)
-    ceilings = suite_rows(key)
-    captures = scene_captures(capture, ceilings, key, job.renderer.variant.name)
+    captures = scene_captures(capture, key)
     print(f"{key}: pack and see-through", flush=True)
     packs = pack_bytes([scene.path])
     pack_size = len(packs[key])
@@ -98,19 +96,17 @@ def measure_scene(key, capture, output):
         sky = dict(holed=len(holed), frames=frames, ceiling=MOST_HOLED_FRAMES.get(key))
     except SkyUnavailable as error:
         sky = dict(reason=str(error))
-    print(f"{key}: held-out probe score", flush=True)
+    print(f"{key}: held-out score", flush=True)
     fit = bake.locked_fit(scene.path, job.object.name)
     cache = bake.default_cache()
-    bundle = bake.fetch(fit, cache)
-    rest = start_mesh(bundle)
-    drawn = joined(rest, placed_copies(bundle, rest.flat))
     with tempfile.TemporaryDirectory(dir=folder) as work:
-        held_out = measure_held_out(fit, cache, pathlib.Path(work), drawn)
+        held_out = measure_held_out(fit, cache, pathlib.Path(work), drawn_mesh(bake.fetch(fit, cache)))
     print(f"{key}: part shapes and comparison poses", flush=True)
+    drawn = drawn_mesh(bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels"), cache))
     parts = measure_parts(load_source(job.settings, texture_dtype="float32"),
                           drawn.points[drawn.vertex_point], drawn.tris)
     images, poses, size = render_poses(scene, folder)
-    return dict(path=scene.path.relative_to(REPO).as_posix(), ceilings=ceilings, captures=captures,
+    return dict(path=scene.path.relative_to(REPO).as_posix(), captures=captures,
                 pack_bytes=pack_size, see_through=see_through, sky=sky, held_out=held_out, parts=parts,
                 images=[p.relative_to(output.parent).as_posix() for p in images], poses=poses, size=size)
 
@@ -134,7 +130,9 @@ def measure(out, specs, scenes):
 def table(parent, tip, out, overlay=None, tip_tree=None):
     paths = (parent.resolve(), tip.resolve())
     revisions = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
-    if overlay and git(tip_tree, "rev-parse", "HEAD") != revisions[1]["revision"]:
+    if overlay and tip_tree is None:
+        tip_tree = REPO
+    if tip_tree is not None and git(tip_tree, "rev-parse", "HEAD") != revisions[1]["revision"]:
         raise ValueError("--tip-tree does not match the measured tip revision")
     print(write_report(out, revisions, [path.parent for path in paths], overlay, tip_tree))
 
@@ -204,7 +202,7 @@ def main():
         tabling.add_argument(f"--{name}", type=pathlib.Path, required=True)
         comparing.add_argument(f"--{name}", required=True)
         pair.add_argument(f"{name}_tree", type=pathlib.Path)
-    tabling.add_argument("--tip-tree", type=pathlib.Path, default=REPO)
+    tabling.add_argument("--tip-tree", type=pathlib.Path)
     for command in (measuring, comparing, pair):
         command.add_argument("--scene", action="append", choices=SCENES, help="select a scene (default: both)")
     for command in (comparing, pair):
@@ -215,7 +213,7 @@ def main():
             measure(args.out, args.capture, args.scene or SCENES)
         elif args.command == "table":
             table(args.parent, args.tip, args.out, overlay_callable(args.overlay) if args.overlay else None,
-                  args.tip_tree.resolve())
+                  args.tip_tree.resolve() if args.tip_tree else None)
         elif args.command == "compare":
             compare(args)
         else:

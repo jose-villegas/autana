@@ -352,9 +352,8 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     """Score `bundle` as `job` over `inputs`' held-out poses and split its error by source object part: rows_for's
     rows, mean dE76 and unseen drawn share. Fails when the parts' mean does not round to the held-out score's."""
     from r3d import fitted_variant as fv
-    from r3d.appearance_simplify import start_mesh
     from r3d.bake_fidelity import build_host
-    from r3d.fit.copies import joined, placed_copies
+    from r3d.fit.copies import drawn_mesh
     from r3d.objects.instances import match_instances, source_objects
     from r3d.poses import read_poses
     from r3d.ray_query import RayQuery
@@ -376,8 +375,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
         ids[rays] = labels[faces]
         return ids
 
-    rest = start_mesh(bundle)
-    fitted = joined(rest, placed_copies(bundle, rest.flat))
+    fitted = drawn_mesh(bundle)
     drawn = fitted.points[fitted.vertex_point], fitted.tris
     near = nearest_source(p, tri_v, *drawn)
     sheets = sheet_triangles(p, tri_v, *drawn, near, labels)

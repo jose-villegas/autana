@@ -41,6 +41,9 @@ perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
         ESP_LOGE(PERF_BUDGET_TAG, "%s: %lld us, over its ceiling %lld us", name, (long long)measured_us,
                  (long long)ceiling_us);
         suite_fail_after_test(name);
+    } else {
+        ESP_LOGI(PERF_BUDGET_TAG, "%s: %lld us, under its ceiling %lld us", name, (long long)measured_us,
+                 (long long)ceiling_us);
     }
 #endif
 }

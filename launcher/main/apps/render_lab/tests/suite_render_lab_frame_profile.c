@@ -17,7 +17,6 @@
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "collections/strbuf.h"
-#include "core/app_heap.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
@@ -97,6 +96,7 @@ static frame_profile_trace_t played; /* the row playing now, freed with the fixt
  * ceiling does not stop the rows after it. */
 static const profile_scenario_t* scenario;
 static size_t quarter_index;
+static bool heap_reported;
 
 /* One console line, formatted, for the showing scene. */
 static void
@@ -144,6 +144,18 @@ typedef struct {
     uint32_t duration_ms;
 } scenario_path_t;
 
+/* The test's scenario, its playback and its played profile, freed by the
+ * cleanup: on the heap, so the frames under the played and replayed draws
+ * stay small. */
+typedef struct {
+    scenario_path_t path;
+    frame_profile_scenario_t playback;
+    frame_profile_t profile;
+    int64_t remainder_us;
+    size_t heap_free;
+    size_t heap_largest;
+} profile_run_t;
+
 /* report_path()'s heap, freed after a failed assertion too. */
 static frame_profile_peak_t* peaks;
 
@@ -157,12 +169,18 @@ release_report(void) {
  * evenly along the path for the counts' curves, then every peak's. A frame
  * of its own, so the test's stays small under the played frames. */
 static __attribute__((noinline)) void
-report_path(const scenario_path_t* path, const frame_profile_t* p, size_t heap_free, size_t heap_largest) {
+report_path(const profile_run_t* state) {
+    const scenario_path_t* path = &state->path;
+    const frame_profile_t* p = &state->profile;
     const char* row = scenario_row();
     const char* quarter = lab_perf_quarters[quarter_index].name;
     frame_profile_log(TAG, row, p, quarter);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
-    ESP_LOGI(TAG, FRAME_PROFILE_HEAP LAB_PERF_QUARTER_FORMAT, row, heap_free, heap_largest, quarter);
+    /* The harness can repeat a case to check for leaks. */
+    if (!heap_reported) {
+        ESP_LOGI(TAG, FRAME_PROFILE_HEAP LAB_PERF_QUARTER_FORMAT, row, state->heap_free, state->heap_largest, quarter);
+        heap_reported = true;
+    }
     const int count = frame_profile_peaks(&played, NULL, 0);
     suite_add_test_cleanup(release_report);
     peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_APP);
@@ -216,17 +234,6 @@ judge_profile(const frame_profile_t* p) {
                     &scenario->quarters[quarter_index], true);
 }
 
-/* The test's scenario, its playback and its played profile, freed by the
- * cleanup: on the heap, so the frames under the played and replayed draws
- * stay small. */
-typedef struct {
-    scenario_path_t path;
-    frame_profile_scenario_t playback;
-    int64_t remainder_us;
-    size_t heap_free;
-    size_t heap_largest;
-} profile_run_t;
-
 static profile_run_t* run;
 
 static void
@@ -239,9 +246,9 @@ static int64_t
 profile_frame(void* ctx, int64_t dt_us) {
     profile_run_t* state = ctx;
     const int64_t elapsed = lab_test_profile_frame(&state->remainder_us, dt_us);
-    if (dt_us == 0) {
-        state->heap_free = app_heap_free_bytes();
-        state->heap_largest = app_heap_largest_block();
+    if (dt_us == 0 && !heap_reported) {
+        state->heap_free = memory_free_bytes(MEMORY_APP);
+        state->heap_largest = memory_largest_block(MEMORY_APP);
     }
     return elapsed;
 }
@@ -249,18 +256,17 @@ profile_frame(void* ctx, int64_t dt_us) {
 static void
 test_real_time_frame_profile(void) {
     {
-        /* Its own scope, so its slot is the profile's below. */
         const scenario_path_t path = enter_scenario(); /* it sets the cleanups afresh */
         suite_add_test_cleanup(release_run);
         run = memory_alloc(sizeof *run, MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(run);
         *run = (profile_run_t){.path = path, .playback = {scenario_row(), (int64_t)path.duration_ms * MATH_US_PER_MS}};
     }
-    const frame_profile_t p = frame_profile_play(&run->playback, profile_frame, run, &played);
-    frame_profile_log_laps(TAG, scenario_row(), &p, lab_perf_quarters[quarter_index].name); /* before the replays */
+    run->profile = frame_profile_play(&run->playback, profile_frame, run, &played);
+    frame_profile_log_laps(TAG, scenario_row(), &run->profile, lab_perf_quarters[quarter_index].name);
     /* The peaks first: a row over its budget is the one they explain. */
-    report_path(&run->path, &p, run->heap_free, run->heap_largest);
-    judge_profile(&p);
+    report_path(run);
+    judge_profile(&run->profile);
     release_run();
     release_fixture();
     suite_clear_test_cleanup();
@@ -336,6 +342,7 @@ run_render_lab_frame_profile_suite(void) {
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         for (quarter_index = 0; quarter_index < LAB_PERF_QUARTER_COUNT; quarter_index++) {
             scenario = &profile_scenarios[i];
+            heap_reported = false;
             RUN_TEST_CASE(test_real_time_frame_profile, scenario->scene->key, scenario_take(),
                           lab_perf_quarters[quarter_index].name);
         }

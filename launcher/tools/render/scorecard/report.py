@@ -40,6 +40,14 @@ def markdown_row(*cells):
     return "| " + " | ".join(str(cell).replace("|", r"\|").replace("\n", " ") for cell in cells) + " |"
 
 
+def timing_reading(row):
+    """A capture's playback timings and the limits logged with them."""
+    time = f'{row["mean"] / US_PER_MS:.3f} / {row["p95"] / US_PER_MS:.3f} ms ({row["label"]})'
+    limits = [f"{label} {row[field] / US_PER_MS:.3f} ms"
+              for label, field in (("mean goal", "goal"), ("p95 ceiling", "ceiling")) if row.get(field) is not None]
+    return time + "<br>" + ", ".join(limits) if limits else time
+
+
 def timing_tables(arms):
     ceilings = [{(r["row"], r["quarter"]): r for r in arm.get("ceilings", [])} for arm in arms]
     captures = [defaultdict(list) for arm in arms]
@@ -51,8 +59,7 @@ def timing_tables(arms):
         time_cells, heap_cells = [], []
         for budget, recorded in zip(ceilings, captures, strict=True):
             readings = recorded.get(key, [])
-            time = "<br>".join(f'{r["mean"] / US_PER_MS:.3f} / {r["p95"] / US_PER_MS:.3f} ms ({r["label"]})'
-                               for r in readings) or NOT_MEASURED
+            time = "<br>".join(map(timing_reading, readings)) or NOT_MEASURED
             if key in budget:
                 limit = budget[key]
                 time += (f'<br>mean goal {limit["mean"] / US_PER_MS:.3f} ms'
@@ -62,7 +69,7 @@ def timing_tables(arms):
             time_cells.append(time)
             heap_cells.append(heap or NOT_MEASURED)
         yield markdown_row(f"A308 mean / p95 · {label}", *time_cells)
-        yield markdown_row(f"First-frame heap free / largest · {label}", *heap_cells)
+        yield markdown_row(f"App heap after the first frame · free / largest · {label}", *heap_cells)
 
 
 def metric(arm, name):
@@ -112,7 +119,7 @@ def part_classes(arms):
 def markdown(parent, tip):
     lines = ["# Track scorecard", "", f'Parent `{parent["revision"]}` · Tip `{tip["revision"]}`']
     labels = (("See-through pixels", "see_through"), ("Sky holed frames", "sky"),
-              ("Held-out probe mean dE76", "held_out"), ("Pack bytes", "pack_bytes"))
+              ("Held-out mean dE76", "held_out"), ("Pack bytes", "pack_bytes"))
     for key in dict.fromkeys((*parent["scenes"], *tip["scenes"])):
         arms = [rev["scenes"].get(key, {}) for rev in (parent, tip)]
         lines.extend(("", f'## {key.title()}', "", "| Metric | Parent | Tip |", "|---|---|---|"))
@@ -149,7 +156,10 @@ def overlay_callable(spec):
         raise ValueError("--overlay needs MODULE:FUNCTION")
     if os.getcwd() not in sys.path:
         sys.path.insert(0, os.getcwd())
-    return getattr(importlib.import_module(module), name)
+    function = getattr(importlib.import_module(module), name)
+    if not callable(function):
+        raise ValueError(f"--overlay {spec!r} must name a callable")
+    return function
 
 
 def write_sheet(path, arms, roots, overlay, tip_tree):
