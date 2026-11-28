@@ -39,10 +39,10 @@ def placed(points, scene, job):
     return place(points, placement.matrix, placement.position)
 
 
-def kept_source(scene, job):
+def kept_source(scene, job, source=None):
     """The renderer's source as its import keeps it: (points, triangles) placed in the scene."""
     settings = job.settings
-    source = load_source(settings)
+    source = load_source(settings) if source is None else source
     triangles, materials = source.tri_v, source.tri_m
     if settings.alpha_keep is not None:
         triangles, _, materials, _ = drop_masked(source.p, source.uv, source.tri_v, source.tri_t, source.tri_m,
@@ -70,12 +70,41 @@ def merged(parts):
     return (np.concatenate(points), np.concatenate(triangles), *(np.concatenate(column) for column in zip(*rest)))
 
 
+class SceneSources:
+    """Source meshes loaded once, with exact ray queries for the raw and kept triangles."""
+
+    def __init__(self, scene):
+        self.scene = scene
+        self.meshes = {}
+        self.queries = {}
+
+    def mesh(self, job):
+        path = job.settings.source["path"]
+        if path not in self.meshes:
+            self.meshes[path] = load_source(job.settings)
+        return self.meshes[path]
+
+    def query(self, kept=False):
+        jobs = self.scene.renderers
+        if kept and all(job.bake and job.settings.alpha_keep is None and not job.settings.thin for job in jobs):
+            kept = False
+        if kept not in self.queries:
+            parts = []
+            for job in jobs:
+                if kept and not job.bake:
+                    continue
+                source = self.mesh(job)
+                parts.append(kept_source(self.scene, job, source) if kept
+                             else (placed(source.p, self.scene, job), source.tri_v))
+            self.queries[kept] = RayQuery(*merged(parts))
+        return self.queries[kept]
+
+
 class Tracer:
     """The source and the drawn bake of a scene's baked renderers, traced from one pose at a time."""
 
     def __init__(self, source, drawn):
-        points, triangles = source
-        self.source = RayQuery(points, triangles)
+        self.source = source if isinstance(source, RayQuery) else RayQuery(*source)
         self.drawn = FrontMesh(*drawn)
 
     def see_through(self, width, height, lens, near, pose):
@@ -95,11 +124,10 @@ def baked_scenes():
             yield path.name.removesuffix(".scene.toml"), scene
 
 
-def measure_see_through(scene):
+def measure_see_through(scene, sources=None):
     """See-through pixel counts in camera path order."""
-    baked = [job for job in scene.renderers if job.bake]
-    tracer = Tracer(merged([kept_source(scene, job) for job in baked]),
-                    merged([drawn_bake(scene, job) for job in baked]))
+    sources = SceneSources(scene) if sources is None else sources
+    tracer = Tracer(sources.query(kept=True), merged([drawn_bake(scene, job) for job in scene.renderers if job.bake]))
     width, height, lens, near, poses = path_poses(flight_camera(scene), RENDER_SIZE, EVERY_MS, either_way_up=False)
     return [int(tracer.see_through(width, height, lens, near, pose).sum()) for pose in poses]
 

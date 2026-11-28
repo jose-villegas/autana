@@ -18,13 +18,17 @@ sequenceDiagram
     participant M as measure
     participant T as table
     C->>W: Check out parent and tip
-    loop Each revision tree
-        C->>B: Fetch locked bakes
-        C->>M: Measure with this tree
-        M-->>C: Revision JSON and pose images
+    par Parent tree
+        C->>B: Fetch parent bakes
+        C->>M: Measure parent scenes
+    and Tip tree
+        C->>B: Fetch tip bakes
+        C->>M: Measure tip scenes
     end
     C->>T: Join both revisions
 ```
+
+Measurement prints wall time for each row and scene.
 
 Captures are optional and repeatable. Supply A308 logs from the fitted playback suite and name each with its job ID.
 

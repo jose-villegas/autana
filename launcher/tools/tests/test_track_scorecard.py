@@ -360,3 +360,47 @@ class HeldOutTests(unittest.TestCase):
                     expected = b"cached image" if sets.training else pose.encode()
                     self.assertEqual((unpacked_pictures / "0.png").read_bytes(), expected)
                     self.assertEqual((hit_pictures / "0.png").read_bytes(), b"cached image")
+
+
+class SourceSampleCacheTests(unittest.TestCase):
+    def test_a_reused_source_part_preserves_the_sampling_stream(self):
+        from source_sample_cache import source_sample_cache
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            source_id = "abc"
+            generator = np.random.default_rng(1)
+            fresh = np.random.default_rng(1)
+            with source_sample_cache(root, source_id) as sample:
+                first = sample(b"wall", generator, lambda: generator.random((3, 3)))
+            with source_sample_cache(root, source_id) as sample:
+                def unexpected():
+                    self.fail("the source part was sampled again")
+
+                reused = sample(b"wall", fresh, unexpected)
+                np.testing.assert_array_equal(first, reused)
+                np.testing.assert_array_equal(generator.random(3), fresh.random(3))
+                other = sample(b"wall", fresh, lambda: np.zeros((1, 3)))
+                self.assertEqual(other.shape, (1, 3))
+            with source_sample_cache(root, "def") as sample:
+                other = sample(b"wall", np.random.default_rng(1), lambda: np.ones((1, 3)))
+                np.testing.assert_array_equal(other, np.ones((1, 3)))
+
+
+class SurfaceSearchTests(unittest.TestCase):
+    def test_bounded_triangle_search_has_the_same_distances(self):
+        from r3d.geometry import nearest_triangles, triangle_search
+        from r3d.triangle_bounds import TriangleBounds
+
+        rng = np.random.default_rng(2)
+        centres = rng.normal(size=(64, 1, 3)) * 16
+        triangles = centres + rng.normal(size=(64, 3, 3))
+        triangles[0] = triangles[0, 0]
+        triangles[1] *= 100
+        samples = np.concatenate([triangles[:, 0], triangles.mean(axis=1), rng.normal(size=(64, 3)) * 200])
+        expected = nearest_triangles(samples, triangle_search(triangles))[2]
+        bounded = TriangleBounds(triangles)
+        np.testing.assert_array_equal(bounded.distances(samples), expected)
+        self.assertEqual(len(bounded.distances(samples[:0])), 0)
+        with patch("r3d.triangle_bounds.CANDIDATE_CAPACITY", 1):
+            np.testing.assert_array_equal(bounded.distances(samples), expected)

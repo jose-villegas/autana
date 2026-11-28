@@ -174,12 +174,13 @@ def rays(args, scene):
         raise ValueError(f'frames absent from video: {sorted(wanted - found)}')
 
 
-def grid_rays(width, height, lens, near, pose, grid):
+def grid_rays(width, height, lens, near, pose, grid, pixels=None):
     """One ray per pixel centre of a `grid` (width, height) stretched over the pose's width x height view, as
-    appearance_simplify.coverage draws a pose at the fit's render size."""
+    appearance_simplify.coverage draws a pose at the fit's render size. Optional pixels are (columns, rows)."""
     right, up, forward = camera_basis(pose[3:])
     columns, rows = grid
-    x, y = np.meshgrid((np.arange(columns) + 0.5) / columns, (np.arange(rows) + 0.5) / rows)
+    xs, ys = np.meshgrid(np.arange(columns), np.arange(rows)) if pixels is None else pixels
+    x, y = (xs + 0.5) / columns, (ys + 0.5) / rows
     short = min(width, height)
     directions = (forward + right * ((2 * x.ravel() - 1) * lens * width / short)[:, None]
                   + up * ((1 - 2 * y.ravel()) * lens * height / short)[:, None])

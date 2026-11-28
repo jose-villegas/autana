@@ -15,7 +15,7 @@ from scipy import ndimage
 from r3d.obj import load_obj
 from r3d.poses import flight_camera, sample_camera_rows
 from r3d.ray_query import RayQuery
-from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, pose_rays
+from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, grid_rays
 from check_avi import read_video
 from render_compare import expand_565
 from see_through import merged, placed
@@ -58,21 +58,24 @@ def sky_pixels(frame, sky, source_sky=None):
 def pixel_sky(query, width, height, lens, near, pose, ys, xs, samples=SUBPIXELS):
     """Whether `query`'s mesh leaves any of `samples` x `samples` rays spread over each render pixel (ys, xs) of
     a width x height view from `pose` empty: sky the source shows in part of a pixel counts."""
-    origins, directions = pose_rays(width, height, lens, near, pose, samples)
-    per_pixel = samples * samples
-    rays = ((ys * width + xs)[:, None] * per_pixel + np.arange(per_pixel)).reshape(-1)
-    return ~query.blocked(origins[rays], directions[rays]).reshape(-1, per_pixel).all(axis=1)
+    ox, oy = np.meshgrid(np.arange(samples), np.arange(samples))
+    pixels = (xs[:, None] * samples + ox.ravel(), ys[:, None] * samples + oy.ravel())
+    origins, directions = grid_rays(width, height, lens, near, pose, (width * samples, height * samples), pixels)
+    return ~query.blocked(origins, directions).reshape(-1, samples * samples).all(axis=1)
 
 
 class SourceSky:
     """Where the scene's source meshes show sky in a flythrough frame's render pixel (pixel_sky)."""
 
-    def __init__(self, scene, frames, size):
-        parts = []
-        for job in scene.renderers:
-            points, _, triangles, *_ = load_obj(job.settings.source["path"])
-            parts.append((placed(points, scene, job), triangles))
-        self.query = RayQuery(*merged(parts))
+    def __init__(self, scene, frames, size, sources=None):
+        if sources is None:
+            parts = []
+            for job in scene.renderers:
+                points, _, triangles, *_ = load_obj(job.settings.source["path"])
+                parts.append((placed(points, scene, job), triangles))
+            self.query = RayQuery(*merged(parts))
+        else:
+            self.query = sources.query()
         self.width, self.height, self.lens, self.near, self.poses = flythrough_poses(flight_camera(scene), DT_MS,
                                                                                      size, frames)
 
@@ -88,7 +91,7 @@ class SkyUnavailable(ValueError):
     """The scene lacks a prerequisite for the sky measure."""
 
 
-def measure_sky(scene, key, out, binary=None):
+def measure_sky(scene, key, out, binary=None, sources=None):
     """Holed frame indices and total frames at the device flythrough step."""
     if not scene.renderers:
         raise SkyUnavailable(f"{key}: the scene draws no source meshes")
@@ -109,7 +112,7 @@ def measure_sky(scene, key, out, binary=None):
     counts, source = [], None
     for index, frame in enumerate(read_video(video)[1]):
         frame = np.ascontiguousarray(frame[::VIDEO_SCALE, ::VIDEO_SCALE])
-        source = source or SourceSky(scene, frames, frame.shape[1::-1])
+        source = source or SourceSky(scene, frames, frame.shape[1::-1], sources)
         counts.append(sky_pixels(frame, sky, source.of_frame(index)))
     video.unlink()
     if len(counts) != frames:

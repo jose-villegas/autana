@@ -171,7 +171,8 @@ def nearest_triangles(points, search):
 
 def directed_distance(points, search, percentile=None):
     """Maximum or percentile distance of points to the nearest triangles of search."""
-    _, _, distances = nearest_triangles(points, search)
+    lookup = getattr(search, "distances", None)
+    distances = nearest_triangles(points, search)[2] if lookup is None else lookup(points)
     if percentile is None or not len(distances):
         return float(distances.max(initial=0.0))
     return float(np.percentile(distances, percentile))
