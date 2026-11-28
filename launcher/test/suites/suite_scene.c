@@ -1315,6 +1315,17 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
+/* A suite starts only with no scene held (shell.c): the held one is named until released. */
+static void
+test_a_held_scene_is_named_until_it_is_released(void) {
+    fixture();
+    TEST_ASSERT_NULL(scene_held_id());
+    entity_t scene = load("test_pair");
+    TEST_ASSERT_EQUAL_STRING("test_pair", scene_held_id());
+    scene_release(scene);
+    TEST_ASSERT_NULL(scene_held_id());
+}
+
 static bool
 lent_from(const void* p) {
     return (const uint8_t*)p >= fx.lent && (const uint8_t*)p < fx.lent + LENT_BYTES;
@@ -9125,6 +9136,7 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
 #endif
     RUN_TEST(test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took);
+    RUN_TEST(test_a_held_scene_is_named_until_it_is_released);
     RUN_TEST(test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender);
     RUN_TEST(test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing);
     RUN_TEST(test_a_debug_view_takes_no_second_scratch_and_a_refused_larger_one_keeps_the_first);

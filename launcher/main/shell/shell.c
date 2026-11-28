@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "app/app.h"
 #include "core/timing.h"
@@ -44,6 +45,8 @@
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST
+#include "asset/asset_pack.h"
+#include "scene/scene_shell.h"
 #include "selftest/console_runsuite.h"
 #include "selftest/selftest.h"
 #include "suites.h"
@@ -187,19 +190,49 @@ log_missing_suite(const suite_run_t* run) {
     ESP_LOGE(TAG, "no suite named '%.*s' is registered", run->name_length, run->name);
 }
 
+static char held_scene_message[sizeof "scene  is still held" + ASSET_NAME_MAX];
+
+static void
+test_a_suite_starts_with_no_scene_held(void) {
+    TEST_FAIL_MESSAGE(held_scene_message);
+}
+
+/* A suite starts from home with no scene held: an open app's scene, or one a
+ * past suite kept, would be drawn and counted beside the suite's own. An open
+ * app is left, said so; a scene held after that fails, and the suite is not run. */
+static __attribute__((noinline)) bool
+start_from_home(const app_t** current) {
+    if (*current != NULL) {
+        ESP_LOGW(TAG, "RUNSUITE left %s first: a suite starts from home", (*current)->name);
+        shell_exit_app(current);
+    }
+    const char* held = scene_held_id();
+    if (held == NULL) {
+        return true;
+    }
+    (void)snprintf(held_scene_message, sizeof held_scene_message, "scene %s is still held", held);
+    RUN_TEST(test_a_suite_starts_with_no_scene_held);
+    return false;
+}
+
 /* See console/console.c for framebuffer contention explanation. */
 static __attribute__((noinline)) void
-run_pending_selftest_suite(void) {
+run_pending_selftest_suite(const app_t** current) {
     if (!console_frame_take(console_frame_slots(), &console_runsuite_slot)) {
         return;
     }
     const console_runsuite_request_t* request = console_runsuite_slot.taken;
     static suite_run_t run;
-    const bool own_visit = selftest_visit_begin();
     UNITY_BEGIN();
-    suites_run_request(request->suite, &run);
-    if (!run.found) {
-        log_missing_suite(&run);
+    const bool from_home = start_from_home(current);
+    const bool own_visit = selftest_visit_begin();
+    if (from_home) {
+        suites_run_request(request->suite, &run);
+        if (!run.found) {
+            log_missing_suite(&run);
+        }
+    } else {
+        run = (suite_run_t){.name = request->suite, .name_length = (int)strcspn(request->suite, " "), .found = true};
     }
     suite_report_frame_watch();
     (void)UNITY_END();
@@ -438,7 +471,7 @@ shell_run(void) {
         console_frame_answer_pending(console_frame_slots());
 #endif
 #if CONFIG_LAUNCHER_SELFTEST
-        run_pending_selftest_suite();
+        run_pending_selftest_suite(&current);
 #endif
 
         input_poll(&input);
