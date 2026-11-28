@@ -61,6 +61,29 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_prepare_and_produce_name_the_same_carved_start(self):
+        from bake import produce
+        from r3d import fitted_variant
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            _, _, geometry, job, scene = bundle_fixture(work, fit=object())
+            job.renderer.variant = SimpleNamespace(name="hall_fitted_full")
+            job.settings.source = {"path": work / "hall.obj"}
+            bake = SimpleNamespace(job=job, scene=scene, suffix=mesh_bundle.SUFFIX)
+            prepared = work / "prepare"
+            with mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
+                 mock.patch.object(fitted_variant, "reference_inputs"), \
+                 mock.patch.object(fitted_variant, "prepare_references"), \
+                 mock.patch.object(produce, "record", side_effect=lambda bake, path, cache: (path.name, path.read_bytes())):
+                fitted_variant.prepare(None, scene, job, prepared)
+                name, baked = produce.produce_mesh(bake, None, {})
+            local, = prepared.iterdir()
+            entries, copies = mesh_bundle.decode(local.read_bytes())
+            baked_entries, baked_copies = mesh_bundle.decode(baked)
+            self.assertTrue(baked_copies)
+            self.assertEqual((local.name, entries, copies), (name, baked_entries, baked_copies))
+
     def test_a_long_material_stem_shortens_to_leave_room_for_colours(self):
         from asset.asset_pack import NAME_BYTES
         long = "x" * NAME_BYTES + ".DoubleSided"
