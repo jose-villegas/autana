@@ -16,10 +16,8 @@ typedef struct {
     projectf_t lens; /* Square pixels: fx == fy. */
     viewport_t viewport;
     camera_present_t present;
-    /* Skip each cluster wholly behind depth already drawn, before any of its
-     * triangles is set up. It pays where much geometry hides behind nearer
-     * geometry; elsewhere the test costs more than it skips, so it is off
-     * unless a scene turns it on. It changes no pixel the view keeps. */
+    /* On by default. Test a cluster's box against drawn depth when the
+     * previous frame's rates predict a saving, with probes to refresh them. */
     bool skip_hidden;
     /* The lens shift: the optical centre's offset from the picture's middle,
      * along the camera's right and up, in picture short sides. Zero looks

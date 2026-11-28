@@ -29,6 +29,7 @@
 #include "core/timing.h"
 #include "gfx/gfx.h"
 #include "lab/test/lab_perf_quarters.h"
+#include "math/scalar/units.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -209,8 +210,42 @@ test_cull_cost_along_each_path(void) {
     TEST_PASS();
 }
 
+#define HIDDEN_SCAN_WIDTH  64
+#define HIDDEN_SCAN_HEIGHT 48
+#define HIDDEN_SCAN_PIXELS (HIDDEN_SCAN_WIDTH * HIDDEN_SCAN_HEIGHT)
+#define HIDDEN_SCAN_RUNS   256
+
+static void
+test_hidden_cluster_scan_cost(void) {
+    uint16_t* const pixels = memory_alloc(2 * HIDDEN_SCAN_PIXELS * sizeof *pixels, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(pixels);
+    uint16_t* const depth = pixels + HIDDEN_SCAN_PIXELS;
+    for (int i = 0; i < HIDDEN_SCAN_PIXELS; i++) {
+        depth[i] = R3D_DEPTH_NEAREST;
+    }
+    r3d_span_target_t target = r3d_span_target(pixels, depth, HIDDEN_SCAN_WIDTH, 0, HIDDEN_SCAN_HEIGHT);
+    r3d_hidden_slice_t slice = {0};
+    target.hidden = &slice;
+    const r3d_pipeline_rows_t rows = {.x1 = HIDDEN_SCAN_WIDTH * R3D_SUBPIXEL,
+                                      .y1 = HIDDEN_SCAN_HEIGHT * R3D_SUBPIXEL,
+                                      .depth = R3D_DEPTH_NEAREST - 1};
+    const int64_t start = timing_now_us();
+    for (int i = 0; i < HIDDEN_SCAN_RUNS; i++) {
+        (void)r3d_pipeline_cluster_hidden(&rows, &target);
+    }
+    const int64_t elapsed = timing_now_us() - start;
+    memory_free(pixels);
+
+    const int64_t scanned = HIDDEN_SCAN_RUNS * HIDDEN_SCAN_PIXELS;
+    TEST_ASSERT_EQUAL_UINT32(HIDDEN_SCAN_RUNS, slice.tally.skipped);
+    TEST_ASSERT_EQUAL_UINT64(scanned, slice.tally.pixels_read);
+    ESP_LOGI(TAG, "hidden cluster scan: %lld ns/px (%lld us over %lld pixels)",
+             (long long)((elapsed * MATH_NS_PER_US + scanned / 2) / scanned), (long long)elapsed, (long long)scanned);
+}
+
 void
 run_cull_cost_suite(void) {
+    RUN_TEST(test_hidden_cluster_scan_cost);
     RUN_TEST(test_cull_cost_along_each_path);
 }
 

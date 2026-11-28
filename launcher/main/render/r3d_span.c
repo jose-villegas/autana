@@ -732,6 +732,22 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
     return true;
 }
 
+bool
+r3d_span_hidden_counted(const r3d_span_target_t* target, int32_t bound, recti_t box, uint32_t* pixels_read) {
+    for (int row = 0; row < box.h; row++) {
+        const uint16_t* first = gfx_target_depth(&target->rows, box.y + row) + box.x;
+        const uint16_t* end = first + box.w;
+        for (const uint16_t* pixel = first; pixel < end; pixel++) {
+            if (*pixel < bound) {
+                *pixels_read = (uint32_t)(row * box.w + (pixel - first) + 1);
+                return false;
+            }
+        }
+    }
+    *pixels_read = (uint32_t)(box.w * box.h);
+    return true;
+}
+
 static bool
 colour_steps_zero(const gradients_t* g) {
     return (g->dx[1] | g->dy[1] | g->dx[2] | g->dy[2] | g->dx[3] | g->dy[3]) == 0;

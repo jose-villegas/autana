@@ -784,19 +784,70 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
                || r->y0 > gfx_target_end_row(&target->rows) * R3D_SUBPIXEL);
 }
 
-/* Drawn nearest first, a cluster behind what is already drawn is skipped
- * before any of its triangles is tested. Its box holds every centre its
- * triangles cover, as r3d_span_extent() finds them. Out of line, so its box
- * stays off the stack of the draw it guards while that draw fills, and in
- * flash: once a cluster, it costs too little to earn IRAM. */
+/* Set-up terms from the board cost fit in docs/render/frame/Culling.md. */
+#define HIDDEN_CLUSTER_SETUP_NS  3476U
+#define HIDDEN_TRIANGLE_SETUP_NS 460U
+/* Provisional; measured: run_cull_cost_suite/test_hidden_cluster_scan_cost. */
+#define HIDDEN_SCAN_NS_PER_PIXEL 25.0F
+
+static uint32_t
+hidden_box_pixels(recti_t box) {
+    return (uint32_t)(box.w * box.h);
+}
+
+static recti_t
+cluster_window_box(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
+    return r3d_span_window_box(target, r3d_span_centres(rows->x0, rows->y0, rows->x1, rows->y1));
+}
+
+static bool
+hidden_test_pays(const r3d_hidden_rates_t* rates, recti_t box, unsigned triangles, unsigned candidate) {
+    if (rates == NULL || !rates->valid || candidate % R3D_HIDDEN_PROBE_EVERY == rates->probe_phase) {
+        return true;
+    }
+    const float saving = rates->hidden_rate * (float)(HIDDEN_CLUSTER_SETUP_NS + triangles * HIDDEN_TRIANGLE_SETUP_NS);
+    const float cost = rates->scan_rate * (float)hidden_box_pixels(box) * HIDDEN_SCAN_NS_PER_PIXEL;
+    return saving > cost;
+}
+
+/* The box covers the same centres as r3d_span_extent(). Keep its scan and
+ * accounting out of the draw copies' IRAM and stack frames. */
 __attribute__((noinline)) bool
 r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     if (r->unbounded) {
         return false;
     }
+    const recti_t box = cluster_window_box(r, target);
+    if (recti_is_empty(box)) {
+        return true;
+    }
     /* + 1: a tag writer also writes where the fill's depth equals what is there. */
-    return r3d_span_hidden(target, (int32_t)r->depth + 1,
-                           r3d_span_window_box(target, r3d_span_centres(r->x0, r->y0, r->x1, r->y1)));
+    const int32_t bound = (int32_t)r->depth + 1;
+    r3d_hidden_slice_t* slice = target->hidden;
+    if (slice == NULL) {
+        return r3d_span_hidden(target, bound, box);
+    }
+    const int cluster = slice->rows != NULL ? (int)(r - slice->rows) : 0;
+    const unsigned triangles = slice->clusters != NULL ? slice->clusters[cluster].triangle_count : 0U;
+    r3d_hidden_tally_t* tally = &slice->tally;
+    const bool test = hidden_test_pays(slice->rates, box, triangles, tally->candidates++);
+    bool skipped = false;
+    if (test) {
+        uint32_t pixels_read;
+        skipped = r3d_span_hidden_counted(target, bound, box, &pixels_read);
+        tally->tested++;
+        tally->skipped += skipped;
+        tally->box_pixels += hidden_box_pixels(box);
+        tally->pixels_read += pixels_read;
+    }
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (slice->report != NULL) {
+        const r3d_hidden_outcome_t outcome =
+            test ? (skipped ? R3D_HIDDEN_SKIPPED : R3D_HIDDEN_VISIBLE) : R3D_HIDDEN_BYPASSED;
+        slice->report(slice->report_state, slice->entry, cluster, slice->slice, outcome);
+    }
+#endif
+    return skipped;
 }
 
 /* Rows outside the target's skip a cluster always; with DRAW_SKIPPING, so
@@ -1168,11 +1219,21 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
                     work, BLEND_NONE);
 }
 
-/* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
-static __attribute__((noinline)) void
+static inline void
 build_guard_planes(const r3d_lens_t* lens, r3d_pipeline_work_t* work) {
     const float g = (float)GUARD_PIXELS;
     planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), work->clip.planes);
+}
+
+/* Keep mesh metadata out of the hot draw copies and once-per-draw setup in flash. */
+static __attribute__((noinline)) void
+prepare_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_pipeline_rows_t* rows,
+             const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    build_guard_planes(lens, work);
+    if (target->hidden != NULL) {
+        target->hidden->rows = rows;
+        target->hidden->clusters = mesh->clusters;
+    }
 }
 
 static inline __attribute__((always_inline)) void
@@ -1227,7 +1288,7 @@ void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                   r3d_pipeline_work_t* work) {
-    build_guard_planes(lens, work);
+    prepare_draw(mesh, lens, rows, target, work);
     if (mesh->texturing != NULL && target->writer_count == 0) {
         draw_reading_textured(mesh, lens, clusters, count, cs, rows, target, target->skip_hidden ? DRAW_SKIPPING : 0U,
                               work);
@@ -1266,7 +1327,7 @@ r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
                           const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                           const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool dither) {
     assert(rows != NULL);
-    build_guard_planes(lens, work);
+    prepare_draw(mesh, lens, rows, target, work);
     const blend_t blend = dither ? BLEND_DITHER : BLEND_MORPH;
     if (target->writer_count != 0) {
         draw_writing_blended(mesh, lens, clusters, count, cs, rows, target, work, blend);

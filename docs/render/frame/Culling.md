@@ -41,7 +41,7 @@ flowchart LR
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
-| Hidden cluster | every pixel under its box already holds nearer depth; only a camera with `skip_hidden` ([Rendering-Options.md](../Rendering-Options.md)) | cluster, per core | `r3d_pipeline_cluster_hidden()` | its triangles' set-up and fill |
+| Hidden cluster | every pixel under its box holds nearer depth; the gate scans when the previous frame predicts savings, or to sample | cluster, per core | `r3d_pipeline_cluster_hidden()` | its triangles' set-up and fill |
 | Triangle | behind the near plane, misses every pixel centre, or faces away ([per triangle](#per-triangle)) | triangle | `r3d_pipeline_draw()` | its set-up and fill |
 | Depth | a nearer depth is already drawn | pixel | `r3d_span` | the pixel's write |
 
@@ -133,7 +133,9 @@ clusters show, so it redraws from a spectator.
 |---|---|---|
 | culled | grey | its box, or a box above it, is outside the frustum |
 | not set up | blue | kept, but every triangle is behind the camera, misses every pixel centre or faces away |
-| hidden | red | each triangle lost its depth test; a camera that skips hidden clusters may have skipped it whole before setup, which this view does not see |
+| hidden | red | each triangle lost its depth test |
+| depth skipped | violet | the box scan skipped the cluster in every slice it met |
+| gate bypassed | amber | the gate passed the cluster through without scanning in at least one slice |
 | drawn | green | owns at least one pixel |
 
 | Tunable | Values |
@@ -162,9 +164,8 @@ flowchart LR
     Kept --> Show["show<br/><i>the culled pixels layered where nearer</i>"] --> Lines["overlay<br/><i>node boxes, frustum</i>"]
 ```
 
-The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
-`r3d_pipeline_count_triangles()` count beside them. `scene_viewer.sh --view cull
---counts FILE` writes the counts per frame.
+The camera draw supplies the violet and amber tints. The cull and triangle
+replay supplies the counts in `scene_viewer.sh --view cull --counts FILE`.
 
 `RASTER_CULL_FRAME_FIELDS` owns the CSV and replay field names. Its
 `sized_*` fields count set-up triangles through `R3D_SIZES_FIELDS` in

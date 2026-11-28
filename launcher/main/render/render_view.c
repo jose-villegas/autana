@@ -27,6 +27,7 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
         .position = pose->position,
         .forward = quatf_rotate(pose->rotation, vec3f_unit_z()),
         .lens.near_z = near_z,
+        .skip_hidden = true,
     };
     view_frame(&view, right, down, half_fov_short_tan, viewport);
     return view;

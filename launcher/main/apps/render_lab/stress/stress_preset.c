@@ -115,9 +115,8 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     [STRESS_SMALL_OFF] = {STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40, STRESS_SURFACE_OF(SMALL_OFF),
                           STRESS_CAMERA, 6,
                           .settings = {{TUNE_NAME(render_lab, small_fill_ceiling), SMALL_FILL_CEILING_OFF}}},
-    /* The stack, its camera skipping clusters behind drawn depth: each fill's depth capped. */
     [STRESS_STACK_SKIP] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_SURFACE_OF(STACK_SKIP),
-                           STRESS_CAMERA, 6, .skip_hidden = true},
+                           STRESS_CAMERA, 6},
     /* The near carved props blending between levels through complementary
      * dither masks; the far ones sit at their coarsest and never blend. */
     [STRESS_CARVED_BLEND] = {STRESS_SHAPE_PLANE, 1, 9, STRESS_LAYOUT_WALL, 160, STRESS_SURFACE_OF(CARVED_BLEND),

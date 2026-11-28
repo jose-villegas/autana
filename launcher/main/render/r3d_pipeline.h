@@ -127,9 +127,21 @@ typedef struct {
     uint8_t blend;
 } r3d_pipeline_rows_t;
 
-/* True when every pixel of `target` under a cluster's box already holds
- * depth nearer than any its fill writes, so drawing it would change nothing,
- * attachments included. False for an unbounded cluster. */
+typedef struct r3d_hidden_slice {
+    const r3d_hidden_rates_t* rates;
+    const r3d_pipeline_rows_t* rows;
+    const r3d_lit_cluster_t* clusters;
+    r3d_hidden_tally_t tally;
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    r3d_hidden_report_t report;
+    void* report_state;
+    int entry;
+    unsigned slice;
+#endif
+} r3d_hidden_slice_t;
+
+/* The gate can skip the scan. A tested box is hidden only where every pixel
+ * already holds depth nearer than its fills can write, attachments included. */
 bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target);
 
 /* `rows`, when not NULL, holds mesh->cluster_count entries and is filled for

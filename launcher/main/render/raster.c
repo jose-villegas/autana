@@ -28,6 +28,9 @@ typedef struct {
     int vertex_base, cluster_base;
     int writer_count;
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    int drawn_entry;
+#endif
 } batch_item_t;
 
 /* Whether `mesh` fits a batch past `*vertices` and `*clusters`, within the
@@ -144,6 +147,7 @@ typedef struct {
     picture_lens_t picture; /* the draw's, kept here so it is off the stack the slices run on */
     slice_t mine, other;
     r3d_span_target_t targets[2];
+    r3d_hidden_slice_t hidden[2];
     r3d_span_small_fill_t small_fill;
     bool skip_hidden; /* the view's */
     render_texture_settings_t texture;
@@ -320,6 +324,11 @@ draw_slice(void* ctx) {
         const batch_item_t* item = &s->batch->items[k];
         target->writers = item->writers;
         target->writer_count = item->writer_count;
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+        if (target->hidden != NULL) {
+            target->hidden->entry = item->drawn_entry;
+        }
+#endif
         if (item->plain_count > 0) {
             r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->plain_count, b->cs + item->vertex_base,
                               b->rows + item->cluster_base, target, b->work[s->work_index]);
@@ -926,6 +935,9 @@ batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instan
      * this one even when it kept nothing; that one's slot is reused. */
     batch_item_t* item = &batch->items[batch->count];
     item->writer_count = instance_writers(raster, first, item->writers);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    item->drawn_entry = first;
+#endif
     if (culled[0] > 0) {
         batch->count++;
         if (copy == NULL) {
@@ -1005,6 +1017,34 @@ census(const raster_t* raster, const render_view_t* view, raster_stats_t* stats,
     FRAME_COST_END(culled_from, R3D_STAGE_CULL_NAME);
 }
 
+static __attribute__((noinline)) void
+begin_hidden_frame(const raster_t* raster, draw_work_t* work) {
+    const r3d_hidden_rates_t* rates = raster->split != NULL ? &raster->split->hidden : NULL;
+    bool collect = rates != NULL;
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const raster_attachment_t* observer = NULL;
+    for (int i = 0; i < raster->attachment_count; i++) {
+        if (raster->attachments[i]->hidden_result != NULL) {
+            observer = raster->attachments[i];
+            collect = true;
+            break;
+        }
+    }
+#endif
+    for (unsigned i = 0; i < sizeof work->hidden / sizeof work->hidden[0]; i++) {
+        r3d_hidden_slice_t* slice = &work->hidden[i];
+        *slice = (r3d_hidden_slice_t){.rates = rates};
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+        if (observer != NULL) {
+            slice->report = observer->hidden_result;
+            slice->report_state = observer->state;
+            slice->slice = i;
+        }
+#endif
+        work->targets[i].hidden = work->skip_hidden && collect ? slice : NULL;
+    }
+}
+
 /* Draws the census list from `work`, as census() takes it. Inlining keeps
  * the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
@@ -1026,6 +1066,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, draw_work_t* w
     const render_settings_t settings = raster_settings(raster);
     r3d_span_small_fill_resolve(&work->small_fill, settings.small_fill);
     work->skip_hidden = view->skip_hidden;
+    begin_hidden_frame(raster, work);
     work->texture = settings.texture;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
@@ -1047,6 +1088,9 @@ draw_instances(const raster_t* raster, const render_view_t* view, draw_work_t* w
         draw_batch(raster, index, work);
         index++;
     } while (first < raster_census_count(raster));
+    if (work->skip_hidden && raster->split != NULL) {
+        raster_split_fold_hidden(raster->split, &work->hidden[0].tally, &work->hidden[1].tally);
+    }
     draw_post(raster, view, work);
 }
 

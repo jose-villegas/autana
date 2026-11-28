@@ -454,7 +454,6 @@ scene_stress_enter(const lab_scene_t* self) {
     if (!set_preset_settings() || !load()) {
         return;
     }
-    (void)camera_set_skip_hidden(viewer, shown->skip_hidden);
     (void)camera_activate(
         entity_find(loaded, name_hash(render_lab.start_camera == NULL ? shown->camera : render_lab.start_camera)));
     place_copies();

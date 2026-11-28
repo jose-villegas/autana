@@ -84,6 +84,9 @@ bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r
  * of line, as its layout is pinned. */
 __attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box);
 
+/* Also counts the stopping pixel in a nonempty cluster scan. */
+bool r3d_span_hidden_counted(const r3d_span_target_t* target, int32_t bound, recti_t box, uint32_t* pixels_read);
+
 /* The part of `centres` inside `target`'s window: its full width, its own
  * rows. Runs once per triangle, so a miss is left as a size at or below zero
  * (recti_is_empty reads it as empty) rather than clamped to zero. */

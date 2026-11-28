@@ -30,6 +30,7 @@ extern const r3d_span_small_fill_t r3d_span_small_fill_default;
 void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, render_small_fill_settings_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
+struct r3d_hidden_slice;
 
 /* A fill's face colour by value, in the target's format, or this for the
  * vertex colours: never a pointer, so no caller's frame holds it in memory. */
@@ -57,7 +58,12 @@ typedef struct r3d_span_target {
 
     union {
         gfx_target_t rows;
-        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
+
+        /* Keep the row offsets fixed in the span loops' instructions. */
+        struct {
+            GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
+            struct r3d_hidden_slice* hidden; /* caller-owned feedback for cluster scans */
+        };
     };
 } r3d_span_target_t;
 

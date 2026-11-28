@@ -31,7 +31,7 @@ false for a non-camera entity or an invalid value.
 | `scene/camera/camera.h` | `camera_first(within)`, `camera_flight(within)`, `camera_lens()` | the first camera below `within`; its first on a path, else its first; a camera's lens |
 | | `camera_activate()`, `camera_deactivate()`, `camera_active()` | the one active camera engine-wide |
 | | `camera_cut()` | after a jump of the active camera, the renderer drops what it carried from earlier frames |
-| | `camera_set_present()`, `_set_skip_hidden()` | per-camera settings |
+| | `camera_set_present()`, `camera_set_skip_hidden()` | presentation and hidden-cluster skipping, which defaults to on |
 | | `camera_set_shift()` | an off-axis view along the camera's right and up, in picture short sides ([Camera](Camera.md#lens-shift)) |
 | `scene/light/light.h` | `light_set_color()` / `_set_intensity()` / `_set_mode()` | attach or update one directional light: color finite linear RGB in [0,1], intensity finite and nonnegative; a full light array or a skin without vertex colors fails without mutation |
 | | `light_color()` / `_intensity()` / `_mode()` | read it; zero colour/intensity and realtime mode when none |

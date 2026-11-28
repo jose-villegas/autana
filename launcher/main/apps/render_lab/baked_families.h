@@ -4,13 +4,10 @@
  */
 #pragma once
 
-#include <stdbool.h>
-
 typedef struct {
     const char* scene;  /* the scene's id, and its pack's name */
     const char* bake;   /* the entity of the scene's fitted renderer, found at load */
     const char* camera; /* followed when the start names no camera */
-    bool skip_hidden;   /* its camera skips clusters behind drawn depth: much of it hides */
 } scene_baked_t;
 
 /* An open street with a far plane, walked and flown over on a loop. */

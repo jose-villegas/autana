@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
+#include "render/raster_split.h"
 #include "render/render_view.h"
 
 typedef struct raster raster_t;
@@ -26,6 +27,10 @@ struct raster_attachment {
     /* Optional. Development builds: paints `picture`'s colour from this
      * attachment. */
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    /* The first attachment with this hook receives decisions on the draw slice that made them. */
+    r3d_hidden_report_t hidden_result;
+#endif
     void* state; /* the attachment's own */
 };
 

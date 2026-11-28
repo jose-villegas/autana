@@ -83,8 +83,7 @@ typedef struct {
     const char* scene; /* the pack shown: NULL is STRESS_SCENE's copy pool, another its own meshes as placed */
     scene_contact_shape_t contact_shape;
     bool contact_warp;
-    bool hold_camera; /* a fixed pose in the scene and every perf sample */
-    bool skip_hidden; /* its camera skips clusters behind drawn depth, as a baked family's may */
+    bool hold_camera;                               /* a fixed pose in the scene and every perf sample */
     stress_setting_t settings[STRESS_SETTINGS_MAX]; /* set on entering, put back on leaving */
 } stress_params_t;
 

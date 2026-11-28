@@ -122,6 +122,7 @@ typedef struct {
      * slot k in the arrays below; a tag names a mesh index, which the list finds. */
     uint16_t drawn[RASTER_CULL_CLUSTERS_MAX];
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
+    uint8_t hidden_outcome[2][RASTER_CULL_CLUSTERS_MAX];
 
     /* One array for three steps of the frame, each done with it before the next. */
     union {

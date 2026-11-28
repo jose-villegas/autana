@@ -29,14 +29,16 @@ static const uint32_t FATE_RGB[RASTER_FATE_COUNT] = {
     [RASTER_FATE_HIDDEN] = 0xE03C2F,
     [RASTER_FATE_DRAWN] = 0x3CC850,
 };
-#define FRUSTUM_RGB 0xFFFFFF
+#define DEPTH_SKIPPED_RGB 0xAA63EE
+#define GATE_BYPASSED_RGB 0xFFB42F
+#define FRUSTUM_RGB       0xFFFFFF
 /* A culled cluster is a screen door: one pixel of each square this many on a
  * side keeps its shading, the rest show the clear colour. */
-#define CULLED_DOOR 4
+#define CULLED_DOOR       4
 /* Its border is dashed: this many pixels on, as many off, along the edge. */
-#define CULLED_DASH 2
+#define CULLED_DASH       2
 /* What a node's hue keeps, out of RGB565_SCALE_UNIT, under each fate. */
-#define KEEP_STEPS  16
+#define KEEP_STEPS        16
 static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
     [RASTER_FATE_CULLED] = RGB565_SCALE_UNIT * 3 / KEEP_STEPS,
     [RASTER_FATE_NOT_SET_UP] = RGB565_SCALE_UNIT * 7 / KEEP_STEPS,
@@ -134,6 +136,26 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     s->from = (raster_cull_from_t)from;
     memset(&s->frame, 0, sizeof s->frame);
     memset(s->covered, 0, sizeof s->covered);
+    /* The spectator paints the live level picks. A refinement may draw a different cut. */
+    if (!raster->finest_levels) {
+        memset(s->hidden_outcome, 0, sizeof s->hidden_outcome);
+        list_drawn(s, raster);
+    }
+}
+
+static void
+hidden_result(void* state, int entry, int cluster, unsigned slice, r3d_hidden_outcome_t outcome) {
+    raster_cull_t* s = state;
+    if (s->spectating || s->raster->finest_levels) {
+        return;
+    }
+    drawn_at_t w = {0};
+    for (int i = 0; i < entry; i++) {
+        walk_next(s, &w);
+    }
+    const int j = index_in(s, w.at, cluster);
+    assert(j >= 0);
+    s->hidden_outcome[slice][w.base + j] = (uint8_t)outcome;
 }
 
 /* The camera's draw tags each pixel with its triangle, a spectator's with
@@ -570,12 +592,25 @@ raster_cull_second_view(void* state, const raster_t* raster, const transformf_t*
     return true;
 }
 
+static uint32_t
+fate_rgb(const raster_cull_t* s, int cluster) {
+    const uint8_t a = s->hidden_outcome[0][cluster];
+    const uint8_t b = s->hidden_outcome[1][cluster];
+    if (a == R3D_HIDDEN_BYPASSED || b == R3D_HIDDEN_BYPASSED) {
+        return GATE_BYPASSED_RGB;
+    }
+    if (a != R3D_HIDDEN_VISIBLE && b != R3D_HIDDEN_VISIBLE && (a == R3D_HIDDEN_SKIPPED || b == R3D_HIDDEN_SKIPPED)) {
+        return DEPTH_SKIPPED_RGB;
+    }
+    return FATE_RGB[s->fate[cluster]];
+}
+
 /* A cluster's colour: its fate, or its node's hue kept by its fate. */
 static gfx_color_t
 cluster_color(const raster_cull_t* s, int cluster) {
     const raster_cluster_fate_t fate = (raster_cluster_fate_t)s->fate[cluster];
     if (paint == RASTER_CULL_PAINT_FATES) {
-        return RGB565BE(FATE_RGB[fate]);
+        return RGB565BE(fate_rgb(s, cluster));
     }
     return rgb565be_scale(raster_meshlets_color(1U + s->node[cluster]), FATE_KEEP[fate]);
 }
@@ -605,7 +640,7 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
         }
         return x % CULLED_DOOR == 0 && y % CULLED_DOOR == 0 ? drawn : clear;
     }
-    return border ? RGB565BE(FATE_RGB[fate]) : drawn;
+    return border ? RGB565BE(fate_rgb(s, c)) : drawn;
 }
 
 /* Shaded: the baked colours as drawn, culled clusters as a sparse screen
@@ -681,8 +716,13 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t
 
 raster_attachment_t
 raster_cull_view(void* state) {
-    return (raster_attachment_t){
-        .format = IMAGE_U32, .clear = clear, .begin = begin, .writer = writer, .show = show, .state = state};
+    return (raster_attachment_t){.format = IMAGE_U32,
+                                 .clear = clear,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .hidden_result = hidden_result,
+                                 .state = state};
 }
 
 /* The camera's frustum to `depth` world units, its apex at the camera. */

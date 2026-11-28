@@ -7,6 +7,7 @@
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
+#define r3d_span_hidden_counted        constant_r3d_span_hidden_counted
 #define r3d_span_plane_bound           constant_r3d_span_plane_bound
 #define r3d_span_plane_in_range        constant_r3d_span_plane_in_range
 #define r3d_span_uniform               constant_uniform
@@ -504,20 +505,6 @@ pixel_index(int x, int y) {
     return (y * SCENE_W) + x;
 }
 
-/* The ungated draw always tests its box. */
-#define R3D_HIDDEN_PROBE_EVERY 32U
-
-typedef struct {
-    float hidden_rate, scan_rate;
-    bool valid;
-    unsigned probe_phase;
-} r3d_hidden_rates_t;
-
-static bool
-hidden_test_pays(const r3d_hidden_rates_t* rates, recti_t box, unsigned triangles, unsigned candidate) {
-    return true;
-}
-
 #define GATE_SMALL_BOX_SIDE 2
 #define GATE_LARGE_BOX_SIDE 64
 
@@ -529,8 +516,8 @@ test_hidden_gate_weighs_saving_against_the_box_scan(void) {
                                       .y1 = GATE_SMALL_BOX_SIDE * R3D_SUBPIXEL};
     const r3d_pipeline_rows_t wide = {.x1 = GATE_LARGE_BOX_SIDE * R3D_SUBPIXEL,
                                       .y1 = GATE_LARGE_BOX_SIDE * R3D_SUBPIXEL};
-    const recti_t small = r3d_span_window_box(&target, r3d_span_centres(near.x0, near.y0, near.x1, near.y1));
-    const recti_t large = r3d_span_window_box(&target, r3d_span_centres(wide.x0, wide.y0, wide.x1, wide.y1));
+    const recti_t small = cluster_window_box(&near, &target);
+    const recti_t large = cluster_window_box(&wide, &target);
     const r3d_hidden_rates_t cold = {0};
     const r3d_hidden_rates_t profitable = {.hidden_rate = 1.0F, .scan_rate = 1.0F, .valid = true};
     const r3d_hidden_rates_t unprofitable = {.scan_rate = 1.0F, .valid = true};
@@ -543,26 +530,59 @@ test_hidden_gate_weighs_saving_against_the_box_scan(void) {
     }
 }
 
-/* The scene drawn with the hidden test on, and again with it off, ends the
- * same in every plane; with it on, the clusters wholly behind the wall were
- * skipped and the one partly behind it was drawn. */
 static void
-scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
+test_hidden_rates_fold_and_forget(void) {
+    raster_split_t split = {0};
+    const r3d_hidden_tally_t top = {.tested = 3, .skipped = 2, .box_pixels = 100, .pixels_read = 80};
+    const r3d_hidden_tally_t bottom = {.tested = 5, .skipped = 1, .box_pixels = 300, .pixels_read = 20};
+    const r3d_hidden_tally_t empty = {0};
+    raster_split_fold_hidden(&split, &top, &bottom);
+    TEST_ASSERT_TRUE(split.hidden.valid);
+    TEST_ASSERT_EQUAL_FLOAT(0.375F, split.hidden.hidden_rate);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, split.hidden.scan_rate);
+    TEST_ASSERT_EQUAL_UINT(1, split.hidden.probe_phase);
+    raster_split_fold_hidden(&split, &empty, &empty);
+    TEST_ASSERT_TRUE(split.hidden.valid);
+    TEST_ASSERT_EQUAL_FLOAT(0.375F, split.hidden.hidden_rate);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, split.hidden.scan_rate);
+    TEST_ASSERT_EQUAL_UINT(2, split.hidden.probe_phase);
+    raster_split_forget(&split);
+    TEST_ASSERT_FALSE(split.hidden.valid);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, split.hidden.hidden_rate);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, split.hidden.scan_rate);
+    TEST_ASSERT_EQUAL_UINT(0, split.hidden.probe_phase);
+}
+
+static void
+scene_draws_alike_with_different_hidden_tests(bool writes, bool gate) {
     scene_open();
     build_wall_scene();
     const r3d_lit_mesh_t mesh = scene_mesh();
     const r3d_lens_t lens = r3d_pixel_lens(SCENE_W, SCENE_H);
     r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
     r3d_span_writer_t writers[2];
+    const r3d_hidden_rates_t unprofitable = {
+        .scan_rate = 1.0F, .valid = true, .probe_phase = R3D_HIDDEN_PROBE_EVERY - 1U};
+    r3d_hidden_slice_t ungated = {0};
+    r3d_hidden_slice_t gated = {.rates = &unprofitable};
     for (int run = 0; run < 2; run++) {
         r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
-        target.skip_hidden = run == 0;
+        target.skip_hidden = run == 0 || gate;
+        target.hidden = gate ? (run == 0 ? &ungated : &gated) : NULL;
         r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
         if (run == 0) {
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, DRAW_SKIPPING));
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, DRAW_SKIPPING));
-            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, DRAW_SKIPPING));
+            target.hidden = NULL;
+            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_NEAR], &target));
+            TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&scene->rows[BEHIND_WALL_FAR], &target));
+            TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&scene->rows[PARTLY_BEHIND], &target));
         }
+    }
+    if (gate) {
+        TEST_ASSERT_EQUAL_UINT32(SCENE_CLUSTERS, ungated.tally.tested);
+        TEST_ASSERT_EQUAL_UINT32(2, ungated.tally.skipped);
+        TEST_ASSERT_TRUE(ungated.tally.pixels_read < ungated.tally.box_pixels);
+        TEST_ASSERT_EQUAL_UINT32(SCENE_CLUSTERS, gated.tally.candidates);
+        TEST_ASSERT_EQUAL_UINT32(0, gated.tally.tested);
     }
     const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
     for (int kind = PLANE_COLOUR; kind <= (writes ? PLANE_TAG : PLANE_DEPTH); kind++) {
@@ -580,12 +600,17 @@ scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
 
 static void
 test_the_hidden_test_changes_no_pixel_of_a_reading_draw(void) {
-    scene_draws_alike_with_the_hidden_test_on_and_off(false);
+    scene_draws_alike_with_different_hidden_tests(false, false);
 }
 
 static void
 test_the_hidden_test_changes_no_pixel_of_a_writing_draw(void) {
-    scene_draws_alike_with_the_hidden_test_on_and_off(true);
+    scene_draws_alike_with_different_hidden_tests(true, false);
+}
+
+static void
+test_gated_and_ungated_hidden_tests_draw_the_same_pixels(void) {
+    scene_draws_alike_with_different_hidden_tests(true, true);
 }
 
 /* Three clusters: a quad wholly in range, a triangle with one vertex behind
@@ -879,6 +904,8 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
     RUN_TEST(test_hidden_gate_weighs_saving_against_the_box_scan);
+    RUN_TEST(test_hidden_rates_fold_and_forget);
+    RUN_TEST(test_gated_and_ungated_hidden_tests_draw_the_same_pixels);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_writing_draw);
     RUN_TEST(test_rows_change_no_pixel_of_a_draw);

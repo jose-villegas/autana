@@ -49,7 +49,8 @@ Two fields are exposed to animation, listed in `LENS_FIELDS`
 | `half_fov_short_tan` | float | the field of view, as above |
 | `near_z` | float | distance of the near plane |
 
-`present` and `skip_hidden` are per-camera settings and are not animated.
+`present` and `skip_hidden` are per-camera settings outside animation.
+`skip_hidden` defaults to on.
 
 ## How the animation binder finds them
 

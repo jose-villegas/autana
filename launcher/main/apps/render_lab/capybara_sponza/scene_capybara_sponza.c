@@ -253,7 +253,6 @@ load_sponza(void) {
     /* Posed once now, and paused: its flight no longer moves it. */
     (void)animator_seek(camera, ANIMATOR_CURRENT, 0);
     (void)animator_set_paused(camera, ANIMATOR_CURRENT, true);
-    (void)camera_set_skip_hidden(camera, family->skip_hidden);
     return true;
 }
 

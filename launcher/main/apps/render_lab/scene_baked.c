@@ -132,7 +132,6 @@ scene_baked_enter(const lab_scene_t* self) {
     texturable = !handle_is_none(bake) && renderer_has_textures(bake);
     textured = false;
     (void)camera_activate(camera_entity());
-    (void)camera_set_skip_hidden(camera_entity(), family->skip_hidden);
     apply_settings();
 }
 

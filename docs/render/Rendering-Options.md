@@ -284,12 +284,9 @@ drops a triangle hidden behind what was already drawn
   its fewer culls save.
 - **Measured**: [the meshlet-size table](offline/Baked-Mesh.md#meshlets).
 
-A scene can also have its camera drop each cluster wholly behind what was
-already drawn, before any of its triangles is set up:
-`camera_set_skip_hidden()`, off by default. Pixels do not change.
-
-- **Use** it where most clusters hide behind nearer ones. Elsewhere the test
-  and the capped fill it needs cost more than they skip.
+Views skip hidden clusters by default. A gate uses the previous frame's
+rates to weigh each scan's cost and rotates probes across frames.
+Opt out with `camera_set_skip_hidden(camera, false)`.
 
 The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the

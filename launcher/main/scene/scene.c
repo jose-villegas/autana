@@ -136,9 +136,10 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
-                                             .entity = c->entity,
-                                             .clear = RGB565BE(c->clear_rgb)};
+        scene->cameras[i] = (scene_camera_t){
+            .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .skip_hidden = true},
+            .entity = c->entity,
+            .clear = RGB565BE(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
