@@ -1,9 +1,9 @@
 """Reads a scene's object placements and its cameras' key paths, and writes changed ones back into its .scene.toml
 or a camera's .keys.toml, keeping every comment and the file's own formatting: only the values named change.
 
-    python launcher/tools/scene/scene_edit.py read SCENE.scene.toml [-o OUT.json]
+    python launcher/tools/scene/scene_edit.py read SCENE.scene.toml [--out OUT.json]
     python launcher/tools/scene/scene_edit.py set SCENE.scene.toml --set NAME.FIELD=X,Y,Z [--set ...]
-    python launcher/tools/scene/scene_edit.py read-keys PATH.keys.toml [-o OUT.json]
+    python launcher/tools/scene/scene_edit.py read-keys PATH.keys.toml [--out OUT.json]
     python launcher/tools/scene/scene_edit.py set-keys PATH.keys.toml --key FROM:T:EX,EY,EZ:LX,LY,LZ [--key ...]
 
 `read` prints the objects as JSON (or writes them to OUT.json), each with its name, parent, component kind, whether it
@@ -42,6 +42,7 @@ from anim import keys_file, tracks_asset  # noqa: E402
 from bake import bake  # noqa: E402
 from gltf.gltf_read import KEYS_SUFFIX  # noqa: E402
 from r3d import import_settings  # noqa: E402
+from r3d.settings_cli import Refused, add_reader, emit, read_text  # noqa: E402
 
 SCENE_SUFFIX = ".scene.toml"
 KEYS_HEADER = "[[keys]]"
@@ -53,10 +54,6 @@ NEW_KEY = "new"
 FIELDS = ("position", "rotation", "scale")
 RENDERERS = ("mesh_renderer", "skinned_renderer")
 AXES = 3
-
-
-class Refused(Exception):
-    """An edit scene_edit will not make; its message says why."""
 
 
 def scene_path(text):
@@ -220,15 +217,6 @@ def checked_keys(path, text):
     return values
 
 
-def read_text(path):
-    """The file's text with its own line ends, its failure as Refused."""
-    try:
-        with open(path, encoding="utf-8", newline="") as source:
-            return source.read()
-    except OSError as error:
-        raise Refused(f"{path}: {error}") from error
-
-
 def read_keys(path):
     """The keys file's node, animation and keys, as authored."""
     values = checked_keys(path, read_text(path))
@@ -335,21 +323,6 @@ def replace(path, data):
         bake.place(data, path)
     except bake.BakeMissing as error:
         raise Refused(str(error)) from error
-
-
-def emit(text, out):
-    """`text` printed, or written to the file `out` names."""
-    if out:
-        pathlib.Path(out).write_text(text + "\n", encoding="utf-8")
-    else:
-        print(text)
-
-
-def add_reader(commands, name, file, help_text):
-    """A command that prints what `file` holds as JSON, or writes it to -o."""
-    reader = commands.add_parser(name, help=help_text)
-    reader.add_argument(file)
-    reader.add_argument("-o", dest="out", metavar="OUT.json", help="write the JSON here instead of printing it")
 
 
 def main(argv=None):
