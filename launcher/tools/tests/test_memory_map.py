@@ -181,7 +181,8 @@ class MemoryMapTests(unittest.TestCase):
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        for name, value in (("symbols", {}), ("find_tool", "nm"), ("run", json.dumps({"layout": []})),
+        (build / "build.ninja").touch()
+        for name, value in (("symbols", []), ("find_tool", "nm"), ("run", json.dumps({"layout": []})),
                             ("idf_commit", "pin"), ("iram_entries", [])):
             self.enterContext(patch.object(memory, name, return_value=value))
         return header, elf, build
@@ -319,9 +320,13 @@ class MemoryMapTests(unittest.TestCase):
                     memory.check([], inputs, "release", {}, lambda site: True, linker_entries=entries)
 
     def test_ldgen_requires_fragment_inputs(self):
-        for text in ("", "build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = python ldgen.py\n"):
+        cases = (
+            ("", r"has no rule for esp-idf/esp_system/ld/sections\.ld"),
+            ("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = python ldgen.py\n", "ldgen"),
+        )
+        for text, message in cases:
             (self.root / "build.ninja").write_text(text)
-            with self.assertRaisesRegex(ValueError, "ldgen"):
+            with self.assertRaisesRegex(ValueError, message):
                 memory.iram_entries(self.root)
 
     def test_missing_base_clone_in_flash(self):
@@ -545,7 +550,9 @@ for b in builds:
  b['report']=[(m.Site(**s),size,names) for s,size,names in b['report']]
 print(m.render(builds))
 """
-        outputs = [subprocess.check_output([sys.executable, "-c", program, str(memory.ROOT / "launcher/tools/build"), str(fixture)], env=dict(os.environ, PYTHONHASHSEED=seed)) for seed in ("1", "53")]
+        outputs = [subprocess.check_output([sys.executable, "-c", program, str(memory.ROOT / "launcher/tools/build"), str(fixture)],
+                                           stdin=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                           env=dict(os.environ, PYTHONHASHSEED=seed)) for seed in ("1", "53")]
         self.assertEqual(outputs[0], outputs[1])
 
     def test_documentation_needs_release_build(self):
@@ -569,11 +576,13 @@ print(m.render(builds))
         (source / "file.c").write_text("first")
         for args in (["init", "-q"], ["add", "file.c"],
                      ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--no-verify", "-m", "first"]):
-            subprocess.run(["git", "-C", str(source), *args], check=True)
+            subprocess.run(["git", "-C", str(source), *args], stdin=subprocess.DEVNULL,
+                           capture_output=True, check=True)
         work = self.root / "work"
         with patch.object(scratch, "tracked_files", return_value=["file.c"]):
             tree = scratch.scratch_tree(work, source)
-            listed = subprocess.run(["git", "-C", str(tree), "ls-files", "-s"], capture_output=True, text=True, check=True)
+            listed = subprocess.run(["git", "-C", str(tree), "ls-files", "-s"], stdin=subprocess.DEVNULL,
+                                    capture_output=True, text=True, check=True)
             self.assertIn("	file.c", listed.stdout)
             (tree / "obsolete").write_text("old")
             (source / "file.c").write_text("current")
@@ -910,7 +919,7 @@ print(m.render(builds))
         fragment = build / "linker.lf"
         fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
         (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
-        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
+        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value=[]), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps([["libchosen.a", "foo.*", "foo"]]), json.dumps({"layout": []})]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
@@ -1062,7 +1071,8 @@ print(m.render(builds))
             path=self.root / "launcher/main/foo.c"
             path.parent.mkdir(parents=True,exist_ok=True)
             path.write_text(content)
-            done=subprocess.run([sys.executable,script,"--source-only","--root",str(self.root)],capture_output=True,text=True)
+            done=subprocess.run([sys.executable,script,"--source-only","--root",str(self.root)], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True)
             self.assertEqual(done.returncode,expected,done.stderr)
 
 

@@ -127,6 +127,7 @@ upscale_rows(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear
             gfx_target_paired_rows(target, picture, clear, scale->rows, first_row, row_count, false);
             break;
         case UPSCALE_DOUBLED:
+            /* Library call: copies under SIMD_COPY_MIN only. A row is longer. */
             gfx_target_paired_rows(target, picture, clear, scale->rows, first_row, row_count, true);
             break;
         case UPSCALE_BLOCKS:

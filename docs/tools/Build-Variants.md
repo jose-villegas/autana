@@ -180,6 +180,21 @@ ten times a float's cost.
 - The firmware keeps fused operations, which are faster. So a host pixel and
   a device pixel can differ by one at a truncation boundary.
 
+## Hot-call link gate
+
+| Build | Check | Effect |
+|---|---|---|
+| Release ELF | [`check_hot_calls.py`](../../launcher/tools/build/check_hot_calls.py) | requires a reason for C-runtime calls in code-layout pins and active first-party IRAM functions, including inline instances |
+
+For a deliberate runtime call, put `Library call: <reason>` on the source line
+or in the comment directly above its statement or signature. The gate uses
+the innermost inline frame in the containing function's source file.
+
+The gate rejects empty or stale notes and calls without a source line.
+
+The hot-call gate cannot see indirect calls whose targets it cannot resolve.
+It only inspects callees that are themselves hot.
+
 ## Development-only instrumentation is its own flag, not SELFTEST
 
 | Flag | Answers | Guards |
