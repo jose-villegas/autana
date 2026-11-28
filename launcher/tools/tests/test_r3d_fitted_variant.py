@@ -183,7 +183,7 @@ class SweepTests(unittest.TestCase):
         import numpy as np
         scene = pathlib.Path("gallery.scene.toml").resolve()
         job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(name="paint", triangles=10)),
-                              settings=SimpleNamespace(fit=UNSHAPED))
+                              settings=SimpleNamespace(fit=UNSHAPED), asset_name="gallery.paint")
         def run_points(out, points, run_point):
             point_dir = out / "point"
             point_dir.mkdir(parents=True)
@@ -194,7 +194,7 @@ class SweepTests(unittest.TestCase):
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                 mock.patch.object(fitted_variant, "sweep_references"), \
                 mock.patch.object(fitted_variant, "run_sweep_points", side_effect=run_points), \
-                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.bundle")), \
+                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.bundle")) as fit, \
                 mock.patch.object(fitted_variant, "held_out_score", return_value=(1, 2)), \
                 mock.patch.object(fitted_variant, "plot_pareto"), mock.patch.object(fitted_variant, "sweep_rows", return_value=[]), \
                 mock.patch.object(bake_fidelity, "build_host", return_value=pathlib.Path("host")) as build, \
@@ -206,6 +206,36 @@ class SweepTests(unittest.TestCase):
             fitted_variant.sweep_main([str(scene), "--variant", "paint", "--budgets", "5", "--out", directory])
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
+        references = pathlib.Path(directory).resolve() / "references"
+        self.assertEqual(fit.call_args.kwargs["inputs"], references)
+        self.assertEqual(fit.call_args.kwargs["start"], references / "gallery.paint.bundle")
+
+    def test_fit_command_uses_the_asset_start_in_the_prepared_work(self):
+        job = SimpleNamespace(asset_name="gallery.paint", renderer=SimpleNamespace(
+            variant=SimpleNamespace(name="variant_name")))
+        with tempfile.TemporaryDirectory() as directory, \
+                unittest.mock.patch.object(fitted_variant, "load_scene"), \
+                unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                unittest.mock.patch.object(stage, "fit") as fit:
+            fitted_variant.main(["scene.toml", "--mesh", "paint", "--work", directory, "fit"])
+        work = pathlib.Path(directory).resolve()
+        self.assertEqual(fit.call_args.kwargs["inputs"], work)
+        self.assertEqual(fit.call_args.kwargs["start"], work / "gallery.paint.bundle")
+
+    def test_sweep_reference_marker_requires_the_asset_named_start(self):
+        job = SimpleNamespace(asset_name="gallery.paint", renderer=SimpleNamespace(
+            variant=SimpleNamespace(name="variant_name")))
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "references.json").write_text('{"digest": "same"}')
+            (work / "variant_name.bundle").touch()
+            with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
+                    unittest.mock.patch.object(fitted_variant, "prepare") as prepare:
+                fitted_variant.sweep_references("scene", None, job, work)
+                prepare.assert_called_once_with("scene", None, job, work)
+                (work / "gallery.paint.bundle").touch()
+                fitted_variant.sweep_references("scene", None, job, work)
+                prepare.assert_called_once()
 
     def test_probe_import_refuses_sweep_budgets(self):
         import contextlib
@@ -221,18 +251,20 @@ class SweepTests(unittest.TestCase):
         self.assertIn("--budgets", error.getvalue())
         self.assertIn("geometry.probes", error.getvalue())
         with self.assertRaisesRegex(ValueError, "budget.*geometry.probes"):
-            stage.fit("scene.toml", None, job, pathlib.Path("out"), budget=5)
+            stage.fit("scene.toml", None, job, pathlib.Path("out"), budget=5, start=pathlib.Path("start.bundle"))
 
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
             target = point_dir.parent / (point_dir.name + ".bundle")
-            scene_path, scene, job, inputs = "scene.toml", object(), object(), pathlib.Path(directory) / "inputs"
+            scene_path, scene = "scene.toml", object()
+            job, inputs = SimpleNamespace(asset_name="scene.entry"), pathlib.Path(directory) / "inputs"
             with unittest.mock.patch.object(stage, "fit", return_value=target) as fit:
                 result = stage.fit_point(
                     {"budget": 42, "cost_weight": 0.5}, point_dir, scene_path, scene, job, inputs)
             fit.assert_called_once_with(scene_path, scene, job, point_dir, budget=42,
-                                        cost_weight=0.5, smoke=False, target=target, inputs=inputs)
+                                        cost_weight=0.5, smoke=False, target=target, inputs=inputs,
+                                        start=inputs / "scene.entry.bundle")
             self.assertEqual(result, {"mesh": str(target)})
 
     def test_fit_point_failure_reports_log_tail_and_preserves_traceback(self):
@@ -245,7 +277,8 @@ class SweepTests(unittest.TestCase):
             point_dir = pathlib.Path(directory) / "point"
             with unittest.mock.patch.object(stage, "fit", side_effect=fail_fit):
                 with self.assertRaises(RuntimeError) as caught:
-                    stage.fit_point({"budget": 42}, point_dir, "scene", None, None, directory)
+                    stage.fit_point({"budget": 42}, point_dir, "scene", None,
+                                    SimpleNamespace(asset_name="scene.entry"), directory)
             log_path = point_dir / "fit.log"
             log = log_path.read_text()
             self.assertIn("Traceback (most recent call last):", log)
@@ -312,20 +345,24 @@ class SweepTests(unittest.TestCase):
 
     @unittest.skipIf(reference_render is None, "needs the r3d renderer")
     def test_a_sweep_reuses_one_prepared_reference_set(self):
-        start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
                                    fit=SimpleNamespace(size=(2, 3), samples=1, denoise=False, train_every_ms=1,
                                                        held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path", size=(9, 7)))
         job = SimpleNamespace(settings=SimpleNamespace(path="settings", fit=UNSHAPED), bake=SimpleNamespace(), renderer=renderer,
-                              object=SimpleNamespace(name="tiny"))
+                              object=SimpleNamespace(name="tiny"), asset_name="scene.tiny")
         scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0,
                                 camera=SimpleNamespace(component=SimpleNamespace(path="fly.anim.toml")))
+
+        def write_start(_job, _scene, work, name, **_kwargs):
+            (work / f"{name}.bundle").write_bytes(b"start")
+            return SimpleNamespace(tris=[0])
+
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
-                 unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
+                 unittest.mock.patch.object(mesh_import, "write_baked", side_effect=write_start), \
                  unittest.mock.patch.object(mesh_source, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(fitted_variant, "prepare_references", wraps=fitted_variant.prepare_references) as prepare, \
                  unittest.mock.patch.object(reference_render, "render_sets") as render:

@@ -30,6 +30,33 @@ def flight_scene(renderer):
 
 
 class DocStagesTests(unittest.TestCase):
+    def test_start_writers_use_the_asset_name(self):
+        from types import SimpleNamespace as NS
+        from r3d import mesh_import
+        job = NS(asset_name="room.hall", object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
+        scene = NS(renderers=[job])
+        with mock.patch.object(mesh_import, "write_baked") as write, \
+                mock.patch.object(mesh_import, "bake_geometry") as geometry:
+            stages.write_start(self.tmp, job, scene)
+            write.assert_called_once_with(job, scene, self.tmp, "room.hall", recorder=None)
+            write.reset_mock()
+            stages.bake_into(self.tmp, scene, "hall", False)
+        baked, _, directory, name, source, _ = write.call_args.args
+        self.assertIsNot(baked, job)
+        self.assertEqual((directory, name, source), (self.tmp, "room.hall", geometry.return_value))
+
+    def test_smoke_prepares_the_asset_named_start(self):
+        from types import SimpleNamespace as NS
+        from r3d import reference_render
+        start = self.tmp / "baked.bundle"
+        start.write_bytes(b"start")
+        job = NS(asset_name="room.hall", asset_path=start, renderer=NS(fit=object()), object=NS(name="hall"))
+        inputs = self.tmp / "inputs"
+        with mock.patch.object(stages, "flight_poses", return_value=(8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])), \
+                mock.patch.object(reference_render, "main"):
+            stages.smoke_prepare("scene.toml", None, job, inputs)
+        self.assertEqual((inputs / "room.hall.bundle").read_bytes(), b"start")
+
     def test_capture_intervals_are_required_positive_and_common(self):
         first, second = self.tmp / "a.log", self.tmp / "b.log"
         for text in ("", "pose_every_ms=0", "pose_every_ms=500\npose_every_ms=1000"):
@@ -53,7 +80,7 @@ class DocStagesTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         import numpy as np
         from r3d import mesh_import, lit_mesh, light, ray_query, poses as poses_module
-        baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
+        baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")), asset_name="room.hall")
         scene = flight_scene(baked)
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
@@ -81,7 +108,8 @@ class DocStagesTests(unittest.TestCase):
         from r3d import import_settings, fitted_variant, mesh_import, reference_render, poses as poses_module
         fit = NS(size=(8, 6), held_out_every_ms=2000)
         job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
-                             variant=NS(name="full")), asset_path=Path("start.bundle"), object=NS(name="hall"))
+                             variant=NS(name="full")), asset_name="room.hall", asset_path=Path("start.bundle"),
+                 object=NS(name="hall"))
         scene = flight_scene(job)
         args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
         poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
@@ -485,7 +513,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
         from r3d.process_budget import MEASURE_BYTES
         job = NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
-                             variant=NS(name="full", triangles=10000)))
+                             variant=NS(name="full", triangles=10000)), asset_name="room.hall")
         scene = NS(renderers=[], objects=[])
         consumed, measured, completed = [], {}, []
         step = dict(wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)
@@ -565,7 +593,7 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual(consumed, expected_rows)
             self.assertEqual({label: measured[label] for label in ('start', 'start-path-culled', 'fit',
                                                                    'normal-0', 'normal-0.3', 'budget-6000-cost-0')},
-                             {'start': Path('kept/hall/full.bundle'),
+                             {'start': Path('kept/hall/room.hall.bundle'),
                               'start-path-culled': Path('kept/hall/culled.bundle'),
                               'fit': Path('kept/fit/fitted.bundle'),
                               'normal-0': Path('kept/normal-0/fitted.bundle'),
@@ -616,7 +644,7 @@ class KeeperTests(unittest.TestCase):
         self.jobs = [placed_variant(self.scene, self.fitted)]
         self.inputs = self.root / "inputs"
         self.inputs.mkdir()
-        (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"start")
+        (self.inputs / f"{self.jobs[0].asset_name}.bundle").write_bytes(b"start")
         from r3d.reference_set import reference_inputs
         from test_r3d_reference import write_reference_tree
         self.sets = reference_inputs(self.jobs[0], self.scene).sets()
@@ -675,7 +703,7 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(len(set(folders.values())), len(folders), folders)
         self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
                          folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
-        (self.inputs / f"{self.jobs[0].renderer.variant.name}.bundle").write_bytes(b"other start")
+        (self.inputs / f"{self.jobs[0].asset_name}.bundle").write_bytes(b"other start")
         self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
 
     def test_a_fit_counts_the_reference_bytes_it_reads(self):

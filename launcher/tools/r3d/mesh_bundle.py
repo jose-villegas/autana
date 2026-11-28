@@ -3,6 +3,7 @@
 import json
 import math
 import struct
+from pathlib import Path
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
@@ -23,6 +24,11 @@ RENDERER = struct.Struct(f"<H{NAME_BYTES}s")
 METADATA = struct.Struct("<4I")
 METADATA_FIELDS = ("owner", "first", "source", "match")
 HASH_HEX_DIGITS = 8
+
+
+def start_file(job, work):
+    """Path to the asset-named start bundle in a work directory."""
+    return Path(work) / (job.asset_name + SUFFIX)
 
 
 def shape_id(mesh, rule, first):

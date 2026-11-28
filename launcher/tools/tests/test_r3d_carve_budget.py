@@ -177,7 +177,8 @@ class FitCeilingTests(unittest.TestCase):
         recipe = NS(budget=2, steps=1, batch=1, laplacian=0, normal_weight=0, surface_weight=0, surface_margin=0)
         blob, copies, geometry, job, scene = bundle_fixture(work, fit=recipe)
         job.renderer.variant = NS(name='start', triangles=2, ceiling=ceiling)
-        (work / 'start.bundle').write_bytes(blob)
+        start = work / 'start.bundle'
+        start.write_bytes(blob)
         calls = []
         def fake_fit(command):
             calls.append(command)
@@ -192,7 +193,7 @@ class FitCeilingTests(unittest.TestCase):
                 fitted = mesh_bundle.encode(bundle_entries(job.asset_name, mesh), [])
             (out / (job.asset_name + '.bundle')).write_bytes(fitted)
         with patch('r3d.appearance_simplify.main', side_effect=fake_fit):
-            stage.fit('scene', scene, job, work)
+            stage.fit('scene', scene, job, work, start=start)
         return calls
 
     def test_fit_counts_each_prototype_once_despite_repeated_placements(self):

@@ -214,13 +214,17 @@ class PipelineMeasuresTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         from r3d import lit_mesh
         from r3d.fit import stage
-        job = NS(renderer=NS(variant=NS(name="fixture")))
+        from r3d.mesh_bundle import start_file
+        job = NS(asset_name="test.fixture")
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, 200), interval=None)
         with tempfile.TemporaryDirectory() as directory, \
-                patch.object(lit_mesh, "read_lit_mesh", side_effect=[NS(tris=[0]*12), NS(tris=[0]*8)]), \
+                patch.object(lit_mesh, "read_lit_mesh", side_effect=[NS(tris=[0]*12), NS(tris=[0]*8)]) as read, \
                 patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.bundle"):
-            result = stage.fit_point({}, pathlib.Path(directory) / "work", None, None, job,
-                                     pathlib.Path(directory), recorder=recorder)
+            inputs = pathlib.Path(directory)
+            start = start_file(job, inputs)
+            start.touch()
+            result = stage.fit_point({}, inputs / "work", None, None, job, inputs, recorder=recorder)
+        self.assertEqual([call.args[0] for call in read.call_args_list], [start, pathlib.Path(result["mesh"])])
         self.assertEqual([(row["step"], row["triangles_in"], row["triangles_out"])
                           for row in recorder.rows], [("fit", 12, 8)])
         self.assertEqual(recorder.rows[0]["peak_vram_bytes"], 200)

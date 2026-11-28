@@ -31,6 +31,7 @@ from layout_measure import parse_timings, MEAN_RE
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
 from r3d.import_settings import SettingsError
+from r3d.mesh_bundle import start_file
 from r3d.poses import flight_camera, path_poses
 from r3d.scene_name import scene_id
 
@@ -381,7 +382,7 @@ def kept_references(key, job, scene, cache):
 
 def write_start(directory, job, scene, recorder=None):
     from r3d.mesh_import import write_baked
-    write_baked(job, scene, directory, job.renderer.variant.name, recorder=recorder)
+    write_baked(job, scene, directory, job.asset_name, recorder=recorder)
 
 
 def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, recorder=None):
@@ -394,7 +395,7 @@ def bake_into(directory, scene, baked_name, path_cull, recorder=None):
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     geometry = bake_geometry(baked, scene, recorder)
-    write_baked(baked, scene, directory, baked.renderer.variant.name, geometry, recorder)
+    write_baked(baked, scene, directory, baked.asset_name, geometry, recorder)
     if path_cull:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
@@ -494,7 +495,7 @@ class Keeper:
         if point.get("budget") is not None:
             variant.renderer.fit.budget = point["budget"]
         cost = point.get("cost_weight", 0.0)
-        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.bundle", inputs)["fit"],
+        folder = self.doc("fit", self.keys(variant, scene, start_file(job, inputs), inputs)["fit"],
                           cost, content_checksum(WEIGHTS).decode() if cost else None, code_digest(fit_into))
         return self.keep(folder, make_kept, folder, fit_into, point, point_dir, scene_path, scene, job, inputs,
                          estimates=FIT_BYTES)
@@ -519,7 +520,7 @@ def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.fitted_variant import poses_text
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
-    shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.bundle")
+    shutil.copyfile(job.asset_path, start_file(job, inputs))
     width, height, lens, near, poses = flight_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
@@ -742,7 +743,7 @@ def _gpu(args, out, work, executor):
 
     start_steps = ready[0].result()
     culled = baked.result().folder
-    measure("start", job, culled / f"{job.renderer.variant.name}.bundle", reference_inputs)
+    measure("start", job, start_file(job, culled), reference_inputs)
     measure("start-path-culled", job, culled / f"{CULLED}.bundle", reference_inputs)
     run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
          out / "render/gpu/appearance-path-culled.png", "--reference-bakes",

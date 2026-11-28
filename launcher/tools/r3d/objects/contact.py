@@ -1,11 +1,11 @@
 """Deterministic vertex-to-surface contacts with border vertices on both objects."""
 
 from dataclasses import dataclass
+from functools import cache
 
 import numpy as np
-from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles
+from r3d.geometry import closest_point_on_triangles, grouped_indices, triangle_search, triangles_near
 from r3d.lit_mesh import POSITION_SCALE
 from r3d.repair import seal_tolerance
 
@@ -19,9 +19,7 @@ class Contact:
     unshared: bool = False
 
 
-# Candidate (vertex, face) pairs queried and tested in one batch. It bounds the work in flight, not the result,
-# except that a batch takes at least one vertex: one with more candidates runs alone, as every vertex did before
-# batching. The bytes per pair are not measured.
+# Bounds candidate pairs in flight. A vertex with more candidates runs alone.
 PAIR_BATCH = 1 << 20
 
 
@@ -31,65 +29,93 @@ def surface_border(pos, vertices, faces, tolerance):
     vertices = np.asarray(vertices, dtype=int)
     if not len(vertices) or not len(faces):
         return set(), set(), False
+    points, inverse = np.unique(pos[vertices], axis=0, return_inverse=True)
+    return _surface_border(vertices, points, inverse, _face_query(pos, faces, tolerance), tolerance)
+
+
+def _face_query(pos, faces, tolerance):
     corners = pos[faces]
-    centres = corners.mean(axis=1)
-    radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
-    tree = cKDTree(centres)
-    points = pos[vertices]
-    reach = radii.max() + tolerance
-    sizes = np.asarray(tree.query_ball_point(points, reach, return_length=True), dtype=np.int64).reshape(-1)
-    ends = np.cumsum(sizes)
-    touched, shared = np.zeros(len(vertices), bool), np.zeros(len(vertices), bool)
+    search = triangle_search(corners)
+    centres = search.tree.data
+    radii = np.empty(len(faces))
+    for _, rows, radius in search.groups:
+        radii[rows] = radius
+    reach = tolerance
+    if np.issubdtype(pos.dtype, np.floating) and pos.dtype != np.float64:
+        # Cover the rounding and squared-distance underflow of the native-dtype radius screen.
+        precision = np.finfo(pos.dtype)
+        centres = corners.mean(axis=1)
+        centre_shift = np.linalg.norm(centres - search.tree.data, axis=1)
+        native_radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
+        threshold = (native_radii + tolerance).astype(np.float64)
+        reach = np.maximum(0, np.maximum(np.sqrt(precision.tiny), threshold * (1 + np.sqrt(precision.eps)))
+                           + centre_shift - radii)
+        radii = native_radii
+    return faces, corners, centres, radii, search, reach
+
+
+def _surface_border(vertices, points, inverse, query, tolerance):
+    faces, corners, centres, radii, search, reach = query
+    touched, shared = np.zeros(len(points), bool), np.zeros(len(points), bool)
     # All corners of a touched face must stay fixed: locking just the
     # incoming point would let the supporting surface move away from it.
     hit = np.zeros(len(faces), bool)
-    begin = 0
-    while begin < len(vertices):
-        before = ends[begin - 1] if begin else 0
-        stop = max(begin + 1, int(np.searchsorted(ends, before + PAIR_BATCH, side='right')))
-        if ends[stop - 1] > before:
-            owner = np.repeat(np.arange(begin, stop), sizes[begin:stop])
-            candidate = np.concatenate(tree.query_ball_point(points[begin:stop], reach)).astype(np.int64)
-            keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
-            owner, candidate = owner[keep], candidate[keep]
-            if len(owner):
-                _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
-                near = distance <= tolerance
-                owner, candidate = owner[near], candidate[near]
-                touched[owner] = True
-                on_corner = np.any(np.all(pos[faces[candidate]].astype(np.float32) ==
-                                          points[owner, None].astype(np.float32), axis=2), axis=1)
-                shared[owner[on_corner]] = True
-                hit[candidate] = True
-        begin = stop
-    return set(vertices[touched].tolist()), set(np.unique(faces[hit]).tolist()), bool(np.any(touched & ~shared))
+    for owner, candidate in triangles_near(search, points, reach, PAIR_BATCH):
+        _mark_border(points, owner, candidate, corners, centres, radii, tolerance, touched, shared, hit)
+    return set(vertices[touched[inverse]].tolist()), set(np.unique(faces[hit]).tolist()), bool(np.any(touched & ~shared))
+
+
+def _mark_border(points, owner, candidate, corners, centres, radii, tolerance, touched, shared, hit):
+    keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
+    owner, candidate = owner[keep], candidate[keep]
+    if len(owner):
+        _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
+        near = distance <= tolerance
+        owner, candidate = owner[near], candidate[near]
+        touched[owner] = True
+        on_corner = np.any(np.all(corners[candidate].astype(np.float32) ==
+                                  points[owner, None].astype(np.float32), axis=2), axis=1)
+        shared[owner[on_corner]] = True
+        hit[candidate] = True
+
+
+def _overlapping_pairs(lows, highs, incident):
+    """Array-based sort and sweep (Ericson, Real-Time Collision Detection, section 7.5.2)."""
+    order = np.argsort(lows[:, 0], kind="stable")
+    ends = np.searchsorted(lows[order, 0], highs[order, 0], side="right")
+    for start, (a, end) in enumerate(zip(order, ends), 1):
+        others = order[start:end]
+        others = others[(incident[a] | incident[others]) &
+                        ~np.any(lows[a, 1:] > highs[others, 1:], axis=1) &
+                        ~np.any(lows[others, 1:] > highs[a, 1:], axis=1)]
+        yield from ((min(a, b), max(a, b)) for b in others)
 
 
 def contact_pairs(pos, tris, tri_o, position_scale=POSITION_SCALE, among=None):
-    """Surface contacts after a KD bounds broad phase; `among` limits the incident objects."""
-    tolerance = seal_tolerance(position_scale)
-    owners = np.unique(tri_o)
-    objects = {int(obj): tris[tri_o == obj] for obj in owners}
-    vertices = {obj: np.unique(faces) for obj, faces in objects.items()}
-    if not len(owners):
+    """Surface contacts after a bounds sweep; `among` limits the incident objects."""
+    groups = grouped_indices(tri_o)
+    if not groups:
         return []
-    lows = np.array([pos[vertices[int(obj)]].min(axis=0) for obj in owners]) - tolerance
-    highs = np.array([pos[vertices[int(obj)]].max(axis=0) for obj in owners]) + tolerance
-    centres, reach = (lows + highs) / 2, np.linalg.norm(highs - lows, axis=1) / 2
-    tree = cKDTree(centres)
-    pairs = set()
-    for at, obj in enumerate(owners):
-        if among is not None and obj not in among:
-            continue
-        for other in tree.query_ball_point(centres[at], reach[at] + reach.max()):
-            if at != other and not (np.any(lows[at] > highs[other]) or np.any(lows[other] > highs[at])):
-                pairs.add(tuple(sorted((int(obj), int(owners[other])))))
+    tolerance = seal_tolerance(position_scale)
+    owners = list(groups)
+    objects = [tris[rows] for rows in groups.values()]
+    vertices = [np.unique(faces).astype(int, copy=False) for faces in objects]
+    points = [np.unique(pos[ids], axis=0, return_inverse=True) for ids in vertices]
+    lows = np.array([p.min(axis=0) for p, _ in points]) - tolerance
+    highs = np.array([p.max(axis=0) for p, _ in points]) + tolerance
+    incident = np.array([among is None or obj in among for obj in owners])
+
+    @cache
+    def query(index):
+        return _face_query(pos, objects[index], tolerance)
+
     edges = []
-    for a, b in sorted(pairs):
-        sa, sb, unshared_a = surface_border(pos, vertices[a], objects[b], tolerance)
-        rb, ra, unshared_b = surface_border(pos, vertices[b], objects[a], tolerance)
+    for a, b in sorted(_overlapping_pairs(lows, highs, incident)):
+        sa, sb, unshared_a = _surface_border(vertices[a], *points[a], query(b), tolerance)
+        rb, ra, unshared_b = _surface_border(vertices[b], *points[b], query(a), tolerance)
         if sa or rb:
-            edges.append(Contact(a, b, np.array(sorted(sa | ra), dtype=int), np.array(sorted(sb | rb), dtype=int), unshared_a or unshared_b))
+            edges.append(Contact(owners[a], owners[b], np.array(sorted(sa | ra), dtype=int),
+                                 np.array(sorted(sb | rb), dtype=int), unshared_a or unshared_b))
     return edges
 
 
