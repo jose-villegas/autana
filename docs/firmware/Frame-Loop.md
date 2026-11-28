@@ -59,7 +59,7 @@ sequenceDiagram
     Shell->>Slot: answer every slot with an answer
     Note over Slot,Shell: FREEZE, RESUME or STEP<br/>FRAMEWATCH, SOUND, FRAMEREC
     Shell->>Slot: take RUNSUITE, run it, report it done
-    Note over Slot,Shell: from home, an open app left first,<br/>a scene still held fails the run
+    Note over Slot,Shell: from home, an open app left first,<br/>a scene the suite kept fails it
     Note over Slot,Shell: apply OPEN, HOME or APPS
     alt frozen, no STEP credit
         Note over Slot,Shell: SCREENSHOT of the held frame

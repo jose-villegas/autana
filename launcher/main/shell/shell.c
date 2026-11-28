@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "app/app.h"
 #include "core/timing.h"
@@ -193,26 +192,21 @@ log_missing_suite(const suite_run_t* run) {
 static char held_scene_message[sizeof "scene  is still held" + ASSET_NAME_MAX];
 
 static void
-test_a_suite_starts_with_no_scene_held(void) {
+test_a_suite_releases_every_scene_it_loads(void) {
     TEST_FAIL_MESSAGE(held_scene_message);
 }
 
-/* A suite starts from home with no scene held: an open app's scene, or one a
- * past suite kept, would be drawn and counted beside the suite's own. An open
- * app is left, said so; a scene held after that fails, and the suite is not run. */
-static __attribute__((noinline)) bool
-start_from_home(const app_t** current) {
-    if (*current != NULL) {
-        ESP_LOGW(TAG, "RUNSUITE left %s first: a suite starts from home", (*current)->name);
-        shell_exit_app(current);
-    }
+/* A scene a suite kept would be drawn and counted in the next one: the suite
+ * fails, by its own name, and the scene goes. */
+static __attribute__((noinline)) void
+release_held_scenes(void) {
     const char* held = scene_held_id();
     if (held == NULL) {
-        return true;
+        return;
     }
     (void)snprintf(held_scene_message, sizeof held_scene_message, "scene %s is still held", held);
-    RUN_TEST(test_a_suite_starts_with_no_scene_held);
-    return false;
+    RUN_TEST(test_a_suite_releases_every_scene_it_loads);
+    scene_unload_all();
 }
 
 /* See console/console.c for framebuffer contention explanation. */
@@ -223,17 +217,19 @@ run_pending_selftest_suite(const app_t** current) {
     }
     const console_runsuite_request_t* request = console_runsuite_slot.taken;
     static suite_run_t run;
-    UNITY_BEGIN();
-    const bool from_home = start_from_home(current);
-    const bool own_visit = selftest_visit_begin();
-    if (from_home) {
-        suites_run_request(request->suite, &run);
-        if (!run.found) {
-            log_missing_suite(&run);
-        }
-    } else {
-        run = (suite_run_t){.name = request->suite, .name_length = (int)strcspn(request->suite, " "), .found = true};
+    /* A suite starts from home: an open app's scene would be drawn and
+     * counted beside the suite's own. */
+    if (*current != NULL) {
+        ESP_LOGW(TAG, "RUNSUITE left %s first: a suite starts from home", (*current)->name);
+        shell_exit_app(current);
     }
+    const bool own_visit = selftest_visit_begin();
+    UNITY_BEGIN();
+    suites_run_request(request->suite, &run);
+    if (!run.found) {
+        log_missing_suite(&run);
+    }
+    release_held_scenes();
     suite_report_frame_watch();
     (void)UNITY_END();
     selftest_visit_end(own_visit);

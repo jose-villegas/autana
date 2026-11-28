@@ -1315,7 +1315,7 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
-/* A suite starts only with no scene held (shell.c): the held one is named until released. */
+/* The shell fails a suite that ends with a scene held (shell.c), by this id. */
 static void
 test_a_held_scene_is_named_until_it_is_released(void) {
     fixture();
