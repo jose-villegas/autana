@@ -63,6 +63,7 @@ class TriangleBounds:
                        np.array(start, dtype=np.int64), np.array(count, dtype=np.int64), order,
                        triangle_low, triangle_high)
         self.index = BoundsIndex(*(column.ctypes.data for column in self.arrays))
+        self._candidates = candidates_function()
         self.scale = max(np.abs(low[0]).max(), np.abs(high[0]).max())
         self.fallback = None
 
@@ -84,7 +85,7 @@ class TriangleBounds:
         rounding = BOUNDS_EPSILON * np.maximum(self.scale, np.abs(points).max(axis=1))
         reach_squared = (best + rounding) ** 2
         owners, triangles = np.empty((2, CANDIDATE_CAPACITY), dtype=np.int64)
-        count = candidates_function()(ctypes.byref(self.index), points.ctypes.data, reach_squared.ctypes.data,
+        count = self._candidates(ctypes.byref(self.index), points.ctypes.data, reach_squared.ctypes.data,
                                       len(points), owners.ctypes.data, triangles.ctypes.data, len(owners))
         if count > len(owners):
             if len(points) > 1:

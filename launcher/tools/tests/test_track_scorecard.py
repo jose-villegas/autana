@@ -409,6 +409,26 @@ class SourceSampleCacheTests(unittest.TestCase):
 
 
 class SurfaceSearchTests(unittest.TestCase):
+    def test_a_cold_bounds_library_is_loaded_before_the_distance_workers(self):
+        import threading
+        from r3d import triangle_bounds
+
+        load = triangle_bounds.candidates_function
+
+        def main_thread_load():
+            if threading.current_thread() is not threading.main_thread():
+                raise RuntimeError("concurrent library builds would use the same temporary filename")
+            return load()
+
+        wall = ShapeTests.WALL
+        points = wall.reshape(-1, 3)
+        triangles = np.arange(len(points)).reshape(-1, 3)
+        source = SimpleNamespace(p=points, tri_v=triangles, tri_o=np.zeros(len(triangles), dtype=int),
+                                 tri_m=np.zeros(len(triangles), dtype=int), names=["stone"], object_names=["wall"])
+        with patch.object(triangle_bounds, "candidates_function", side_effect=main_thread_load):
+            [row] = measure_parts(source, points, triangles)
+        self.assertEqual(row["iou"], 1.0)
+
     def test_bounded_triangle_search_has_the_same_distances(self):
         from r3d.geometry import nearest_triangles, triangle_search
         from r3d.triangle_bounds import TriangleBounds
