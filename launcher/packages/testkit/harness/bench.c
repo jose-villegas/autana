@@ -6,6 +6,8 @@
 #include "math/scalar/units.h"
 #include "unity.h"
 
+#include <stdlib.h>
+
 #ifdef ESP_PLATFORM
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -97,10 +99,11 @@ bench_yield(void) {
 }
 
 void*
-bench_alloc_internal(size_t size, const char* what) {
+bench_alloc(size_t size, const char* what, bool on_chip) {
 #ifdef ESP_PLATFORM
-    void* ptr = heap_caps_malloc(size, MALLOC_CAP_INTERNAL);
+    void* ptr = on_chip ? heap_caps_malloc(size, MALLOC_CAP_INTERNAL) : malloc(size);
 #else
+    (void)on_chip;
     void* ptr = malloc(size);
 #endif
     TEST_ASSERT_NOT_NULL_MESSAGE(ptr, what);

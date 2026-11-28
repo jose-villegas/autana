@@ -267,12 +267,12 @@ static const row_t rows[] = {MATH_ROWS(MATH_ROW, MATH_ROW_OPS)};
 static const char math_bench_manifest[] = MATH_ROWS(MATH_MANIFEST, MATH_MANIFEST_OPS);
 
 static fixture_t*
-fixture(void) {
-    fixture_t* f = bench_alloc_internal(sizeof *f, "fixture");
+fixture(bool on_chip) {
+    fixture_t* f = bench_alloc(sizeof *f, "fixture", on_chip);
     *f = (fixture_t){0};
     active_fixture = f;
     suite_set_test_cleanup(release);
-#define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc_internal(sizeof *f->name * (count), #name);
+#define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc(sizeof *f->name * (count), #name, on_chip);
 #define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
     MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
     static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
@@ -326,7 +326,7 @@ test_math_board_rows(void) {
         TEST_IGNORE_MESSAGE("QEMU has no hardware cache timing or performance monitor");
     }
     bench_target_report("MATHTARGET");
-    fixture_t* f = fixture();
+    fixture_t* f = fixture(true);
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
         cycle_context_t ctx = {.row = row, .fixture = f};
@@ -338,7 +338,7 @@ test_math_board_rows(void) {
 
 static void
 test_math_instruction_rows(void) {
-    fixture_t* f = fixture();
+    fixture_t* f = fixture(false);
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
         row->fn(f);

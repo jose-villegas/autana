@@ -8,6 +8,16 @@
 #include "esp_memory_utils.h"
 #include "esp_psram.h"
 
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+
+/* MEMORY_INTERNAL means RAM both cores read at full speed; sdkconfig.defaults
+ * says why RTC fast RAM is not that. */
+#ifdef CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP
+#error "RTC fast RAM must stay out of the heap: core 1 reads it slowly"
+#endif
+
 size_t
 memory_free_bytes(memory_kind_t kind) {
     if (kind == MEMORY_APP) {

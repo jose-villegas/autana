@@ -754,7 +754,8 @@ def parse_runtime_heap(text):
             if "unmeasured" in current or not phase or phase[1] in current["phases"]:
                 raise ValueError(f"runtime heap build {build}: invalid phase: {line}")
             reading = json.loads(phase[2])
-            if (set(reading) != {"free", "largest", "total"}
+            # autana heap --json adds the low-water mark since boot as "min".
+            if (not {"free", "largest", "total"} <= set(reading) <= {"free", "largest", "total", "min"}
                     or any(type(value) is not int or value < 0 for value in reading.values())):
                 raise ValueError(f"runtime heap build {build}: invalid reading: {phase[2]}")
             if not reading["largest"] <= reading["free"] <= reading["total"]:
