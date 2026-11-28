@@ -194,7 +194,7 @@ class SweepTests(unittest.TestCase):
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                 mock.patch.object(fitted_variant, "sweep_references"), \
                 mock.patch.object(fitted_variant, "run_sweep_points", side_effect=run_points), \
-                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.bundle")), \
+                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.bundle")) as fit, \
                 mock.patch.object(fitted_variant, "held_out_score", return_value=(1, 2)), \
                 mock.patch.object(fitted_variant, "plot_pareto"), mock.patch.object(fitted_variant, "sweep_rows", return_value=[]), \
                 mock.patch.object(bake_fidelity, "build_host", return_value=pathlib.Path("host")) as build, \
@@ -206,6 +206,36 @@ class SweepTests(unittest.TestCase):
             fitted_variant.sweep_main([str(scene), "--variant", "paint", "--budgets", "5", "--out", directory])
         self.assertEqual(build.call_args.args[0], pathlib.Path(__file__).resolve().parents[1] / "render/scene_viewer.sh")
         self.assertEqual(build.call_args.args[2], scene)
+        references = pathlib.Path(directory).resolve() / "references"
+        self.assertEqual(fit.call_args.kwargs["inputs"], references)
+        self.assertEqual(fit.call_args.kwargs["start"], references / "gallery.paint.bundle")
+
+    def test_fit_command_uses_the_asset_start_in_the_prepared_work(self):
+        job = SimpleNamespace(asset_name="gallery.paint", renderer=SimpleNamespace(
+            variant=SimpleNamespace(name="variant_name")))
+        with tempfile.TemporaryDirectory() as directory, \
+                unittest.mock.patch.object(fitted_variant, "load_scene"), \
+                unittest.mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                unittest.mock.patch.object(stage, "fit") as fit:
+            fitted_variant.main(["scene.toml", "--mesh", "paint", "--work", directory, "fit"])
+        work = pathlib.Path(directory).resolve()
+        self.assertEqual(fit.call_args.kwargs["inputs"], work)
+        self.assertEqual(fit.call_args.kwargs["start"], work / "gallery.paint.bundle")
+
+    def test_sweep_reference_marker_requires_the_asset_named_start(self):
+        job = SimpleNamespace(asset_name="gallery.paint", renderer=SimpleNamespace(
+            variant=SimpleNamespace(name="variant_name")))
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "references.json").write_text('{"digest": "same"}')
+            (work / "variant_name.bundle").touch()
+            with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
+                    unittest.mock.patch.object(fitted_variant, "prepare") as prepare:
+                fitted_variant.sweep_references("scene", None, job, work)
+                prepare.assert_called_once_with("scene", None, job, work)
+                (work / "gallery.paint.bundle").touch()
+                fitted_variant.sweep_references("scene", None, job, work)
+                prepare.assert_called_once()
 
     def test_probe_import_refuses_sweep_budgets(self):
         import contextlib

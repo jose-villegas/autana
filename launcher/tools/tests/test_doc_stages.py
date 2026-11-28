@@ -30,6 +30,33 @@ def flight_scene(renderer):
 
 
 class DocStagesTests(unittest.TestCase):
+    def test_start_writers_use_the_asset_name(self):
+        from types import SimpleNamespace as NS
+        from r3d import mesh_import
+        job = NS(asset_name="room.hall", object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
+        scene = NS(renderers=[job])
+        with mock.patch.object(mesh_import, "write_baked") as write, \
+                mock.patch.object(mesh_import, "bake_geometry") as geometry:
+            stages.write_start(self.tmp, job, scene)
+            write.assert_called_once_with(job, scene, self.tmp, "room.hall", recorder=None)
+            write.reset_mock()
+            stages.bake_into(self.tmp, scene, "hall", False)
+        baked, _, directory, name, source, _ = write.call_args.args
+        self.assertIsNot(baked, job)
+        self.assertEqual((directory, name, source), (self.tmp, "room.hall", geometry.return_value))
+
+    def test_smoke_prepares_the_asset_named_start(self):
+        from types import SimpleNamespace as NS
+        from r3d import reference_render
+        start = self.tmp / "baked.bundle"
+        start.write_bytes(b"start")
+        job = NS(asset_name="room.hall", asset_path=start, renderer=NS(fit=object()), object=NS(name="hall"))
+        inputs = self.tmp / "inputs"
+        with mock.patch.object(stages, "flight_poses", return_value=(8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])), \
+                mock.patch.object(reference_render, "main"):
+            stages.smoke_prepare("scene.toml", None, job, inputs)
+        self.assertEqual((inputs / "room.hall.bundle").read_bytes(), b"start")
+
     def test_capture_intervals_are_required_positive_and_common(self):
         first, second = self.tmp / "a.log", self.tmp / "b.log"
         for text in ("", "pose_every_ms=0", "pose_every_ms=500\npose_every_ms=1000"):

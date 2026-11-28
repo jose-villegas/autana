@@ -382,7 +382,7 @@ def kept_references(key, job, scene, cache):
 
 def write_start(directory, job, scene, recorder=None):
     from r3d.mesh_import import write_baked
-    write_baked(job, scene, directory, start_file(job, directory).stem, recorder=recorder)
+    write_baked(job, scene, directory, job.asset_name, recorder=recorder)
 
 
 def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, recorder=None):
@@ -395,7 +395,7 @@ def bake_into(directory, scene, baked_name, path_cull, recorder=None):
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
     geometry = bake_geometry(baked, scene, recorder)
-    write_baked(baked, scene, directory, start_file(baked, directory).stem, geometry, recorder)
+    write_baked(baked, scene, directory, baked.asset_name, geometry, recorder)
     if path_cull:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery

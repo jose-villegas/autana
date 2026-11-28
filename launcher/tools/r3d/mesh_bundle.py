@@ -3,6 +3,7 @@
 import json
 import math
 import struct
+from pathlib import Path
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
@@ -27,8 +28,6 @@ HASH_HEX_DIGITS = 8
 
 def start_file(job, work):
     """Path to the asset-named start bundle in a work directory."""
-    from pathlib import Path
-
     return Path(work) / (job.asset_name + SUFFIX)
 
 

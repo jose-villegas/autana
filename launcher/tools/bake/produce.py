@@ -140,7 +140,7 @@ def produce_mesh(bake, cache, lock):
         job = with_source(job, export_file(job.settings, lock, cache))
     with tempfile.TemporaryDirectory() as work:
         start = start_file(job, work)
-        write_baked(job, bake.scene, start.parent, job.asset_name)
+        write_baked(job, bake.scene, work, job.asset_name)
         return record(bake, start, cache)
 
 

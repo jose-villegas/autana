@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from functools import cache
 
 import numpy as np
-from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles, grouped_indices
+from r3d.geometry import closest_point_on_triangles, grouped_indices, triangle_search, triangles_near
 from r3d.lit_mesh import POSITION_SCALE
 from r3d.repair import seal_tolerance
 
@@ -20,9 +19,8 @@ class Contact:
     unshared: bool = False
 
 
-# A vertex with more candidates than the batch limit runs alone.
+# Bounds candidate pairs in flight. A vertex with more candidates runs alone.
 PAIR_BATCH = 1 << 20
-RADIUS_BINS_PER_OCTAVE = 4
 
 
 def surface_border(pos, vertices, faces, tolerance):
@@ -37,74 +35,52 @@ def surface_border(pos, vertices, faces, tolerance):
 
 def _face_query(pos, faces, tolerance):
     corners = pos[faces]
-    centres = corners.mean(axis=1)
-    radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
-    reach = radii.max() + tolerance
-    # The ball uses double precision even when the radius screen below does not.
-    # Leave room for rounding and squared-distance underflow in the radius screen.
-    precision = np.finfo(centres.dtype)
-    floor, slack = np.sqrt(precision.tiny), 1 + np.sqrt(precision.eps)
-    groups = []
-    thresholds = radii + tolerance
-    band = np.floor(np.log2(np.maximum(thresholds, floor)) * RADIUS_BINS_PER_OCTAVE).astype(int)
-    for rows in grouped_indices(band).values():
-        radius = min(reach, max(floor, float(thresholds[rows].max()) * slack))
-        tree = cKDTree(centres[rows])
-        low = np.nextafter(tree.mins - radius, -np.inf)
-        high = np.nextafter(tree.maxes + radius, np.inf)
-        groups.append((rows, tree, radius, low, high))
-    return faces, corners, centres, radii, groups
+    search = triangle_search(corners)
+    centres = search.tree.data
+    radii = np.empty(len(faces))
+    for _, rows, radius in search.groups:
+        radii[rows] = radius
+    reach = tolerance
+    if np.issubdtype(pos.dtype, np.floating) and pos.dtype != np.float64:
+        # Cover the rounding and squared-distance underflow of the native-dtype radius screen.
+        precision = np.finfo(pos.dtype)
+        centres = corners.mean(axis=1)
+        centre_shift = np.linalg.norm(centres - search.tree.data, axis=1)
+        native_radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
+        threshold = (native_radii + tolerance).astype(np.float64)
+        reach = np.maximum(0, np.maximum(np.sqrt(precision.tiny), threshold * (1 + np.sqrt(precision.eps)))
+                           + centre_shift - radii)
+        radii = native_radii
+    return faces, corners, centres, radii, search, reach
 
 
 def _surface_border(vertices, points, inverse, query, tolerance):
-    faces, corners, centres, radii, groups = query
+    faces, corners, centres, radii, search, reach = query
     touched, shared = np.zeros(len(points), bool), np.zeros(len(points), bool)
     # All corners of a touched face must stay fixed: locking just the
     # incoming point would let the supporting surface move away from it.
     hit = np.zeros(len(faces), bool)
-    for rows, tree, reach, low, high in groups:
-        nearby = np.ones(len(points), dtype=bool)
-        for axis, coords in enumerate(points.T):
-            nearby &= (coords >= low[axis]) & (coords <= high[axis])
-        owners = np.flatnonzero(nearby)
-        if len(owners):
-            _mark_border(points, owners, rows, tree, reach, corners, centres, radii, tolerance, touched, shared, hit)
+    for owner, candidate in triangles_near(search, points, reach, PAIR_BATCH):
+        _mark_border(points, owner, candidate, corners, centres, radii, tolerance, touched, shared, hit)
     return set(vertices[touched[inverse]].tolist()), set(np.unique(faces[hit]).tolist()), bool(np.any(touched & ~shared))
 
 
-def _mark_border(points, owners, rows, tree, reach, corners, centres, radii, tolerance, touched, shared, hit):
-    query_points = points[owners]
-    found = None
-    if len(owners) * len(rows) <= PAIR_BATCH:
-        found = tree.query_ball_point(query_points, reach, return_sorted=False)
-        sizes = np.fromiter(map(len, found), dtype=int, count=len(owners))
-    else:
-        sizes = tree.query_ball_point(query_points, reach, return_length=True)
-    ends = np.cumsum(sizes)
-    begin = 0
-    while begin < len(owners):
-        before = ends[begin - 1] if begin else 0
-        stop = max(begin + 1, int(np.searchsorted(ends, before + PAIR_BATCH, side='right')))
-        if ends[stop - 1] > before:
-            owner = np.repeat(owners[begin:stop], sizes[begin:stop])
-            balls = found if found is not None else tree.query_ball_point(query_points[begin:stop], reach,
-                                                                          return_sorted=False)
-            candidate = rows[np.concatenate(balls).astype(int)]
-            keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
-            owner, candidate = owner[keep], candidate[keep]
-            if len(owner):
-                _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
-                near = distance <= tolerance
-                owner, candidate = owner[near], candidate[near]
-                touched[owner] = True
-                on_corner = np.any(np.all(corners[candidate].astype(np.float32) ==
-                                          points[owner, None].astype(np.float32), axis=2), axis=1)
-                shared[owner[on_corner]] = True
-                hit[candidate] = True
-        begin = stop
+def _mark_border(points, owner, candidate, corners, centres, radii, tolerance, touched, shared, hit):
+    keep = np.linalg.norm(centres[candidate] - points[owner], axis=1) <= radii[candidate] + tolerance
+    owner, candidate = owner[keep], candidate[keep]
+    if len(owner):
+        _, distance = closest_point_on_triangles(points[owner], *corners[candidate].transpose(1, 0, 2))
+        near = distance <= tolerance
+        owner, candidate = owner[near], candidate[near]
+        touched[owner] = True
+        on_corner = np.any(np.all(corners[candidate].astype(np.float32) ==
+                                  points[owner, None].astype(np.float32), axis=2), axis=1)
+        shared[owner[on_corner]] = True
+        hit[candidate] = True
 
 
 def _overlapping_pairs(lows, highs, incident):
+    """Array-based sort and sweep (Ericson, Real-Time Collision Detection, section 7.5.2)."""
     order = np.argsort(lows[:, 0], kind="stable")
     ends = np.searchsorted(lows[order, 0], highs[order, 0], side="right")
     for start, (a, end) in enumerate(zip(order, ends), 1):

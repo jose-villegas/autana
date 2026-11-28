@@ -203,3 +203,25 @@ def majority(parts, values, count):
         if number > most[part]:
             best[part], most[part] = value, number
     return best
+
+
+def triangles_near(search, points, reach, pair_batch):
+    """Yield batches of point and triangle indices covering the centroid balls of radius plus reach.
+    Reach can be a scalar or a padding per triangle."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    reach = np.broadcast_to(reach, (len(search.corners),))
+    for tree, rows, radii in search.groups:
+        ball = np.nextafter((radii + reach[rows]).max(), np.inf)
+        low = np.nextafter(tree.mins - ball, -np.inf)
+        high = np.nextafter(tree.maxes + ball, np.inf)
+        nearby = np.ones(len(points), dtype=bool)
+        for axis, coords in enumerate(points.T):
+            nearby &= (coords >= low[axis]) & (coords <= high[axis])
+        owners = np.flatnonzero(nearby)
+        step = max(1, pair_batch // len(rows))
+        for begin in range(0, len(owners), step):
+            batch = owners[begin:begin + step]
+            balls = tree.query_ball_point(points[batch], ball, return_sorted=False)
+            sizes = np.fromiter(map(len, balls), dtype=int, count=len(batch))
+            if sizes.any():
+                yield np.repeat(batch, sizes), rows[np.concatenate(balls).astype(int)]

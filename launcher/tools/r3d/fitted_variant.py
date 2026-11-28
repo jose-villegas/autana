@@ -67,7 +67,7 @@ def prepare(scene_path, scene, job, work, recorder=None):
 
     inputs = reference_inputs(job, scene)
     work.mkdir(parents=True, exist_ok=True)
-    start = write_baked(job, scene, work, start_file(job, work).stem, recorder=recorder)
+    start = write_baked(job, scene, work, job.asset_name, recorder=recorder)
     training = prepare_references(inputs, work)
     log(f"prepared {job.renderer.variant.name}: start of {len(start.tris)} triangles, {training} training poses")
 
