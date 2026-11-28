@@ -13,13 +13,11 @@ sys.path.insert(0, str(LAUNCHER / "tools"))
 import numpy as np
 from scipy import ndimage
 
-from r3d.obj import load_obj
 from r3d.poses import flight_camera, sample_camera_rows
-from r3d.ray_query import RayQuery
 from pinhole_rays import VIDEO_SCALE, enclosed_sky, flythrough_poses, grid_rays
 from check_avi import read_video
 from render_compare import expand_565
-from see_through import merged, placed
+from see_through import SceneSources
 
 DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 25
@@ -74,14 +72,8 @@ class SourceSky:
     """Where the scene's source meshes show sky in a flythrough frame's render pixel (pixel_sky)."""
 
     def __init__(self, scene, frames, size, sources=None):
-        if sources is None:
-            parts = []
-            for job in scene.renderers:
-                points, _, triangles, *_ = load_obj(job.settings.source["path"])
-                parts.append((placed(points, scene, job), triangles))
-            self.query = RayQuery(*merged(parts))
-        else:
-            self.query = sources.query()
+        sources = SceneSources(scene) if sources is None else sources
+        self.query = sources.query(drop_alpha=True)
         self.width, self.height, self.lens, self.near, self.poses = flythrough_poses(flight_camera(scene), DT_MS,
                                                                                      size, frames)
 

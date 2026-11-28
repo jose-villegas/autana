@@ -27,8 +27,10 @@ import host_render  # noqa: E402
 
 try:
     import numpy as np
+    from PIL import Image
     from r3d.import_settings import load_scene
     from r3d.ray_query import RayQuery
+    from see_through import SceneSources
     from sky_through_walls import (MOST_HOLED_FRAMES, VIDEO_SCALE, SourceSky, clear_colour, measure_sky,
                                    pixel_sky, sky_pixels)
     from tests.r3d_env import needs_llvm
@@ -140,8 +142,10 @@ class PixelSky(unittest.TestCase):
             for name, x in (("left", -20.3125), ("right", -0.3125)):
                 source = path / f"{name}.obj"
                 source.write_text("v 0 -3 10\nv 20 -3 10\nv 20 3 10\nv 0 3 10\nf 1 2 3 4\n", encoding="utf-8")
+                source.with_suffix(".mtl").touch()
                 obj = SimpleNamespace(name=name, matrix=np.eye(3), position=np.array([x, 0, 0]))
-                renderers.append(SimpleNamespace(object=obj, settings=SimpleNamespace(source={"path": source})))
+                settings = SimpleNamespace(source={"path": source}, alpha_keep=None)
+                renderers.append(SimpleNamespace(object=obj, settings=settings, bake=None))
             camera = SimpleNamespace(background=0x9CC0E6, path=SimpleNamespace(animation="camera", node="camera"),
                                      half_fov_short_tan=1.0, near_z=0.1)
             scene = SimpleNamespace(camera=SimpleNamespace(component=camera), renderers=[],
@@ -169,6 +173,29 @@ class PixelSky(unittest.TestCase):
         source.lens, source.near = 1.0, 0.1
         source.poses = [np.array([0.0, 0, 0, 0, 0, -1]), FORWARD]  # away from the wall, then at it
         self.assertFalse(source.of_frame(0)(np.array([0]), np.array([0]))[0])
+
+    def test_sky_through_a_masked_source_quad_is_not_a_hole(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder)
+            source = path / "wall.obj"
+            source.write_text("mtllib wall.mtl\nv -20 -20 10\nv 20 -20 10\nv 20 20 10\nv -20 20 10\n"
+                              "vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\nusemtl wall\nf 1/1 2/2 3/3 4/4\n", encoding="utf-8")
+            source.with_suffix(".mtl").write_text("newmtl wall\nmap_Kd wall.png\n", encoding="utf-8")
+            obj = SimpleNamespace(name="wall", matrix=np.eye(3), position=np.zeros(3))
+            settings = SimpleNamespace(source={"path": source}, alpha_keep=0.5, thin=None)
+            scene = SimpleNamespace(renderers=[SimpleNamespace(object=obj, settings=settings, bake=None)], objects=[obj])
+            sky = (156, 195, 231)
+            frame = np.zeros((3, 3, 3), dtype=np.uint8)
+            frame[1, 1] = sky
+            poses = (3, 3, 1.0, 0.1, [FORWARD] * 2)
+            with (patch("sky_through_walls.flight_camera"),
+                  patch("sky_through_walls.flythrough_poses", return_value=poses)):
+                for alpha, expected_holes in ((255, 1), (0, 0)):
+                    Image.new("RGBA", (1, 1), (255, 255, 255, alpha)).save(path / "wall.png")
+                    for sources in (None, SceneSources(scene)):
+                        with self.subTest(alpha=alpha, shared_sources=sources is not None):
+                            source_sky = SourceSky(scene, 1, (3, 3), sources)
+                            self.assertEqual(sky_pixels(frame, sky, source_sky.of_frame(0)), (expected_holes, 0))
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

@@ -39,15 +39,14 @@ def placed(points, scene, job):
     return place(points, placement.matrix, placement.position)
 
 
-def kept_source(scene, job, source=None):
-    """The renderer's source as its import keeps it: (points, triangles) placed in the scene."""
+def kept_source(scene, job, source, *, thin):
+    """Place source triangles kept by alpha masking and, with `thin`, import thinning."""
     settings = job.settings
-    source = load_source(settings) if source is None else source
     triangles, materials = source.tri_v, source.tri_m
     if settings.alpha_keep is not None:
         triangles, _, materials, _ = drop_masked(source.p, source.uv, source.tri_v, source.tri_t, source.tri_m,
                                                  source.textures, settings.alpha_keep)
-    if settings.thin:
+    if thin and settings.thin:
         triangles = triangles[np.array([source.names[m] != settings.thin.material for m in materials], dtype=bool)]
     return placed(source.p, scene, job), triangles
 
@@ -73,7 +72,7 @@ def merged(parts):
 
 
 class SceneSources:
-    """Source meshes loaded once, with exact ray queries for the raw and kept triangles."""
+    """Source meshes loaded once, with exact ray queries for each source filter."""
 
     def __init__(self, scene):
         self.scene = scene
@@ -86,20 +85,22 @@ class SceneSources:
             self.meshes[path] = load_source(job.settings)
         return self.meshes[path]
 
-    def query(self, kept=False):
+    def query(self, kept=False, *, drop_alpha=False):
+        """Trace all source meshes, optionally alpha-masked, or the imported source of baked renderers."""
         jobs = self.scene.renderers
-        if kept and all(job.bake and job.settings.alpha_keep is None and not job.settings.thin for job in jobs):
-            kept = False
-        if kept not in self.queries:
+        drop_alpha = (drop_alpha or kept) and any(job.settings.alpha_keep is not None for job in jobs)
+        kept = kept and any(not job.bake or job.settings.thin for job in jobs)
+        key = (kept, drop_alpha)
+        if key not in self.queries:
             parts = []
             for job in jobs:
                 if kept and not job.bake:
                     continue
                 source = self.mesh(job)
-                parts.append(kept_source(self.scene, job, source) if kept
+                parts.append(kept_source(self.scene, job, source, thin=kept) if kept or drop_alpha
                              else (placed(source.p, self.scene, job), source.tri_v))
-            self.queries[kept] = RayQuery(*merged(parts))
-        return self.queries[kept]
+            self.queries[key] = RayQuery(*merged(parts))
+        return self.queries[key]
 
 
 class Tracer:
