@@ -213,6 +213,7 @@ class CardTests(unittest.TestCase):
         settings.thin = SimpleNamespace(material='leaf', keep=.5)
         self.assertEqual(candidates(src, settings), [(src.names.index('leaf'), None)])
 
+    @needs_llvm
     def test_cards_override_the_thin_rule(self):
         """A thinned material is a card candidate: accepted, none of its faces reach the baked geometry; rejected,
         it bakes exactly as the thin rule alone bakes it, which differs from no rule at all."""
