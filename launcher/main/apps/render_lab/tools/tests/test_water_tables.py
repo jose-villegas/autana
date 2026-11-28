@@ -51,6 +51,12 @@ class WaterTables(unittest.TestCase):
                 f"water {phase} {part}": value for phase in PHASES
                 for part, value in (("frame", 400000), ("update", 200002), ("draw", 9000))})
 
+    def test_a_frame_replay_line_under_the_same_tag_is_not_a_row(self):
+        replay = "I (1) water_perf: frame_replay: water t=0ms transform_batches=2 nodes_visited=9"
+        rows, heaps = water_tables.parse(capture((("base", 0),), 100001) + [replay])
+        self.assertEqual(set(rows), {("base", phase) for phase in PHASES})
+        self.assertEqual(len(heaps), 3)
+
     def test_a_window_that_dropped_brackets_fails(self):
         lines = capture((("base", 0),), 1000, tail=" +3 dropped")
         with self.assertRaisesRegex(ValueError, "^a frame-cost window dropped 3 brackets"):
