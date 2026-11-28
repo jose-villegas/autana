@@ -122,10 +122,9 @@ def pack_ltex(indexed):
     return header + palette + bytes(texels)
 
 
-def decode(entry):
-    """The Indexed an LTEX entry holds."""
-    import numpy as np
-
+def check(entry):
+    """An LTEX entry's (format, size log2, levels, tint, palette offset, texels offset), after checking its header
+    and that its levels fill the entry exactly; struct only, so a build without numpy can check a texture."""
     version, fmt, log2, count, tint, palette_off, texels_off = HEADER.unpack_from(entry)
     masked = fmt == MASK1
     minimum = MASK1_SIZE_LOG2_MIN if masked else SIZE_LOG2_MIN
@@ -135,22 +134,31 @@ def decode(entry):
     colours = MASK1_COLOURS if masked else COLOURS
     if palette_off != HEADER.size or texels_off != palette_off + colours * PALETTE_STRIDE:
         raise ValueError("LTEX palette offsets are invalid")
+    per_byte = MASK1_PER_BYTE if masked else INDEX4_PER_BYTE
+    if texels_off + sum((1 << (log2 - level)) ** 2 // per_byte for level in range(count)) != len(entry):
+        raise ValueError("LTEX levels do not match the entry size")
+    return fmt, log2, count, tint, palette_off, texels_off
+
+
+def decode(entry):
+    """The Indexed an LTEX entry holds."""
+    import numpy as np
+
+    fmt, log2, count, tint, palette_off, texels_off = check(entry)
+    masked = fmt == MASK1
+    colours = MASK1_COLOURS if masked else COLOURS
     palette = [tuple(entry[palette_off + i * PALETTE_STRIDE:palette_off + i * PALETTE_STRIDE + TINT_RGB])
                for i in range(colours)]
+    per_byte = MASK1_PER_BYTE if masked else INDEX4_PER_BYTE
     levels, at = [], texels_off
     for level in range(count):
         side = 1 << (log2 - level)
-        per_byte = MASK1_PER_BYTE if masked else INDEX4_PER_BYTE
         size = side * side // per_byte
         packed = np.frombuffer(entry[at:at + size], dtype=np.uint8)
-        if len(packed) != size:
-            raise ValueError("LTEX levels do not match the entry size")
         if masked:
             indices = np.unpackbits(packed, bitorder="little")
         else:
             indices = np.column_stack([packed & ((1 << NIBBLE_BITS) - 1), packed >> NIBBLE_BITS]).ravel()
         levels.append(indices.reshape(side, side).astype(int).tolist())
         at += size
-    if at != len(entry):
-        raise ValueError("LTEX levels do not match the entry size")
     return Indexed(tuple(tint), palette, levels, fmt)

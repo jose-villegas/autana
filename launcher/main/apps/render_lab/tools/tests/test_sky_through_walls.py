@@ -211,6 +211,7 @@ class PixelSky(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+@needs_llvm
 class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

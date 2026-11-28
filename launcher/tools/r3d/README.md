@@ -7,7 +7,8 @@ mesh. Nothing here runs on the board.
 | Module | What it does |
 |---|---|
 | [obj.py](obj.py) | Loads a Wavefront OBJ and its MTL, and the textures the MTL names as mip chains. |
-| [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle. |
+| [geometry.py](geometry.py) | Welding, compaction, corner normals, closest point on a triangle, the closed shells a mesh holds. |
+| [procedural/wave_sheet.py](procedural/wave_sheet.py) | Coloured wave sheets (flat, sine, zigzag, sawtooth) with their formula normals, one skin or two closed at the hem, as an OBJ source or a start bundle. |
 | [tessellate.py](tessellate.py) | Conforming edge splits, used by the `seal_seams` join. |
 | [repair.py](repair.py) | The join step of the `seal_seams` import option: border vertices within a tolerance are welded and border edges are split at another piece's vertices, so a shared edge is one edge and the simplifier cannot open a crack along it. Positions only; vertices are never merged. |
 | [leaks.py](leaks.py) | The probe step of `seal_seams`: views of the source from probes in the camera's region and from the camera path, the holes a simplified mesh shows in them (sky enclosed by wall), and one source vertex to lock per hole; see [seal_seams](../../../docs/render/offline/Mesh-Import.md#seal_seams). |
@@ -33,7 +34,8 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
-| [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
+| [appearance_simplify.py](appearance_simplify.py) | Fits vertex positions and colours to reference renders with a differentiable rasterizer, prunes triangles to the budget, and splits edges at T-junctions. See [Appearance fit](#appearance-fit). |
+| [fit/wave_sweep.py](fit/wave_sweep.py) | Fits coarse wave sheets to fine ones over amplitude × frequency per wave shape and measures flipped triangles, normal error, back-face, dark and hole pixels: `wave_sweep.py --out DIR`, a CSV and heat maps drawn from it. |
 | [objects/](objects/objects_report.py) | Rigid instances, triangles saved and residuals: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
 | [lod/](lod/lod_replay.py) | Cluster levels of a fitted mesh, picked along its camera path at fixed tolerances and budgets: `lod_replay.py SCENE.scene.toml --object NAME --out DIR`; see [Levels of detail](../../../docs/render/frame/Levels-of-Detail.md). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
@@ -221,9 +223,9 @@ a comment listing the selectors, as shown in the sheet header.
 
 `appearance_simplify.py` takes a smooth mesh the simplifier baked at a
 triangle budget and moves its vertices and changes their colours until its
-renders match the reference along a camera path: appearance-driven
-simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
-triangles stay as the simplifier left them, so the budget holds.
+renders match reference views. This is appearance-driven
+simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>.
+
 [Appearance-Fit.md](../../../docs/render/offline/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
@@ -236,9 +238,9 @@ what the fit changes from the paper.
 | Schedule | Adam<sup>[[3]](../../../docs/Citations.md#kingma-2015)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
-Beside `loss.txt`, `stretch.json` reports edge stretch, area growth and corner
-displacement by connected part of the fit's start (after `--refine-to`), with
-small-part totals and the worst parts.
+Beside `loss.txt`, `stretch.json` reports triangles added by splitting, plus
+edge stretch, area growth and corner displacement by connected part of the
+start after `--refine-to`.
 
 The fitted colours are the bake, so the mesh enters the import at its last
 stage instead of being lit again. Every `--poses`/`--reference` pair trains
@@ -321,24 +323,26 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 
 `NAME` is the fitted scene object, or its variant when only one object fits that variant.
 
-`prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake, flat when the renderer's shading is),
-samples the camera's path every
-`fit.poses.train_every_ms`, holds out the multiples of
-`fit.poses.held_out_every_ms`, samples it again every
-`fit.prune.coverage_every_ms` for pruning, and renders the training references
-with their normals in portrait and landscape so the fit holds the panel either
-way up at `fit.poses.size`. `fit` fits with
-`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
-`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
-`fit.optimise.surface_margin`.
+`prepare` bakes the start at the variant's `triangles` minus `split_reserve`,
+lit by the scene's bake and flat when the renderer's shading is flat.
+
+`prepare` samples the path every `fit.poses.train_every_ms` and holds out
+multiples of `fit.poses.held_out_every_ms`. It samples pruning poses every
+`fit.prune.coverage_every_ms`.
+
+It renders path training references with normals in portrait and landscape at
+`fit.poses.size`. Deterministic reductions and seeded sampling make the fit
+repeatable.
 
 The fit holds borders that start near another part on that part
 (`SEAM_MARGIN` in `appearance_simplify.py`).
 
-`fit` prunes the fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. The fit uses deterministic
-reductions and seeded sampling; the lock pins the bytes a fit made.
+`fit` uses `fit.optimise` and writes the mesh into the work folder. Probe fits
+keep every start triangle and cap the split rest at `triangles`.
+
+Pruned fits subtract `split_reserve` from the rest budget before pruning once,
+then seal and split. The full rest budget caps the split mesh. Raise
+`split_reserve` if either fit reports an overflow.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;

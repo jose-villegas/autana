@@ -28,7 +28,8 @@ def load_source(settings, texture_dtype=np.float64):
     log(f"loaded {len(p)} vertices, {len(tri_v)} triangles, {len(names)} materials")
     textures = load_textures(obj_path.parent, materials, names, texture_dtype)
     return SimpleNamespace(p=p, uv=uv, tri_v=tri_v, tri_t=tri_t, tri_m=tri_m, names=names, materials=materials,
-                           textures=textures, colors=None, tri_o=tri_o, object_names=object_names)
+                           textures=textures, colors=None, tri_o=tri_o, object_names=object_names,
+                           **sides(settings, names))
 
 
 def load_glb_source(settings):
@@ -40,7 +41,14 @@ def load_glb_source(settings):
                            tri_t=tri_v.copy(), tri_m=np.array(mesh.tri_m, dtype=np.int64), names=mesh.names,
                            materials={}, textures=[None] * len(mesh.names),
                            tri_o=np.asarray(mesh.tri_o, dtype=np.int64), object_names=mesh.object_names,
-                           colors=np.array(mesh.colors, dtype=np.float64))
+                           colors=np.array(mesh.colors, dtype=np.float64), **sides(settings, mesh.names))
+
+
+def sides(settings, names):
+    """two_sided: whether any material is double_sided, so colours hold a back beside the front
+    (lit_mesh.both_sides()); far_skin: what a midsurface sheet shows from behind, set by the import's collapse
+    (midsurface.collapse()), None until then."""
+    return dict(two_sided=any(name in settings.double_sided for name in names), far_skin=None)
 
 
 def with_triangles(src, tri_v, tri_t, tri_m, **attributes):

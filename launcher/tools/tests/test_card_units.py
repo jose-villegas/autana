@@ -236,8 +236,8 @@ class CardContractTests(unittest.TestCase):
             settings.meshes = [dict(match=dict(material='leaf'))]
             self.assertEqual(decide.candidates(source, settings), [])
             settings.meshes = []
-            settings.thin = NS(material='leaf')
-            self.assertEqual(decide.candidates(source, settings), [])
+            settings.thin = NS(material='leaf', keep=.5)
+            self.assertEqual(decide.candidates(source, settings), [(0, CARD_SEE_THROUGH_MIN)])
         settings.thin = None
         settings.cards.always = ['leaf']
         accepted, report = decide.carded(source, settings, lambda m: (None, {'covered': 1.}))
@@ -343,7 +343,7 @@ class CardFormatTests(unittest.TestCase):
         entries += bundle_entries('rest', build_lit_mesh(p, np.full((3, 3), 128),
                                                        np.array([[0, 1, 2]]), np.ones(1)))
         entries.append((lcol_asset.name_for_mesh('card'), lcol_asset.TYPE,
-                        lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [bytes(len(mesh.pos)*3)])))
+                        lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), 0, [bytes(len(mesh.pos)*3)])))
         with tempfile.TemporaryDirectory() as folder:
             bundle = pathlib.Path(folder) / 'start.bundle'
             bundle.write_bytes(mesh_bundle.encode(entries, [row]))
@@ -361,7 +361,7 @@ class CardFormatTests(unittest.TestCase):
                             surface_weight=1., surface_margin=0.)
                 job = NS(asset_name='rest', object=NS(name='rest'),
                          settings=NS(fit=NS(probes=None, budget=None)),
-                         renderer=NS(variant=NS(name='rest'), fit=recipe))
+                         renderer=NS(variant=NS(name='rest', triangles=1, split_reserve=0), fit=recipe))
                 def fit_main(command):
                     at = command.index('--hidden-materials')
                     self.assertEqual(command[at + 1], 'leaf')

@@ -90,4 +90,4 @@ a reason for C-runtime calls in hot functions.
 
 In hot functions, use [`bytes_read_u16` or `bytes_read_u32`](../../launcher/packages/collections/include/collections/bytes.h)
 for unaligned reads. The hot-call gate rejects the library call from
-`memcpy(&v, p, 2)` without a `Library call:` note.<sup>[[149]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>
+`memcpy(&v, p, 2)` without a `Library call:` note.<sup>[[155]](../Citations.md#deki-engine-esp32-s3-60fps)</sup>

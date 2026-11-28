@@ -21,24 +21,22 @@ import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 LAUNCHER = TOOLS.parents[3]
-sys.path.insert(0, str(LAUNCHER / "tools" / "render"))
 sys.path.insert(0, str(LAUNCHER / "tools"))
 
 try:
     import numpy as np
-    from scipy import ndimage
-
     from bake import bake
     from r3d.appearance_simplify import start_mesh
     from r3d.fit.copies import joined, placed_copies
     from r3d.import_settings import flight_camera, lfs_pointer_oid, load_scene, source_files
+    from r3d.leaks import BEHIND, OPENING, probe_depth, see_through_count
     from r3d.light import drop_masked
     from r3d.mesh_source import load_source
     from r3d.objects.instances import place
     from r3d.poses import path_poses
     from r3d.ray_query import RayQuery
     from r3d.scene_asset import world_placement
-    from pinhole_rays import FrontMesh, front_hits, pose_rays
+    from render.pinhole_rays import FrontMesh, front_hits, pose_rays
     from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
@@ -48,12 +46,8 @@ except ImportError:  # pragma: no cover - the tool tests' environment has them
 RENDER_SIZE = (224, 184)
 # The camera path's step, as a baked renderer's camera-path visibility samples it.
 EVERY_MS = 500
-# A bake hit this much farther than the source's is the view going past the surface, not the surface moved.
-BEHIND = 1.5
-# The square a see-through region must hold whole somewhere to count.
-OPENING = 3
 # Per scene, the most see-through pixels its bakes may show over the path: the measured sum plus PEG_MARGIN of it.
-MOST_SEE_THROUGH = {"bistro": 165414, "sponza": 2306}
+MOST_SEE_THROUGH = {"bistro": 287780, "sponza": 2306}
 PEG_MARGIN = 0.01
 
 
@@ -104,12 +98,11 @@ class Tracer:
         self.drawn = FrontMesh(*drawn)
 
     def see_through(self, width, height, lens, near, pose):
-        """The pose's see-through regions as a height x width mask."""
+        """The pose's see-through pixel count."""
         origins, directions = pose_rays(width, height, lens, near, pose)
-        hit, distance, _ = self.source.first_hits(origins, directions)
+        source_depth = probe_depth(self.source, origins, directions)
         _, depth = front_hits(self.drawn, pose[:3], origins, directions)
-        past = hit & (depth > BEHIND * np.where(hit, distance, 0.0))
-        return ndimage.binary_opening(past.reshape(height, width), np.ones((OPENING, OPENING), bool))
+        return see_through_count(source_depth.reshape(height, width), depth.reshape(height, width))
 
 
 def baked_scenes():
@@ -138,42 +131,43 @@ class SeeThroughTests(unittest.TestCase):
     SIZE, LENS, NEAR = (32, 32), 1.0, 0.1
     POSE = np.array([0.0, 0.0, 5.0, 0.0, 0.0, -1.0])  # at z 5, looking down -z at the wall on z 0
 
-    def mask(self, source, drawn, double=False):
+    def count(self, source, drawn, double=False):
         drawn = (*drawn, np.full(len(drawn[1]), double))
         return Tracer(source, drawn).see_through(*self.SIZE, self.LENS, self.NEAR, self.POSE)
 
     def test_a_hole_the_source_has_closed_sees_through(self):
         closed = wall(-10, 10, -10, 10, 0.0)
-        self.assertEqual(self.mask(closed, closed).sum(), 0)
-        self.assertGreater(self.mask(closed, with_hole(10, 2, 0.0)).sum(), 0)
+        self.assertEqual(self.count(closed, closed), 0)
+        self.assertGreater(self.count(closed, with_hole(10, 2, 0.0)), 0)
 
     def test_a_hole_the_source_has_too_is_not_see_through(self):
         holed = with_hole(10, 2, 0.0)
-        self.assertEqual(self.mask(holed, holed).sum(), 0)
+        self.assertEqual(self.count(holed, holed), 0)
 
     def test_a_surface_moved_back_less_than_behind_is_not_see_through_and_one_moved_further_is(self):
         closed = wall(-10, 10, -10, 10, 0.0)
         # From z 5 the wall on z 0 is 5 away along the centre ray.
-        self.assertEqual(self.mask(closed, wall(-10, 10, -10, 10, 5.0 - 5.0 * (BEHIND - 0.1))).sum(), 0)
-        self.assertGreater(self.mask(closed, wall(-10, 10, -10, 10, 5.0 - 5.0 * (BEHIND + 0.1))).sum(), 0)
+        self.assertEqual(self.count(closed, wall(-10, 10, -10, 10, 5.0 - 5.0 * (BEHIND - 0.1))), 0)
+        self.assertGreater(self.count(closed, wall(-10, 10, -10, 10, 5.0 - 5.0 * (BEHIND + 0.1))), 0)
 
     def test_a_gap_narrower_than_the_opening_is_not_a_region(self):
         closed = wall(-10, 10, -10, 10, 0.0)
-        # A pixel at the wall spans 2 * 5 * LENS / 32 = 0.3125 across: a gap 0.2 wide misses at most one column.
-        gap = merged([wall(-10, -0.1, -10, 10, 0.0), wall(0.1, 10, -10, 10, 0.0)])
-        self.assertEqual(self.mask(closed, gap).sum(), 0)
+        pixel = 2 * self.POSE[2] * self.LENS / self.SIZE[0]
+        half_gap = (OPENING - 1) * pixel / 2
+        gap = merged([wall(-10, -half_gap, -10, 10, 0.0), wall(half_gap, 10, -10, 10, 0.0)])
+        self.assertEqual(self.count(closed, gap), 0)
 
     def test_a_back_face_lets_the_ray_through_unless_double_sided(self):
         points, triangles = wall(-10, 10, -10, 10, 0.0)
         facing_away = (points, triangles[:, ::-1])
-        self.assertGreater(self.mask((points, triangles), facing_away).sum(), 0)
-        self.assertEqual(self.mask((points, triangles), facing_away, double=True).sum(), 0)
+        self.assertGreater(self.count((points, triangles), facing_away), 0)
+        self.assertEqual(self.count((points, triangles), facing_away, double=True), 0)
 
     def test_coincident_twins_cover_the_wall_in_either_order(self):
         points, triangles = closed = wall(-10, 10, -10, 10, 0.0)
         twins = np.concatenate([triangles[:, ::-1], triangles])
         reordered = np.roll(twins[::-1], 1, axis=1)
-        counts = [int(self.mask(closed, (points, order)).sum()) for order in (twins, reordered)]
+        counts = [self.count(closed, (points, order)) for order in (twins, reordered)]
         self.assertEqual(counts, [0, 0])
 
 
@@ -194,7 +188,7 @@ class SeeThroughBakes(unittest.TestCase):
                                 merged([drawn_bake(scene, job) for job in baked]))
                 width, height, lens, near, poses = path_poses(flight_camera(scene), RENDER_SIZE, EVERY_MS,
                                                               either_way_up=False)
-                pixels = [int(tracer.see_through(width, height, lens, near, pose).sum()) for pose in poses]
+                pixels = [tracer.see_through(width, height, lens, near, pose) for pose in poses]
                 worst = int(np.argmax(pixels))
                 most = round(MOST_SEE_THROUGH[key] * (1 + PEG_MARGIN))
                 print(f"{key}: {sum(pixels)} see-through pixels over {len(poses)} poses (ceiling {most}); "

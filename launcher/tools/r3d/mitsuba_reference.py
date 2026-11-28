@@ -8,6 +8,7 @@ conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are pin
 
 import importlib.util
 import math
+import sys
 
 import numpy as np
 
@@ -18,6 +19,10 @@ from .obj import alpha_tested
 
 DEFAULT_SPP = 256
 DEFAULT_DEPTH = 12
+# On Windows, Dr.Jit's LLVM backend runs on whatever LLVM-C.dll the host holds, unpinned, and that JIT fails to link
+# the float constant pools (__real@...) of the reference and light kernels. Windows waits on a pinned build
+# (autana-dz1nq); until then nothing traces on LLVM there.
+LLVM_TRACES = sys.platform != "win32"
 
 
 def import_mitsuba():
@@ -31,11 +36,12 @@ def import_mitsuba():
 
 
 def default_variant(mi):
-    """The fastest variant this machine can run: CUDA, then LLVM, then the scalar CPU one. A CUDA device without
-    OptiX, as under WSL, loads no scene, so each candidate is proven with one."""
+    """The fastest variant this machine can run: CUDA, then LLVM where it traces (LLVM_TRACES), then the scalar CPU
+    one. A CUDA device without OptiX, as under WSL, loads no scene, so each candidate is proven with one."""
     import drjit as dr
 
-    for backend, variant in ((dr.JitBackend.CUDA, "cuda_ad_rgb"), (dr.JitBackend.LLVM, "llvm_ad_rgb")):
+    candidates = [(dr.JitBackend.CUDA, "cuda_ad_rgb")] + [(dr.JitBackend.LLVM, "llvm_ad_rgb")] * LLVM_TRACES
+    for backend, variant in candidates:
         if variant in mi.variants() and dr.has_backend(backend) and traces_rays(mi, variant):
             return variant
     return "scalar_rgb"

@@ -102,7 +102,9 @@ from build.c_header import read_define  # noqa: E402
 from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
-from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, flight_camera, source_digest  # noqa: E402
+from r3d.import_settings import (  # noqa: E402
+    BLEND_SUFFIX, SettingsError, content_checksum, far_skin_region, seal_camera, source_digest,
+)
 
 LOCK = REPO / "launcher" / "bakes.lock"
 RELEASE_TAG = "bakes"
@@ -689,13 +691,12 @@ def mesh_recipe(job, scene, tools, poses, unavailable=None):
             camera = recipe["camera"] = camera_inputs(scene)
             if visibility.source == "camera_path":
                 camera["poses"] = poses.digest(scene.camera.component, visibility.every_ms, visibility.size, tools, unavailable)
+    region = far_skin_region(job.settings, scene)
+    if region is not None:
+        recipe["far_skins"] = {"region": canonical(region)}
     simplify = job.settings.simplify
     if simplify and simplify.seal_seams and scene.camera is not None:
-        # The seal step's views are bake inputs, lit or not: the camera, and the flight's poses with seal_views.
-        camera = recipe.setdefault("camera", camera_inputs(scene))
-        views = job.renderer.seal_views
-        if views is not None:
-            camera["seal_poses"] = poses.digest(flight_camera(scene), views.every_ms, views.size, tools, unavailable)
+        recipe.setdefault("camera", camera_inputs(scene))
     return recipe
 
 
@@ -757,9 +758,13 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
                                                           tools["reference_pose"]])
         start_sha256 = None if starts is None else starts.get(start)
         reference_sha256 = None if starts is None or reference is None else starts.get(reference)
+        fit_settings = fit_recipe(job.renderer.fit)
+        # Different limits and probe cameras can yield identical input bytes.
+        variant = job.renderer.variant
+        fit_settings.update(triangles=variant.triangles, split_reserve=variant.split_reserve,
+                            ceiling=getattr(variant, "ceiling", None), seal_camera=seal_camera(scene))
         fit = None if start_sha256 is None or reference_sha256 is None else digest(
-            ["fit", reference_sha256, start_sha256, fit_recipe(job.renderer.fit),
-             tools["fit"]])
+            ["fit", reference_sha256, start_sha256, fit_settings, tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])

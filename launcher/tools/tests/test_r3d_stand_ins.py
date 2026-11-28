@@ -40,6 +40,21 @@ def choose(data, budget=BUDGET, lock=None):
 
 
 class StandInTests(unittest.TestCase):
+    @needs_llvm
+    def test_a_ray_sees_the_side_of_a_two_sided_face_it_meets(self):
+        """With back colours beside the front ones, a ray from behind draws the back."""
+        positions = np.array([[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]])
+        tris = np.array([[0, 1, 2], [0, 2, 3]])
+        rgb = np.tile([[255., 0., 0., 0., 0., 255.]], (4, 1))
+        mesh = stand_ins.StandIn('source', positions, rgb, tris, np.zeros(2, dtype=int), None)
+        query = ray_query.RayQuery(positions, tris)
+        origins = np.array([[0.4, 0.6, 1.], [0.4, 0.6, -1.]])
+        directions = np.array([[0., 0., -1.], [0., 0., 1.]])
+        colours, covered = stand_ins._draw(mesh, query, origins, directions)
+        assert covered.all()
+        np.testing.assert_allclose(colours, [[1., 0., 0.], [0., 0., 1.]], atol=1e-6)
+
+    @needs_llvm
     def test_plank_table(self):
         with patch.object(ray_query, 'VARIANT', 'llvm_ad_rgb'):
             candidate, rows = choose(table())
@@ -101,6 +116,7 @@ class StandInTests(unittest.TestCase):
             assert stand_ins.view_error(source, hole) > 0.
 
 
+    @needs_llvm
     def test_shared_copies(self):
         p, c, t, m = table()
         offset = np.array([4., 0., 0.])

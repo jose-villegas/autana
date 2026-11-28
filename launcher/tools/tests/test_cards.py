@@ -201,18 +201,59 @@ class CardTests(unittest.TestCase):
                 candidates(src, settings)
             setattr(settings.cards, key, [])
 
-    def test_always_carved_is_an_error(self):
+    def test_always_carved_is_an_error_but_always_thinned_is_not(self):
         from r3d.cards.decide import candidates
         from r3d.import_settings import SettingsError
         settings, src = self.import_fixture()
         settings.cards.always = ['leaf']
         settings.meshes = [dict(match=dict(material='leaf'))]
-        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
+        with self.assertRaisesRegex(SettingsError, 'carved by an objects.meshes rule'):
             candidates(src, settings)
         settings.meshes = []
-        settings.thin = SimpleNamespace(material='leaf')
-        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
-            candidates(src, settings)
+        settings.thin = SimpleNamespace(material='leaf', keep=.5)
+        self.assertEqual(candidates(src, settings), [(src.names.index('leaf'), None)])
+
+    @needs_llvm
+    def test_cards_override_the_thin_rule(self):
+        """A thinned material is a card candidate: accepted, none of its faces reach the baked geometry; rejected,
+        it bakes exactly as the thin rule alone bakes it, which differs from no rule at all."""
+        from r3d.cards import CARD_COVERED_MIN, decide
+        from r3d.import_settings import albedo_jobs
+        settings, src = self.import_fixture()
+        leaf = src.names.index('leaf')
+
+        def leaf_corners(floor=CARD_COVERED_MIN, thin=True, never=()):
+            settings.thin = SimpleNamespace(material='leaf', keep=.25) if thin else None
+            settings.cards.never = list(never)
+            with patch.object(decide, 'CARD_COVERED_MIN', floor):
+                geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+            corners = geometry.positions[geometry.tris[geometry.tri_mat == leaf]].reshape(-1, 3)
+            return geometry, np.round(corners[np.lexsort(corners.T)], 6)
+
+        geometry, corners = leaf_corners()
+        self.assertTrue(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertEqual([shape['name'] for shape in geometry.shapes], ['leaf'])
+        self.assertEqual(len(corners), 0, "an accepted material leaves no face for the thin rule")
+        geometry, rejected = leaf_corners(floor=1 + CARD_COVERED_MIN)
+        self.assertFalse(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertFalse(geometry.shapes)
+        np.testing.assert_array_equal(rejected, leaf_corners(never=['leaf'])[1])
+        unthinned = leaf_corners(floor=1 + CARD_COVERED_MIN, thin=False)[1]
+        self.assertFalse(rejected.shape == unthinned.shape and np.array_equal(rejected, unthinned),
+                         "a rejected material is thinned")
+
+    def test_a_carved_and_thinned_material_is_not_a_candidate(self):
+        from r3d.cards.decide import candidates
+        settings, src = self.import_fixture()
+        settings.thin = SimpleNamespace(material='leaf', keep=.5)
+        settings.meshes = [dict(match=dict(material='leaf'))]
+        self.assertEqual(candidates(src, settings), [])
+
+    def test_sponza_leaves_are_thinned_but_carved_by_no_rule(self):
+        from r3d.import_settings import load_import_settings
+        settings = load_import_settings(pathlib.Path(__file__).resolve().parents[2] / 'demo/sponza/sponza.import.toml')
+        self.assertEqual((settings.thin.material, settings.thin.keep), ('leaf', .35))
+        self.assertFalse([rule for rule in settings.meshes if rule['match'].get('material') == 'leaf'])
 
     @needs_llvm
     def test_camera_hidden_is_exactly_accepted_materials(self):
@@ -428,27 +469,15 @@ class CardTests(unittest.TestCase):
     @needs_llvm
     def test_the_replaced_material_still_casts_light_but_not_visibility(self):
         from unittest import mock
-        from r3d.import_settings import load_import_settings, albedo_jobs
+        from r3d.import_settings import albedo_jobs
+        from tests.bake_stubs import unlit_bake_geometry
         p, t = quads()
-        built, shaded, bounced = [], [], []
-
-        def ray_query(points, tris, *rest, **options):
-            built.append(len(tris))
-            return mock.Mock(name=f"query of {len(tris)}")
-
-        def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
-            shaded.append(intersector)
-            return (*mesh_import.shade_unlit(src, material, mp, mt), labels)
-
+        bounced = []
         with tempfile.TemporaryDirectory() as directory:
             settings = card_settings(leaf_import(pathlib.Path(directory), p, t))
-            job = albedo_jobs(settings)[0]
-            job = SimpleNamespace(settings=job.settings, renderer=job.renderer,
-                                  bake=SimpleNamespace(ray_offset=0.0, ao=None, indirect=None))
-            scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(intensity=1.0), tonemap_white=1.0)
-            with mock.patch.object(mesh_import, 'RayQuery', side_effect=ray_query),                     mock.patch.object(mesh_import, 'shade_lit', side_effect=shade_lit),                     mock.patch.object(mesh_import, 'light', side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, 'path_light_for',
-                                      side_effect=lambda src, *rest: bounced.append(len(src.tri_v))):
-                geometry = mesh_import.bake_geometry(job, scene, carve=True)
+            geometry, built, shaded = unlit_bake_geometry(
+                albedo_jobs(settings)[0], {}, lambda points, tris, *rest, **kw: mock.Mock(name=f"query of {len(tris)}"),
+                path_light_for=lambda src, *rest: bounced.append(len(src.tri_v)), carve=True)
         from r3d.light import triangle_alpha
         from r3d.mesh_source import load_source
         with tempfile.TemporaryDirectory() as directory:

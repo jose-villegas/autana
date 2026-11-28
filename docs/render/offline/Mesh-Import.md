@@ -9,7 +9,7 @@ drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 flowchart TB
     subgraph Cut["1 · Choose triangles"]
     direction LR
-    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
+    Import["Import file<br/><i>one mesh asset</i>"] --> Fetch["Fetch and check<br/>the source"] --> Mask["Mask alpha cards<br/><i>import, opt in</i>"] --> Skin["Collapse to midsurface<br/><i>closed double_sided shells</i>"] --> Vis["Cull by camera visibility<br/><i>scene, opt in</i>"] --> Thin["Thin one material<br/><i>import, opt in</i>"]
     end
     subgraph Light["2 · Colour vertices"]
     direction LR
@@ -74,6 +74,30 @@ number of quantisation ticks per model unit.
 #### materials
 
 `[materials].double_sided` lists materials whose faces draw from both sides.
+
+A double-sided triangle carries what it shows from behind as well: its back colours, lit on the reversed
+normal, which the renderer picks by winding ([LMSH](../../assets/formats/LMSH.md)). Its front is lit on its
+normal alone. Cards keep one texture on both sides; only their light differs.
+
+Cloth is often a closed shell, two skins joined at the hem. Given a camera region, the import collapses it to
+one sheet halfway between its skins, as midsurface abstraction does for thin walls<sup>[[152]](../../Citations.md#rezayat-1996)</sup><sup>[[153]](../../Citations.md#ye-2026-gmidsurf)</sup>.
+
+Faces joined by smooth welded edges share a skin label. Of the two dominant components, the one facing the
+camera region's centre more strongly by area is the near skin. Smaller components form the hem.
+
+Inward rays pair the skins and measure thickness<sup>[[154]](../../Citations.md#shapira-2008)</sup>.
+Pairs face back within `REACH` times the median thickness. The whole near skin stays, including faces whose rays miss.
+
+When a shell lacks two dominant components, each component faces the region as a unit. Ray hits identify
+the sheet, including unpaired patches enclosed by it. A shell without a thickness keeps both skins.
+
+Each sheet vertex moves halfway along its inward ray, or by half the median thickness where the ray misses.
+Where a move turns a triangle over, its corners take the mean move around them, as Laplacian smoothing
+does<sup>[[5]](../../Citations.md#sorkine-2005)</sup>. If needed, the corners of an identified near skin shorten
+their moves. A shell with a triangle still turned over keeps both skins.
+The far skin stays the source of its sheet's back colours, read where a vertex's ray meets it, or at its nearest
+point where the ray misses; a point farther from every sheet than half that shell's thickness reads its front.
+Simplification keeps the sheet's border on its border. The sheet casts the light; open sheets stay whole.
 
 ### Skin lighting
 
@@ -163,9 +187,8 @@ Sponza's scene camera has none.
 
 A camera without a path fits on probes alone.
 
-A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
-The import spends it through [simplify](#simplify) with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+A probe fit keeps every start triangle. The import [simplifies](#simplify) to
+`triangles - split_reserve`. The fit fails if splits grow the rest past `triangles`.
 
 It keeps every triangle: one no coverage view shows may still face a camera they miss.
 A border point within the seam tolerance that the hold rule refuses stays at its start.
@@ -195,10 +218,10 @@ material becomes a double-sided shape with vertex colours,
 
 | Decision | Rule |
 |---|---|
-| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Carved and thinned materials are excluded. |
+| Candidate | A cut-out texture whose alpha test cuts at least `CARD_SEE_THROUGH_MIN` of its surface samples, so leaves cut tight around each triangle count. This asks whether the material is a cut-out; `alpha_mask` still drops single triangles by their mean alpha. Materials carved by an `objects.meshes` rule are not candidates; a `thin` rule does not exclude its material, and one the card baker rejects or `never` names is left to [thin](#thin). |
 | Accepted | Cards cover at least `CARD_COVERED_MIN` of the opaque surface's samples within their slabs, rectangles and kept texels, each weighted by area and by the probe weight the plane choice used. Samples no probe sees do not count. |
 | Ordinary geometry | Non-candidates and rejected candidates remain geometry. |
-| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved or thinned material, unknown names, or overlapping overrides is an error. |
+| Overrides | `never` excludes a material; `always` bypasses the thresholds. Forcing a carved material, unknown names, or overlapping overrides is an error. |
 
 The greedy plane score follows Décoret et al.<sup>[[133]](../../Citations.md#decoret-2003)</sup>:
 projected sample area earns coverage; an area cost and a per-card floor stop
@@ -261,7 +284,8 @@ It is for material whose geometry occupies more of the budget than it shows; `pr
 With `simplify` on, thin also runs without a rule on foliage: any object holding at least
 `AGGREGATE_PIECES_MIN` pieces of one alpha-tested material. Its share is the budget over the triangles seen.
 Simplify's collapse would otherwise remove every small piece first, so it leaves thinned pieces whole and the rest
-of the mesh pays the budget. Materials drawn as cards are not thinned; carved meshes keep their own per-shape thinning.
+of the mesh pays the budget. A material the card baker accepts never reaches thin, so a `thin` rule on it takes effect
+only when the baker rejects it or `cards.never` names it; carved meshes keep their own per-shape thinning.
 
 ![thin off against on](../images/import-thin.png)
 
@@ -305,7 +329,8 @@ Mirroring or a different per-face sidedness mask emits another prototype.
 | Renderer | The ceiling caps | Copies' room | Rest floor | Rest target |
 |---|---|---|---|---|
 | no `fit` | the baked mesh | `ceiling` − `triangles` | `triangles` | at most `triangles`, within the ceiling |
-| with `fit` | the fitted bundle; the start is uncapped | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies |
+| fit with pruning | the fitted bundle | `ceiling` − `fit.prune.budget` | `fit.prune.budget` | `ceiling` − stored copies, or `fit.prune.budget` without a ceiling. Pruning subtracts `split_reserve` from this target. |
+| fit with probes | the fitted bundle | `ceiling` − `triangles` | `triangles` | start at most `triangles - split_reserve`, fitted rest at most `triangles` |
 
 Overlapping rules are rejected.
 
@@ -442,13 +467,15 @@ but chords curved borders and flattens curved pieces, so the piece behind stops
 covering the gap.
 
 The probe step runs for every renderer of a scene with a camera, lit or not. Its views are
-the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>, and the camera
-path's frames when the renderer has [`seal_views`](../scene/Scene-Files.md#seal_views).
+the cube faces of [probes](#probes) in the camera's region<sup>[[119]](../../Citations.md#majercik-2021)</sup>.
 
 | Term | Meaning |
 |---|---|
-| Hole | In one view, a connected region of pixels where the simplified mesh shows sky that holds no pixel of the source's own sky. A region that reaches the source's sky is the outline moving. |
+| Hole | In one view, a connected region of sky flagged by either rule. Flag a sky region in full if it holds no pixel of the source's own sky. Also flag sky pixels beyond the outline allowance below. |
 | Lock | Of the source triangles seen through the hole, the vertex farthest from the simplified surface: the farthest-point step of line reduction<sup>[[141]](../../Citations.md#douglas-1973)</sup>, on a surface. meshoptimizer keeps a locked vertex in place. |
+
+Flag sky more than [`REACH`](../../../launcher/tools/r3d/leaks.py) probe pixels from the source's sky.
+Simplification can shift an outline within that allowance, and a hole can extend beyond it while still joining the source's sky.
 
 A lock keeps triangles the rest of the mesh then goes without, so the rest is a
 little coarser. A round whose locks would leave the pass over its budget is tried again
@@ -481,6 +508,7 @@ whose bake lets the view past more of the source than its pegged ceiling.
 |---|---|---|---|---|---|
 | `[[variants]]` | `name`; `triangles` | Names a geometry budget. | Required with `geometry.simplify`; otherwise optional (one mesh named by `output.name`). | Seconds each / set by the budget. | [variants](#variants) |
 | `[[variants]].triangles` | — | Sets a simplified mesh's triangle budget. | Required with `geometry.simplify`. | Seconds / set by the budget. | [variants triangles](#variants-triangles) |
+| `[[variants]].split_reserve` | — | Leaves triangles for T-junction splits in a fit. | 0. | — / set by the fitted budget. | [variants split_reserve](#variants-split_reserve) |
 | `[[variants]].objects_scale` | — | Scales each pinned `[[objects.meshes]]` shape budget. | 1. | — / set by the budgets. | [variants objects_scale](#variants-objects_scale) |
 
 #### variants
@@ -490,8 +518,18 @@ triangle budget. Without variants, `output.name` names the single output.
 
 #### variants triangles
 
-`[[variants]].triangles` is the triangle budget `simplify` brings a variant to;
-a `fit` budget may not exceed it.
+`[[variants]].triangles` sets the simplify budget and caps a probe fit's rest.
+A fit recipe's pruning budget must also stay within `triangles`.
+
+#### variants split_reserve
+
+`split_reserve` is a nonnegative integer below `triangles`. The start simplifies
+to at most `triangles - split_reserve`. With pruning, the fit also subtracts the
+reserve from the prune budget before sealing and splitting.
+
+The fitted rest must fit within the full prune budget or, with
+`geometry.probes`, within `triangles`. Raise `split_reserve` if the fit
+reports an overflow.
 
 #### variants objects_scale
 

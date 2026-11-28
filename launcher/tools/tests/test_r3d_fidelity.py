@@ -69,7 +69,7 @@ class SkyRaysKnobTests(unittest.TestCase):
                   {"type": "ambient", "mode": LIGHT_MODE_BAKED, "color": [1.0, 1.0, 1.0], "intensity": 0.1}]
         scene = SimpleNamespace(lights=lights, tonemap_white=0.35, indirect=SimpleNamespace(intensity=1.0))
         job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.5, ao=None))
-        geometry = SimpleNamespace(src=SimpleNamespace(names=["m"]), positions=None, tris=None, tri_mat=None, intersector=None,
+        geometry = SimpleNamespace(src=SimpleNamespace(names=["m"], two_sided=False), positions=None, tris=None, tri_mat=None, intersector=None,
                                    bounce=None)
         with mock.patch.object(mesh_import, "face_colours", return_value="colours") as face:
             self.assertEqual(mesh_import.flat_colours(job, scene, geometry, (1, 1, 1, None), sky_rays=7), "colours")

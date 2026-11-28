@@ -16,9 +16,11 @@ from r3d import sh_probe_asset as asset, sh_probe_bake as sh
 from r3d.import_settings import LIGHT_MODE_BAKED
 from r3d.sh_probe_settings import DIRECTIONS
 from tests.soup import box
+from tests.r3d_env import needs_llvm
 
 
 class IrradianceSplitTests(unittest.TestCase):
+    @needs_llvm
     def test_baked_grid_reconstructs_and_occluded_probes_have_no_sun(self):
         solid = box([4, 4, 4])
         source = SimpleNamespace(p=solid.vertices, tri_v=solid.faces)

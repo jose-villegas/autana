@@ -260,11 +260,12 @@ class MeshPolicyTests(unittest.TestCase):
         faces = np.concatenate([t, t[:, ::-1] + len(p)])
         src = SimpleNamespace(p=points, tri_v=faces, tri_t=None, uv=None, tri_m=np.zeros(len(faces), dtype=int),
                               tri_o=np.repeat([0, 1], len(t)), names=['plain'], object_names=['vase_a', 'vase_b'],
-                              textures=[None], materials={}, colors=None)
+                              textures=[None], materials={}, colors=None, two_sided=False, far_skin=None)
         settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, double_sided=set(), cards=None,
                      meshes=[{'match': {'object': 'vase*'}, 'triangles': 40}],
                      simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))
-        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=80, objects_scale=1.0)),
+        variant = SimpleNamespace(name="mesh", triangles=80, split_reserve=0, objects_scale=1.0)
+        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=variant),
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
         scene = SimpleNamespace(lights=[{'type': 'directional', 'mode': LIGHT_MODE_BAKED, 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))

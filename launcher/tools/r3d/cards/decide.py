@@ -17,24 +17,23 @@ def see_through_share(src, ids, keep_alpha, seed):
 
 def candidates(src, settings):
     """(material, see-through share) for each material the cards may replace: one with a cut-out texture, not
-    carved by an objects.meshes rule nor thinned, see-through enough (`see_through_share`); or named by `always`,
-    its share None."""
+    carved by an objects.meshes rule, see-through enough (`see_through_share`); or named by `always`, its share
+    None."""
     cards = settings.cards
     unknown = sorted((set(cards.never) | set(cards.always)) - set(src.names))
     if unknown:
         raise SettingsError(f"geometry.cards names materials the source lacks: {', '.join(unknown)}")
     rules = match_meshes(src.tri_o, src.tri_m, src.object_names, src.names, settings.meshes) if settings.meshes else {}
-    thin = settings.thin.material if settings.thin else None
     tested = alpha_tested(src.textures)
     out = []
     for material, name in enumerate(src.names):
         ids = np.flatnonzero(src.tri_m == material)
         if name in cards.never or not len(ids):
             continue
-        drawn_apart = name == thin or any(obj in rules for obj in src.tri_o[ids])
+        drawn_apart = any(obj in rules for obj in src.tri_o[ids])
         if name in cards.always:
             if drawn_apart:
-                raise SettingsError(f"material {name} is drawn by cards")
+                raise SettingsError(f"material {name} is carved by an objects.meshes rule")
             out.append((material, None))
         elif not drawn_apart and tested[material]:
             share = see_through_share(src, ids, settings.alpha_keep, settings.seed)

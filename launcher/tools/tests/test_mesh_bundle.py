@@ -1,5 +1,6 @@
 """Carved products retain copy lighting and pack into one batch a shape."""
 
+import json
 import pathlib
 import sys
 import tempfile
@@ -22,13 +23,23 @@ from test_r3d_objects import POINTS, TRIANGLES, obj_text
 from r3d.lit_mesh import bundle_entries, read_bundle_mesh, read_lit_mesh
 from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
-from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
+from r3d.import_settings import MESHLET_TRIANGLES, SettingsError, albedo_jobs, load_import_settings
 from tests.test_r3d_bake import canonical
 from tests.r3d_env import needs_llvm  # noqa: E402
 
 
+def card_payloads():
+    """The LUVS and MASK1 LTEX payloads for a one-triangle card mesh."""
+    from r3d.texture import texture_asset, uv_transfer
+
+    mesh = SimpleNamespace(pos=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]), clusters=[(0, 3, 0, 1)])
+    luvs = uv_transfer.pack_luvs(uv_transfer.card_luvs(mesh, np.zeros((3, 2)), [0]))
+    page = texture_asset.pack_ltex(texture_asset.mask_texture(np.ones((8, 8), bool), 2))
+    return luvs, page
+
+
 def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
-                   shapes=1, recorder=None, name=None):
+                   shapes=1, recorder=None, name=None, back=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -40,7 +51,8 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         at = np.array([index * 8., 0, 0])
         instance = Instance(str(index), linear, at, mirrored, 0.)
         faces = t[:, ::-1] if mirrored else t
-        copies.append((instance, (p @ linear.T + at, rgb + index, faces, np.full(len(t), materials[index]))))
+        colours = rgb + index if back is None else np.concatenate([rgb + index, np.full(p.shape, back + index)], axis=1)
+        copies.append((instance, (p @ linear.T + at, colours, faces, np.full(len(t), materials[index]))))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
                                scale={}, shapes=[dict(shape, rule={**rule, 'triangles': 1 + k}) for k in range(shapes)],
@@ -83,20 +95,43 @@ class MeshBundleTests(unittest.TestCase):
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
                          [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
 
-    def test_a_bundle_without_textures_decodes_without_numpy(self):
-        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy."""
+    def decode_without_numpy(self, data):
+        """The firmware build packs bundles with the ESP-IDF Python, which has no numpy: `data` decoded there, its
+        entry names and copy count."""
         import subprocess
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "start.bundle"
-            data = bundle_fixture(directory)[0]
             path.write_bytes(data)
             script = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, sys.argv[1]); "
                       "from r3d import mesh_bundle; import pathlib; "
-                      "print(len(mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes())[1]))")
+                      "rows, copies = mesh_bundle.decode(pathlib.Path(sys.argv[2]).read_bytes()); "
+                      "print(' '.join(row[0] for row in rows), len(copies))")
             result = subprocess.run([sys.executable, "-c", script, str(pathlib.Path(__file__).parents[1]), str(path)],
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(int(result.stdout), len(mesh_bundle.decode(data)[1]))
+        rows, copies = mesh_bundle.decode(data)
+        self.assertEqual(result.stdout.split(), [row[0] for row in rows] + [str(len(copies))])
+
+    def test_a_bundle_without_textures_decodes_without_numpy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.decode_without_numpy(bundle_fixture(directory)[0])
+
+    def test_a_carded_bundle_decodes_without_numpy(self):
+        """Cards put an LUVS and a MASK1 LTEX page beside their mesh."""
+        from r3d.texture import texture_asset, uv_transfer
+        luvs, page = card_payloads()
+        self.decode_without_numpy(mesh_bundle.encode([
+            ("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, luvs),
+            (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, page)], []))
+
+    def test_a_truncated_card_page_or_uvs_is_refused(self):
+        from r3d.texture import texture_asset, uv_transfer
+        luvs, page = card_payloads()
+        for short_luvs, short_page in ((luvs[:-1], page), (luvs, page[:-1])):
+            entries = [("cards", mesh_asset.TYPE, b""), (uv_transfer.name_for_mesh("cards"), uv_transfer.TYPE, short_luvs),
+                       (uv_transfer.texture_name("cards", 0), texture_asset.TYPE, short_page)]
+            with self.subTest(luvs=len(short_luvs), page=len(short_page)),                     self.assertRaisesRegex(PackError, "do not match the entry size"):
+                mesh_bundle.decode(mesh_bundle.encode(entries, []))
 
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -123,7 +158,7 @@ class MeshBundleTests(unittest.TestCase):
                 mesh = read_lit_mesh(blobs[mesh_id][1])
                 self.assertIsNone(mesh.rgb)
                 self.assertIsNone(mesh.face_colors)
-                encoding, count, sets = lcol_asset.decode(blobs[lcol_asset.name_for_mesh(mesh_id)][1])
+                encoding, count, _back, sets = lcol_asset.decode(blobs[lcol_asset.name_for_mesh(mesh_id)][1])
                 self.assertEqual(encoding, lcol_asset.RGB565 if flat else lcol_asset.RGB888)
                 self.assertEqual(count, len(mesh.tris) if flat else len(mesh.pos))
                 members = [row for row in manifest if row['mesh'] == mesh_id]
@@ -292,24 +327,27 @@ def keep_start(args):
     (out / raw.name).write_bytes(raw.read_bytes())
 
 
-def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
+def run_fit(directory, fit_main, lod=None, path=True, shaping=None, triangles=2, split_reserve=0, prune_budget=1,
+            sweep_budget=None, start_count=None):
     """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, the scene camera with a
     path or without one and the import's fit `shaping` when given; returns the start's bytes, the job and the
     fitted bundle."""
     work = pathlib.Path(directory)
-    data, _, _, job, scene = bundle_fixture(directory)
+    geometry = {} if start_count is None else dict(positions=POINTS, triangles=TRIANGLES[:start_count])
+    data, _, _, job, scene = bundle_fixture(directory, **geometry)
     scene.camera.component.path = 'path' if path else None
     if lod is not None:
         job.settings.lod = lod
     if shaping is not None:
         job.settings.fit = shaping
     start_path(work, job).write_bytes(data)
-    job.renderer.variant = SimpleNamespace(name='fixture')
+    job.renderer.variant = SimpleNamespace(name='fixture', triangles=triangles, split_reserve=split_reserve)
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                       surface_weight=0, surface_margin=0, budget=1)
+                                       surface_weight=0, surface_margin=0, budget=prune_budget)
     target = work / (job.asset_name + mesh_bundle.SUFFIX)
     with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-        stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
+        stage.fit(work / 'scene.scene.toml', scene, job, work, budget=sweep_budget, start=start_path(work, job),
+                  target=target)
     return data, job, target
 
 
@@ -339,6 +377,46 @@ class FitCommandTests(unittest.TestCase):
         self.assertEqual(self.values(args, '--poses'), ['probes.txt'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['probes.txt'])
         self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
+        self.assertNotIn('--budget', args)
+
+    def test_a_pruned_fit_reserves_splits_in_both_the_recipe_and_sweep_budget(self):
+        for sweep, expected in ((None, '2'), (4, '3')):
+            with self.subTest(sweep=sweep), tempfile.TemporaryDirectory() as directory:
+                fit_main = mock.Mock(side_effect=keep_start)
+                run_fit(directory, fit_main, triangles=5, split_reserve=1, prune_budget=3, sweep_budget=sweep)
+                self.assertEqual(self.values(fit_main.call_args.args[0], '--budget'), [expected])
+
+    def test_fits_check_the_rest_against_the_full_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data, _, _, job, _ = bundle_fixture(directory, positions=POINTS, triangles=TRIANGLES[:4])
+            entries, _ = mesh_bundle.decode(data)
+            rest = [entry for entry in entries if entry[0] == job.asset_name]
+
+            def fitted(args):
+                keep_start(args)
+                out = pathlib.Path(args[args.index('--out') + 1])
+                name = pathlib.Path(args[args.index('--start') + 1]).name
+                (out / name).write_bytes(mesh_bundle.encode(rest, []))
+                (out / 'stretch.json').write_text(json.dumps({'split_triangles': 2}), encoding='utf-8')
+
+            for limit_name, start_count in (('triangles', 2), ('budget', 3)):
+                for limit, reserve in ((3, 1), (4, 2)):
+                    with self.subTest(limit_name=limit_name, limit=limit):
+                        work = pathlib.Path(directory) / f'{limit_name}-{limit}'
+                        work.mkdir()
+                        pruned = limit_name == 'budget'
+                        shaping = SimpleNamespace(probes=None if pruned else SimpleNamespace())
+                        options = dict(shaping=shaping, triangles=5 if pruned else limit, prune_budget=limit,
+                                       split_reserve=reserve, start_count=start_count)
+                        if limit < 4:
+                            message = (rf"start rest {start_count}.*split added 2.*{limit_name} {limit}.*"
+                                       rf"split_reserve {reserve}.*raise split_reserve")
+                            with self.assertRaisesRegex(SettingsError, message):
+                                run_fit(work, fitted, **options)
+                        else:
+                            _, job, target = run_fit(work, fitted, **options)
+                            entries, _ = mesh_bundle.decode(target.read_bytes())
+                            self.assertEqual(len(read_bundle_mesh(entries, job.asset_name).tris), limit)
 
     def test_without_probes_the_fit_reads_the_path_sets_alone(self):
         args = self.command()
@@ -401,7 +479,7 @@ class FitCopiesTests(unittest.TestCase):
         shown = [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == mesh_asset.LOD_NONE]
         vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
         faces = np.concatenate([mesh.tris[tbase:tbase + tcount] for _, _, tbase, tcount, *_ in shown])
-        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [mesh.rgb.astype('u1').tobytes()])
+        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), 0, [mesh.rgb.astype('u1').tobytes()])
         mesh.rgb = None
         with tempfile.TemporaryDirectory() as folder:
             data, _, _, _, _ = bundle_fixture(folder)
@@ -431,6 +509,32 @@ class FitCopiesTests(unittest.TestCase):
         luvs.codes[:] = uv_transfer.PLAIN
         entries[-2] = (uv_transfer.name_for_mesh("cards.b"), uv_transfer.TYPE, uv_transfer.pack_luvs(luvs))
         self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
+
+    def test_a_double_sided_copy_keeps_its_back_colours_in_its_set_and_the_fit_draws_them_beside_its_front(self):
+        """The copies load their back colours whatever the rest holds, and a rest with only fronts is widened to
+        match, its front again behind, as a mesh without back colours draws."""
+        from r3d.fit.copies import joined, matched, placed_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            data, copies, _geometry, _job, _scene = bundle_fixture(directory, materials=(1, 1, 1), back=200)
+            entries, _rows = mesh_bundle.decode(data)
+            sets = [(name, lcol_asset.decode(blob)) for name, kind, blob in entries if kind == lcol_asset.TYPE]
+            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+            start.write_bytes(data)
+            sided = placed_copies(start, False)
+        self.assertTrue(sets and all(count == back for _, (_, count, back, _) in sets),
+                        "a double-sided copy's set does not hold a back colour per vertex")
+        self.assertEqual(sided.rgb.shape[1], 6)
+        backs = {tuple(np.rint(row * 255)) for row in sided.rgb[:, 3:]}
+        self.assertEqual(backs, {(200 + k,) * 3 for k in range(len(copies))})
+        self.assertFalse(np.array_equal(sided.rgb[:, 3:], sided.rgb[:, :3]))
+        rest = sided._replace(rgb=np.full((len(sided.rgb), 3), 0.5))
+        widened, kept = matched(rest, sided)
+        np.testing.assert_array_equal(widened.rgb, np.full((len(sided.rgb), 6), 0.5))
+        np.testing.assert_array_equal(kept.rgb, sided.rgb)
+        drawn = joined(rest, sided)
+        self.assertEqual(drawn.rgb.shape, (2 * len(sided.rgb), 6))
+        np.testing.assert_array_equal(drawn.rgb[len(sided.rgb):], sided.rgb)
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies

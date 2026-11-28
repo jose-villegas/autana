@@ -360,7 +360,7 @@ class SweepTests(unittest.TestCase):
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"),
                               settings=SimpleNamespace(fit=SimpleNamespace(probes=object())), renderer=SimpleNamespace(
-            fit=recipe, variant=SimpleNamespace(name="variant_name")))
+            fit=recipe, variant=SimpleNamespace(name="variant_name", triangles=1, split_reserve=0)))
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
             work.mkdir()

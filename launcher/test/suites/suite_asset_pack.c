@@ -50,7 +50,7 @@ make_mesh_entry(uint8_t* entry) {
     const uint32_t clusters = CLUSTERS_AT;
     const uint32_t nodes = NODES_AT;
     const uint32_t end = ENTRY_END;
-    const uint32_t words[] = {3, 1, 1, 1, 8, positions, colors, triangles, clusters, nodes, 0};
+    const uint32_t words[] = {3, 1, 1, 1, 8, positions, colors, triangles, clusters, nodes, 0, 0};
     for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
         test_pack_put32(entry + (4 * i), words[i]);
     }

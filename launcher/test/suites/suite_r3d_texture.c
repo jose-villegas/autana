@@ -1078,7 +1078,7 @@ scene_mesh_with(scene_t* s, int triangles, uint8_t codes, const uint8_t chart_ma
                 uint16_t material_count) {
     const int vertices = triangles * SCENE_VERTICES;
     const box3s_t reach = {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}};
-    s->cluster = (r3d_lit_cluster_t){0, (uint16_t)vertices, 0, (uint16_t)triangles, reach, true};
+    s->cluster = (r3d_lit_cluster_t){0, (uint16_t)vertices, 0, (uint16_t)triangles, reach, true, 0, 0};
     s->node = (r3d_lit_node_t){reach, 0, 1, true};
     s->mesh = (r3d_lit_mesh_t){.positions = s->positions,
                                .colors = s->colors,

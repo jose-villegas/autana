@@ -8,7 +8,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
 from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
-from r3d.texture import texture_asset
+from r3d.texture import luvs_layout, texture_asset
 
 SUFFIX = ".bundle"
 MANIFEST = "copies"
@@ -27,11 +27,10 @@ HASH_HEX_DIGITS = 8
 
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
-    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     key = name_hash(json.dumps([mesh, rule, first], sort_keys=True))
     suffix = f".{key:0{HASH_HEX_DIGITS}x}"
-    longest = max(len(NAME_SUFFIX), len(uv_transfer.NAME_SUFFIX),
-                  len(f"{uv_transfer.TEXTURE_SUFFIX}{uv_transfer.MATERIALS_MAX - 1}"))
+    longest = max(len(NAME_SUFFIX), len(luvs_layout.NAME_SUFFIX),
+                  len(f"{luvs_layout.TEXTURE_SUFFIX}{luvs_layout.MATERIALS_MAX - 1}"))
     room = NAME_BYTES - 1 - len(suffix) - longest
     result = mesh.split(".", 1)[0][:max(room, 0)] + suffix
     return result
@@ -140,18 +139,17 @@ def decode(data):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
         if kind == texture_asset.UVS_TYPE:
-            from r3d.texture import uv_transfer  # numpy: only a textured mesh's bundle needs it, not the firmware build
-            stem = name.removesuffix(uv_transfer.NAME_SUFFIX)
+            stem = name.removesuffix(luvs_layout.NAME_SUFFIX)
             mesh = entries.get(stem)
             if mesh is None or mesh[0] != mesh_asset.TYPE or stem == name:
                 raise PackError("LUVS sibling has no LMSH")
             try:
-                luvs = uv_transfer.decode(blob)
-                for page in range(luvs.material_count):
-                    texture = entries.get(uv_transfer.texture_name(stem, page))
+                _, materials, *_ = luvs_layout.header(blob)
+                for page in range(materials):
+                    texture = entries.get(luvs_layout.texture_name(stem, page))
                     if texture is None or texture[0] != texture_asset.TYPE:
                         raise PackError("LUVS material has no LTEX sibling")
-                    texture_asset.decode(texture[1])
+                    texture_asset.check(texture[1])
             except (ValueError, struct.error) as error:
                 raise PackError(str(error)) from error
         if kind == morph_asset.TYPE:
@@ -180,15 +178,14 @@ def rest_name(entries, copies):
 
 def rename_rest(entries, copies, name):
     """Retarget a replacement bundle's sole rest mesh and its siblings to a pack entry id."""
-    from r3d.texture import uv_transfer  # numpy; bake.py reads SUFFIX without it
     old = rest_name(entries, copies)
     if old == name:
         return entries
     names = {old: name}
     for key, _, _ in entries:
         if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
-                                                         morph_asset.NAME_SUFFIX, uv_transfer.NAME_SUFFIX):
+                                                         morph_asset.NAME_SUFFIX, luvs_layout.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
-        if key.startswith(old + uv_transfer.TEXTURE_SUFFIX):
+        if key.startswith(old + luvs_layout.TEXTURE_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fit a baked mesh's vertex positions and colours to reference renders
-along a camera path, keeping its triangles (appearance-driven
-simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
-vertex, a flat one a colour per triangle.
+along a camera path (appearance-driven simplification, Hasselgren et al.
+2021), then prune triangles to budget and split edges at T-junctions.
+A smooth mesh fits a colour per vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
@@ -14,18 +14,19 @@ the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
 own. A mesh is written as NAME.bundle by the same writer as mesh_import.py,
-under DIR, or DIR/shot<k>. The surface term anchors the fit to the scene's
-alpha-masked source; --object names its renderer.
+under DIR, or DIR/shot<k>. The surface term and seal use the scene renderer's
+alpha-masked source. --object names the renderer.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
 
 import argparse
 import json
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import os
 import pathlib
 import sys
+import tempfile
 import time
 from typing import NamedTuple
 
@@ -36,11 +37,11 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log, mesh_bundle  # noqa: E402
-from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
-from r3d.fit import gbuffer  # noqa: E402
-from r3d.import_settings import load_scene, match_meshes  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_bundle_mesh, turned  # noqa: E402
+from r3d.geometry import closest_point_on_triangles, corner_edges, triangle_areas  # noqa: E402
+from r3d.fit.copies import hidden_materials, check_hidden_copies, hidden_copy_pixels, joined, matched, placed_copies  # noqa: E402
+from r3d.fit import gbuffer, seal  # noqa: E402
+from r3d.import_settings import load_scene, match_meshes, seal_camera  # noqa: E402
+from r3d.lit_mesh import RGB_CHANNELS, finest_triangles, read_bundle_mesh, turned  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
 from r3d.repair import _border_edges  # noqa: E402
@@ -154,8 +155,7 @@ def start_mesh(path):
 
 def point_edges(tris, vertex_point):
     """The unique undirected edges between welded positions."""
-    corners = vertex_point[tris]
-    edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
+    edges = corner_edges(vertex_point[tris])
     edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
     return np.unique(edges, axis=0)
 
@@ -464,7 +464,9 @@ class Renderer:
     `flat` one colour per triangle, single-sided triangles culled when they
     face away, `clear` (0..1 RGB) where nothing is drawn. A flat mesh is drawn
     with three vertices of its own per triangle, so every edge between two
-    colours is antialiased and moves its positions."""
+    colours is antialiased and moves its positions. Six-channel colours hold
+    back colours beside the front ones: a pixel of a triangle seen from behind
+    shows the back ones, as the device picks the side by winding."""
 
     def __init__(self, tris, double, vertex_point, size, device, clear=(0.0, 0.0, 0.0), flat=False):
         import nvdiffrast.torch as dr
@@ -508,20 +510,30 @@ class Renderer:
         import torch
 
         with torch.no_grad():
-            corners = clip[self.tris.long()]
-            w = corners[..., 3]
-            xy = corners[..., :2] / w.clamp_min(1e-6)[..., None]
-            area = (xy[:, 1, 0] - xy[:, 0, 0]) * (xy[:, 2, 1] - xy[:, 0, 1]) - (xy[:, 2, 0] - xy[:, 0, 0]) * (xy[:, 1, 1] - xy[:, 0, 1])
-            return self.double | (area > 0) | (w <= 0).any(dim=1)
+            return self.double | (self.winding(clip) > 0) | (clip[self.tris.long()][..., 3] <= 0).any(dim=1)
+
+    def winding(self, clip):
+        """Each triangle's winding on screen, positive where its corners turn counter-clockwise: the determinant
+        of its corners' (x, y, w). With every w positive it is their product times the signed screen area; for a
+        triangle crossing the eye plane it keeps the sign of the part in front, as the device's clipped polygon
+        does."""
+        import torch
+
+        corners = clip[self.tris.long()][..., [0, 1, 3]]
+        return torch.linalg.det(corners)
+
+    @staticmethod
+    def pixel_triangles(rast, keep):
+        """The triangle each pixel of a raster() shows, -1 where none."""
+        import torch
+
+        local = rast[0, ..., 3].long() - 1
+        return torch.cat([keep, keep.new_full((1,), -1)])[torch.where(local >= 0, local, len(keep))]
 
     def visible_ids(self, points, clip_matrix):
         """The triangle each pixel shows, -1 where none."""
-        import torch
-
         _clip, rast, keep = self.raster(points, clip_matrix)
-        local = rast[0, ..., 3].long() - 1
-        mapping = torch.cat([keep, keep.new_full((1,), -1)])
-        return mapping[torch.where(local >= 0, local, len(keep))]
+        return self.pixel_triangles(rast, keep)
 
 
     def raster(self, points, clip_matrix, clip=None):
@@ -648,6 +660,14 @@ class Renderer:
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
 
+    def front_pixels(self, clip, rast, keep):
+        """Which pixels show the front of their triangle: its corners wind counter-clockwise on screen."""
+        import torch
+
+        with torch.no_grad():
+            shown = self.pixel_triangles(rast, keep)
+            return (self.winding(clip)[shown.clamp_min(0)] > 0) | (shown < 0)
+
     def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch
 
@@ -656,6 +676,9 @@ class Renderer:
             attributes = colours.repeat_interleave(3, dim=0) if self.flat else colours
             values = self.interpolate(attributes, clip, rast, keep)
         colour = values
+        if colour.shape[-1] > RGB_CHANNELS:
+            colour = torch.where(self.front_pixels(clip, rast, keep)[..., None], colour[..., :RGB_CHANNELS],
+                                 colour[..., RGB_CHANNELS:])
         colour = torch.where(rast[0, ..., 3:] > 0, colour, self.clear.expand_as(colour))
         return self.antialias(colour, clip, rast, keep).flip(0)
 
@@ -901,7 +924,7 @@ def refine(mesh, error, budget):
         if flat:
             colours = rgb[parent]
         else:
-            colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), 3))])
+            colours = np.concatenate([rgb, np.zeros((len(positions) - len(rgb), rgb.shape[1]))])
             for (a, b), m in midpoint.items():
                 colours[m] = (rgb[a] + rgb[b]) / 2
         rgb, double, error = colours, np.asarray(double)[parent], error[parent] / 2
@@ -1035,6 +1058,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
         error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        channels = colours.shape[1]
         if normal_weight:
             render = renderer_for(chosen[0])
             vertex = vertex_normals(draw, render.tris.long(), render.vertex_point, render.normal_signs.sign)
@@ -1047,7 +1071,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             if normal_weight:
                 raster = render.raster(draw, matrices[i], clip)
                 values = render.interpolate(attributes, *raster)
-                samples = dict(raster=raster, values=values[..., :3])
+                samples = dict(raster=raster, values=values[..., :channels])
             if buffers is not None:
                 samples.setdefault("raster", render.raster(draw, matrices[i], clip))
                 fitted, shown = gbuffer.distance(render, draw, matrices[i], samples["raster"])
@@ -1062,7 +1086,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                                                      scale) / len(chosen)
             if normal_weight:
                 distance, _angles = normal_l1(render, draw, (matrices[i], None, normals[i], views[i][3]), clip,
-                                              angles=False, raster=raster, values=values[..., 3:])
+                                              angles=False, raster=raster, values=values[..., channels:])
                 error = error + normal_weight * distance / len(chosen)
         if geometry_rng is not None:
             count = len(geometry_views.matrices)
@@ -1128,7 +1152,7 @@ def write_mesh(out_dir, name, mesh):
                                )
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
-            obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
+            obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c[:RGB_CHANNELS]))
         for t in tris:
             obj.write("f %d %d %d\n" % tuple(t + 1))
     return len(baked.tris)
@@ -1149,7 +1173,7 @@ def main(argv=None):
     parser.add_argument("--lr-position", type=float, default=2e-4, help="per step, in bounding diagonals")
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
-    parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
+    parser.add_argument("--budget", type=int, help="limit triangles before seam splits, pruning the least shown first")
     parser.add_argument("--coverage-poses", action="append",
                         help="a poses file to count shown pixels over; repeat to sum coverage, training poses otherwise")
     parser.add_argument("--held-out-poses", action="append", default=[],
@@ -1158,7 +1182,7 @@ def main(argv=None):
     parser.add_argument("--closure", action="store_true", help="fail when the fit loses held-out surface (check_closure)")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
-    parser.add_argument("--object", help="the scene object whose source anchors the fit")
+    parser.add_argument("--object", help="the scene object whose source the fit and seal use (default: first mesh renderer)")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
@@ -1204,9 +1228,15 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
+    mesh, copies = matched(mesh, None if args.copies is None else placed_copies(args.copies, mesh.flat))
     if copies is not None:
         log(f"copies: {len(copies.tris)} triangles drawn with the start")
+    if not args.score:
+        from r3d.reference_render import source_for
+
+        source, job = source_for(scene, args.object, lit=False, hide_cards=True,
+                                 hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
+                                                   else set(args.hidden_materials)))
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -1220,13 +1250,6 @@ def main(argv=None):
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
-        source = None
-        if args.surface_weight or copies is not None:
-            from r3d.reference_render import source_for
-
-            source, job = source_for(scene, args.object, lit=False, hide_cards=True,
-                                     hidden_materials=(mesh.hidden_materials if args.hidden_materials is None
-                                                       else set(args.hidden_materials)))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)
@@ -1255,23 +1278,47 @@ def main(argv=None):
         shown = np.sum(rows, axis=0)
         held_out = [load_views([pair], args.scale) for pair in held_pairs if pictured(pair[1])]
         pruned, kept = prune(fitted, shown, args.budget)
-        if held_out and args.closure:
-            pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
-            start_holes, fitted_holes = (sum(hole_pixels(joined(candidate, copies), held_views, held_size, clear)
-                                             for held_views, held_size in held_out) for candidate in (fit_start, pruned))
-            log(check_closure(start_holes, fitted_holes, pixels))
-        if held_out:
-            log(held_out_line(joined(pruned, copies), held_out, clear))
-        if unpictured:
-            log(not_measured_line(unpictured))
+        retained_start = fit_start
+        if len(kept) < len(fit_start.tris):
+            # Coverage can remove whole surfaces, including ones the start's leak probes would see.
+            start_rgb = fit_start.rgb[kept] if fit_start.flat else fit_start.rgb
+            retained_start = pruned._replace(points=fit_start.points, rgb=start_rgb)
+        probes = seal.start_probes(retained_start, copies, seal_camera(scene), source)
+        presplit, _ = seal.split_t_junctions(pruned)
+        sealed, moved, left, rounds, restores_kept, reverted = seal.snap_back(retained_start, presplit, copies, probes)
+        split, _ = seal.split_t_junctions(sealed)
+        before = len(pruned.tris)
+        splits = len(split.tris) - before
         log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: "
             f"{np.count_nonzero(shown == 0)} never shown")
-        fitted = pruned
-        if copies is not None:
-            hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
-            log(check_hidden_copies(*hidden))
-        count = write_mesh(out, name, fitted)
-        report = stretch_report(fit_start, fitted, kept)
+        seal.log_lines(moved, left, rounds, restores_kept, reverted, splits, before)
+        with ExitStack() as staging:
+            bundle_dir = out
+            if held_out or copies is not None:
+                # A failed gate must leave any previously accepted output in place.
+                out.mkdir(parents=True, exist_ok=True)
+                bundle_dir = pathlib.Path(staging.enter_context(tempfile.TemporaryDirectory(dir=out)))
+            count = write_mesh(bundle_dir, name, split)
+            if bundle_dir != out:
+                stored = start_mesh(bundle_dir / start.name)
+                if held_out:
+                    scored = joined(stored, copies)
+                    if args.closure:
+                        pixels = sum(len(held_views) * held_size[0] * held_size[1] for held_views, held_size in held_out)
+                        start_holes, fitted_holes = (sum(hole_pixels(candidate, held_views, held_size, clear)
+                                                         for held_views, held_size in held_out)
+                                                     for candidate in (joined(fit_start, copies), scored))
+                        log(check_closure(start_holes, fitted_holes, pixels))
+                    log(held_out_line(scored, held_out, clear))
+                if copies is not None:
+                    hidden = hidden_copy_pixels(source, carved, (fit_start, stored), args.copy_poses)
+                    log(check_hidden_copies(*hidden))
+                for path in bundle_dir.iterdir():
+                    path.replace(out / path.name)
+        if unpictured:
+            log(not_measured_line(unpictured))
+        report = stretch_report(fit_start, pruned._replace(points=sealed.points), kept)
+        report["split_triangles"] = splits
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
             log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"

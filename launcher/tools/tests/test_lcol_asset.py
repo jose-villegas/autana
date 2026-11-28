@@ -30,11 +30,12 @@ class LcolTests(unittest.TestCase):
     def test_round_trip(self):
         owner = lcol_asset
         for encoding, stride in ((owner.RGB888, 3), (owner.RGB565, 2)):
-            sets = [bytes(range(4 * stride)), bytes(reversed(range(4 * stride)))]
-            entry = owner.encode(encoding, 4, sets)
-            self.assertEqual(owner.decode(entry), (encoding, 4, sets))
+            # Each set: four front colours, then two back ones.
+            sets = [bytes(range(6 * stride)), bytes(reversed(range(6 * stride)))]
+            entry = owner.encode(encoding, 4, 2, sets)
+            self.assertEqual(owner.decode(entry), (encoding, 4, 2, sets))
             for broken in (entry[:owner.HEADER.size - 1], entry[:-1], entry + b"x",
-                           owner.HEADER.pack(owner.VERSION, encoding, 0, 4)):
+                           owner.HEADER.pack(owner.VERSION, encoding, 0, 4, 2)):
                 with self.assertRaises(ValueError):
                     owner.decode(broken)
             for at, value in ((0, owner.VERSION + 1), (2, 2)):
@@ -65,8 +66,8 @@ class LcolTests(unittest.TestCase):
             triangles = positions + 4 * struct.calcsize("<3h")
             clusters = triangles + 2 * struct.calcsize("<3H")
             nodes = padded(clusters + mesh_asset.CLUSTER.size, struct.calcsize("<I"))
-            mesh = mesh_asset.BLOB_HEADER.pack(4, 2, 1, 1, 1, positions, 0, triangles, clusters, nodes, 0)
-            colors = owner.encode(encoding, count, [bytes(count * stride)] * 2)
+            mesh = mesh_asset.BLOB_HEADER.pack(4, 2, 1, 1, 1, positions, 0, triangles, clusters, nodes, 0, 0)
+            colors = owner.encode(encoding, count, 0, [bytes(count * stride)] * 2)
             scene = authored_entry()
             struct.pack_into("<H", scene, struct.calcsize("<H") * (1 + scene_asset.PARTS.index("skinned_renderers")), 0)
             at = scene_asset.HEADER.unpack_from(scene)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("renderers")]
@@ -94,7 +95,7 @@ class LcolTests(unittest.TestCase):
                     struct.pack_into("<H", changed[0][2], at + 2, scene_asset.COLOUR_SET_OWN)
                     if failure == "own":
                         changed[1][2][:mesh_asset.BLOB_HEADER.size] = mesh_asset.BLOB_HEADER.pack(
-                            4, 2, 1, 1, 1, positions, positions, triangles, clusters, nodes, 0)
+                            4, 2, 1, 1, 1, positions, positions, triangles, clusters, nodes, 0, 0)
                     if failure == "colourless":
                         changed.pop()
                 messages = {"range": "LCOL set, count", "missing": "requires an LCOL",
@@ -110,10 +111,10 @@ class LcolTests(unittest.TestCase):
     def test_coloured_prototype_refused(self):
         owner = lcol_asset
         for index in (6, 10):
-            words = [4, 2, 1, 1, 1, mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0]
+            words = [4, 2, 1, 1, 1, mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0, 0]
             words[index] = mesh_asset.BLOB_HEADER.size
             mesh = mesh_asset.BLOB_HEADER.pack(*words)
-            entry = owner.encode(owner.RGB888, 4, [bytes(4 * owner.STRIDES[owner.RGB888])])
+            entry = owner.encode(owner.RGB888, 4, 0, [bytes(4 * owner.STRIDES[owner.RGB888])])
             with self.subTest(index=index), self.assertRaisesRegex(ValueError, "mesh colour ownership"):
                 owner.validate_mesh(entry, mesh, 0)
 

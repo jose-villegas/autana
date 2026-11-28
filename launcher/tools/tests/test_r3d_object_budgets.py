@@ -53,7 +53,8 @@ class ObjectBudgetTests(unittest.TestCase):
                       simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1, props=set(), props_share=0),
                       meshes=[{'match': {'object': 'far'}, 'triangles': 100}])
         job = NS(settings=settings, renderer=NS(visibility=NS(source='camera_region'),
-                                                variant=NS(name='full', triangles=500, objects_scale=1.0)), bake=None)
+                                                variant=NS(name='full', triangles=500, split_reserve=0,
+                                                           objects_scale=1.0)), bake=None)
         stages = []
         def mask(*args, **kwargs):
             result = original_mask(*args, **kwargs)
@@ -87,7 +88,7 @@ class ObjectBudgetTests(unittest.TestCase):
                 patch.object(importer, 'visible_triangles', side_effect=visible), \
                 patch.object(importer, 'densify', side_effect=dense), \
                 patch.object(owner, 'repair', side_effect=repair), \
-                patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t: (p, np.full_like(p, 100), t)):
+                patch.object(importer, 'shade_unlit', side_effect=lambda src, mat, p, t, double: (p, np.full_like(p, 100), t)):
             result = importer.bake_geometry(job, None)
         self.assertEqual(stages, ['alpha', 'visibility', 'thin/dense', 'seal'])
         self.assertEqual(np.count_nonzero(result.tri_mat == 1), 100)

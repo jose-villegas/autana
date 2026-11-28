@@ -21,7 +21,7 @@ Measured results are in
 
 | Key | Symbol | What it does |
 |---|---|---|
-| `fit.prune.budget` | | triangles the fitted mesh keeps after pruning, at most the variant's `triangles`; with a variant `ceiling`, the least the rest keeps: it is pruned to the ceiling less the carved shapes ([variants](Mesh-Import.md#variants-triangles)) |
+| `fit.prune.budget` | | Triangle limit after seam splits. With a variant `ceiling`, the ceiling less stored copies sets the limit. Pruning subtracts [`split_reserve`](Mesh-Import.md#variants-split_reserve) from that limit. |
 | `fit.prune.coverage_every_ms` | | camera-path spacing of the dense poses pruning counts pixels over, at `size` widened |
 | `fit.poses.size` | | pose resolution for training, held-out references and coverage |
 | `fit.poses.samples` | | reference rays per pixel side |
@@ -48,13 +48,15 @@ flowchart LR
     S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
     F --> P[prune the fitted mesh<br/>to the budget]
-    P --> W[write_lit_mesh]
+    P --> T[split T-junctions]
+    T --> B[snap back around<br/>new sky regions]
+    B --> U[split T-junctions]
+    U --> W[write_lit_mesh]
 ```
 
-Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
-shows; pruning removes zero-coverage triangles first, then the least-covered,
-to the budget. Coverage uses fitted positions and fitted per-face colours for
-flat meshes, so visibility is judged on the geometry that is drawn.
+Each pose counts the pixels $`a_t`$ that each fitted triangle shows.
+Pruning drops zero-coverage triangles first, then the least-covered.
+Coverage uses fitted positions and fitted face colours for flat meshes.
 
 A warm start splits the worst fitted triangles along their longest edge, grows
 the mesh to a larger budget, and fits it again.
@@ -86,11 +88,12 @@ An import's [`geometry.probes`](Mesh-Import.md#probes) adds training cube faces
 and held-out faces from a second seed. Placement and face selection use the
 source alone, so the reference set depends only on its own inputs.
 
-A probe fit has no `fit.prune.budget`: its variant's `triangles` is the budget.
-The import spends it through simplify with quadric edge collapse<sup>[[12]](../../Citations.md#garland-1997)</sup>
-and appearance attributes<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
+The start simplifies to [`triangles - split_reserve`](Mesh-Import.md#variants-split_reserve)
+using quadric error<sup>[[12]](../../Citations.md#garland-1997)</sup>
+with baked colour as an appearance attribute<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
-It keeps every triangle: one no coverage view shows may still face a camera they miss.
+A probe fit omits `fit.prune.budget` and keeps every start triangle. Triangles
+absent from the coverage views may still face a camera those views miss.
 A border point within the seam tolerance that the hold rule refuses stays at its start.
 
 A hole pixel shows no fitted surface where the reference differs from the clear
@@ -201,9 +204,37 @@ The plane envelope is zero inside the margin; the small pull remains active ther
 
 A start border point within `SEAM_MARGIN` × its capped local start edge scale
 of another part's triangle is moved onto that triangle. It then follows the
-triangle at fixed start barycentrics, so parts that overlapped in the start
-cannot pull apart into cracks. Nearest contacts win, and a held point never
-anchors another hold.
+triangle at fixed start barycentrics. Nearest contacts win, and a held point
+never anchors another hold.
+
+A hold ties points, not edges. A border edge between two held points stays
+straight while the triangles under it bend, so sky can open along it. A held
+point can also land on a triangle edge without sharing it: a T-junction, which
+the rasterizer can leave a pixel open along. Splitting closes these cracks
+before snap-back checks for holes.
+
+### After the fit
+
+1. Split T-junctions in the pruned fit. Edges split through existing points
+   within `T_JUNCTION_DISTANCE` where the split avoids slivers.
+2. In each probe view, snap back only around connected sky regions that share
+   no pixels with the retained start's sky. Each round tries the rim points and
+   the points of start triangles seen through each hole. The rim widens each
+   round up to `SNAP_BACK_ROUNDS`.
+3. Split T-junctions again at the restored positions. Each split pass fails
+   if it adds more triangles than it starts with.
+
+Each hole's restore stays only if its probe view's see-through count holds or
+falls. A source hit counts when the fit misses or lies beyond `BEHIND` times
+the source depth, after a square binary opening of width `OPENING`.
+
+A pruned fit prunes once to its rest budget minus `split_reserve` before sealing.
+The split mesh must fit within the full rest budget, or within `triangles` for
+a probe fit. Raise `split_reserve` if the fit reports an overflow.
+
+The fit log reports points moved back, holes left, restores kept and reverted,
+and triangles added across both splits. Remaining probe holes are informational.
+The held-out dE76 score and closure gate use the final split mesh.
 
 ### Normals
 
@@ -279,7 +310,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size, within `MOVE_REACH` of its shortest start edge from the start |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
-| Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+| Triangle budget | set by the start | coverage pruning and seam splits stay within `budget`. A refined fitted mesh can be the start. |
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.

@@ -103,7 +103,7 @@ enum {
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
     RIG_ENTRIES = 11,
-    RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
+    RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 160,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_GROUND_MM_S = 300,
@@ -119,7 +119,7 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue, int co
     const uint32_t corners_at = colors + vertices * sizeof(uint8_t[3]);
     const uint32_t clusters = corners_at + triangles * sizeof(uint16_t[3]);
     const uint32_t nodes = mathi_size_ceil(clusters + copies * sizeof(r3d_lit_cluster_t), sizeof(uint32_t));
-    const uint32_t words[] = {vertices, triangles, copies, 1, 1, positions, colors, corners_at, clusters, nodes, 0};
+    const uint32_t words[] = {vertices, triangles, copies, 1, 1, positions, colors, corners_at, clusters, nodes, 0, 0};
     for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
         test_pack_put32(entry + sizeof(uint32_t) * i, words[i]);
     }
@@ -138,8 +138,8 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue, int co
                                 corners[t][axis] + c * QUAD_VERTICES);
             }
         }
-        const r3d_lit_cluster_t cluster = {c * QUAD_VERTICES,        QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES,
-                                           {{-1, -1, 0}, {1, 1, 0}}, true};
+        const r3d_lit_cluster_t cluster = {
+            c * QUAD_VERTICES, QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES, {{-1, -1, 0}, {1, 1, 0}}, true, 0, 0};
         memcpy(entry + clusters + c * sizeof cluster, &cluster, sizeof cluster);
     }
     const r3d_lit_node_t node = {{{-1, -1, 0}, {1, 1, 0}}, 0, copies, true};
@@ -2975,16 +2975,75 @@ make_batch_entry(test_pack_t* pack, const batch_case_t* spec) {
     }
 }
 
+/* red.colors in LCOL_TEST_SETS sets, each the quad's front colours then its
+ * back ones: set k's front has channel k at full, its back channel 2 at
+ * full less k. */
 static void
-make_batch_pack(const batch_case_t* spec) {
+make_back_lcol_entry(test_pack_t* pack) {
+    enum { PER_SET = 2 * QUAD_VERTICES * LCOL_RGB888_BYTES };
+
+    uint8_t* colors = test_pack_add(pack, "red.colors", LCOL_ASSET, LCOL_HEADER_SIZE + (LCOL_TEST_SETS * PER_SET));
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+    test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, LCOL_TEST_SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, QUAD_VERTICES);
+    test_pack_put32(colors + LCOL_AT_BACK_COUNT, QUAD_VERTICES);
+    for (int set = 0; set < LCOL_TEST_SETS; set++) {
+        uint8_t* front = colors + LCOL_HEADER_SIZE + (set * PER_SET);
+        for (int v = 0; v < QUAD_VERTICES; v++) {
+            front[(v * LCOL_RGB888_BYTES) + set] = UINT8_MAX;
+            front[((QUAD_VERTICES + v) * LCOL_RGB888_BYTES) + 2] = (uint8_t)(UINT8_MAX - set);
+        }
+    }
+}
+
+/* The batch scene changed by `spec`, its colour sets holding back colours
+ * after their front ones when `back`. */
+static void
+make_batch_pack_coloured(const batch_case_t* spec, bool back) {
     test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 3);
     uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
     make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
     test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
     make_batch_entry(&pack, spec);
-    const lcol_case_t colours = {0};
-    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    if (back) {
+        make_back_lcol_entry(&pack);
+    } else {
+        const lcol_case_t colours = {0};
+        make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    }
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)), spec->id);
+}
+
+static void
+make_batch_pack(const batch_case_t* spec) {
+    make_batch_pack_coloured(spec, false);
+}
+
+/* A batch whose sets hold back colours: the copy in set 1 shows set 1's back
+ * colours, copied with its front ones into the renderer's resident span. */
+static void
+test_a_batch_copy_in_a_later_set_draws_that_set_s_resident_back_colours(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const batch_case_t spec = {.id = "back", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_pack_coloured(&spec, true);
+    const scene_renderer_t* r = &resolved(load("test_batch"))->renderers[0];
+    const int count = r->mesh.vertex_count;
+    TEST_ASSERT_EQUAL_INT(count, r->mesh.back_count);
+    TEST_ASSERT_EQUAL_PTR(r->mesh.colors + count, r->mesh.back_colors);
+    const uintptr_t begin = (uintptr_t)r->resident;
+    TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
+                     && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * 2 * count)) <= begin + lent_size(r->resident));
+    r3d_lit_mesh_t second;
+    r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
+    TEST_ASSERT_EQUAL_PTR(r->mesh.back_colors + r->batch->colour_stride, second.back_colors);
+    for (int v = 0; v < count; v++) {
+        TEST_ASSERT_EQUAL_UINT8(UINT8_MAX - 1, second.back_colors[v][2]);
+    }
 }
 
 static void
@@ -3044,6 +3103,9 @@ test_batch_refusals(void) {
         {"negative reach", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, reach), minus_one, U32, BATCH_COPIES},
         {"infinite centre", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, centre), infinity, U32, BATCH_COPIES},
         {"largest beyond w", SCENE_ASSET_TURNS, offsetof(r3d_copy_turn_t, largest), BATCH_LARGEST_W + 1, U16,
+         BATCH_COPIES},
+        /* The highest set plus one is the batch's set count: past uint16_t it wraps. */
+        {"set count beyond its type", SCENE_ASSET_PLACES, offsetof(r3d_copy_place_t, colour_set), UINT16_MAX, U16,
          BATCH_COPIES},
         {"set beyond the colours", SCENE_ASSET_PLACES,
          sizeof(r3d_copy_place_t) + offsetof(r3d_copy_place_t, colour_set), LCOL_TEST_SETS, U16, BATCH_COPIES},
@@ -4516,6 +4578,96 @@ test_mesh_reader_accepts_only_positive_int_scales(void) {
     test_pack_put32(bytes + MESH_SCALE_AT, (uint32_t)INT_MAX + 1U);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
     TEST_ASSERT_NULL(mesh.positions);
+}
+
+/* A red quad, double-sided, with green back colours after its nodes: an
+ * entry of QUAD_BYTES and its four back colours. */
+enum { BACK_COLOURS_WORD = 11, QUAD_BACK_BYTES = QUAD_BYTES + (QUAD_VERTICES * 3) };
+
+static void
+make_back_quad(uint8_t* entry) {
+    memset(entry, 0, QUAD_BACK_BYTES);
+    make_quad_entry(entry, UINT8_MAX, 0, 0, 1);
+    for (int v = 0; v < QUAD_VERTICES; v++) {
+        entry[QUAD_BYTES + (v * 3) + 1] = UINT8_MAX;
+    }
+    test_pack_put32(entry + BACK_COLOURS_WORD * sizeof(uint32_t), QUAD_BYTES);
+}
+
+static void
+test_mesh_reader_reads_the_back_colours_of_its_double_sided_clusters(void) {
+    uint8_t* bytes = calloc(1, QUAD_BACK_BYTES);
+    TEST_ASSERT_NOT_NULL(bytes);
+    make_back_quad(bytes);
+    const asset_view_t entry = {bytes, QUAD_BACK_BYTES};
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_PTR(bytes + QUAD_BYTES, mesh.back_colors);
+    TEST_ASSERT_NULL(mesh.back_face_colors);
+    TEST_ASSERT_EQUAL_INT(QUAD_VERTICES, mesh.back_count);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, mesh.back_colors[0][1]);
+    free(bytes);
+}
+
+/* Back colours tile the double-sided clusters' runs from back_first and fit
+ * the entry; a mesh with none to show them on has none. */
+static void
+test_mesh_reader_refuses_back_colours_that_do_not_fit_their_clusters(void) {
+    uint8_t* bytes = calloc(1, QUAD_BACK_BYTES);
+    TEST_ASSERT_NOT_NULL(bytes);
+    r3d_lit_mesh_t mesh;
+    for (int broken = 0; broken < 3; broken++) {
+        make_back_quad(bytes);
+        asset_view_t entry = {bytes, QUAD_BACK_BYTES};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+        r3d_lit_cluster_t* cluster = (r3d_lit_cluster_t*)(uintptr_t)mesh.clusters;
+        asset_status_t want = ASSET_ERR_FORMAT;
+        if (broken == 0) {
+            cluster->back_first = 1;
+        } else if (broken == 1) {
+            cluster->double_sided = false;
+        } else {
+            entry.size -= 4;
+            want = ASSET_ERR_BOUNDS;
+        }
+        TEST_ASSERT_EQUAL_INT(want, r3d_lit_mesh_from_asset(&entry, &mesh));
+        TEST_ASSERT_NULL(mesh.positions);
+    }
+    free(bytes);
+}
+
+/* A colourless quad's colour set holds its front colours, then its back
+ * ones: set k's back colours sit after its front, and the next set after
+ * both. */
+static void
+test_a_colour_set_holds_its_back_colours_after_its_front_ones(void) {
+    fixture();
+
+    enum { SETS = 2, PER_SET = 2 * QUAD_VERTICES * LCOL_RGB888_BYTES };
+
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 2);
+    uint8_t* quad = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(quad, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(quad + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    uint8_t* colors = test_pack_add(&pack, "red.colors", LCOL_ASSET, LCOL_HEADER_SIZE + SETS * PER_SET);
+    test_pack_put16(colors + LCOL_AT_VERSION, LCOL_VERSION);
+    test_pack_put16(colors + LCOL_AT_ENCODING, LCOL_ENCODING_RGB888);
+    test_pack_put32(colors + LCOL_AT_SET_COUNT, SETS);
+    test_pack_put32(colors + LCOL_AT_COUNT, QUAD_VERTICES);
+    test_pack_put32(colors + LCOL_AT_BACK_COUNT, QUAD_VERTICES);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)));
+    asset_view_t found;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "red.colors", LCOL_ASSET, &found));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &mesh));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open_colours(&fx.pack, "red", 1, &mesh));
+    const uint8_t* second = found.data + LCOL_HEADER_SIZE + PER_SET;
+    TEST_ASSERT_EQUAL_PTR(second, mesh.colors);
+    TEST_ASSERT_EQUAL_PTR(second + (QUAD_VERTICES * LCOL_RGB888_BYTES), mesh.back_colors);
+    TEST_ASSERT_EQUAL_INT(QUAD_VERTICES, mesh.back_count);
+    test_pack_put32((uint8_t*)(uintptr_t)found.data + LCOL_AT_BACK_COUNT, QUAD_VERTICES - 1);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &mesh));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_open_colours(&fx.pack, "red", 0, &mesh));
 }
 
 /* rig.mesh's two quads with levels: the first finest in group 0, the second
@@ -9141,6 +9293,9 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
     RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
+    RUN_TEST(test_mesh_reader_reads_the_back_colours_of_its_double_sided_clusters);
+    RUN_TEST(test_mesh_reader_refuses_back_colours_that_do_not_fit_their_clusters);
+    RUN_TEST(test_a_colour_set_holds_its_back_colours_after_its_front_ones);
     RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_mesh_open_resolves_optional_levels);
     RUN_TEST(test_a_checkpoint_holds_each_copys_level);
@@ -9222,6 +9377,7 @@ run_scene_suite(void) {
     RUN_TEST(test_finds_compare_name_hashes);
     RUN_TEST(test_lcol_instances_and_refusals);
     RUN_TEST(test_a_batch_draws_its_copies_from_one_renderer);
+    RUN_TEST(test_a_batch_copy_in_a_later_set_draws_that_set_s_resident_back_colours);
     RUN_TEST(test_batch_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);

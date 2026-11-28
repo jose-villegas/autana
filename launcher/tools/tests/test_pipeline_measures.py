@@ -190,7 +190,7 @@ class PipelineMeasuresTests(unittest.TestCase):
                 patch.object(mesh_import, "drop_masked", return_value=(source.tri_v[:3], source.tri_t[:3], source.tri_m[:3], np.array([True, True, True, False]))), \
                 patch.object(mesh_import, "RayQuery"), \
                 patch.object(mesh_import, "visible_triangles", return_value=np.array([True, True, False])), \
-                patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t: (p, np.zeros_like(p), t)):
+                patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t, double: (p, np.zeros_like(p), t)):
             geometry = mesh_import.bake_geometry(job, None, recorder=recorder)
         mesh = NS(tris=geometry.tris, lod=None, groups=None)
         with tempfile.TemporaryDirectory() as directory, patch.object(lit_mesh, "bake_lit_mesh", return_value=mesh), \

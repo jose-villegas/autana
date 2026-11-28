@@ -11,6 +11,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest import mock
 from types import SimpleNamespace
 
@@ -22,9 +23,11 @@ try:
     from r3d.appearance_simplify import FitMesh, point_edges, projection, prune, refine, start_mesh, write_mesh
     from r3d.cost_model import fit, predict, triangle_terms
     from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh
+    from r3d.procedural import wave_sheet
 except ImportError:
     np = None
 
+from tests.fit_stubs import stub_seal  # noqa: E402
 from tests.r3d_env import needs_llvm  # noqa: E402
 
 try:
@@ -59,27 +62,10 @@ def draw(renderer, points, colours, matrix):
 
 
 def grid(count, z=0.0):
-    """A count x count quad grid in x and y over [-1, 1], facing +z, with a
-    colour seam down its middle column of vertices: the left half's vertices
-    are duplicated with a second colour."""
-    side = np.linspace(-1.0, 1.0, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.full(xs.size, z)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = []
-    for row in range(count):
-        for col in range(count):
-            a, b, c, d = index[row, col], index[row, col + 1], index[row + 1, col + 1], index[row + 1, col]
-            tris += [[a, b, c], [a, c, d]]
-    tris = np.array(tris)
-    rgb = np.where(positions[:, :1] < 0, [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
-    left = positions[tris].mean(axis=1)[:, 0] < 0
-    copies = np.unique(tris[left])
-    duplicate = {int(v): len(positions) + k for k, v in enumerate(copies)}
-    positions = np.concatenate([positions, positions[copies]])
-    rgb = np.concatenate([rgb, np.tile([[230.0, 200.0, 50.0]], (len(copies), 1))])
-    tris[left] = np.vectorize(duplicate.get)(tris[left])
-    return positions, rgb, tris
+    """A count x count quad card over [-1, 1] in x and y at `z`, facing +z: its left half one colour, its right
+    half another, the seam's vertices duplicated."""
+    card = wave_sheet.sheet(count, size=2.0, z=z, pattern="stripes", cells=2, colours=((230, 200, 50), (40, 90, 200)))
+    return card.positions, card.rgb, card.tris
 
 
 def write_start(directory, count=4):
@@ -704,8 +690,196 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(border, 4 * 4, "a moved seam vertex opened a crack")
 
 
+def fit_scene():
+    """A scene with a camera and one renderer, as main() reads it."""
+    return SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(background=0)),
+                           renderers=[SimpleNamespace(object=SimpleNamespace(name="card"), renderer=None)])
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    @contextmanager
+    def patch_fit(self, mesh, **patches):
+        from r3d import appearance_simplify as appearance
+
+        source = SimpleNamespace(p=mesh.points, tri_v=mesh.vertex_point[mesh.tris])
+        reference_render = SimpleNamespace(source_for=mock.Mock(return_value=(source, None)))
+        with mock.patch.dict(sys.modules, {"r3d.reference_render": reference_render}), \
+                mock.patch.multiple(appearance, load_scene=mock.Mock(return_value=fit_scene()),
+                                    start_mesh=mock.Mock(return_value=mesh),
+                                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                                    seal_camera=mock.Mock(), **patches) as calls:
+            yield calls
+
+    def run_budgeted_fit(self, directory, split, budget):
+        from r3d import appearance_simplify as appearance
+
+        mesh = start_mesh(write_start(directory))
+        out = pathlib.Path(directory) / "out"
+        calls = mock.Mock()
+        seal = stub_seal(calls.seal)
+        seal.split_t_junctions.side_effect = lambda pruned: split(mesh, pruned)
+        calls.prune.side_effect = prune
+        calls.write_mesh.side_effect = write_mesh
+        calls.optimise.return_value = (mesh.points, mesh.rgb, [1.0])
+        calls.coverage.return_value = np.ones(len(mesh.tris))
+        calls.hole_pixels.return_value = 0
+        calls.held_out_line.return_value = "held-out score"
+        with self.patch_fit(mesh, optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
+                            write_mesh=calls.write_mesh, seal=seal, pictured=mock.Mock(return_value=True),
+                            hole_pixels=calls.hole_pixels, held_out_line=calls.held_out_line):
+            appearance.start_mesh.side_effect = lambda path: start_mesh(path if path.is_absolute() else pathlib.Path(directory) / path)
+            appearance.main(["--scene", "scene.toml", "--start", "card.bundle", "--poses", "poses.txt",
+                             "--reference", "reference", "--budget", str(budget), "--out", str(out),
+                             "--held-out-poses", "held.txt", "--held-out-reference", "held", "--closure"])
+        return calls
+
+    def test_the_fit_prunes_once_then_writes_and_scores_the_split_mesh(self):
+        budget, splits_per_pass = 4, 1
+        splits = 2 * splits_per_pass
+
+        def split(start, pruned):
+            count = len(pruned.tris) + splits_per_pass
+            return pruned._replace(tris=start.tris[:count], double=start.double[:count]), splits_per_pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory) / "out"
+            calls = self.run_budgeted_fit(directory, split, budget)
+            written = read_lit_mesh(out / "card.bundle")
+            self.assertEqual(len(written.tris), budget + splits)
+            stored = start_mesh(out / "card.bundle")
+            report = json.loads((out / "stretch.json").read_text())
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), budget)
+            self.assertEqual(report["split_triangles"], splits)
+        calls.prune.assert_called_once()
+        self.assertEqual(calls.prune.call_args.args[2], budget)
+        calls.seal.snap_back.assert_called_once()
+        self.assertEqual([len(call.args[0].tris) for call in calls.seal.split_t_junctions.call_args_list],
+                         [budget, budget + splits_per_pass])
+        self.assertEqual(len(calls.seal.snap_back.call_args.args[1].tris), budget + splits_per_pass)
+        calls.seal.log_lines.assert_called_once_with(0, 0, 0, 0, 0, splits, budget)
+        calls.write_mesh.assert_called_once()
+        scored = calls.hole_pixels.call_args_list[1].args[0]
+        self.assertIs(calls.held_out_line.call_args.args[0], scored)
+        np.testing.assert_array_equal(scored.points, stored.points)
+        np.testing.assert_array_equal(scored.tris, stored.tris)
+
+    def test_all_scores_use_the_bundle_after_a_flat_split_collapses(self):
+        from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from tests.test_fit_seal import mesh
+
+        start = mesh([(0, 0, 0), (4, 0, 0), (0, 4, 0), (1, -1, 0), (0, -3, 0), (3, -3, 0)],
+                     [(0, 1, 2), (3, 4, 5)], flat=True)._replace(scale=1)
+        points = start.points.copy()
+        points[3] = (2 * seal.T_JUNCTION_DISTANCE, 0, 0)
+        fitted = start._replace(points=points)
+        calls = mock.Mock()
+        calls.optimise.return_value = (points, start.rgb, [1.0])
+        calls.coverage.return_value = np.ones(len(start.tris))
+        calls.write_mesh.side_effect = write_mesh
+        calls.hole_pixels.return_value = 0
+        calls.held_out_line.return_value = "held-out score"
+        calls.hidden_copy_pixels.return_value = (np.zeros(1), np.zeros(1))
+        copies = start
+        source = SimpleNamespace(object_names=["copy"], names=["material"], tri_o=np.array([0]), tri_m=np.array([0]))
+        job = SimpleNamespace(settings=SimpleNamespace(meshes=[], fit=SimpleNamespace(probes=None)))
+        reference_render = SimpleNamespace(source_for=mock.Mock(return_value=(source, job)))
+        seal_stub = stub_seal(mock.Mock())
+        seal_stub.split_t_junctions.side_effect = seal.split_t_junctions
+        with tempfile.TemporaryDirectory() as directory:
+            out = pathlib.Path(directory)
+            with self.patch_fit(start, optimise=calls.optimise, coverage=calls.coverage, seal=seal_stub,
+                                write_mesh=calls.write_mesh, pictured=mock.Mock(return_value=True),
+                                hole_pixels=calls.hole_pixels, held_out_line=calls.held_out_line,
+                                placed_copies=mock.Mock(return_value=copies), match_meshes=mock.Mock(return_value=[0]),
+                                hidden_copy_pixels=calls.hidden_copy_pixels, check_hidden_copies=mock.Mock()), \
+                    mock.patch.dict(sys.modules, {"r3d.reference_render": reference_render}):
+                appearance.start_mesh.side_effect = lambda path: start_mesh(path) if path.is_absolute() else start
+                appearance.main(["--scene", "scene.toml", "--start", "flat.bundle", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", directory, "--object", "object",
+                                 "--copies", "copies.bundle", "--copy-poses", "held.txt",
+                                 "--held-out-poses", "held.txt", "--held-out-reference", "held", "--closure"])
+            stored = start_mesh(out / "flat.bundle")
+        self.assertEqual(len(calls.write_mesh.call_args.args[2].tris), len(fitted.tris) + 1)
+        self.assertEqual(len(stored.tris), len(fitted.tris))
+        expected = appearance.joined(stored, copies)
+        for name, actual, reference in (
+                ("closure", calls.hole_pixels.call_args_list[1].args[0], expected),
+                ("held-out dE76", calls.held_out_line.call_args.args[0], expected),
+                ("hidden copies", calls.hidden_copy_pixels.call_args.args[2][1], stored)):
+            with self.subTest(score=name):
+                self.assertEqual(len(actual.tris), len(reference.tris))
+                np.testing.assert_array_equal(actual.points, reference.points)
+
+    @needs_llvm
+    def test_sealing_keeps_a_pruned_gap_and_restores_a_moved_rim(self):
+        from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from tests.test_fit_seal import CAMERA, PULLED_IN, SHEET_HALF, wall_and_sheet
+
+        start = wall_and_sheet()
+        shown = np.ones(len(start.tris))
+        shown[0] = 0
+        budget = int(shown.sum())
+        pruned, _ = prune(start, shown, budget)
+        source = SimpleNamespace(p=start.points, tri_v=start.vertex_point[start.tris])
+        full = seal.start_probes(start, None, CAMERA, source)
+        self.assertTrue(full.holes(*seal.geometry(pruned, None), reach=seal.SNAP_BACK_REACH))
+        top = (start.points[:, 0] < 0) & (start.points[:, 2] == SHEET_HALF)
+        for pull in (0, PULLED_IN):
+            with self.subTest(pull=pull), tempfile.TemporaryDirectory() as out:
+                points = start.points.copy()
+                points[top, 2] -= pull
+                with self.patch_fit(start, optimise=mock.Mock(return_value=(points, start.rgb, [1.0])),
+                                    coverage=mock.Mock(return_value=shown), write_mesh=mock.Mock(return_value=budget)), \
+                        mock.patch.object(appearance, "seal_camera", return_value=CAMERA), \
+                        mock.patch.object(seal, "split_t_junctions", side_effect=lambda mesh: (mesh, 0)), \
+                        mock.patch.object(seal, "log_lines") as log:
+                    appearance.main(["--scene", "scene.toml", "--start", "wall.bundle", "--poses", "poses.txt",
+                                     "--reference", "reference", "--budget", str(budget), "--out", out])
+                    sealed = appearance.write_mesh.call_args.args[2]
+                np.testing.assert_array_equal(sealed.tris, pruned.tris)
+                np.testing.assert_array_equal(sealed.points, start.points)
+                moved, left, rounds, kept, reverted, splits, count = log.call_args.args
+                self.assertEqual((moved, left, rounds, reverted, splits, count),
+                                 (np.count_nonzero(top) if pull else 0, 0, int(bool(pull)), 0, 0, budget))
+                self.assertEqual(bool(kept), bool(pull))
+
+    @needs_llvm
+    def test_the_presplit_closes_a_t_junction_crack_before_points_move_back(self):
+        from r3d import appearance_simplify as appearance
+        from r3d.fit import seal
+        from r3d.views import probes as probe_views
+        from tests.test_fit_seal import CAMERA, NEAR, mesh
+
+        start = mesh([(0, -2, 0), (0, 2, 0), (0, 0, 3), (0, 0, 0), (0, -2, -3), (0, 2, -3)],
+                     [(0, 1, 2), (0, 4, 3), (4, 5, 3), (3, 5, 1)])
+        points = start.points.copy()
+        points[3, 2] -= NEAR
+        fitted = start._replace(points=points)
+        eye_x = CAMERA[0][0][0]
+        pose = (eye_x, 0, -NEAR / 2, -1, 0, 0)
+        lens = 2 * NEAR / eye_x
+        with mock.patch.object(probe_views, "region_poses", return_value=([pose], None)), \
+                mock.patch.object(probe_views, "FACE_LENS", lens):
+            source = SimpleNamespace(p=start.points, tri_v=start.vertex_point[start.tris])
+            probes = seal.start_probes(start, None, CAMERA, source)
+            self.assertTrue(probes.holes(*seal.geometry(fitted, None), reach=seal.SNAP_BACK_REACH))
+
+            with tempfile.TemporaryDirectory() as out, \
+                    self.patch_fit(start, optimise=mock.Mock(return_value=(points, start.rgb, [1.0])),
+                                   coverage=mock.Mock(return_value=np.ones(len(start.tris))),
+                                   write_mesh=mock.Mock(return_value=len(start.tris) + 1)), \
+                    mock.patch.object(appearance, "seal_camera", return_value=CAMERA):
+                appearance.main(["--scene", "scene.toml", "--start", "wall.bundle", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", out])
+                sealed = appearance.write_mesh.call_args.args[2]
+
+            self.assertEqual(probes.holes(*seal.geometry(sealed, None), reach=seal.SNAP_BACK_REACH), [])
+        self.assertEqual(len(sealed.tris), len(start.tris) + 1)
+        np.testing.assert_array_equal(sealed.points, fitted.points)
+
     def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
         from r3d import appearance_simplify as appearance
 
@@ -719,14 +893,10 @@ class PruneAndCostTests(unittest.TestCase):
                     fitted = mesh._replace(points=points, rgb=rgb)
                     pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
                     calls = mock.Mock()
-                    with mock.patch.multiple(appearance,
-                            load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
-                                component=SimpleNamespace(background=0)))),
-                            start_mesh=mock.Mock(return_value=mesh),
-                            load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                    with self.patch_fit(mesh,
                             pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
                             optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
-                            write_mesh=calls.write_mesh):
+                            write_mesh=calls.write_mesh, seal=stub_seal(calls.seal)):
                         calls.optimise.return_value = (points, rgb, [1.0])
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
@@ -736,7 +906,15 @@ class PruneAndCostTests(unittest.TestCase):
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
-                                     ["optimise", "coverage", "prune", "write_mesh"])
+                                     ["optimise", "coverage", "prune", "seal.start_probes", "seal.split_t_junctions",
+                                      "seal.snap_back", "seal.split_t_junctions", "seal.log_lines", "write_mesh"])
+                    start, snapped, _copies, probes = calls.seal.snap_back.call_args.args
+                    self.assertIs(start, calls.seal.start_probes.call_args.args[0])
+                    self.assertIs(calls.optimise.call_args.kwargs["source"], calls.seal.start_probes.call_args.args[3])
+                    self.assertIs(start.points, mesh.points)
+                    np.testing.assert_array_equal(start.tris, pruned.tris)
+                    self.assertIs(snapped, pruned)
+                    self.assertIs(probes, calls.seal.start_probes.return_value)
                     covered, views, size = calls.coverage.call_args.args
                     np.testing.assert_array_equal(covered.points, points)
                     np.testing.assert_array_equal(covered.rgb, rgb)
@@ -769,17 +947,13 @@ class PruneAndCostTests(unittest.TestCase):
 
         source = SimpleNamespace()
         source_for = mock.Mock(return_value=(source, None))
+        seal = stub_seal(mock.Mock())
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh.points + 1, mesh.rgb / 2
-            with mock.patch.multiple(appearance,
-                    load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
-                        component=SimpleNamespace(background=0)))),
-                    start_mesh=mock.Mock(return_value=mesh),
-                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
-                    optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
-                    write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
-                        "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
+            with self.patch_fit(mesh, optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
+                                write_mesh=mock.DEFAULT, seal=seal) as calls, \
+                    mock.patch.dict(sys.modules, {"r3d.reference_render": SimpleNamespace(source_for=source_for)}):
                 calls["optimise"].return_value = (points, rgb, [1.0])
                 calls["coverage"].return_value = np.ones(len(mesh.tris))
                 calls["prune"].side_effect = prune
@@ -796,6 +970,9 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
             calls["coverage"].assert_called_once()
+            calls["prune"].assert_called_once()
+            seal.snap_back.assert_called_once()
+            self.assertEqual(seal.split_t_junctions.call_count, 2)
             self.assertIsNone(calls["prune"].call_args.args[2], "an unbudgeted fit prunes nothing")
             written = calls["write_mesh"].call_args.args
             self.assertEqual(len(written), 3)
@@ -854,13 +1031,8 @@ class PruneAndCostTests(unittest.TestCase):
 
 def grid_mesh(count, half):
     """A count x count quad grid of half-width `half` facing +z."""
-    side = np.linspace(-half, half, count + 1)
-    xs, ys = np.meshgrid(side, side)
-    positions = np.stack([xs.ravel(), ys.ravel(), np.zeros(xs.size)], axis=1)
-    index = np.arange(xs.size).reshape(count + 1, count + 1)
-    tris = [[index[r, c], index[r, c + 1], index[r + 1, c + 1]] for r in range(count) for c in range(count)]
-    tris += [[index[r, c], index[r + 1, c + 1], index[r + 1, c]] for r in range(count) for c in range(count)]
-    return positions, np.array(tris)
+    card = wave_sheet.sheet(count, size=2.0 * half)
+    return card.positions, card.tris
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -1003,6 +1175,51 @@ class AppearanceFitTests(unittest.TestCase):
         torch.testing.assert_close(gradient, finite, atol=0.1, rtol=0.01)
         cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
         self.assertGreater(float(cosine), 0.999)
+
+    def test_a_triangle_crossing_the_eye_plane_winds_as_its_part_in_front_does(self):
+        """The side test reads the homogeneous winding: a corner behind the eye flips the projected area's sign,
+        but not that of the clipped polygon the device draws."""
+        from r3d.appearance_simplify import Renderer
+
+        tris = torch.tensor([[0, 1, 2]])
+        # (x, y, z, w): two corners in front, one behind the eye.
+        crossing = torch.tensor([[-0.7, -0.7, 0.0, 1.0], [0.7, -0.7, 0.0, 1.0], [0.0, 0.1, 0.0, -1.0]])
+        # The part in front, clipped at w = 0.5: the corner behind moved along both edges onto that plane.
+        t = (1.0 - 0.5) / (1.0 - -1.0)
+        a, b, c = crossing[0, [0, 1, 3]], crossing[1, [0, 1, 3]], crossing[2, [0, 1, 3]]
+        clipped = torch.stack([a, b, b + (c - b) * t, a + (c - a) * t])
+        xy = clipped[:, :2] / clipped[:, 2:]
+        area = sum(xy[k, 0] * xy[(k + 1) % 4, 1] - xy[(k + 1) % 4, 0] * xy[k, 1] for k in range(4)) / 2
+        renderer = SimpleNamespace(tris=tris)
+        self.assertLess(float(area), 0.0)
+        self.assertLess(float(Renderer.winding(renderer, crossing)[0]), 0.0)
+        # In front of the eye, the winding keeps the screen area's sign.
+        ahead = crossing.clone()
+        ahead[2, 3] = 1.0
+        self.assertGreater(float(Renderer.winding(renderer, ahead)[0]), 0.0)
+
+    def test_a_double_sided_triangle_seen_from_behind_shows_its_back_colours_and_trains_only_them(self):
+        """Six-channel colours hold the back beside the front: the side the winding faces on screen picks
+        which one a pixel shows, and only that half takes the pixel's gradient, flat or smooth."""
+        from r3d.appearance_simplify import Renderer
+
+        size = (32, 24)
+        points = cuda([[-0.8, -0.7, 0.0], [0.7, -0.6, 0.0], [0.6, 0.8, 0.0]])
+        front, back = [0.8, 0.2, 0.1], [0.1, 0.6, 0.3]
+        for flat in (False, True):
+            for eye, shown in (([0, 0, 2], front), ([0, 0, -2], back)):
+                with self.subTest(flat=flat, eye=eye):
+                    render = Renderer(np.array([[0, 1, 2]]), [True], np.arange(3), size, "cuda", flat=flat)
+                    colours = cuda([front + back] * (1 if flat else 3)).requires_grad_()
+                    matrix = cuda(projection(eye, [0, 0, -eye[2]], *size, 0.62, 0.5))
+                    image = render(points, colours, matrix)
+                    centre = image[size[1] // 2, size[0] // 2]
+                    torch.testing.assert_close(centre, cuda(shown), atol=1e-5, rtol=0)
+                    gradient = torch.autograd.grad(image.sum(), colours)[0]
+                    trained = slice(0, 3) if shown is front else slice(3, 6)
+                    untouched = slice(3, 6) if shown is front else slice(0, 3)
+                    self.assertTrue((gradient[:, trained] != 0).any())
+                    self.assertTrue((gradient[:, untouched] == 0).all(), "the hidden side took a gradient")
 
     def test_renderer_backward_is_bitwise_repeatable(self):
         from r3d.appearance_simplify import Renderer, deterministic_fit

@@ -623,6 +623,27 @@ class StageTests(unittest.TestCase):
         self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("f" * 64))["fit"])
         self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
 
+    def test_fit_keys_the_ceiling_and_seal_camera_with_identical_input_bytes(self):
+        job, scene = fitted_job()
+        starts = AnyStart()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS, starts)
+        self.assertIsNotNone(keys["fit"])
+        raised = copy.deepcopy(job)
+        raised.renderer.variant.ceiling = (job.renderer.variant.ceiling or job.renderer.variant.triangles) + 1
+        moved = copy.deepcopy(scene)
+        moved.region = ((-1, -1, -1), (1, 1, 1))
+        moved.camera.component.region = moved.region
+        nearer = copy.deepcopy(scene)
+        nearer.camera.component.near_z /= 2
+        for field, variant, camera_scene in (("ceiling", raised, scene), ("region", job, moved),
+                                                ("near_z", job, nearer)):
+            with self.subTest(field=field):
+                changed = bake.stage_keys(variant, camera_scene, TOOL_KEYS, starts)
+                for digest in ("start_sha256", "reference_sha256"):
+                    self.assertEqual(changed[digest], keys[digest])
+                self.assertIsNotNone(changed["fit"])
+                self.assertNotEqual(changed["fit"], keys["fit"])
+
     def test_a_fit_waits_for_reference_bytes_and_counts_them_independently_of_its_start(self):
         job, scene = fitted_job()
         keys = bake.stage_keys(job, scene, TOOL_KEYS)
@@ -1099,7 +1120,9 @@ class PosesTests(FittedBakeCase):
         self.assertNotEqual(spaced["reference"], trained["reference"])
         self.assertNotEqual(spaced["fit"], trained["fit"])
 
-    def test_a_sealed_start_is_keyed_by_the_camera_and_by_its_seal_views_poses(self):
+    def test_a_sealed_start_is_keyed_by_the_camera_without_the_path(self):
+        from anim_probe import write_camera_clip
+
         self.job.renderer.visibility = None
         self.job.settings.simplify.seal_seams = False
         unsealed = self.keys()
@@ -1110,16 +1133,8 @@ class PosesTests(FittedBakeCase):
         self.scene.camera.component.near_z += 1.0
         self.assertNotEqual(sealed["start"], self.keys()["start"], "the probes stand by the camera's near plane")
         sealed = self.keys()
-        rows = bake.Poses({})
-        self.job.renderer.seal_views = types.SimpleNamespace(every_ms=33, size=(8, 6))
-        viewed = self.keys(rows)
-        self.assertNotEqual(sealed["start"], viewed["start"])
-        self.assertTrue(rows.used, "the path's frames are counted by their sampled poses")
-        self.job.renderer.seal_views.every_ms += 1
-        spaced = self.keys()
-        self.assertNotEqual(viewed["start"], spaced["start"])
-        self.job.renderer.seal_views.size = (6, 8)
-        self.assertNotEqual(spaced["start"], self.keys()["start"])
+        write_camera_clip(self.root, reach=2.0)
+        self.assertEqual(sealed["start"], self.keys()["start"], "the seal samples probes in the region")
 
     def test_a_sealed_albedo_mesh_is_keyed_by_the_camera_too(self):
         self.job.bake = None
@@ -1128,6 +1143,32 @@ class PosesTests(FittedBakeCase):
         self.scene.camera.component.near_z += 1.0
         self.assertNotEqual(before, bake.mesh_recipe(self.job, self.scene, TOOL_KEYS, bake.Poses({})),
                             "the seal's probes stand by the camera whether the mesh is lit or not")
+
+    def test_a_double_sided_mesh_is_keyed_by_the_camera_region_alone(self):
+        self.job.renderer.visibility = None
+        self.job.settings.simplify.seal_seams = False
+
+        def start_after(change):
+            before = self.keys()["start"]
+            change()
+            return before, self.keys()["start"]
+
+        def move_region():
+            low, high = self.scene.region
+            self.scene.region = (low, tuple(value + 1.0 for value in high))
+
+        def move_lens():
+            self.scene.camera.component.near_z += 1.0
+
+        self.scene.region = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        self.job.settings.double_sided = set()
+        before, after = start_after(move_region)
+        self.assertEqual(before, after, "a mesh with no double_sided material reads no region")
+        self.job.settings.double_sided = {"m"}
+        before, after = start_after(move_region)
+        self.assertNotEqual(before, after, "a closed double_sided shell keeps the skin the camera region faces")
+        before, after = start_after(move_lens)
+        self.assertEqual(before, after, "the far skins read the region, not the lens")
 
     def test_clip_rename_keeps_keys_and_different_clip_or_node_rekeys(self):
         from anim_probe import write_camera_clip
