@@ -44,6 +44,7 @@ render_anim_settings_tune(render_anim_settings_t* anim) {
     (void)anim;
 }
 
+/* Nothing here sets a development override, so the skin lights read as the scene set them. */
 uint32_t
 r3d_skin_lights_tune(r3d_skin_lights_t* lights) {
     (void)lights;
