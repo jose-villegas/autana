@@ -22,5 +22,5 @@ simplify = { dense_edge = 300.0, props = ["Streetlight_Metal"], props_share = 0.
 name = "bistro_fitted_full"
 triangles = 33178
 # Room for the fit's T-junction splits. Raise it if the fit reports an overflow.
-split_reserve = 1603
+split_reserve = 3117
 ceiling = 34500

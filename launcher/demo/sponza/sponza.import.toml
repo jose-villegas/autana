@@ -65,6 +65,6 @@ seam = "free"
 name = "sponza_fitted_full"
 triangles = 13313
 # Room for the fit's T-junction splits. Raise it if the fit reports an overflow.
-split_reserve = 546
+split_reserve = 588
 objects_scale = 0.92
 ceiling = 30000
