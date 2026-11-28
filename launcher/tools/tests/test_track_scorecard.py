@@ -293,7 +293,7 @@ class ShapeTests(unittest.TestCase):
         drawn_search = triangle_search(drawn)
         rng = np.random.default_rng(SAMPLE_SEED)
         expected = [shape_measure(a, b, source_search, drawn_search, rng) for a, b in zip(originals, fitted)]
-        rows = measure_parts(source, drawn.reshape(-1, 3), np.arange(drawn.size // 3).reshape(-1, 3))
+        rows = measure_parts(source, drawn.reshape(-1, 3), np.arange(drawn.size // 3).reshape(-1, 3), workers=2)
         self.assertEqual([(row["iou"], row["hausdorff"]) for row in rows], expected)
 
     def test_box_shift_has_known_front_iou_and_hausdorff(self):
@@ -409,29 +409,9 @@ class SourceSampleCacheTests(unittest.TestCase):
 
 
 class SurfaceSearchTests(unittest.TestCase):
-    def test_a_cold_bounds_library_is_loaded_before_the_distance_workers(self):
-        import threading
-        from r3d import triangle_bounds
-
-        load = triangle_bounds.candidates_function
-
-        def main_thread_load():
-            if threading.current_thread() is not threading.main_thread():
-                raise RuntimeError("concurrent library builds would use the same temporary filename")
-            return load()
-
-        wall = ShapeTests.WALL
-        points = wall.reshape(-1, 3)
-        triangles = np.arange(len(points)).reshape(-1, 3)
-        source = SimpleNamespace(p=points, tri_v=triangles, tri_o=np.zeros(len(triangles), dtype=int),
-                                 tri_m=np.zeros(len(triangles), dtype=int), names=["stone"], object_names=["wall"])
-        with patch.object(triangle_bounds, "candidates_function", side_effect=main_thread_load):
-            [row] = measure_parts(source, points, triangles)
-        self.assertEqual(row["iou"], 1.0)
-
-    def test_bounded_triangle_search_has_the_same_distances(self):
+    def test_library_surface_search_has_the_same_distances(self):
         from r3d.geometry import nearest_triangles, triangle_search
-        from r3d.triangle_bounds import TriangleBounds
+        from r3d.objects.part_surface import PartSurface
 
         rng = np.random.default_rng(2)
         centres = rng.normal(size=(64, 1, 3)) * 16
@@ -440,8 +420,9 @@ class SurfaceSearchTests(unittest.TestCase):
         triangles[1] *= 100
         samples = np.concatenate([triangles[:, 0], triangles.mean(axis=1), rng.normal(size=(64, 3)) * 200])
         expected = nearest_triangles(samples, triangle_search(triangles))[2]
-        bounded = TriangleBounds(triangles)
-        np.testing.assert_array_equal(bounded.distances(samples), expected)
+        positions = triangles.reshape(-1, 3)
+        bounded = PartSurface(positions, np.arange(len(positions)).reshape(-1, 3))
+        roundoff = 8 * np.finfo(np.float64).eps
+        np.testing.assert_allclose(bounded.distances(samples), expected,
+                                   rtol=roundoff, atol=roundoff * np.abs(positions).max())
         self.assertEqual(len(bounded.distances(samples[:0])), 0)
-        with patch("r3d.triangle_bounds.CANDIDATE_CAPACITY", 1):
-            np.testing.assert_array_equal(bounded.distances(samples), expected)

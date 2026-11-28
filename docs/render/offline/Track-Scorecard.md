@@ -1,34 +1,38 @@
 # Track scorecard
 
-The scorecard compares the fitted Sponza and Bistro scenes. Each revision measures its own source meshes, locked bakes and renderer. Use the [r3d environment](../../../launcher/tools/r3d/README.md) and a checkout with Git LFS assets.
+The scorecard compares the fitted Sponza and Bistro scenes. Use the
+[r3d environment](../../../launcher/tools/r3d/README.md) and a checkout with Git LFS assets.
+Install the scorecard's closest-point library in that environment.
 
 ```sh
+python -m pip install -r launcher/tools/render/scorecard/requirements.txt
 python launcher/tools/render/scorecard/scorecard.py compare \
   --parent PARENT_REF --tip TIP_REF --out launcher/tools/results/track \
   --capture parent JOB_A=parent.log --capture tip JOB_B=tip.log
 ```
 
-Both refs must contain the scorecard. The command fetches locked bakes in temporary detached worktrees and saves each revision's JSON and pose images next to the Markdown report.
+Both refs must contain the scorecard. Each runs in a temporary detached worktree.
+The report directory holds each revision's JSON and pose images.
 
 ```mermaid
 sequenceDiagram
     participant C as compare
     participant W as Worktrees
-    participant B as bake.py fetch
-    participant M as measure
+    participant H as Host renderers
+    participant M as Measurements
     participant T as table
     C->>W: Check out parent and tip
+    C->>H: Build from each distinct set of sources
     par Parent tree
-        C->>B: Fetch parent bakes
-        C->>M: Measure parent scenes
+        C->>M: Pack locked bakes and measure parent
     and Tip tree
-        C->>B: Fetch tip bakes
-        C->>M: Measure tip scenes
+        C->>M: Pack locked bakes and measure tip
     end
     C->>T: Join both revisions
 ```
 
-Measurement prints wall time for each row and scene.
+Measurement prints wall time for each row and scene. The arms share cached source samples when
+the source content, part geometry and sampling state match.
 
 Captures are optional and repeatable. Supply A308 logs from the fitted playback suite and name each with its job ID.
 
@@ -44,9 +48,11 @@ Captures are optional and repeatable. Supply A308 logs from the fitted playback 
 
 Front IoU compares the orthographic silhouettes along the source part's thinnest principal axis. Relative Hausdorff takes the larger p99 of the two distances and divides it by the source part’s bounds diagonal.
 
-Source part samples search the entire drawn mesh. Samples of the drawn triangles assigned to that part search the entire source mesh.
+Source part samples search the entire drawn mesh. Samples of the drawn triangles assigned to that part
+search the entire source mesh. Libigl queries closest points in float64.
 
-Each material class shows its lowest part IoU and highest distance. The table ranks classes by the tip’s lowest IoU, then highest distance. The CSV records each part, including parts with no drawn triangles.
+Each material class shows its lowest part IoU and highest distance. The table ranks classes by
+the tip’s lowest IoU, then highest distance. The CSV lists every part and prints values to six significant digits.
 
 ## Reuse measurements
 

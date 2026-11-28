@@ -5,9 +5,11 @@ of the p99 distances from source part samples to the whole drawn mesh and from
 assigned drawn triangle samples to the whole source mesh, over the part's bounds
 diagonal.
 """
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
-from itertools import batched
+from itertools import batched, islice
+import multiprocessing
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,8 +18,8 @@ from PIL import Image, ImageDraw
 from r3d.geometry import bounds_diagonal, directed_distance, grouped_indices, triangle_areas, triangle_search
 from r3d.objects.object_error import main_materials, nearest_source, part_labels, part_names
 from r3d.objects.objects_report import principal_view
+from r3d.objects.part_surface import PartSurface
 from r3d.surface_samples import area_samples
-from r3d.triangle_bounds import TriangleBounds
 
 SAMPLE_COUNT = 256
 SAMPLE_SEED = 42
@@ -25,8 +27,8 @@ HAUSDORFF_PERCENTILE = 99
 MASK_SIDE = 64
 MASK_MARGIN = 1.05
 MIN_EXTENT = 1e-9
-PARTS_PER_QUERY = 8
-DISTANCE_WORKERS = 2
+PARTS_PER_QUERY = 32
+BATCHES_PER_WORKER = 4
 
 
 def front_iou(source, drawn):
@@ -84,7 +86,27 @@ def shape_measure(source, drawn, source_search=None, drawn_search=None, rng=None
     return front_iou(source, drawn), relative_distance(source, there, back)
 
 
-def measure_parts(source, drawn_p, drawn_tris, sample=None):
+def part_surfaces(source_p, source_tris, drawn_p, drawn_tris):
+    return PartSurface(source_p, source_tris), PartSurface(drawn_p, drawn_tris)
+
+
+def init_part_worker(*meshes):
+    global _worker_surfaces
+    _worker_surfaces = part_surfaces(*meshes)
+
+
+def part_batch(batch, surfaces=None):
+    source_search, drawn_search = _worker_surfaces if surfaces is None else surfaces
+    part_ids, corners, fitted, forward, reverse = zip(*batch)
+    there = directed_distance(np.concatenate(forward), drawn_search, HAUSDORFF_PERCENTILE,
+                              groups=list(map(len, forward)))
+    back = directed_distance(np.concatenate(reverse), source_search, HAUSDORFF_PERCENTILE,
+                             groups=list(map(len, reverse)))
+    return [(part, front_iou(model, kept), relative_distance(model, a, b))
+            for part, model, kept, a, b in zip(part_ids, corners, fitted, there, back, strict=True)]
+
+
+def measure_parts(source, drawn_p, drawn_tris, sample=None, workers=1):
     """Measure all named source parts, including parts with no assigned drawn triangles."""
     p, tri_v, tri_o = source.p, source.tri_v, source.tri_o
     drawn_tris = np.asarray(drawn_tris, dtype=int).reshape(-1, 3)
@@ -94,8 +116,6 @@ def measure_parts(source, drawn_p, drawn_tris, sample=None):
     drawn_labels = labels[nearest_source(p, tri_v, drawn_p, drawn_tris)]
     drawn_parts = grouped_indices(drawn_labels)
     source_corners, drawn_corners = p[tri_v], drawn_p[drawn_tris]
-    source_search = TriangleBounds(source_corners)
-    drawn_search = TriangleBounds(drawn_corners) if len(drawn_corners) else None
     rng = np.random.default_rng(SAMPLE_SEED)
     def parts():
         for part, indices in grouped_indices(labels).items():
@@ -117,20 +137,22 @@ def measure_parts(source, drawn_p, drawn_tris, sample=None):
         return dict(part=names[part], source_object=source.object_names[owners[part]],
                     material=materials[part], iou=iou, hausdorff=distance)
 
-    def measure_batch(batch):
-        part_ids, corners, fitted, forward, reverse = zip(*batch)
-        there = directed_distance(np.concatenate(forward), drawn_search, HAUSDORFF_PERCENTILE,
-                                  groups=list(map(len, forward)))
-        back = directed_distance(np.concatenate(reverse), source_search, HAUSDORFF_PERCENTILE,
-                                 groups=list(map(len, reverse)))
-        return [row(part, front_iou(model, kept), relative_distance(model, a, b))
-                for part, model, kept, a, b in zip(part_ids, corners, fitted, there, back, strict=True)]
-
-    if drawn_search is None:
+    if not len(drawn_corners):
         return [row(part, 0.0, None) for part, _, _ in parts()]
+    meshes = (p, tri_v, drawn_p, drawn_tris)
+    batches = batched(samples(), PARTS_PER_QUERY)
+    if workers == 1:
+        surfaces = part_surfaces(*meshes)
+        return [row(*result) for batch in batches for result in part_batch(batch, surfaces)]
+
     rows = []
-    with ThreadPoolExecutor(max_workers=DISTANCE_WORKERS) as pool:
-        for pending in batched(batched(samples(), PARTS_PER_QUERY), DISTANCE_WORKERS):
-            for measured in pool.map(measure_batch, pending):
-                rows.extend(measured)
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=context, initializer=init_part_worker,
+                             initargs=meshes) as pool:
+        pending = deque(pool.submit(part_batch, batch) for batch in islice(batches, workers * BATCHES_PER_WORKER))
+        for batch in batches:
+            rows.extend(row(*result) for result in pending.popleft().result())
+            pending.append(pool.submit(part_batch, batch))
+        for future in pending:
+            rows.extend(row(*result) for result in future.result())
     return rows

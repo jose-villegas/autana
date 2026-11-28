@@ -13,6 +13,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(TOOLS), str(TOOLS / "perf"), str(TOOLS / "render")]
 
 from frame_cost import US_PER_MS
+from r3d.objects.object_error import CSV_DIGITS
 from render_compare import still_sheet
 
 UPSCALE = 2
@@ -142,7 +143,9 @@ def write_parts(path, arms):
         for part in arm.get("parts", []):
             key = tuple(part[field] for field in keys)
             row = joined.setdefault(key, {field: part[field] for field in keys})
-            row.update({f"{revision}_{field}": part[field] for field in fields[3:]})
+            for field in fields[3:]:
+                value = part[field]
+                row[f"{revision}_{field}"] = "" if value is None else f"{value:.{CSV_DIGITS}g}"
     columns = (*keys, "parent_iou", "parent_hausdorff", "tip_iou", "tip_hausdorff")
     with path.open("w", encoding="utf-8", newline="") as out:
         writer = csv.DictWriter(out, columns)

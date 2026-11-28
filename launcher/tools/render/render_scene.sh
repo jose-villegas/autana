@@ -36,6 +36,7 @@
 #                   measurement with its image.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
+#                   --no-packs leaves assets to the caller of a --build-only binary.
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
@@ -169,6 +170,7 @@ render_scene_build() {
     _rs_repin=0
     _rs_video=0
     _rs_build_only=0
+    _rs_no_build_packs=0
     _rs_deps=0
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -176,13 +178,18 @@ render_scene_build() {
             --update-baseline) _rs_repin=1; shift ;;
             --video) _rs_video=1; shift ;;
             --build-only) _rs_build_only=1; shift ;;
+            --no-packs) _rs_no_build_packs=1; shift ;;
             --deps) _rs_deps=1; shift ;;
             --asset-file)
                 [ $# -ge 2 ] || { echo "--asset-file needs a scene file" >&2; return 2; }
                 scene_asset_file="$2"; shift 2 ;;
-            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only|--deps]" >&2; return 2 ;;
+            *) echo "usage: $0 [-o <dir>] [--update-baseline] [--video] [--build-only [--no-packs]|--deps]" >&2; return 2 ;;
         esac
     done
+    if [ "$_rs_no_build_packs" = 1 ] && [ "$_rs_build_only" = 0 ]; then
+        echo "--no-packs needs --build-only" >&2
+        return 2
+    fi
 
     # Beside the scene that owns it, so deleting an app takes its pinned
     # hashes with it.
@@ -212,7 +219,8 @@ render_scene_build() {
 
     render_scene_source "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_assets=
-    if [ "$_rs_deps" = 0 ] && { [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; }; then
+    if [ "$_rs_deps" = 0 ] && [ "$_rs_no_build_packs" = 0 ] &&
+        { [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; }; then
         render_scene_packs || return 1
     fi
     _rs_cmake_sources=

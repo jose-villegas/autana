@@ -86,7 +86,7 @@ jobs:
       # test_r3d_ray_query.py checks the LLVM variant when libLLVM is there.
       - name: r3d bake environment
         run: |
-          pip install -r launcher/tools/r3d/requirements.txt
+          pip install -r launcher/tools/r3d/requirements.txt -r launcher/tools/render/scorecard/requirements.txt
           sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
 
@@ -295,7 +295,7 @@ jobs:
           echo "TMP=$long" >> "$GITHUB_ENV"
       - name: Tool test dependencies
         run: |
-          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt -r launcher/tools/r3d/requirements.txt -r launcher/tools/scene/requirements.txt -r launcher/tools/render/scorecard/requirements.txt
           git submodule update --init --depth 1 third_party/upstream/meshoptimizer third_party/upstream/ufbx
           npm ci --prefix scripts/gates
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0

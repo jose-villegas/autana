@@ -52,9 +52,11 @@ def kept_source(scene, job, source=None):
     return placed(source.p, scene, job), triangles
 
 
-def drawn_bake(scene, job):
+def drawn_bake(scene, job, locked=None):
     """The bundle the scene draws for the renderer: (points, triangles, double-sided flags) placed in the scene."""
-    bundle = bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels" if job.renderer.fit else "mesh"))
+    if locked is None:
+        locked = bake.locked_bake(scene.path, job.object.name, "levels" if job.renderer.fit else "mesh")
+    bundle = bake.fetch(locked)
     mesh = drawn_mesh(bundle)
     return placed(mesh.points[mesh.vertex_point], scene, job), np.asarray(mesh.tris), np.asarray(mesh.double, bool)
 
@@ -124,10 +126,13 @@ def baked_scenes():
             yield path.name.removesuffix(".scene.toml"), scene
 
 
-def measure_see_through(scene, sources=None):
+def measure_see_through(scene, sources=None, locked=None):
     """See-through pixel counts in camera path order."""
     sources = SceneSources(scene) if sources is None else sources
-    tracer = Tracer(sources.query(kept=True), merged([drawn_bake(scene, job) for job in scene.renderers if job.bake]))
+    source = sources.query(kept=True)
+    drawn = [drawn_bake(scene, job, locked[job.object.name] if locked is not None else None)
+             for job in scene.renderers if job.bake]
+    tracer = Tracer(source, merged(drawn))
     width, height, lens, near, poses = path_poses(flight_camera(scene), RENDER_SIZE, EVERY_MS, either_way_up=False)
     return [int(tracer.see_through(width, height, lens, near, pose).sum()) for pose in poses]
 

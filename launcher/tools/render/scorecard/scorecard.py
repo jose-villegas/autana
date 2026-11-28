@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager
+import hashlib
 import json
 import multiprocessing
 import os
@@ -18,7 +19,6 @@ from report import overlay_callable, write_report
 SCRIPT = pathlib.Path(__file__).resolve()
 REPO = SCRIPT.parents[4]
 TOOLS = SCRIPT.parents[2]
-RENDER = TOOLS / "render"
 RESULTS = TOOLS / "results" / "scorecard"
 ENTRY = SCRIPT.relative_to(REPO)
 SCENES = ("sponza", "bistro")
@@ -27,6 +27,11 @@ POSE_SAMPLE_MS = 100
 LANDSCAPE_QUARTER = "1"
 LAB_TOOLS = TOOLS.parent / "main/apps/render_lab/tools"
 SOURCE_SAMPLES_ENV = "AUTANA_SCORECARD_SOURCE_SAMPLES"
+ARM_ENV = "AUTANA_SCORECARD_ARM"
+HOST_SCRIPTS = (
+    pathlib.Path("launcher/tools/render/scenes/scene_viewer_render_host.sh"),
+    pathlib.Path("launcher/main/apps/render_lab/tools/render_lab_render_host.sh"),
+)
 
 
 def git(tree, *args):
@@ -81,17 +86,20 @@ def timed_row(scene, row):
     try:
         yield
     finally:
-        print(f"scorecard timing: {scene} | {row} | {time.perf_counter() - start:.3f} s", flush=True)
+        arm = os.environ.get(ARM_ENV)
+        scope = f"{arm}/{scene}" if arm else scene
+        print(f"scorecard timing: {scope} | {row} | {time.perf_counter() - start:.3f} s", flush=True)
 
 
 def scene_path(key):
     return TOOLS.parent / "demo" / key / f"{key}.scene.toml"
 
 
-def measure_scene(key, capture, output, viewer, sky_binary, assets):
+def measure_scene(key, capture, output, viewer, sky_binary, assets, pack_size, locked, part_workers, ray_workers):
+    import drjit
+
     sys.path.insert(0, str(LAB_TOOLS))
     from bake import bake
-    from r3d.build_pack import pack_bytes, write_packs
     from r3d.fit.copies import drawn_mesh
     from r3d.import_settings import content_checksum, load_scene
     from held_out_reference import measure_held_out
@@ -100,40 +108,40 @@ def measure_scene(key, capture, output, viewer, sky_binary, assets):
     from source_sample_cache import source_sample_cache
     from sky_through_walls import MOST_HOLED_FRAMES, SkyUnavailable, measure_sky
 
+    drjit.set_thread_count(ray_workers)
     scene = load_scene(scene_path(key))
     sources = SceneSources(scene)
     job, = (job for job in scene.renderers if job.renderer.fit)
     folder = output / key
     folder.mkdir(parents=True, exist_ok=True)
     captures = scene_captures(capture, key)
-    with timed_row(key, "pack bytes"):
-        packs = pack_bytes([scene.path])
-        pack_size = len(packs[key])
-        write_packs(assets, packs)
-        del packs
+    drawn_bakes = {renderer.object.name: locked[renderer.object.name, "levels" if renderer.renderer.fit else "mesh"]
+                   for renderer in scene.renderers if renderer.bake}
     with timed_row(key, "see-through"):
-        see_through = dict(pixels=sum(measure_see_through(scene, sources)), ceiling=see_through_ceiling(key))
+        see_through = dict(pixels=sum(measure_see_through(scene, sources, drawn_bakes)),
+                           ceiling=see_through_ceiling(key))
     with timed_row(key, "sky holes"):
         try:
             with tempfile.TemporaryDirectory(dir=folder) as sky_work:
-                holed, frames = measure_sky(scene, key, pathlib.Path(sky_work), sky_binary, sources)
+                holed, frames = measure_sky(scene, key, pathlib.Path(sky_work), sky_binary, sources, assets=assets)
             sky = dict(holed=len(holed), frames=frames, ceiling=MOST_HOLED_FRAMES.get(key))
         except SkyUnavailable as error:
             sky = dict(reason=str(error))
     with timed_row(key, "held-out mean dE76"):
-        fit = bake.locked_fit(scene.path, job.object.name)
+        fit = locked[job.object.name, "fit"]
         cache = bake.default_cache()
         with tempfile.TemporaryDirectory(dir=folder) as work:
             held_out = measure_held_out(fit, cache, pathlib.Path(work), drawn_mesh(bake.fetch(fit, cache)))
     with timed_row(key, "part shapes"):
-        drawn = drawn_mesh(bake.fetch(bake.locked_bake(scene.path, job.object.name, "levels"), cache))
+        drawn = drawn_mesh(bake.fetch(drawn_bakes[job.object.name], cache))
         cache_dir = os.environ.get(SOURCE_SAMPLES_ENV)
         source_oid = content_checksum(job.settings.source["path"]).decode() if cache_dir else None
         source = sources.mesh(job)
         del sources
         source.textures = ()
         with source_sample_cache(pathlib.Path(cache_dir) if cache_dir else None, source_oid) as sample:
-            parts = measure_parts(source, drawn.points[drawn.vertex_point], drawn.tris, sample=sample)
+            parts = measure_parts(source, drawn.points[drawn.vertex_point], drawn.tris,
+                                  sample=sample, workers=part_workers)
     with timed_row(key, "comparison poses"):
         images, poses, size = render_poses(scene, key, folder, viewer, assets)
     return dict(path=scene.path.relative_to(REPO).as_posix(), captures=captures,
@@ -141,25 +149,59 @@ def measure_scene(key, capture, output, viewer, sky_binary, assets):
                 images=[p.relative_to(output.parent).as_posix() for p in images], poses=poses, size=size)
 
 
-def build_hosts(out, first_scene):
-    """Build each host renderer once and share its executable across the scenes."""
-    sys.path.insert(0, str(LAB_TOOLS))
-    from render_host_build import run
-
-    with timed_row("all scenes", "host viewers"):
-        built = subprocess.run(["sh", RENDER / "scenes/scene_viewer_render_host.sh", "--build-only",
-                                "--asset-file", scene_path(first_scene), "-o", out / "poses"],
-                               capture_output=True, text=True)
-        if built.returncode:
-            raise RuntimeError((built.stdout + built.stderr)[-2000:])
-        viewer = pathlib.Path(built.stdout.strip().splitlines()[-1].removeprefix("built "))
-        captured, sky = run(out / "sky", "--build-only")
-        if captured.returncode:
-            raise RuntimeError((captured.stdout + captured.stderr)[-2000:])
-    return viewer, sky
+def host_output(tree, script, *args):
+    result = subprocess.run(["sh", tree / script, *args], cwd=tree, capture_output=True, text=True, timeout=900)
+    if result.returncode:
+        raise RuntimeError((result.stdout + result.stderr)[-2000:])
+    return result.stdout
 
 
-def measure(out, specs, scenes):
+def host_signature(tree, script, out):
+    """Compiler flags and content of this renderer's build inputs."""
+    from build.compile_db import parse_dependencies
+
+    flags, _, rules = host_output(tree, script, "--deps", "-o", out).partition("\n")
+    if not flags.startswith("flags ") or not rules:
+        raise ValueError(f"{script}: missing host dependency listing")
+    inputs = {}
+    for name in set(parse_dependencies(rules, tree)):
+        path = pathlib.Path(name)
+        relative = path.relative_to(tree) if path.is_relative_to(tree) else path
+        inputs[relative] = hashlib.sha256(path.read_bytes()).digest()
+    return flags.replace(tree.as_posix(), ".").replace(str(tree), "."), inputs
+
+
+def build_hosts(out, tree=REPO, scope="all scenes"):
+    """Build both host executables with their asset packs supplied at launch."""
+    with timed_row(scope, "host viewers"):
+        binaries = []
+        for script in HOST_SCRIPTS:
+            output = host_output(tree, script, "--build-only", "--no-packs", "-o", out / script.stem)
+            _, prefix, binary = output.strip().rpartition("built ")
+            if not prefix:
+                raise ValueError(f"{script}: missing path of built host binary")
+            binaries.append(pathlib.Path(binary))
+        return binaries
+
+
+def pack_scenes(scenes, host):
+    """Write each scene's packs and resolve its measurement bakes in one process."""
+    from bake import bake
+    from r3d.build_pack import pack_bytes, write_packs
+
+    packed = {}
+    for key in scenes:
+        with timed_row(key, "pack bytes"):
+            paths = [scene_path(key)]
+            packs = pack_bytes(paths)
+            write_packs(host / key, packs)
+            locked = {(item.job.object.name, item.kind): item for item in bake.bakes(paths)
+                      if item.kind in ("fit", "levels") or (item.kind == "mesh" and item.packed)}
+            packed[key] = len(packs[key]), locked
+    return packed
+
+
+def measure(out, specs, scenes, hosts=None, part_workers=None):
     out = out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     readings = []
@@ -170,11 +212,16 @@ def measure(out, specs, scenes):
     output.mkdir(parents=True, exist_ok=True)
     scenes = tuple(dict.fromkeys(scenes))
     result = dict(revision=git(REPO, "rev-parse", "HEAD"), scenes={})
+    part_workers = part_workers or (os.cpu_count() or 1)
+    ray_workers = max(1, part_workers // len(scenes))
     with tempfile.TemporaryDirectory(prefix="scorecard-host-") as work:
         host = pathlib.Path(work)
-        viewer, sky = build_hosts(host, scenes[0])
-        with ProcessPoolExecutor(max_workers=len(scenes), mp_context=multiprocessing.get_context("spawn")) as pool:
-            jobs = {key: pool.submit(measure_scene, key, readings, output, viewer, sky, host / key)
+        viewer, sky = hosts or build_hosts(host)
+        packed = pack_scenes(scenes, host)
+        with ProcessPoolExecutor(max_workers=len(scenes), mp_context=multiprocessing.get_context("spawn"),
+                                 max_tasks_per_child=1) as pool:
+            jobs = {key: pool.submit(measure_scene, key, readings, output, viewer, sky, host / key,
+                                     *packed[key], part_workers, ray_workers)
                     for key in scenes}
             result["scenes"] = {key: job.result() for key, job in jobs.items()}
     out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
@@ -229,21 +276,42 @@ def measure_pair(args):
     scenes = args.scene or SCENES
     selection = [word for scene in scenes for word in ("--scene", scene)]
 
-    def measured(arm, tree, sample_cache):
-        subprocess.run([sys.executable, tree / "launcher/tools/bake/bake.py", "fetch",
-                        *(f"launcher/demo/{scene}" for scene in scenes)], cwd=tree, check=True)
+    def measured(arm, tree, sample_cache, supports_hosts, hosts):
+        extra = []
+        if supports_hosts:
+            workers = max(1, (os.cpu_count() or 1) // 2)
+            extra.extend(("--part-workers", str(workers)))
+            if hosts:
+                extra.extend(("--hosts", *hosts))
+        else:
+            subprocess.run([sys.executable, tree / "launcher/tools/bake/bake.py", "fetch",
+                            *(f"launcher/demo/{scene}" for scene in scenes)], cwd=tree, check=True)
         out = args.out / f"{arm}.json"
         captures = [word for side, spec in args.capture if side == arm for word in ("--capture", spec)]
-        subprocess.run([sys.executable, tree / ENTRY, "measure", "--out", out, *captures, *selection],
-                       cwd=tree, check=True, env=dict(os.environ, **{SOURCE_SAMPLES_ENV: sample_cache}))
+        subprocess.run([sys.executable, tree / ENTRY, "measure", "--out", out, *captures, *selection, *extra],
+                       cwd=tree, check=True, env=dict(os.environ, **{SOURCE_SAMPLES_ENV: str(sample_cache), ARM_ENV: arm}))
         return out
 
     args.out.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="source-samples-", dir=args.out) as sample_cache:
+    trees = [args.parent_tree.resolve(), args.tip_tree.resolve()]
+    supports_hosts = ["--hosts" in subprocess.check_output([sys.executable, tree / ENTRY, "measure", "--help"],
+                                                          cwd=tree, text=True) for tree in trees]
+    with tempfile.TemporaryDirectory(prefix="shared-", dir=args.out) as work:
+        shared = pathlib.Path(work)
+        hosts = None
+        if all(supports_hosts):
+            with timed_row("both arms", "viewer dependencies"):
+                same_sources = git(trees[0], "rev-parse", "HEAD") == git(trees[1], "rev-parse", "HEAD")
+                if not same_sources:
+                    same_sources = all(host_signature(trees[0], script, shared / "deps-parent") ==
+                                       host_signature(trees[1], script, shared / "deps-tip")
+                                       for script in HOST_SCRIPTS)
+            if same_sources:
+                hosts = build_hosts(shared, trees[0], scope="both arms")
         with ThreadPoolExecutor(max_workers=2) as pool:
-            parent = pool.submit(measured, "parent", args.parent_tree, sample_cache)
-            tip = pool.submit(measured, "tip", args.tip_tree, sample_cache)
-            files = parent.result(), tip.result()
+            jobs = [pool.submit(measured, arm, tree, shared / "samples", support, hosts)
+                    for arm, tree, support in zip(("parent", "tip"), trees, supports_hosts, strict=True)]
+            files = [job.result() for job in jobs]
     table(*files, args.out, overlay_callable(args.overlay) if args.overlay else None, args.tip_tree)
 
 
@@ -253,6 +321,9 @@ def main():
     measuring = commands.add_parser("measure", help="measure the current worktree")
     measuring.add_argument("--out", type=pathlib.Path, required=True)
     measuring.add_argument("--capture", action="append", default=[], metavar="LABEL=PATH")
+    measuring.add_argument("--hosts", nargs=len(HOST_SCRIPTS), type=pathlib.Path,
+                           help="reuse the scene viewer and Render Lab host executables")
+    measuring.add_argument("--part-workers", type=int, help=argparse.SUPPRESS)
     tabling = commands.add_parser("table", help="join existing revision JSONs and pictures")
     comparing = commands.add_parser("compare", help="measure two detached revisions and join them")
     pair = commands.add_parser("_pair")
@@ -271,7 +342,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "measure":
-            measure(args.out, args.capture, args.scene or SCENES)
+            measure(args.out, args.capture, args.scene or SCENES, args.hosts, args.part_workers)
         elif args.command == "table":
             table(args.parent, args.tip, args.out, overlay_callable(args.overlay) if args.overlay else None,
                   args.tip_tree.resolve() if args.tip_tree else None)

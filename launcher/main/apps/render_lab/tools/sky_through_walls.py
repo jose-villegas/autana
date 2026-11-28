@@ -1,4 +1,5 @@
 """Measure enclosed sky holes against the source over a rendered camera flight."""
+import os
 import pathlib
 import subprocess
 import sys
@@ -39,20 +40,25 @@ def clear_colour(scene):
     return expand_565((rgb >> 16, (rgb >> 8) & 0xFF, rgb & 0xFF))
 
 
-def sky_pixels(frame, sky, source_sky=None):
-    """(holes, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
-    those that are. With `source_sky`, which answers for the (ys, xs) it is given whether the source shows sky
+def sky_masks(frame, sky, source_sky=None):
+    """The enclosed-hole and open-sky masks of an RGB frame. With `source_sky`, which answers
+    whether the source shows sky at the (ys, xs) it is given,
     there, an enclosed pixel is no hole when the source shows sky in it or in an enclosed pixel beside it, by
     side or corner: the bake drew that sky at most a pixel wider than the source."""
     mask, enclosed = enclosed_sky(frame, sky)
-    open_ = int(mask.sum() - enclosed.sum())
+    open_ = mask & ~enclosed
     if source_sky is None:
-        return int(enclosed.sum()), open_
+        return enclosed, open_
     shown = np.zeros_like(enclosed)
     ys, xs = np.nonzero(enclosed)
     if len(ys):
         shown[ys, xs] = source_sky(ys, xs)
-    return int((enclosed & ~ndimage.binary_dilation(shown, BESIDE)).sum()), open_
+    return enclosed & ~ndimage.binary_dilation(shown, BESIDE), open_
+
+
+def sky_pixels(frame, sky, source_sky=None):
+    """Count enclosed-hole and open-sky pixels in an RGB frame."""
+    return tuple(int(mask.sum()) for mask in sky_masks(frame, sky, source_sky))
 
 
 def pixel_sky(query, width, height, lens, near, pose, ys, xs, samples=SUBPIXELS):
@@ -91,7 +97,7 @@ class SkyUnavailable(ValueError):
     """The scene lacks a prerequisite for the sky measure."""
 
 
-def measure_sky(scene, key, out, binary=None, sources=None):
+def measure_sky(scene, key, out, binary=None, sources=None, assets=None):
     """Holed frame indices and total frames at the device flythrough step."""
     if not scene.renderers:
         raise SkyUnavailable(f"{key}: the scene draws no source meshes")
@@ -103,9 +109,10 @@ def measure_sky(scene, key, out, binary=None, sources=None):
         if built.returncode:
             raise RuntimeError((built.stdout + built.stderr)[-2000:])
     video = out / f"{key}.avi"
+    env = None if assets is None else dict(os.environ, AUTANA_ASSET_DIR=str(assets))
     rendered = subprocess.run(
         [str(binary), "--quarter", "1", "--no-hud", "--scene", key, "--frames", str(frames), "--dt", str(DT_MS),
-         "-o", str(out / f"{key}.bmp"), "--video", str(video)], capture_output=True, text=True, timeout=600)
+         "-o", str(out / f"{key}.bmp"), "--video", str(video)], capture_output=True, text=True, timeout=600, env=env)
     if rendered.returncode:
         raise RuntimeError(rendered.stderr[-2000:])
     sky = clear_colour(scene)
