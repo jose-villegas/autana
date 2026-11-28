@@ -258,6 +258,8 @@ run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEM
 # shellcheck source=../build/find_cc.sh
 . launcher/tools/build/find_cc.sh
 cc=$(find_cc) || exit 2
+run "$PYTHON" launcher/tools/input/contact_figures.py --cc "$cc" --button "$OUT/input/button-timeline.png" \
+    > "$WORK/button_timeline.log"
 run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input/shake-level.png" \
     > "$WORK/shake_figures.log"
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
@@ -266,6 +268,9 @@ run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/inp
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
+run "$PYTHON" launcher/tools/input/motion_calibration_figures.py --cc "$cc" --out "$OUT/input" \
+    > "$WORK/motion_calibration_figures.log"
+# --orphans scans this runner: motion-calibration-round.gif, motion-calibration-fit.png
 # The producers that declare their images (launcher/tools/docs/producer.py) and need only this machine and the
 # bake cache, in parallel. A run whose inputs match its record is skipped and leaves the committed images in
 # $OUT; deleting launcher/tools/results/doc_images/fingerprints.json runs them all.

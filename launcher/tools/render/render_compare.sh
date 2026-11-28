@@ -153,6 +153,8 @@ else
 fi
 [ -n "$out" ] || out=$(mktemp -d)
 mkdir -p "$out"
+# Absolute, as each side runs from inside its own checkout.
+out=$(CDPATH= cd -- "$out" && pwd)
 
 # What names a side: a revision's short hash, a directory's name.
 short_name() {

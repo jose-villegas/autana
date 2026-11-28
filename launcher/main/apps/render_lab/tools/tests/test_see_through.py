@@ -4,13 +4,16 @@
 
 Every demo scene with a camera path is sampled every EVERY_MS at RENDER_SIZE, and each pixel's centre ray is traced into
 the source as the import keeps it (alpha-masked triangles and the whole thinned material left out, where the import
-keeps a seeded share of it) and into the bundles the scene draws (the rest at its finest level and its placed copies,
-back faces culled; masked card copies are not traced, so a scene with cards would need them added). A pixel sees through
-where the source hits and the bake hits nothing or lies beyond BEHIND times the source's distance; a region is what
-stays after an opening by OPENING, so silhouettes a pixel wide do not count. A scene fails when its regions' pixels,
-summed over the path, exceed its ceiling in MOST_SEE_THROUGH. Only baked renderers are traced: they are the ones a bake
-simplifies from a source. Needs the r3d environment (launcher/tools/r3d/requirements.txt), the locked bakes (bake.py
-fetch) and each scene's source mesh (Git LFS).
+keeps a seeded share of it) and into the bundles the scene draws (the rest at its finest level and its placed copies).
+Each pose traces the first drawn hit after culling back faces from the camera eye. Masked card copies are outside the
+trace. Only baked renderers are traced.
+
+A pixel sees through where the source hits and the bake hits nothing or lies beyond BEHIND times the source's distance.
+Opening by OPENING removes silhouettes a pixel wide. The remaining pixels across the path must fit the scene's ceiling
+from MOST_SEE_THROUGH and PEG_MARGIN.
+
+Needs the r3d environment (launcher/tools/r3d/requirements.txt), the locked bakes (bake.py fetch) and the source meshes
+(Git LFS).
 """
 import pathlib
 import sys
@@ -33,7 +36,7 @@ try:
     from r3d.poses import path_poses
     from r3d.ray_query import RayQuery
     from r3d.scene_asset import world_placement
-    from render.pinhole_rays import front_hits, pose_rays
+    from render.pinhole_rays import FrontMesh, front_hits, pose_rays
     from tests.r3d_env import needs_llvm  # also keeps Windows LLVM loaded until exit
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
@@ -44,7 +47,7 @@ RENDER_SIZE = (224, 184)
 # The camera path's step, as a baked renderer's camera-path visibility samples it.
 EVERY_MS = 500
 # Per scene, the most see-through pixels its bakes may show over the path: the measured sum plus PEG_MARGIN of it.
-MOST_SEE_THROUGH = {"bistro": 172068, "sponza": 2461}
+MOST_SEE_THROUGH = {"bistro": 165414, "sponza": 2306}
 PEG_MARGIN = 0.01
 
 
@@ -92,15 +95,13 @@ class Tracer:
     def __init__(self, source, drawn):
         points, triangles = source
         self.source = RayQuery(points, triangles)
-        points, triangles, double = drawn
-        a, b, c = (points[triangles[:, corner]] for corner in range(3))
-        self.drawn = RayQuery(points, triangles), np.cross(b - a, c - a), double
+        self.drawn = FrontMesh(*drawn)
 
     def see_through(self, width, height, lens, near, pose):
         """The pose's see-through pixel count."""
         origins, directions = pose_rays(width, height, lens, near, pose)
         source_depth = probe_depth(self.source, origins, directions)
-        _, depth = front_hits(*self.drawn, origins, directions)
+        _, depth = front_hits(self.drawn, pose[:3], origins, directions)
         return see_through_count(source_depth.reshape(height, width), depth.reshape(height, width))
 
 
@@ -161,6 +162,13 @@ class SeeThroughTests(unittest.TestCase):
         facing_away = (points, triangles[:, ::-1])
         self.assertGreater(self.count((points, triangles), facing_away), 0)
         self.assertEqual(self.count((points, triangles), facing_away, double=True), 0)
+
+    def test_coincident_twins_cover_the_wall_in_either_order(self):
+        points, triangles = closed = wall(-10, 10, -10, 10, 0.0)
+        twins = np.concatenate([triangles[:, ::-1], triangles])
+        reordered = np.roll(twins[::-1], 1, axis=1)
+        counts = [self.count(closed, (points, order)) for order in (twins, reordered)]
+        self.assertEqual(counts, [0, 0])
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")

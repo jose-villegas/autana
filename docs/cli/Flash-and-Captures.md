@@ -115,6 +115,10 @@ writes the one raw capture to `PATH`, only with exactly one suite and
 `--runs 1`. `selftest` builds the autorun diagnostics image and captures the
 boot-time run until `SELFTEST_COMPLETE`.
 
+A suite starts from home. The shell leaves an open app first and logs
+`RUNSUITE left <app> first`. A suite that ends with a scene still held fails
+`test_a_suite_releases_every_scene_it_loads`, and the scene is unloaded.
+
 A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
 or after its non-`shell:` output is idle. A capture without its completion
 line is recorded as a run error. A port that
@@ -154,8 +158,8 @@ once, with nothing sent and exit 75, rather than waited for. A global
 `--wait` asks to queue for the board instead, as every other command does.
 
 From a script that names its own owner, `device.py` takes the same
-arguments (the interpreter is ESP-IDF's Python, and `--owner` names
-the lock holder):
+arguments (any Python with pyserial, else it re-runs under ESP-IDF's;
+`--owner` names the lock holder):
 
 ```sh
 python scripts/device/device.py --owner maintainer send "SET ridge.theme_rgb 0x1199C8"

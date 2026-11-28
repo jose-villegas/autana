@@ -72,6 +72,7 @@ jobs:
             && cd ..
             && python3 launcher/tools/render/code_layout.py --check launcher/build
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build
+            && python3 launcher/tools/build/check_hot_calls.py launcher/build
             && python3 launcher/tools/build/check_psram_tuning_wrap.py launcher/build
             && if [ -f launcher/build.base/launcher.elf ]; then
             python3 launcher/tools/render/code_layout.py --same-code launcher/build.base launcher/build

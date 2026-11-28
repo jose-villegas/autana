@@ -29,5 +29,23 @@ off that image. Pixels from an `--as-shown` or `--framebuffer` capture are in
 another frame and may miss. `sound onset` is explained in the
 [clicks](../audio/Clicks.md#measuring-an-onset).
 
-An app's own console command is sent with the same word, without a prefix:
-[App-Commands.md](App-Commands.md).
+## Any console line
+
+A line whose first word is not an autana command goes to the board as typed,
+under the device lock, and autana prints the replies:
+
+- A reply line starts with the first word in capitals.
+- `<WORD>_END` ends the answer at once; `<WORD>_ERR` ends it and exits 1.
+- A line nobody answers prints `sent` once the reply window has passed.
+- `SET`, `GET` and `RESET` lines answer as `tune` does ([Live-Tuning.md](Live-Tuning.md)).
+
+An app's own commands are sent this way, its prefix as the first word
+([App-Commands.md](App-Commands.md)); each app lists its own.
+
+A reply that does not start with the line's first word needs `device.py send`
+with its own `--reply` and `--until`
+([Device-Lock.md](Device-Lock.md#calling-devicepy-from-a-script)).
+
+The development console also accepts `haptic <light|firm>` for the
+[haptic pulse latency check](../haptics/README.md). It replies with
+`HAPTIC <strength> audible_ms=<ms>` or an error.

@@ -46,6 +46,26 @@ for name in sys.argv[2:]:
     __import__(name)' "$PYTHON_MIN_VERSION" "$@" >/dev/null 2>&1
 }
 
+# pinned_python sets PYTHON_PICKED to the minor pinned in .python-version,
+# found on PATH by name and not started: its name says its version. For an
+# entry point that starts nothing before its exec (tools/autana), where each
+# start costs a second on a loaded machine; unlike find_python it does not
+# pass over a broken install of that name.
+pinned_python() {
+    [ -n "$PYTHON_PINNED_MINOR" ] || return 1
+    _pp_rest="$PATH:"
+    while [ -n "$_pp_rest" ]; do
+        _pp_dir=${_pp_rest%%:*}
+        _pp_rest=${_pp_rest#*:}
+        _pp_candidate=$_pp_dir/python$PYTHON_PINNED_MINOR
+        if [ -n "$_pp_dir" ] && [ -x "$_pp_candidate" ] && [ ! -d "$_pp_candidate" ]; then
+            PYTHON_PICKED=$_pp_candidate
+            return 0
+        fi
+    done
+    return 1
+}
+
 find_python() {
     if [ -n "$PYTHON_PINNED_MINOR" ]; then
         _fp_pinned=$(command -v "python$PYTHON_PINNED_MINOR") || _fp_pinned=""

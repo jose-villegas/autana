@@ -219,7 +219,7 @@ class ViewHoleTests(unittest.TestCase):
         probes.reference_depth = [reference_depth]
         probes.query = mock.Mock()
         probes.query.first_hits.return_value = (~source_sky.ravel(), None, source_seen)
-        views = [(width, height, None, None)]
+        views = [(width, height, None, np.arange(6.0))]
         with mock.patch.object(probes, "_batches", return_value=[(views, rays, rays)]), \
                 mock.patch.object(leaks, "RayQuery") as ray_query:
             result = ray_query.return_value
@@ -229,7 +229,8 @@ class ViewHoleTests(unittest.TestCase):
             found = probes.holes(None, None, reach=narrow_reach)
             self.assertEqual([rows.tolist() for rows in found], [[source_row]])
             self.assertEqual(list(probes.restore_views(result, 1, leaks.REACH)), [])
-            (_, _, depth, [(rim, seen)]), = probes.restore_views(result, 1, narrow_reach)
+            (eye, _, _, depth, [(rim, seen)]), = probes.restore_views(result, 1, narrow_reach)
+            np.testing.assert_array_equal(eye, [0.0, 1.0, 2.0])
             np.testing.assert_array_equal(depth, reference_depth.reshape(height, width))
             np.testing.assert_array_equal(rim, [rim_row])
             np.testing.assert_array_equal(seen, [source_row])

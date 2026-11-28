@@ -42,7 +42,7 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 ## What is here
 
 - **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
-- **Render Lab:** flythroughs of Crytek Sponza with baked light, an animated capybara and a tank of simulated water that sloshes as the board tilts, all rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
+- **Render Lab:** flythroughs of Crytek Sponza with baked light, an animated capybara and a tank of simulated water that sloshes as the board tilts, all rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board; its [console commands](launcher/main/apps/render_lab/README.md) drive it from autana.
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [touch notes](docs/input/Touch.md).
 - **Self Test:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/tools/Build-Variants.md) explains which tools ship in each image.
 
@@ -74,6 +74,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
 | Estimate the board's current draw | [Power docs](docs/power/README.md), [Power budget](docs/power/Power-Budget.md) |
+| Add tactile feedback | [Haptics](docs/haptics/README.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
-from objdump_calls import FUNCTION  # noqa: E402
+from objdump_calls import FUNCTION, parse_objdump  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
@@ -33,6 +33,7 @@ SOURCES = LAUNCHER / "main"
 PINNED = re.compile(r"CODE_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
 CONFIG_HEADER = "# Config: "
 DEFAULT_BASELINE_CONFIG = "CONFIG_LAUNCHER_SELFTEST"
+SOURCE_LOCATION = re.compile(r"(.+):(\d+)(?:\s.*)?$")
 LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines\tsource_line"
 # Larger loop bodies are dominated by code size, not cache-line placement.
 SMALL_LOOP_MAX_LINES = 4
@@ -68,7 +69,8 @@ def baseline_applies(text, sdkconfig):
 
 
 def run(tool, *arguments):
-    return subprocess.run([tool, *arguments], check=True, capture_output=True, text=True).stdout
+    return subprocess.run([tool, *arguments], stdin=subprocess.DEVNULL,
+                          check=True, capture_output=True, text=True).stdout
 
 
 def find_tool(name):
@@ -125,15 +127,6 @@ def decode(objdump, elf, *arguments):
     return parse_objdump(run(objdump, "-d", *arguments, str(elf)))
 
 
-def parse_objdump(text):
-    found = []
-    for line in text.splitlines():
-        match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
-        if match:
-            found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
-    return found
-
-
 def instructions(objdump, elf, function, end):
     """The function's instructions, and how to decode its code again from
     one address on, where the linear sweep fell out of step."""
@@ -150,22 +143,28 @@ def target_of(operands):
 XTENSA_LITERAL_BYTES = 4
 
 
-def skip_pools(found, decode_from=None, jump_pools=True):
+def skip_pools(found, decode_from=None, jump_pools=None):
     """Drop literal targets and, unless jump_pools is false, skipped pools,
     decoding code again after each pool."""
     if not found:
         return found
+    if jump_pools is None:
+        # A jump table can enter a skipped span without a direct branch to it.
+        jump_pools = not any(ins[2] == "jx" for ins in found)
     start = found[0][0]
     end = found[-1][0] + found[-1][1]
     pools = set()
+    tried = set()
     while True:
         literals = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic == "l32r"}
         pending = sorted(address for address in literals
                          if address is not None and start <= address <= end - XTENSA_LITERAL_BYTES and address not in pools)
         if not pending:
-            repaired = _skip_jump_pools(found, decode_from) if jump_pools else found
+            attempts = len(tried)
+            repaired = _skip_jump_pools(found, decode_from, tried, start, end) if jump_pools else found
             if repaired == found:
-                return _resync(found, decode_from) if decode_from else found
+                break
+            assert len(tried) > attempts or len(repaired) < len(found)
             found = repaired
             continue
         for address in pending:
@@ -174,9 +173,19 @@ def skip_pools(found, decode_from=None, jump_pools=True):
             prefix = [ins for ins in found if ins[0] + ins[1] <= address]
             suffix = decode_from(resume) if decode_from else [ins for ins in found if ins[0] >= resume]
             found = prefix + [ins for ins in suffix if ins[0] < end]
+    if decode_from:
+        while True:
+            attempts = len(tried)
+            targets = {target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r"} - {None}
+            repaired = _resync(found, ((target, target) for target in targets), decode_from, tried, start, end)
+            if repaired == found:
+                break
+            assert len(tried) > attempts
+            found = repaired
+    return found
 
 
-def _skip_jump_pools(found, decode_from):
+def _skip_jump_pools(found, decode_from, tried, start, end):
     """A skipped span with no incoming branch is a pool. An entry past its
     start marks code decoded out of step after a pool or alignment bytes."""
     spans = []
@@ -188,22 +197,37 @@ def _skip_jump_pools(found, decode_from):
     def inside(address, span):
         return span[0] <= address < span[1]
 
-    def entries(span):
-        return sorted(
+    # An unaligned jump destination can hide a backedge into the skipped span.
+    repaired = _resync(found, ((target, target) for _, target in spans), decode_from, tried, start, end)
+    if repaired != found:
+        return repaired
+    kept = list(found)
+    for span in spans:
+        entered = sorted(
             target_of(operands)
             for address, _, _, operands in found
             if target_of(operands) is not None and not inside(address, span) and inside(target_of(operands), span)
         )
-
-    starts = {ins[0] for ins in found}
-    kept = list(found)
-    for span in spans:
-        entered = entries(span)
         if not entered:
             kept = [ins for ins in kept if not inside(ins[0], span)]
-        elif entered[0] not in starts and decode_from is not None:
-            kept = _decode_again(kept, span[0], entered[0], decode_from)
+        else:
+            kept = _resync(kept, [(entered[0], span[0])], decode_from, tried, start, end)
     return kept
+
+
+def _resync(found, targets, decode_from, tried, start, end):
+    """Repair the first missed target that changes the decode."""
+    if decode_from is None:
+        return found
+    starts = {ins[0] for ins in found}
+    # Overlapping misdecoded targets can otherwise undo each other.
+    for target, cut in sorted(targets):
+        if start <= target < end and target not in starts and target not in tried:
+            tried.add(target)
+            repaired = _decode_again(found, cut, target, decode_from)
+            if repaired != found:
+                return repaired
+    return found
 
 
 def _decode_again(found, cut, start, decode_from):
@@ -219,25 +243,27 @@ def _decode_again(found, cut, start, decode_from):
     return [ins for ins in found if ins[0] + ins[1] <= cut] + again + [ins for ins in found if ins[0] >= resume]
 
 
-def _resync(found, decode_from):
-    """Decode again from each branch target the sweep stepped over, as
-    alignment bytes before a loop entered only from inside a skipped span."""
-    tried = set()
-    while True:
-        skip = {ins[0] for ins in found} | tried
-        end = found[-1][0] + found[-1][1]
-        # Each target is tried once: two that land inside each other's
-        # instructions would otherwise undo each other forever.
-        missed = sorted(target for target in (target_of(operands) for _, _, mnemonic, operands in found if mnemonic != "l32r")
-                        if target is not None and found[0][0] <= target < end and target not in skip)
-        if not missed:
-            return found
-        tried.add(missed[0])
-        found = _decode_again(found, missed[0], missed[0], decode_from)
-
-
 def line_span(start, end, line_size):
     return ((end - 1) // line_size) - (start // line_size) + 1
+
+
+def source_frames(addr2line, elf, addresses, section=None):
+    """Map each requested address to its inline frames, innermost first."""
+    addresses = list(dict.fromkeys(addresses))
+    if not addresses:
+        return {}
+    frames = {}
+    section_args = ("-j", section) if section is not None else ()
+    for location in run(addr2line, "-a", "-i", "-e", str(elf), *section_args,
+                        *(f"{address:#x}" for address in addresses)).splitlines():
+        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
+            address = int(location, 16)
+            frames[address] = []
+        elif frames:
+            frames[address].append(location)
+    if list(frames) != addresses or not all(frames.values()):
+        raise LayoutError(f"addr2line returned an incomplete source map for {elf}")
+    return frames
 
 
 def layout_entries(elf, nm, objdump, line_size, functions=None):
@@ -266,19 +292,12 @@ def layout_entries(elf, nm, objdump, line_size, functions=None):
             if end > start and line_span(start, end, line_size) <= SMALL_LOOP_MAX_LINES:
                 entries.append(LayoutEntry(function, kind, start, end - start, line_span(start, end, line_size), 0))
                 source_addresses.append(instruction_address)
-    locations = []
     # Inline instructions need the caller's line in the pinned function.
-    for location in run(find_tool("addr2line"), "-a", "-i", "-e", str(elf),
-                        *("0x%x" % address for address in source_addresses)).splitlines():
-        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
-            locations.append("")
-        elif locations:
-            locations[-1] = location
-    if len(locations) != len(entries):
-        raise LayoutError("addr2line returned an incomplete source map for %s" % elf)
+    frames = source_frames(find_tool("addr2line"), elf, source_addresses)
     first_lines = {}
-    for index, (entry, location) in enumerate(zip(entries, locations)):
-        match = re.match(r"(.+):(\d+)(?:\s.*)?$", location)
+    for index, (entry, address) in enumerate(zip(entries, source_addresses, strict=True)):
+        location = frames[address][-1]
+        match = SOURCE_LOCATION.fullmatch(location)
         if not match or int(match[2]) == 0:
             raise LayoutError("no source line for %s at 0x%x" % (entry.function, source_addresses[index]))
         source, line = match[1], int(match[2])
@@ -411,9 +430,7 @@ def function_code(text, decode_range=None, precise=()):
                 copy += 1
                 key = "%s#%d" % (name, copy)
             again = (lambda start: decode_range(start, end)) if key in precise else None
-            # Code a jump table enters has no branch into it, so a function
-            # with one keeps every span a jump skips.
-            code = skip_pools(body, again, jump_pools=not any(ins[2] == "jx" for ins in body))
+            code = skip_pools(body, again)
             found[key] = [instruction_text(mnemonic, operands) for _, _, mnemonic, operands in code]
 
     for line in text.splitlines():

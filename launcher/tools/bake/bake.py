@@ -858,7 +858,7 @@ def bakes_in(packs, jobs, starts=None, poses=None):
                 probes.setdefault(scene.path, Bake(
                     output=probe_output, source=asker, holder=job.settings.path.stem, kind="sh_probes",
                     key=probe_key, suffix=SUFFIX, tree=scene.path.with_name(probe_output),
-                    job=job, scene=scene, packed=False))
+                    job=job, scene=scene, packed=True))
             keys = stage_keys(job, scene, tools, starts, poses)
             kind = "fit" if "fit" in keys else "mesh"
             holder = job.object.name if job.object is not None else job.renderer.variant.name

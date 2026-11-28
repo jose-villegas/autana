@@ -741,7 +741,7 @@ test_constant_and_gradient_sh_through_each_kernel(void) {
 }
 
 static void
-test_table_gradient_ignores_uniform_entity_scale(void) {
+test_sh_gradient_ignores_uniform_entity_scale(void) {
     ambient_fixture_t* fx = fixture_ambient();
     fixture_t* f = &fx->skin;
     r3d_skin_lights_t* lights = &fx->lights;
@@ -749,22 +749,34 @@ test_table_gradient_ignores_uniform_entity_scale(void) {
     const sh1_irradiance_t ambient = {.constant = {0.4F, 0.4F, 0.4F},
                                       .gradient = {{{0, 0.2F, 0}, {0, 0.2F, 0}, {0, 0.2F, 0}}}};
     lights->table_scale = r3d_skin_light_table_build(lights, &fx->table);
-    r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &fx->posed, f->normals, lights, f->out,
-                              &ambient, R3D_SKIN_LIGHT_TABLE);
-    uint8_t expected[VERTICES][3];
-    memcpy(expected, f->out, sizeof expected);
-    const transformf_t scaled = {.rotation = quatf_identity(), .scale = {100, 100, 100}};
-    TEST_ASSERT_TRUE(r3d_skin_normal_palette(f->palette, JOINTS, transformf_compute_matrix(&scaled), f->normals));
-    r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &fx->posed, f->normals, lights, f->out,
-                              &ambient, R3D_SKIN_LIGHT_TABLE);
-    TEST_ASSERT_EQUAL_MEMORY(expected, f->out, sizeof expected);
+    static const float scales[] = {100.0F, 0.5F};
+    const mat3f_t identity = mat3f_identity();
+    for (size_t k = 0; k < sizeof modes / sizeof modes[0]; k++) {
+        TEST_ASSERT_TRUE(r3d_skin_normal_palette(f->palette, JOINTS, mat4f_identity(), f->normals));
+        for (int j = 0; j < JOINTS; j++) {
+            TEST_ASSERT_EQUAL_MEMORY(&identity, &f->normals[j], sizeof identity);
+        }
+        r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &fx->posed, f->normals, lights, f->out,
+                                  &ambient, modes[k].mode);
+        uint8_t expected[VERTICES][3];
+        memcpy(expected, f->out, sizeof expected);
+        for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+            const float scale = scales[i];
+            const transformf_t scaled = {.rotation = quatf_identity(), .scale = {scale, scale, scale}};
+            TEST_ASSERT_TRUE(
+                r3d_skin_normal_palette(f->palette, JOINTS, transformf_compute_matrix(&scaled), f->normals));
+            r3d_skin_clusters_ambient(&f->skin, &f->bind, f->palette, 0, CLUSTERS, &fx->posed, f->normals, lights,
+                                      f->out, &ambient, modes[k].mode);
+            TEST_ASSERT_EQUAL_MEMORY(expected, f->out, sizeof expected);
+        }
+    }
     free(fx->block);
     free(fx);
 }
 
 void
 suite_skin_light(void) {
-    RUN_TEST(test_table_gradient_ignores_uniform_entity_scale);
+    RUN_TEST(test_sh_gradient_ignores_uniform_entity_scale);
     RUN_TEST(test_table_flat_ambient_is_quantized_with_direct_light);
     RUN_TEST(test_flat_ambient_kernels_match_flat_reference);
     RUN_TEST(test_constant_and_gradient_sh_through_each_kernel);

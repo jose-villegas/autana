@@ -381,11 +381,31 @@ open_skins(scene_t* scene) {
 }
 
 static scene_failure_t
+open_probes(scene_t* scene, const asset_pack_t* pack) {
+    if (strlen(scene->root->id) + sizeof SH_PROBES_NAME_SUFFIX > ASSET_NAME_MAX) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+    }
+    asset_view_t entry;
+    asset_status_t status =
+        r3d_lit_mesh_open_sibling(pack, scene->root->id, SH_PROBES_NAME_SUFFIX, SH_PROBES_ASSET, false, &entry);
+    if (status != ASSET_OK || entry.data == NULL) {
+        return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    status = sh_probes_read(entry, &scene->owned_probes);
+    if (status != ASSET_OK) {
+        return scene_failure_make(SCENE_ERR_ASSET, status, scene->root->id);
+    }
+    scene_set_probes(scene->root->root, &scene->owned_probes);
+    return scene_failure_make(scene->probes != NULL ? SCENE_OK : SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
+}
+
+static scene_failure_t
 open_lights(scene_t* scene) {
     for (int i = 0; i < scene->asset.light_count; i++) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
         if (!light_set_color(scene_row_entity(scene, row->entity), row->color)
-            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)) {
+            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)
+            || !light_set_mode(scene_row_entity(scene, row->entity), (light_mode_t)row->mode)) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }
@@ -490,6 +510,9 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     }
     if (done.status == SCENE_OK) {
         done = open_animators(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_probes(scene, pack);
     }
     if (done.status == SCENE_OK) {
         done = open_skins(scene);
@@ -745,6 +768,16 @@ scene_unload_all(void) {
         forget(&scene_roots[i]);
     }
     scene_draw_release();
+}
+
+const char*
+scene_held_id(void) {
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        if (!handle_is_none(scene_roots[i].root)) {
+            return scene_roots[i].id;
+        }
+    }
+    return NULL;
 }
 
 /* The index of the entity's renderer, or -1 when it draws nothing. */

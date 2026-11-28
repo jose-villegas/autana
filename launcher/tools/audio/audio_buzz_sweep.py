@@ -1,7 +1,7 @@
 """Sweep low tones and record how hard the board shakes (IMU) against how loud it sounds (mic).
 
 Board flat on a desk, untouched, quiet room, on a screen without a motion reader. Run it inside one lock run:
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id>
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up"
 """
 import argparse
 from datetime import date
@@ -12,10 +12,14 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_drc_sweep import numbers
 from autana_runner import autana_run, record_line
 
+TONE_PARSE = ROOT / "launcher/main/sound/console/console_tone_parse.h"
+PULSE_WINDOW_MAX_MS = read_define(TONE_PARSE, "CONSOLE_TONE_PULSE_WINDOW_MAX_MS")
 CAPTURE = Path("docs/audio/data/audio_buzz_capture.txt")
 FIRST_HZ, LAST_HZ, STEP_HZ = 20, 300, 10
 # Safety: the speaker is rated 1 W. Long, loud, low tones are what push a small cone past its travel.
@@ -35,11 +39,13 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--autana", default="autana")
     result.add_argument("--board", required=True)
+    result.add_argument("--surface", required=True, help="supporting surface and board orientation")
     result.add_argument("--out", type=Path, default=ROOT / CAPTURE)
     result.add_argument("--hz", type=numbers, default=tuple(range(FIRST_HZ, LAST_HZ + 1, STEP_HZ)))
     result.add_argument("--volumes", type=numbers, default=numbers("10,30,60"))
     result.add_argument("--loud", type=int, default=100, help="one extra burst per tone at or above LOW_HZ")
     result.add_argument("--ms", type=int, default=400)
+    result.add_argument("--pulse", type=numbers, help="comma-separated pulse lengths in ms within each window")
     result.add_argument("--runs", type=int, default=3)
     result.add_argument("--rest", type=float, default=1.0, help="seconds of silence between tones")
     result.add_argument("--peaks", type=int, default=PEAKS, help="coarse shake peaks to refine; 0 skips the fine pass")
@@ -50,9 +56,11 @@ def points(args, frequencies):
     for hz in frequencies:
         for run in range(args.runs):
             for volume in args.volumes:
-                yield hz, volume
+                for pulse in args.pulse or (None,):
+                    yield hz, volume, pulse
         if args.loud and hz >= LOW_HZ:
-            yield hz, args.loud
+            for pulse in args.pulse or (None,):
+                yield hz, args.loud, pulse
 
 
 def safe(hz, volume):
@@ -74,21 +82,25 @@ def fine_frequencies(shakes, peaks):
 
 def sweep(args, output, frequencies, shakes):
     planned = list(points(args, frequencies))
-    if not all(safe(hz, volume) for hz, volume in planned):
+    if not all(safe(hz, volume) for hz, volume, pulse in planned):
         raise ValueError(f"volumes above {LOW_MAX_VOLUME}% need {LOW_HZ} Hz or more")
     levels = {}
     retries = 0
-    for hz, volume in planned:
+    for hz, volume, pulse in planned:
         command = ("tone", str(hz), str(args.ms), str(volume))
+        if pulse is not None:
+            command += ("--pulse", str(pulse))
         reply = json.loads(autana_run(args.autana, *command, "--json"))
+        record_line(output, " ".join(command), json.dumps(reply))
         if reply["shake_rms_mg"] is None:
             # One late drain can cost a window; another screen reading the IMU costs every one.
             retries += 1
             time.sleep(args.rest)
             reply = json.loads(autana_run(args.autana, *command, "--json"))
+            record_line(output, " ".join(command), json.dumps(reply))
         if reply["shake_rms_mg"] is None:
-            raise RuntimeError(f"{' '.join(command)}: shake n/a twice; is another screen reading the IMU? (board log)")
-        record_line(output, " ".join(command), json.dumps(reply))
+            reason = reply.get("shake_reason") or "reason unavailable"
+            raise RuntimeError(f"{' '.join(command)}: shake n/a twice: {reason}")
         if volume == max(args.volumes):
             levels.setdefault(hz, []).append(reply["shake_rms_mg"])
         time.sleep(args.rest)
@@ -99,20 +111,33 @@ def sweep(args, output, frequencies, shakes):
 def capture(args):
     if not 0 < args.ms <= MAX_MS:
         raise ValueError(f"tone length must be 1..{MAX_MS} ms")
+    if args.pulse is not None:
+        if args.ms > PULSE_WINDOW_MAX_MS:
+            raise ValueError(f"pulse measurement window must be at most {PULSE_WINDOW_MAX_MS} ms")
+        if not args.pulse or any(not 0 < pulse <= args.ms for pulse in args.pulse):
+            raise ValueError(f"pulse length must be 1..{args.ms} ms")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(f"# autana --json replies on {args.board}, {date.today()}, "
-                     "one command per line: <command>\t<reply>\n")
-        record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
-        tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
-        record_line(output, " ".join(tune), json.dumps(autana_run(args.autana, *tune).strip()))
-        shakes = {}
-        sweep(args, output, args.hz, shakes)
-        if args.peaks:
-            sweep(args, output, fine_frequencies(dict(shakes), args.peaks), shakes)
-        reset = ("tune", "reset", DRAIN_TUNABLE)
-        record_line(output, " ".join(reset), json.dumps(autana_run(args.autana, *reset).strip()))
-        record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+    partial = args.out.with_suffix(args.out.suffix + ".partial")
+    try:
+        with partial.open("w", encoding="utf-8", newline="\n") as output:
+            output.write(f"# autana --json replies on {args.board}, {date.today()}, surface={args.surface}, "
+                         "one command per line: <command>\t<reply>\n")
+            try:
+                record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+                tune = ("tune", DRAIN_TUNABLE, str(DRAIN_MS))
+                record_line(output, " ".join(tune), json.dumps(autana_run(args.autana, *tune).strip()))
+                shakes = {}
+                sweep(args, output, args.hz, shakes)
+                if args.peaks:
+                    sweep(args, output, fine_frequencies(dict(shakes), args.peaks), shakes)
+            finally:
+                reset = ("tune", "reset", DRAIN_TUNABLE)
+                record_line(output, " ".join(reset), json.dumps(autana_run(args.autana, *reset).strip()))
+            record_line(output, "buildid", autana_run(args.autana, "buildid", "--json").strip())
+        partial.replace(args.out)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 def main():

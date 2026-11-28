@@ -171,7 +171,7 @@ class SnapBackCopyRows(unittest.TestCase):
                           ([fitted_copy], [0, start_copy])):
             with self.subTest(rim=rim, seen=seen):
                 probes = mock.Mock()
-                view = (None, None, np.ones((1, 1)), [(np.array(rim), np.array(seen))])
+                view = (None, None, None, np.ones((1, 1)), [(np.array(rim), np.array(seen))])
                 probes.restore_views.side_effect = [[view], []]
                 sealed, moved, left, *_ = seal.snap_back(start, fitted, copies, probes)
                 expected = fitted.points.copy()

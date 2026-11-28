@@ -4,35 +4,25 @@
 #include <stdio.h>
 #include <string.h>
 
-typedef struct {
-    const char* name;
-    const char* const* packs; /* NULL-terminated */
-} suite_reads_t;
-
-static suite_reads_t reads[SUITE_READS_MAX];
+static suite_reads_t* reads;
 static const char* waiting[SUITE_WAITING_MAX];
 
-static int read_count;
 static int waiting_count;
 static const char* current;
 
 void
-suite_reads(const char* name, const char* const* packs) {
-    if (read_count >= SUITE_READS_MAX) {
-        suites_record_drop();
-        printf("SUITE OVERFLOW: the packs '%s' reads were not registered (max %d)\n", name, SUITE_READS_MAX);
-        return;
-    }
-    reads[read_count++] = (suite_reads_t){name, packs};
+suite_reads_link(suite_reads_t* entry) {
+    entry->next = reads;
+    reads = entry;
 }
 
 static bool
 suite_reads_pack(const char* name, const char* pack) {
-    for (int i = 0; name != NULL && i < read_count; i++) {
-        if (strcmp(reads[i].name, name) != 0) {
+    for (const suite_reads_t* entry = reads; name != NULL && entry != NULL; entry = entry->next) {
+        if (strcmp(entry->name, name) != 0) {
             continue;
         }
-        for (const char* const* p = reads[i].packs; *p != NULL; p++) {
+        for (const char* const* p = entry->packs; *p != NULL; p++) {
             if (strcmp(*p, pack) == 0) {
                 return true;
             }

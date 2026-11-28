@@ -41,11 +41,11 @@ static bool textured;
  * load; empty when it could. */
 static char failure[LAB_STATUS_LEN];
 
+/* The panel's text for a failure; the log is the caller's (a failed load is
+ * scene.c's to log). */
 static void
 record_failure(const scene_failure_t* why) {
     const char* what = why->what;
-    ESP_LOGE(TAG, "scene '%s' did not load (%d, asset %s); it stays blank", what, (int)why->status,
-             asset_status_text(why->asset));
     const bool missing = why->asset == ASSET_ERR_NOT_FOUND || why->asset == ASSET_ERR_NO_PACK;
     const char* shown = "bad asset '%s'";
     switch (why->status) {
@@ -83,6 +83,8 @@ apply_textures(void) {
     textured = on;
     scene_failure_t why;
     if (!renderer_set_textured(bake, on, &why)) {
+        ESP_LOGE(TAG, "textures for '%s' did not open (%d, asset %s)", why.what, (int)why.status,
+                 asset_status_text(why.asset));
         record_failure(&why);
     }
 }

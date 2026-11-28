@@ -9,6 +9,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "build"))
 
 import check_no_soft_double as gate  # noqa: E402
+from objdump_calls import RELOCATION, parse_calls  # noqa: E402
 
 DUMP = """
 00000000 <hot>:
@@ -30,7 +31,7 @@ DUMP = """
 
 class SoftDoubleGate(unittest.TestCase):
     def setUp(self):
-        self.bad = gate.offenders(gate.parse_calls(DUMP, gate.RELOCATION))
+        self.bad = gate.offenders(parse_calls(DUMP, RELOCATION))
 
     def test_a_soft_double_call_with_no_logging_fails(self):
         self.assertEqual(["__muldf3"], self.bad["hot"])

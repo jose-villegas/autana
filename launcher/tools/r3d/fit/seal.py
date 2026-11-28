@@ -4,11 +4,10 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d import log
-from r3d.geometry import face_normals
 from r3d.leaks import LeakProbes, see_through_count
 from r3d.mesh_source import camera_filter
 from r3d.ray_query import RayQuery
-from render.pinhole_rays import front_hits
+from render.pinhole_rays import FrontMesh, front_hits
 
 # A fitted point within this distance (model units) of the inside of an edge it does not end splits that edge.
 # A held seam point lands on its target's edge: one fit had 363 points this close where its start had 9.
@@ -40,15 +39,14 @@ def snap_back(start, fitted, copies, probes):
     points = fitted.points.copy()
     fitted_count, start_count = len(fitted.tris), len(start.tris)
     positions, tris = geometry(fitted, copies)
-    result = RayQuery(positions, tris)
-    normals, _ = face_normals(positions, tris)
     double = fitted.double if copies is None else np.concatenate([fitted.double, copies.double])
     double = np.asarray(double, dtype=bool)
+    result, drawn = RayQuery(positions, tris), FrontMesh(positions, tris, double)
     rounds = left = kept = reverted = 0
     for width in range(1, SNAP_BACK_ROUNDS + 1):
-        for origins, directions, source_depth, holes in probes.restore_views(result, width, SNAP_BACK_REACH):
+        for eye, origins, directions, source_depth, holes in probes.restore_views(result, width, SNAP_BACK_REACH):
             rounds = width
-            _, depth = front_hits(result, normals, double, origins, directions)
+            _, depth = front_hits(drawn, eye, origins, directions)
             before = see_through_count(source_depth, depth.reshape(source_depth.shape))
             for rim_rows, seen_rows in holes:
                 rim_points = tris[rim_rows[rim_rows < fitted_count]]
@@ -59,12 +57,11 @@ def snap_back(start, fitted, copies, probes):
                     continue
                 points[restore] = start.points[restore]
                 trial_positions, _ = geometry(fitted._replace(points=points), copies)
-                trial = RayQuery(trial_positions, tris)
-                trial_normals, _ = face_normals(trial_positions, tris)
-                _, depth = front_hits(trial, trial_normals, double, origins, directions)
+                trial = FrontMesh(trial_positions, tris, double)
+                _, depth = front_hits(trial, eye, origins, directions)
                 after = see_through_count(source_depth, depth.reshape(source_depth.shape))
                 if after <= before:
-                    result, normals, before = trial, trial_normals, after
+                    result, drawn, before = RayQuery(trial_positions, tris), trial, after
                     kept += 1
                 else:
                     points[restore] = previous

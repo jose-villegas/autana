@@ -80,38 +80,38 @@ class LeakProbes:
     def holes(self, positions, tris, reach=REACH):
         """Per hole a mesh shows, the source triangles seen through it."""
         holes = []
-        for _, _, origins, directions, masks in self._view_holes(RayQuery(positions, tris), reach):
+        for _, _, _, origins, directions, masks in self._view_holes(RayQuery(positions, tris), reach):
             hit, _, seen = self.query.first_hits(origins, directions)
             holes.extend(np.unique(seen[mask.reshape(-1) & hit]) for mask in masks)
         return holes
 
     def restore_views(self, result, width, reach):
-        """Each holed view's rays, reference depth, and pairs of rim and start triangle rows per hole."""
-        for batch, rows, origins, directions, masks in self._view_holes(result, reach):
+        """Each holed view's eye, rays, reference depth, and pairs of rim and start triangle rows per hole."""
+        for batch, rows, eye, origins, directions, masks in self._view_holes(result, reach):
             hit, _, seen = result.first_hits(origins, directions)
             start_hit, _, start_seen = self.query.first_hits(origins, directions)
             holes = []
             for mask in masks:
                 ring = (ndimage.binary_dilation(mask, CONNECTED, iterations=width) & ~mask).reshape(-1)
                 holes.append((np.unique(seen[ring & hit]), np.unique(start_seen[mask.reshape(-1) & start_hit])))
-            yield origins, directions, self.reference_depth[batch][rows].reshape(masks[0].shape), holes
+            yield eye, origins, directions, self.reference_depth[batch][rows].reshape(masks[0].shape), holes
 
     def _view_holes(self, result, reach=REACH):
-        """Batch index, ray slice, rays and masks for each view where `result` shows a hole."""
+        """Batch index, ray slice, eye, rays and masks for each view where `result` shows a hole."""
         for batch, (views, origins, directions) in enumerate(self._batches()):
             source_sky = self.source_sky[batch]
             sky = ~result.blocked(origins, directions)
             if not np.any(sky & ~source_sky):
                 continue
             at = 0
-            for width, height, _, _ in views:
+            for width, height, _, pose in views:
                 rows = slice(at, at + width * height)
                 at += width * height
                 if not np.any(sky[rows] & ~source_sky[rows]):
                     continue
                 masks = view_holes(sky[rows].reshape(height, width), source_sky[rows].reshape(height, width), reach=reach)
                 if masks:
-                    yield batch, rows, origins[rows], directions[rows], masks
+                    yield batch, rows, pose[:3], origins[rows], directions[rows], masks
 
     def repair(self, rows, result_positions, result_tris, free):
         """(number of holes, vertices to lock) for a pass that simplified the source triangles `rows` into the result: the

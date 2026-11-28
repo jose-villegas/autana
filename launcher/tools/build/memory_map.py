@@ -121,6 +121,7 @@ class Input:
     size: int
     literal: bool = False
     output: str = ".iram0.text"
+    address: int | None = None
 
 
 def preceding_comment(lines, index):
@@ -284,13 +285,31 @@ def matches_site(item, site):
     return any(matches_entry(item, site.archive, obj, symbol) for obj, symbol in site.entries)
 
 
-def iram_entries(build):
-    ninja = (build / "build.ninja").read_text(encoding="utf-8")
-    rule = re.search(r"^build esp-idf/esp_system/ld/sections\.ld .*?\n(.*?)(?=\n\S|\Z)", ninja, re.M | re.S)
-    if not rule:
-        raise ValueError("build.ninja has no ldgen rule")
-    command = re.search(r"^  COMMAND = (.+)$", rule.group(1), re.M).group(1)
-    command = command.replace("$:", ":").replace("$ ", " ").replace("$$", "$")
+def required_copies(site, required, inputs, inlines):
+    """Find the emitted copies and inline ranges for one required IRAM entry."""
+    obj, symbol, path, _ = required
+    copies = [item for item in inputs if not item.literal and matches_entry(item, site.archive, obj, symbol)]
+    instances = [row for row in inlines
+                 if (row[0] == path or row[0].endswith("/" + path)) and clone_base(row[1]) == symbol]
+    return copies, instances
+
+
+def ninja_rule(ninja, output):
+    """Return the indented bindings of the Ninja rule producing output."""
+    rule = re.search(r"^build " + re.escape(output) + r"(?= |:)[^\n]*\n((?:[ \t]+[^\n]*\n?)*)", ninja, re.M)
+    if rule is None:
+        raise ValueError(f"build.ninja has no rule for {output}")
+    return rule[1]
+
+
+def iram_entries(build, ninja=None):
+    if ninja is None:
+        ninja = (build / "build.ninja").read_text(encoding="utf-8")
+    rule = ninja_rule(ninja, "esp-idf/esp_system/ld/sections.ld")
+    binding = re.search(r"^  COMMAND = (.+)$", rule, re.M)
+    if binding is None:
+        raise ValueError("ldgen rule lacks a COMMAND binding")
+    command = binding[1].replace("$:", ":").replace("$ ", " ").replace("$$", "$")
     if ".bat" in command:
         batch = re.match(r'"([^"\n]+\.bat)"|([^\s]+\.bat)', command)
         command = (build / next(value for value in batch.groups() if value)).read_text(encoding="utf-8")
@@ -407,10 +426,9 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
             if size:
                 errors.append(f"{site.label}: compiled-out site owns {size} B")
         else:
-            for obj, symbol, path, _ in site.required:
-                copies = [item for item in inputs if not item.literal and matches_entry(item, site.archive, obj, symbol)]
-                instances = [row for row in inlines
-                             if (row[0] == path or row[0].endswith("/" + path)) and clone_base(row[1]) == symbol]
+            for required in site.required:
+                _, symbol, _, _ = required
+                copies, instances = required_copies(site, required, inputs, inlines)
                 if not copies and not instances and inspect_inline:
                     errors.append(f"{site.label}: {symbol}: no emitted copy or inline instance")
                 outside = sorted({item.output for item in copies if not item.output.startswith(".iram")})
@@ -597,18 +615,19 @@ def map_inputs(text, elf_symbols):
             continue
         if input_section.startswith((".text.", ".literal.")):
             symbol = input_section.split(".", 2)[2]
-            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal."), output))
+            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal."), output, address))
         else:
-            members = [(name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
+            members = [(start, name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
                        for name, count in [elf_symbols[start]] if count and not name.startswith("$")]
-            if members and len({clone_base(name) for name, _ in members}) == 1:
-                iram_names[(archive, obj, input_section)] = members[0][0]
+            if members and len({clone_base(name) for _, name, _ in members}) == 1:
+                iram_names[(archive, obj, input_section)] = members[0][1]
             if len(members) == 1:
-                inputs.append(Input(archive, obj, members[0][0], size, output=output))
+                start, name, _ = members[0]
+                inputs.append(Input(archive, obj, name, size, output=output, address=start))
             elif members:
-                total = sum(count for _, count in members)
-                for number, (name, count) in enumerate(members):
-                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0), output=output))
+                total = sum(count for _, _, count in members)
+                for number, (start, name, count) in enumerate(members):
+                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0), output=output, address=start))
             else:
                 inputs.append(Input(archive, obj, input_section, size, output=output))
     for archive, obj, key, size, output in literals:
@@ -624,17 +643,17 @@ def build_variant(build):
     return build_id, variant
 
 
-def read_build(build, root=ROOT, *, inspect_inline=False):
+def read_link(build, root=ROOT, *, inspect_inline=False):
+    """Read the linked image inputs shared by the layout and placement checks."""
     build = build.resolve()
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
-    elf_symbols = symbols(find_tool("nm"), elf)
+    records = symbols(find_tool("nm"), elf, records=True)
+    elf_symbols = {record.address: (record.name, record.size) for record in records if record.size is not None}
     mapfile = elf.with_suffix(".map")
     maptext = mapfile.read_text(encoding="utf-8")
     placed_inputs, sections, constants = map_inputs(maptext, elf_symbols)
     inputs = [item for item in placed_inputs if item.output.startswith(".iram")]
-    size = json.loads(run(idf_python(), str(Path(metadata["idf_path"]) / "tools/idf_size.py"),
-                          "--format", "json2", str(mapfile)))
     scripts = build / "esp-idf/esp_system/ld"
     script = "\n".join((scripts / name).read_text(encoding="utf-8") for name in ("sections.ld", "memory.ld"))
     # The map evaluates linker constants even when their definitions use arithmetic.
@@ -645,8 +664,21 @@ def read_build(build, root=ROOT, *, inspect_inline=False):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), inlines=inline_instances(elf, sections) if inspect_inline else (), sections=sections, constants=constants,
-                size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
+    ninja = (build / "build.ninja").read_text(encoding="utf-8")
+    return dict(build=build, elf=elf, maptext=maptext, ninja=ninja, records=records, metadata=metadata,
+                owned=components(root, metadata), build_id=build_id, variant=variant,
+                idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs,
+                placed_inputs=placed_inputs, linker_entries=iram_entries(build, ninja),
+                inlines=inline_instances(elf, sections) if inspect_inline else (),
+                sections=sections, constants=constants, align=align, pad=pad, slack=slack,
+                config=config, regions=regions)
+
+
+def read_build(build, root=ROOT, *, inspect_inline=False):
+    link = read_link(build, root, inspect_inline=inspect_inline)
+    link["size"] = json.loads(run(idf_python(), str(Path(link["metadata"]["idf_path"]) / "tools/idf_size.py"),
+                                  "--format", "json2", str(link["elf"].with_suffix(".map"))))
+    return link
 
 
 def update_budgets(root, builds):

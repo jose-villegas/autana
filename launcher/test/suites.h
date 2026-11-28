@@ -31,15 +31,19 @@
  * runner's asset folder (asset/asset_store.h), so a run whose pack waits on the
  * bake lock skips that suite rather than fail it. The host runner fails a run
  * in which a suite reads a pack it did not name, so no read goes unnamed.
- * At most SUITE_READS_MAX suites name packs; one past it fails the run. */
-#define SUITE_READS_MAX 20
-void suite_reads(const char* name, const char* const* packs);
+ * Each SUITE_READS owns its entry, as each SUITE_REGISTER does: there is no cap. */
+typedef struct suite_reads {
+    const char* name;
+    const char* const* packs; /* NULL-terminated */
+    struct suite_reads* next;
+} suite_reads_t;
+
+void suite_reads_link(suite_reads_t* entry);
 
 #define SUITE_READS(fn, ...)                                                                                           \
-    __attribute__((constructor)) static void fn##_reads(void) {                                                        \
-        static const char* const packs[] = {__VA_ARGS__, NULL};                                                        \
-        suite_reads(#fn, packs);                                                                                       \
-    }
+    static const char* const fn##_packs[] = {__VA_ARGS__, NULL};                                                       \
+    static suite_reads_t fn##_reads_entry = {#fn, fn##_packs, NULL};                                                   \
+    __attribute__((constructor)) static void fn##_reads(void) { suite_reads_link(&fn##_reads_entry); }
 
 /* True when the suite running now named `pack` with SUITE_READS. */
 bool suites_current_reads(const char* pack);
