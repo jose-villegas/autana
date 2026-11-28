@@ -11,6 +11,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_pipeline.h"
 #include "render/record/frame_record.h"
+#include "render/skin/r3d_skin_light_tune.h"
 #include "scene/scene_internal.h"
 
 render_context_t*
@@ -41,6 +42,12 @@ render_context_settings(const render_context_t* context) {
 void
 render_anim_settings_tune(render_anim_settings_t* anim) {
     (void)anim;
+}
+
+uint32_t
+r3d_skin_lights_tune(r3d_skin_lights_t* lights) {
+    (void)lights;
+    return 0;
 }
 
 void

@@ -1,6 +1,6 @@
-/* The development overrides of the frame's skin lights: skin.albedo and skin.direct. */
+/* The development overrides of the frame's skin lights. */
+#include "render/skin/r3d_skin_light_tune.h"
 #include "core/tune.h"
-#include "render/skin/r3d_skin_light.h"
 
 TUNE_OWNER(skin);
 TUNE(skin, albedo, R3D_SKIN_TUNE_ALBEDO_SOURCE, R3D_SKIN_TUNE_ALBEDO_SOURCE, R3D_SKIN_TUNE_ALBEDO_WHITE);

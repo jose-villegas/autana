@@ -11,6 +11,7 @@
 #include "render/settings/render_settings.h"
 #include "render/skin/r3d_skin_light_directions.h"
 #include "render/skin/r3d_skin_light_internal.h"
+#include "render/skin/r3d_skin_light_tune.h"
 #include "skin_light_reference.h"
 #include "suites.h"
 #include "unity.h"

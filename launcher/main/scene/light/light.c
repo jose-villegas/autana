@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
+#include "render/skin/r3d_skin_light_tune.h"
 #include "scene/scene_internal.h"
 
 /* Luminance of a linear RGB light as BT.709 weighs it. */

@@ -10,6 +10,7 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/record/frame_record.h"
+#include "render/skin/r3d_skin_light_tune.h"
 #include "scene/scene_anim_stages.h"
 #include "scene/scene_internal.h"
 
