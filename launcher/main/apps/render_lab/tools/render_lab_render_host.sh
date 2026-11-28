@@ -105,6 +105,13 @@ herd-8|--quarter 1 --no-hud --scene herd-8 --frames 60|448x368|nopin
 # The scenes read their meshes from asset packs of the baked meshes in the tree.
 scene_assets=main
 
+# The pose-export fixture links this host with its app entry substituted.
+if [ "${1:-}" = "--sources" ]; then
+    . "$SCRIPT_DIR/../../../../tools/build/ui_sources.sh"
+    printf '%s\n' $scene_sources $UI_RENDER_HOST_SOURCES
+    exit 0
+fi
+
 # shellcheck source=../../../../tools/render/render_scene.sh
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"
 render_scene_run "$@"

@@ -3479,13 +3479,13 @@ assert_partial_frame_is_the_whole_draw(uint32_t dt_ms) {
     assert_the_picture_is_the_whole_draw();
 }
 
-/* From a settled picture, `mover` goes up a unit a frame of `dt_ms`, each frame partial and the whole draw's. */
+/* From a settled picture, `mover` goes up a unit a frame, each frame partial and the whole draw's. */
 static void
-assert_partial_frames_of_a_mover_match_the_whole_draw(entity_t mover, uint32_t dt_ms) {
+assert_partial_frames_of_a_mover_match_the_whole_draw(entity_t mover) {
     settle_the_picture();
     for (int step = 1; step <= MOVER_STEPS; step++) {
         put_at(mover, 0.0F, (float)step);
-        assert_partial_frame_is_the_whole_draw(dt_ms);
+        assert_partial_frame_is_the_whole_draw(0);
     }
 }
 
@@ -3497,7 +3497,7 @@ test_a_renderer_moving_in_a_second_scene_redraws_its_rows_as_a_whole_draw_does(v
     fixture();
     entity_t pair;
     const entity_t second = behind_the_pair("test_solo", &pair);
-    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(second, name_hash("blue")), 0);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(second, name_hash("blue")));
 }
 
 static void
@@ -3505,20 +3505,17 @@ test_a_renderer_moving_in_the_cameras_scene_redraws_its_rows_as_a_whole_draw_doe
     fixture();
     entity_t pair;
     (void)behind_the_pair("test_solo", &pair);
-    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(pair, name_hash("red")), 0);
+    assert_partial_frames_of_a_mover_match_the_whole_draw(entity_find(pair, name_hash("red")));
 }
 
-/* A frame's step for a playing animator. */
-#define SKINNED_MOVER_DT_MS 16U
-/* A held frame's step: long enough that the clip carries the pose a row or
- * more past the last frame's, with every held frame inside the clip. */
-#define SKINNED_HELD_DT_MS  200U
+/* A held frame's step: the clip cut into one more step than the held frames, so
+ * each carries the pose a row or more on and the last ends inside the clip. */
+#define SKINNED_HELD_DT_MS ((uint32_t)RIG_DURATION_MS / (MOVER_STEPS + 1U))
 
-/* A skinned renderer of a second scene plays a clip whose root travels up
- * over the still pair, first moving up, then held where it is so only its
- * pose moves it across rows: each frame redraws its rows only and is the
- * whole draw's picture. Settle off: its refined rows are meant to differ
- * from a live draw. */
+/* A skinned renderer of a second scene, held where it is, plays a clip whose
+ * root travels up over the still pair, so only its pose moves it across rows:
+ * each frame redraws its rows only and is the whole draw's picture. Settle
+ * off: its refined rows are meant to differ from a live draw. */
 static void
 test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
     fixture();
@@ -3533,7 +3530,7 @@ test_a_skinned_renderer_moving_redraws_its_rows_as_a_whole_draw_does(void) {
     static const char* const clips[] = {"rig.up"};
     TEST_ASSERT_TRUE(animator_set_clips(mover, "rig", clips, 1, NULL));
     TEST_ASSERT_TRUE(animator_play(mover, 0, 0));
-    assert_partial_frames_of_a_mover_match_the_whole_draw(mover, SKINNED_MOVER_DT_MS);
+    settle_the_picture();
     for (int frame = 0; frame < MOVER_STEPS; frame++) {
         assert_partial_frame_is_the_whole_draw(SKINNED_HELD_DT_MS);
     }

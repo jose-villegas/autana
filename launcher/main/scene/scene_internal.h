@@ -217,6 +217,7 @@ struct scene {
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
     int light_count;
     r3d_skin_lights_t world_lights;
+    uint32_t light_revision;
     scene_light_t* lights;
     vec3f_t ambient_color;
     float ambient_intensity, tonemap_white;

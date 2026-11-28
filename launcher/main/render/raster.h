@@ -18,8 +18,10 @@
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/settings/render_settings.h"
+#include "render/skin/r3d_skin_light.h"
 #include "render/upscale.h"
 
+struct sh_probes;
 struct r3d_span_target;
 struct r3d_lens;
 
@@ -77,6 +79,10 @@ struct raster {
      * changed a cut, redraws every row. */
     int first_row, end_row;
     const raster_post_t* post;
+    /* Borrowed scene lighting for development overlays, valid through composition. */
+    const struct sh_probes* probes;
+    const r3d_skin_light_transfer_t* light_transfer;
+    float tonemap_white;
 };
 
 /* What a draw uses: the raster's settings. */
