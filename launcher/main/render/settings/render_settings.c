@@ -126,18 +126,3 @@ render_anim_settings_tune(render_anim_settings_t* anim) {
     anim->far_every = anim_every(far_every, anim->far_every);
     anim->hysteresis_px = anim_pixels(hysteresis_px, anim->hysteresis_px);
 }
-
-TUNE_OWNER(skin);
-TUNE(skin, albedo, RENDER_SKIN_ALBEDO_SOURCE, RENDER_SKIN_ALBEDO_SOURCE, RENDER_SKIN_ALBEDO_WHITE);
-TUNE(skin, direct, RENDER_SKIN_DIRECT_ON, RENDER_SKIN_DIRECT_OFF, RENDER_SKIN_DIRECT_ON);
-
-uint32_t
-render_skin_lights_tune(r3d_skin_lights_t* lights) {
-    if (lights != NULL) {
-        lights->white_albedo = albedo == RENDER_SKIN_ALBEDO_WHITE;
-        if (direct == RENDER_SKIN_DIRECT_OFF) {
-            lights->count = 0;
-        }
-    }
-    return TUNE_GENERATION(skin);
-}

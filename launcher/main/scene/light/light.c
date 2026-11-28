@@ -204,7 +204,7 @@ scene_lights_prepare(scene_t* scene) {
         const int at = world.count;
         world.count += light_world(scene, l, &world.direction[at], &world.color[at]);
     }
-    (void)render_skin_lights_tune(&world);
+    (void)r3d_skin_lights_tune(&world);
     world.table = scene->light_table;
     if (scene->light_table != NULL && scene->light_table_dirty) {
         world.table_scale = r3d_skin_light_table_build(&world, scene->light_table);

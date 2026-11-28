@@ -89,6 +89,16 @@ void r3d_skin_clusters_table(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind,
 
 sh1_irradiance_t r3d_skin_light_ambient_sh(const sh1_rgb_t* radiance);
 
+/* skin.albedo and skin.direct values: defines, not an enum, since a release build's tunables are enum constants
+ * of their own, and comparing two enum types fails -Werror=enum-compare. */
+#define R3D_SKIN_LIGHT_ALBEDO_SOURCE 0
+#define R3D_SKIN_LIGHT_ALBEDO_WHITE  1
+#define R3D_SKIN_LIGHT_DIRECT_OFF    0
+#define R3D_SKIN_LIGHT_DIRECT_ON     1
+
+/* The frame's skin lights under development overrides; returns their revision. */
+uint32_t r3d_skin_lights_tune(r3d_skin_lights_t* lights);
+
 /* Per-renderer ambient override; mode is R3D_SKIN_LIGHT_* from r3d_skin_format.h. */
 void r3d_skin_clusters_ambient(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first,
                                int count, r3d_skin_output_t* out, const mat3f_t* normals,

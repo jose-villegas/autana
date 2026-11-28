@@ -813,7 +813,7 @@ test_debug_defaults_preserve_source_bytes(void) {
     lights->count = 1;
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), "skin.albedo"));
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), "skin.direct"));
-    (void)render_skin_lights_tune(lights);
+    (void)r3d_skin_lights_tune(lights);
     TEST_ASSERT_EQUAL_INT(1, lights->count);
     TEST_ASSERT_FALSE(lights->white_albedo);
     const vec3f_t sum = {0.2F, 0.4F, 0.6F};
@@ -835,8 +835,8 @@ test_direct_off_matches_no_sun(void) {
     fx->lights.direction[0] = vec3f_unit_y();
     fx->lights.color[0] = vec3f_one();
     fx->lights.ambient = (vec3f_t){0.2F, 0.4F, 0.6F};
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), "skin.direct", RENDER_SKIN_DIRECT_OFF));
-    (void)render_skin_lights_tune(&fx->lights);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), "skin.direct", R3D_SKIN_LIGHT_DIRECT_OFF));
+    (void)r3d_skin_lights_tune(&fx->lights);
     TEST_ASSERT_EQUAL_INT(0, fx->lights.count);
     const vec3f_t got = light_irradiance(vec3f_unit_y(), &fx->lights);
     TEST_ASSERT_EQUAL_FLOAT(fx->lights.ambient.x, got.x);

@@ -43,12 +43,6 @@ render_anim_settings_tune(render_anim_settings_t* anim) {
     (void)anim;
 }
 
-uint32_t
-render_skin_lights_tune(r3d_skin_lights_t* lights) {
-    (void)lights;
-    return 0;
-}
-
 void
 scene_draw_forget(const scene_t* scene) {
     (void)scene;

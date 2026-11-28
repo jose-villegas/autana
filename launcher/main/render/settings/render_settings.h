@@ -9,7 +9,6 @@
 #include <stdbool.h>
 
 #include "asset/asset_pack.h"
-#include "render/skin/r3d_skin_light.h"
 
 /* Each field, then its tier, the interval a pack may set it in when it has
  * one, and what it trades: render_asset.py and docs/render/Render-Settings.md
@@ -140,13 +139,3 @@ render_settings_t render_settings_tuned(const render_settings_t* set);
 /* `anim` under the anim overrides, in place: render_settings_tuned()'s tiers,
  * for a caller holding only them. */
 void render_anim_settings_tune(render_anim_settings_t* anim);
-
-/* skin.albedo and skin.direct values: defines, not an enum, since a release build's tunables are enum constants
- * of their own, and comparing two enum types fails -Werror=enum-compare. */
-#define RENDER_SKIN_ALBEDO_SOURCE 0
-#define RENDER_SKIN_ALBEDO_WHITE  1
-#define RENDER_SKIN_DIRECT_OFF    0
-#define RENDER_SKIN_DIRECT_ON     1
-
-/* The frame's skin lights under development overrides; returns their revision. */
-uint32_t render_skin_lights_tune(r3d_skin_lights_t* lights);
