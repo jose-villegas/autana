@@ -659,15 +659,21 @@ class StageTests(unittest.TestCase):
                              fit.output.removesuffix(bake.FIT_MARKER + fit.suffix) + bake.START_MARKER + fit.suffix)
 
 
-def write_fitted_tree(root, names=("fit",), visibility=PATH):
+def write_fitted_tree(root, names=("fit",), visibility=PATH, *, probe_fit=False):
     """A scene placing one fitted renderer per name, all of one import, so they share a start. Their recipes
     differ in their steps, so each fit is a bake of its own."""
-    write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+    geometry, fit = SIMPLIFY, FIT
+    cameras = camera(path=True, region=False)
+    if probe_fit:
+        geometry += 'probes = {}\n'
+        fit = "".join(line for line in FIT.splitlines(keepends=True) if not line.startswith("budget = "))
+        cameras = camera() + camera(path=True, region=False, name="flight")
+    write_import(root, output=VARIANT_OUTPUT, body=geometry + VARIANT)
     objects = "".join(
         renderer(name=name, extra='variant = "mesh"\nbake = true\n' + visibility
-                 + FIT.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
+                 + fit.replace(f"steps = {FIT_STEPS}", f"steps = {FIT_STEPS + index}"))
         for index, name in enumerate(names))
-    return write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD)
+    return write_scene(root, objects + sun_object() + cameras, HEAD)
 
 
 def row_of(item, sha256, **fields):
